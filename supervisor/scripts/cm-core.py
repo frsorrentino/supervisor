@@ -622,8 +622,9 @@ def _files_of(name, inp, cwd):
 
 def _human(d):
     """Una riga `user` scritta dalla persona: origin.kind «human» (senza origin, le versioni vecchie: testo che non e'
-    un involucro <…> di comandi, notifiche o promemoria). Le meta, le sidechain e i risultati degli strumenti no."""
-    if d.get("isMeta") or d.get("isSidechain"):
+    un involucro <…> di comandi, notifiche o promemoria). Le meta, le sidechain, i risultati degli strumenti e i riassunti
+    delle compattazioni no: questi sono righe user senza origin, e la chat li mostrava come un messaggio della persona."""
+    if d.get("isMeta") or d.get("isSidechain") or d.get("isCompactSummary"):
         return False
     o = d.get("origin")
     if isinstance(o, dict):

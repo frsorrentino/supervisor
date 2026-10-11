@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.11 — 2026-10-11: the chat no longer shows the compaction summaries.**
+  - The summary Claude Code writes when it compacts a conversation («This session is being continued…») is a user line without origin, so the chat of the phone and of the web app showed it as a message typed by the person. It is now left out, as the timeline already did. No contract change. Test TL12.
 - **0.8.10 — 2026-10-10: several attachments in one report, attachments to a session on another host, and a way back to the master.**
   - Contract 1.50 (additive): `report` takes up to 5 `/share` ids in `arg`, comma separated, each a single node or in parts. All are read before anything is saved: one missing or broken refuses the whole report with today's reason. Images go to the report folder, other files to the session's inbox, and the session gets ONE message with the text and the paths in order. Every `/share/<id>` is deleted either way. `state.share.multi = 5`; with one id nothing changes. Test R43.
   - A report to a session on another host answered «no session win:<name>». The attachments are now written there, in the session's folder, with scp, and the message goes with `talk`. No contract change. Test RS14.

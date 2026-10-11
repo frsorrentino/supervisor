@@ -148,4 +148,12 @@ b = json.loads(p.stdout) if p.returncode == 0 else {}
 T.check("TL10 task board --timeline carries the same timeline under the counts", b.get("counts", {}).get("done") == 1 and {s["session"] for s in b.get("timeline", {}).get("sessions", [])} == {"atlas", "orbit"}, p.stdout[:300] + p.stderr)
 T.check("TL11 a bad --since → a plain error", tl("--since", "yesterday")[0] != 0, "")
 
+# la chat del telefono e della web (11/10): il riassunto di una compattazione non e' un messaggio della persona
+spec = __import__("importlib.util").util.spec_from_file_location("cm_core", T.SCRIPTS / "cm-core.py")
+core = __import__("importlib.util").util.module_from_spec(spec)
+spec.loader.exec_module(core)
+chat = [e["text"] for e in core.transcript_entries(str(d1 / "S-A.jsonl"), 0, chat_only=True) if e["role"] == "user"]
+T.check("TL12 the chat leaves out a compaction summary and keeps the prompt typed",
+        "aggiungi il campo IVA al checkout" in chat and not any("being continued" in x for x in chat), str(chat))
+
 T.finish()
