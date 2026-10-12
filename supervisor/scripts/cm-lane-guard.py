@@ -12,6 +12,11 @@ la cartella della sessione. Un `cd` che non si sa leggere (una variabile, `cd -`
 compito copre: negato, mai concesso per sbaglio. Con piu' comandi chiusi nella catena, li deve coprire tutti.
 Non chiede un secondo ok: controlla soltanto. Spenta di default (`tasks.guard`), e senza registro non fa nulla:
 in quei casi il comportamento e' quello di prima. Un errore della guardia non blocca mai il comando.
+
+Con `--strict` (12/10/2026, fail-closed solo per i push): hooks.json la lancia una seconda volta con un filtro `if`
+sui comandi che pubblicano e `onFailure: "block"`. Li' un errore esce con 1 invece di lasciar passare, e Claude Code
+(dalla 2.1.295) blocca il push; un comando che il filtro non prende non avvia nemmeno lo script, quindi un errore
+della guardia non ferma mai gli altri comandi. Le versioni precedenti ignorano la chiave: il push passa, come prima.
 """
 import importlib.util
 import json
@@ -110,12 +115,16 @@ def decide(payload):
 
 
 def main():
+    strict = "--strict" in sys.argv[1:]
     try:
         payload = json.load(sys.stdin)
         if payload.get("tool_name") != "Bash":
             return 0
         reason = decide(payload)
-    except Exception:   # noqa: BLE001 — la guardia non deve mai rompere una sessione
+    except Exception as e:   # noqa: BLE001 — la guardia non deve mai rompere una sessione, salvo un push (--strict)
+        if strict:
+            print(f"supervisor lane guard failed, push blocked: {type(e).__name__}: {e}", file=sys.stderr)
+            return 1
         return 0
     if reason:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",

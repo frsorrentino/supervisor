@@ -79,16 +79,21 @@ cm_terminal_open() {
         # staccato e senza stdout/stderr ereditati: altrimenti chi ha lanciato
         # `open` resta appeso finche' il client tmux finto non muore
         setsid python3 - "$nome" "$mode" "$CM_SCRIPTS" >/dev/null 2>&1 <<'PY' &
-import os, pty, subprocess, sys, time
+import os, pty, select, subprocess, sys, time
 nome, mode, scripts = sys.argv[1], sys.argv[2], sys.argv[3]
 m, s = pty.openpty()
 env = dict(os.environ); env.pop("TMUX", None)
 env.setdefault("TERM", "xterm-256color")   # senza TERM il client tmux rifiuta: «terminal does not support clear»
 p = subprocess.Popen([f"{scripts}/cm-attach.sh", nome] + ([mode] if mode else []), stdin=s, stdout=s, stderr=s,
                      start_new_session=True, env=env)
+# 11/10: il lato slave chiuso qui e la lettura con un limite di tempo. Prima un os.read bloccato sul master
+# non vedeva morire il client tmux e questo processo restava acceso per giorni (22 rimasti dalle suite)
+os.close(s)
 log = os.environ.get("CM_TERMINAL_FAKE_LOG", "/dev/null") + ".attach"
 with open(log, "ab") as f:
     while p.poll() is None:
+        if not select.select([m], [], [], 0.5)[0]:
+            continue
         try:
             f.write(os.read(m, 4096)); f.flush()
         except OSError:

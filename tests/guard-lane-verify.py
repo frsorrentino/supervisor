@@ -28,8 +28,8 @@ def config(guard):
     cfg.write_text(json.dumps({"language": "en", "tasks": {"guard": guard}}))
 
 
-def hook(cmd, cwd=proj):
-    p = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-lane-guard.py")], capture_output=True, text=True, env=ENV, timeout=30,
+def hook(cmd, cwd=proj, *flags, script=None):
+    p = subprocess.run([sys.executable, str(script or T.SCRIPTS / "cm-lane-guard.py"), *flags], capture_output=True, text=True, env=ENV, timeout=30,
                        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": str(cwd), "hook_event_name": "PreToolUse"}))
     if p.returncode != 0:
         return "error"
@@ -118,5 +118,36 @@ T.check("G5 a broken registry → allow (the guard never breaks a session)", hoo
 hooks = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
 T.check("G6 hooks.json: PreToolUse on Bash runs cm-lane-guard.py through py.sh",
         any(h.get("matcher") == "Bash" and "cm-lane-guard.py" in h["hooks"][0]["command"] and "py.sh" in h["hooks"][0]["command"] for h in hooks.get("PreToolUse", [])), "")
+
+
+# G9 (12/10, ok del maintainer delle 08:20): fail-closed solo per i push. Una seconda voce lancia la guardia con
+# --strict, filtrata con `if` sui comandi che pubblicano e con onFailure «block»: li' un errore esce con 1 e Claude Code
+# (2.1.295+) blocca il push; un comando che il filtro non prende non avvia lo script. Provato dal vivo il 12/10 con la
+# guardia rotta: 2.1.296 blocca `git push` e `cd .. && git -C repo push`, `touch` passa; 2.1.294 ignora la chiave.
+import fnmatch  # noqa: E402
+import re  # noqa: E402
+strict = [h for e in hooks.get("PreToolUse", []) if e.get("matcher") == "Bash" for h in e["hooks"] if "--strict" in h["command"]]
+plain_ = [h for e in hooks.get("PreToolUse", []) if e.get("matcher") == "Bash" for h in e["hooks"]
+          if "cm-lane-guard.py" in h["command"] and "--strict" not in h["command"]]
+T.check("G9 hooks.json: the strict entries carry an `if` on Bash, onFailure block and --strict through py.sh; the lane guard stays fail-open, unfiltered",
+        strict and all(re.fullmatch(r"Bash\(.+\)", h.get("if", "")) and h.get("onFailure") == "block" and "py.sh" in h["command"] for h in strict)
+        and len(plain_) == 1 and "onFailure" not in plain_[0] and "if" not in plain_[0], str(strict) + str(plain_))
+pats = [h["if"][5:-1] for h in strict]
+pushes = ["git push origin main", "cd proj && git push", "git -C ../other push", "FOO=1 git push", "nice -n 19 bash release.sh 0.8.12",
+          "./release.sh 1.0", "gh release create v1", "gh release upload v1 x.zip", "npm publish", "claude plugin publish ."]
+others = ["git status", "echo hello", "ls -la", "git pull --ff-only", "python3 tests/guard-lane-verify.py", "gh pr list"]
+T.check("G9 the `if` filters take every form the guard closes and none of the ordinary commands",
+        all(any(fnmatch.fnmatchcase(c, p) for p in pats) for c in pushes) and not any(fnmatch.fnmatchcase(c, p) for c in others for p in pats),
+        str([c for c in pushes if not any(fnmatch.fnmatchcase(c, p) for p in pats)]) + str([c for c in others if any(fnmatch.fnmatchcase(c, p) for p in pats)]))
+T.check("G9 --strict: a broken registry → exit 1 (the push is blocked); without --strict → allow, as before",
+        hook("git push", proj, "--strict") == "error" and hook("git push") == "allow", "")
+broken = tmp / "broken-guard.py"
+broken.write_text((T.SCRIPTS / "cm-lane-guard.py").read_text() + "\nthis is broken(\n")
+T.check("G9 a broken guard script exits non-zero (onFailure blocks the push), with or without --strict",
+        hook("git push", proj, "--strict", script=broken) == "error", "")
+DB.unlink()
+cm("task", "list")
+T.check("G9 --strict with a working guard decides like the plain one: deny outside a task, a normal command allowed",
+        hook("git push", other, "--strict").startswith("deny") and hook("echo hello", proj, "--strict") == "allow", "")
 
 T.finish()

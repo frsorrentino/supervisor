@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.12 — 2026-10-12: the push guard fails closed, for pushes only.**
+  - Approved by the maintainer on 12/10 at 08:20, from the phone. Until now the lane guard was a PreToolUse hook on Bash with no `onFailure`: if the script broke or timed out, the push went through. A second entry now runs `cm-lane-guard.py --strict` with an `if` filter on the commands that publish (`git push`, `git -C … push`, `gh release`, `npm publish`, `claude plugin publish`, `release.sh`) and `onFailure: "block"`. There an error exits 1 and Claude Code 2.1.295+ blocks the push. A command the filter does not take never starts the script, so an error of the guard never stops the other commands. The lane guard itself is unchanged and stays fail-open.
+  - Tried live with the guard broken on purpose: 2.1.296 blocks `git push origin main` and `cd .. && git -C repo push origin main` while `touch` runs; 2.1.294 ignores the key and the push goes through, as before. Test G9.
+  - Tests: the fake terminal's attach helper exits when its tmux client dies. A blocking read on the pty kept it alive for days; 22 were left by the suites. Test L15.
 - **0.8.11 — 2026-10-11: the chat no longer shows the compaction summaries.**
   - The summary Claude Code writes when it compacts a conversation («This session is being continued…») is a user line without origin, so the chat of the phone and of the web app showed it as a message typed by the person. It is now left out, as the timeline already did. No contract change. Test TL12.
 - **0.8.10 — 2026-10-10: several attachments in one report, attachments to a session on another host, and a way back to the master.**

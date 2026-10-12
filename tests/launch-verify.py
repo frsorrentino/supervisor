@@ -276,5 +276,23 @@ with T.PrivateTmux() as tm:
     r = run(str(home / "ws" / "personali" / "alfa"), "--agent", "gemini", "--no-window", extra={"CC_SUPERVISOR_CONFIG": str(cfg14)})
     T.check("L14 unknown agent → exit 2 naming it", r.returncode == 2 and "gemini" in r.stderr, r.stderr)
 
+
+
+def fake_attachers():
+    """I finti attaccatori di cm-terminal.sh (backend fake) lanciati da questo test, riconosciuti dal loro log."""
+    found = []
+    for d in Path("/proc").iterdir():
+        try:
+            if d.name.isdigit() and f"CM_TERMINAL_FAKE_LOG={fakelog}".encode() in (d / "environ").read_bytes().split(b"\0") \
+                    and (d / "cmdline").read_bytes().startswith(b"python3\0-\0"):
+                found.append(int(d.name))
+        except OSError:
+            pass
+    return found
+
+
+# 11/10: col server tmux chiuso il finto attaccatore deve uscire da solo (ne restavano 22, accesi per giorni)
+T.check("L15 the fake terminal's attach helpers exit once the tmux server is gone",
+        T.wait_until(lambda: not fake_attachers(), 10), str(fake_attachers()))
 T.rm(str(tmp))
 T.finish()
