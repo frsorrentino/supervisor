@@ -117,7 +117,14 @@ the relay daemon listens on `127.0.0.1:<relay.web.port>` (8765 by default),
 serves the built web app from `relay.web.dir` on `/` and a local API with the
 contract's JSON in clear (state, events, a state stream, commands, files,
 attachments) behind a local token. `supervisor relay web` prints the address
-with the token and opens it in the browser.
+with the token and opens it in the browser. Without `relay.firebase_url` (13/10,
+0.8.15) the relay runs in local mode: `relay web` turns on `relay.enabled` and
+`relay.web.enabled` when the relay is off, the daemon keeps state and events only
+in `<relay.dir>/local` (no bus, no FCM, no Telegram fallback), and without
+`relay.web.dir` the web app comes from `relay.web_app_url`, each file fetched once
+into `<relay.dir>/web-cache`: the files under `assets/` once, everything else
+(`index.html`, `sw.js`, the manifest) again at every request, from the cache when
+the site is unreachable. A relay off with `relay.firebase_url` set stays off.
 Contract 1.36 labels what comes from the web app («via the web app»), and
 contract 1.37 brings the master's help to the app: fable-director's advice of
 model and effort for each session, the registry's tasks waiting for an ok with

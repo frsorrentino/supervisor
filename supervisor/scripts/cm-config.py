@@ -766,7 +766,11 @@ def prereq_rows(m, cfg):
         rows.append(("PASS", "doctor.backend_ok", {"backend": be, "bin": b}, None) if m.which(b)
                     else ("FAIL", "doctor.backend_bin_missing", {"backend": be, "bin": b}, msg(cfg, f"prereq.terminal_{kind}")))
 
-    on = cfg["relay"]["enabled"]
+    # 13/10: col relay acceso ma senza relay.firebase_url c'e' solo la web app locale (`relay web`): niente cifratura,
+    # niente crontab, niente Firebase — le dipendenze del bus restano INFO
+    on = cfg["relay"]["enabled"] and bool(str(cfg["relay"].get("firebase_url") or "").strip())
+    if cfg["relay"]["enabled"] and not on:
+        rows.append(("INFO", "doctor.relay_local", {}, None))
     missing = relay_deps_missing(m)
     mod = RELAY_CRYPTO_MODULE.split(".")[0]
     if "crypto" in missing:
@@ -1315,7 +1319,7 @@ def cmd_doctor():
     # prerequisiti: strumenti, terminale, dipendenze del relay, con il comando per installarli (13/10)
     rows += prereq_rows(m, cfg)
 
-    if cfg["relay"]["enabled"]:
+    if cfg["relay"]["enabled"] and str(cfg["relay"].get("firebase_url") or "").strip():
         # 1.15: i dati dell'app Firebase nel QR di `relay pair` — senza, il QR non compare e resta il codice a 6 cifre
         app, why = relay_firebase_app(cfg)
         rows.append(("PASS", "doctor.firebase_app_ok", {"project": app["project_id"], "source": why}, None) if app

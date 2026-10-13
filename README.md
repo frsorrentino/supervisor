@@ -1,12 +1,12 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.14-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.15-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **See every Claude Code session on one screen, answer the blocked ones from your
 phone, and get them all back after a reboot.** A supervisor for the sessions you
 already run, on your own computer.
 
-[![supervisor, the film (2:24): the web app on a tablet, the master's list of sessions on the left and three sessions at work in columns; payments-api got its «1 · yes» from the phone and is deploying 2.4. Demo data.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/supervisor)
+[![supervisor, the film: the session waiting for you comes first; one tap answers it from the phone. Demo data.](assets/readme/supervisor-film.gif)](https://www.francescosorrentino.com/plugins/supervisor)
 
 The film (2 min 24 s, on the plugin's page) shows every session on one screen,
 the blocked ones first, one session that runs the others, the advice on model
@@ -20,7 +20,8 @@ claude plugin install supervisor --marketplace frsorrentino/supervisor
 
 One command installs the plugin (Claude Code 2.1.292 or newer; older versions:
 the two commands of the [Quickstart](#quickstart)), the second writes the
-configuration and puts `supervisor` in `~/.local/bin`. Then `supervisor doctor`.
+configuration and puts `supervisor` in `~/.local/bin`. Then `supervisor doctor`, and
+`supervisor relay web` for every session on one screen, in this computer's browser.
 
 ⭐ Star the repo if it helps you · [Try the demo, no install](https://supervisor.francescosorrentino.com/?demo)
 
@@ -96,6 +97,19 @@ supervisor doctor              # PASS, INFO or WARN with a fix on each line; FAI
 supervisor launch ~/projects/x --create   # your first session, in its own tab (--create makes the folder)
 ```
 
+**Every session on one screen, in a minute.** No Firebase and nothing else to
+install:
+
+```bash
+supervisor relay web           # the web app on this computer, at 127.0.0.1, with every session
+```
+
+It turns the relay on in local mode, takes the web app from
+supervisor.francescosorrentino.com (kept in the relay's folder, so it opens
+offline too) and opens it in the browser: sessions, questions, quota, the
+night. Nothing leaves the computer. Firebase is needed only for the phone away
+from this computer (next section); `doctor` shows the local mode as an INFO line.
+
 The plugin's own command is on the PATH only inside Claude Code, so the first
 `init` runs it by its full path. If `supervisor` is not found after `init`,
 `~/.local/bin` is not on your PATH yet: open a new terminal. `init --shell`
@@ -107,8 +121,8 @@ had turned those on.
 
 ### On your phone: the web app
 
-Any phone or tablet, iPhone and iPad included, no store and no tester group. On
-the PC you need `python3-cryptography`, `crontab` and the Firebase CLI logged in
+Away from this computer: any phone or tablet, iPhone and iPad included, no store
+and no tester group. On the PC you need `python3-cryptography`, `crontab` and the Firebase CLI logged in
 (`npm install -g firebase-tools`, `firebase login`). Then:
 
 ```bash
@@ -531,7 +545,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 for t in tests/*-verify.py; do python3 "$t"; done
 ```
 
-Forty-two suites, about 1,250 cases, none of which touch your real tmux, your real
+Forty-four suites, about 1,250 cases, none of which touch your real tmux, your real
 Claude or your browser: a private tmux server, a fake `claude` that draws the
 real dialogs and writes the real registry files, a fake browser that follows
 Chrome's rules, a fake Telegram. Every defect found on the real machine became

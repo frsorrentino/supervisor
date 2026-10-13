@@ -315,6 +315,12 @@ def base_url():
     return u
 
 
+def local_only():
+    """13/10 (chiesto dal maintainer): senza relay.firebase_url il relay serve solo la web app locale di `relay web`:
+    lo stato e gli eventi restano in <relay.dir>/local, niente bus, niente FCM, niente Telegram di scorta."""
+    return not str(R.get("firebase_url") or "").strip()
+
+
 def rtdb(method, path, obj=None, query=None, timeout=20):
     """Una chiamata REST a RTDB: GET/PUT/PATCH/DELETE su /<path>.json?access_token=… Torna il JSON (o None)."""
     q = {"access_token": token()}
@@ -907,7 +913,8 @@ def _light(m):
         local_state_write(full)
     except OSError as ex:
         log(f"stato locale non scritto: {ex}")
-    rtdb("PUT", "state", C.encrypt(state, key()), {"print": "silent"})
+    if not local_only():
+        rtdb("PUT", "state", C.encrypt(state, key()), {"print": "silent"})
     m["published"] = time.time()
     m["events"] = 0
     pub_history_add(m["put_at"])
@@ -944,11 +951,12 @@ def _push(dry_run=False, now=None, m=None):
         local_state_write(full)   # 06/10: in locale lo stato intero, senza i tagli degli 8 KB (non esce dalla macchina)
     except OSError as ex:
         log(f"stato locale non scritto: {ex}")
-    k = key()
+    k = None if local_only() else key()
     m["collected"] = time.time()
     try:
-        rtdb("PUT", "state", C.encrypt(state, k), {"print": "silent"})
-        if events:
+        if k:
+            rtdb("PUT", "state", C.encrypt(state, k), {"print": "silent"})
+        if events and k:
             rtdb("PATCH", "events", {e["key"]: C.encrypt(e, k) for e in events}, {"print": "silent"})
         local_events_add(events, now)   # anche senza eventi nuovi: toglie i vecchi
     except (urllib.error.URLError, OSError, ValueError) as ex:
@@ -966,10 +974,13 @@ def _push(dry_run=False, now=None, m=None):
     def post():
         # 08/10 (fase 1): fuori dal lock della push. Le pulizie una volta ogni PRUNE_EVERY_S, non a ogni push
         if prune_due(now):
-            prune_events(now)
-            prune_share(now)
-            prune_share(now, "file")
+            if not local_only():
+                prune_events(now)
+                prune_share(now)
+                prune_share(now, "file")
             prune_local(now)
+        if local_only():
+            return
         woken = True
         for e in events:
             try:
@@ -1022,7 +1033,7 @@ def emit(kind, title, body, ref=None, account=None, now=None):
     come gli altri. `body` e' il testo di Telegram senza markup, tagliato a fine riga entro 4000 caratteri. Il seq
     viene da last-state.json sotto il lock delle push, cosi' la chiave non si scontra con gli eventi del diff."""
     now = int(now or time.time())
-    k = key()
+    k = None if local_only() else key()
     lock = open(str(rdir() / "push.lock"), "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -1031,13 +1042,16 @@ def emit(kind, title, body, ref=None, account=None, now=None):
         seq = int(last.get("seq") or 0) + 1
         ev = {"key": f"{now}_{seq:03d}", "kind": kind, "session": None, "account": account, "ts": now,
               "title": S.one_line(title), "body": S.cut_lines(body, S.EVENT_BODY_MAX), "ref": ref}
-        rtdb("PATCH", "events", {ev["key"]: C.encrypt(ev, k)}, {"print": "silent"})
+        if k:
+            rtdb("PATCH", "events", {ev["key"]: C.encrypt(ev, k)}, {"print": "silent"})
         local_events_add([ev], now)
         last["seq"] = seq
         write_json(last_p, last)
     finally:
         lock.close()
     try:
+        if not k:
+            raise OSError("local only")
         fcm_send({"kind": kind, "session": None, "ts": now, "key": ev["key"]})
     except (urllib.error.URLError, OSError, ValueError) as ex:
         log(f"fcm FAILED ({kind}): {ex}")
@@ -3130,7 +3144,8 @@ def web_start():
         return None
     W = W or _load("cm-relay-web")
     try:
-        srv = W.start(int(w.get("port") or 8765), W.load_token(rdir()), cm.expand(w["dir"]) if w.get("dir") else "", LocalApi())
+        srv = W.start(int(w.get("port") or 8765), W.load_token(rdir()), cm.expand(w["dir"]) if w.get("dir") else "", LocalApi(),
+                      str(R.get("web_app_url", WEB_APP_URL) or ""), rdir() / "web-cache")
     except OSError as e:
         log(f"web: porta {w.get('port')} non disponibile ({e})")
         return None
@@ -3138,13 +3153,47 @@ def web_start():
     return srv
 
 
+def reload_relay_cfg():
+    global CFG, R
+    try:
+        CFG = cm.load(warn=False)
+        R = CFG["relay"]
+    except (OSError, ValueError, KeyError):
+        pass
+
+
+def web_enable_local():
+    """`relay web` senza Firebase e col relay spento: relay.enabled e relay.web.enabled a true nel config in uso (il
+    resto del file com'e'), e R ricaricato. Solo quando relay.firebase_url e' vuoto: un relay spento apposta resta spento."""
+    global CFG, R
+    target = cm.config_path()
+    try:
+        raw = json.loads(target.read_text()) if target.is_file() else {}
+    except ValueError:
+        raw = {}
+    relay = raw.get("relay") if isinstance(raw.get("relay"), dict) else {}
+    relay["enabled"] = True
+    relay["web"] = dict(relay.get("web") if isinstance(relay.get("web"), dict) else {}, enabled=True)
+    raw["relay"] = relay
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
+    CFG = cm.load(warn=False)
+    R = CFG["relay"]
+
+
 def web(rest):
     """`relay web [--no-open]`: l'indirizzo della web app locale col token; lo apre nel browser (xdg-open, su
     ChromeOS il Chrome vero) se il daemon la sta servendo."""
     global W
     w = web_cfg()
-    if not w.get("enabled"):
-        print(M("relay.web_disabled")); return 2
+    if not w.get("enabled") or not R.get("enabled"):
+        if R.get("enabled") or not local_only():
+            if not w.get("enabled"):
+                print(M("relay.web_disabled")); return 2
+            print(M("relay.disabled")); return 2
+        web_enable_local()   # 13/10: la prova da un minuto, senza Firebase — accende relay e web nel config
+        print(M("relay.web_local_on", path=str(cm.config_path())))
+        w = web_cfg()
     W = W or _load("cm-relay-web")
     port = int(w.get("port") or 8765)
     link = W.url(port, W.load_token(rdir()))
@@ -3192,6 +3241,9 @@ def serve():
         pass
     tries = 0
     try:
+        while local_only():   # 13/10: solo la web app locale; i comandi arrivano dall'API su 127.0.0.1
+            time.sleep(30)
+            reload_relay_cfg()   # dopo `relay setup` il bus parte senza riavviare il daemon
         while True:
             try:
                 url = f"{base_url()}/cmd.json?{urllib.parse.urlencode({'access_token': token()})}"

@@ -257,7 +257,7 @@ shim13.unlink()
 # Macchina finta: "modules" e "which" dichiarano cosa c'e'.
 m13d = json.loads(Path(machine).read_text())
 cfg13d = json.loads(target.read_text())
-cfg13d["relay"] = dict(cfg13d.get("relay") or {}, enabled=True)
+cfg13d["relay"] = dict(cfg13d.get("relay") or {}, enabled=True, firebase_url="https://demo-proj-default-rtdb.europe-west1.firebasedatabase.app")   # col bus: senza, e' il modo solo locale (13/10)
 (Path(tmp) / "relay-on.json").write_text(json.dumps(cfg13d))
 m13d["which"] = [w for w in m13d["which"] if w != "crontab"] + ["apt-get"]; m13d["modules"] = []
 (Path(tmp) / "machine-c13d-none.json").write_text(json.dumps(m13d))

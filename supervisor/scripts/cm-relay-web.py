@@ -26,7 +26,9 @@ import re
 import secrets
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -35,6 +37,8 @@ CMD_BODY_MAX = 256 * 1024
 SHARE_BODY_MAX = 96 * 1024 * 1024   # base64 di un file fino a ~70 MB
 STREAM_POLL_S = 0.5
 STREAM_PING_S = 15
+UPSTREAM_TIMEOUT_S = 15
+UPSTREAM_PATH_RE = re.compile(r"[A-Za-z0-9._/-]{1,200}")
 
 
 def load_token(rdir):
@@ -236,6 +240,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _static(self, path):
         root = self.server.web_dir
+        if not root and self.server.upstream:
+            return self._upstream(path)
         if not root or not root.is_dir():
             return self._err(404, "relay.web.dir")
         rel = urllib.parse.unquote(path).lstrip("/") or "index.html"
@@ -257,13 +263,45 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, target.read_bytes(), ctype)
 
 
+    def _upstream(self, path):
+        """13/10: senza relay.web.dir la web app viene dal sito (relay.web_app_url, la stessa build): ogni file preso
+        una volta e tenuto in <relay.dir>/web-cache. Solo gli asset (assets/, nomi con l'impronta della build) restano
+        quelli della prima volta; tutto il resto — index.html, sw.js, il manifest — si riprende a ogni richiesta, cosi'
+        una build nuova del sito arriva anche al service worker. Se la rete manca, resta quello in cache."""
+        rel = urllib.parse.unquote(path).lstrip("/")
+        if not rel or rel.endswith("/") or "." not in rel.rsplit("/", 1)[-1]:
+            rel = "index.html"   # le rotte della web app
+        if ".." in rel.split("/") or not UPSTREAM_PATH_RE.fullmatch(rel):
+            return self._err(404, "not found")
+        cache = self.server.cache_dir / rel
+        if not rel.startswith("assets/") or not cache.is_file():
+            try:
+                req = urllib.request.Request(self.server.upstream + "/" + urllib.parse.quote(rel), headers={"User-Agent": "supervisor-relay"})
+                with urllib.request.urlopen(req, timeout=UPSTREAM_TIMEOUT_S) as r:
+                    data = r.read()
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                tmp = cache.with_name(cache.name + ".tmp")
+                tmp.write_bytes(data)
+                os.replace(tmp, cache)
+            except (urllib.error.URLError, OSError, ValueError):
+                if not cache.is_file():
+                    return self._err(502, "web app not reachable: " + self.server.upstream)
+        import mimetypes
+        ctype = mimetypes.guess_type(rel)[0] or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json", "image/svg+xml"):
+            ctype += "; charset=utf-8"
+        self._send(200, cache.read_bytes(), ctype)
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, port, token, web_dir, api):
+    def __init__(self, port, token, web_dir, api, upstream="", cache_dir=None):
         self.token = token
         self.web_dir = Path(web_dir).expanduser().resolve() if web_dir else None
+        self.upstream = str(upstream or "").rstrip("/")
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         self.api = api
         self.stopping = False
         super().__init__(("127.0.0.1", int(port)), Handler)
@@ -274,8 +312,8 @@ class Server(ThreadingHTTPServer):
         self.server_close()
 
 
-def start(port, token, web_dir, api):
+def start(port, token, web_dir, api, upstream="", cache_dir=None):
     """Il server in un thread demone; ritorna il Server (stop() lo ferma)."""
-    srv = Server(port, token, web_dir, api)
+    srv = Server(port, token, web_dir, api, upstream, cache_dir)
     threading.Thread(target=srv.serve_forever, name="relay-web", daemon=True).start()
     return srv
