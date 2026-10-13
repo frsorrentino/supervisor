@@ -338,6 +338,7 @@
   "relay.pair_code_add": "Codice (per un orologio, {min} min): {code}. Sul telefono, tablet o Chromebook: nell'app inquadra il QR, o incolla la riga qui sopra.",
   "relay.pair_opened_android": "invito aperto nell'app su {serial}: conferma lì «Accoppiare questo dispositivo?»",
   "relay.pair_clipboard": "invito copiato negli appunti (adb: {why}): incollalo nell'app",
+  "relay.pair_web_link": "Web app: {link}\n  Segreto come il QR: vale {min} min, lo usa il primo che lo apre e il PC accetta da solo. Mandalo solo a te stesso.",
   "relay.pair_scan": "Inquadra il QR con l'app sul telefono (o scrivi il codice qui sotto sull'orologio):",
   "relay.pair_no_qr": "niente QR: {why} — resta il codice a 6 cifre (doctor spiega come aggiungere i dati dell'app)",
   "relay.pair_qr_narrow": "il terminale ha {cols} colonne, il QR ne vuole {need}: allargalo, o usa `relay pair --text`",

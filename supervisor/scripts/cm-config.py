@@ -157,7 +157,8 @@ DEFAULTS = {
               "fcm_topic": "watch", "tier_high": ["rm -rf", "git push", "deploy", "DROP", "ssh", "sudo", "--force", "git reset --hard"],
               "state_max_kb": 8, "events_days": 7, "dir": "~/.cc-supervisor/relay", "heartbeat_s": 60, "debounce_s": 2,
               "token_url": "https://oauth2.googleapis.com/token", "fcm_url": "https://fcm.googleapis.com", "host": "",
-              "log": "", "command_timeout_s": 120, "pair_ttl_s": 300, "pair_attempts": 5, "serve_timeout_s": 50,
+              "log": "", "command_timeout_s": 120, "pair_ttl_s": 300, "pair_attempts": 5,
+              "web_app_url": "https://supervisor.francescosorrentino.com", "serve_timeout_s": 50,
               "colors": {}, "awaiting_max_s": 1800, "agenda_file": "", "agenda_owner": "owner",
               # scorta su Telegram quando il polso non riceve da tanto (0 = mai): 10 minuti
               "telegram_fallback_after_s": 600,

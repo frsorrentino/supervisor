@@ -1275,6 +1275,17 @@ def pair_link(line):
     return "cmwatch://pair?q=" + _b64.urlsafe_b64encode(line.encode()).rstrip(b"=").decode()
 
 
+WEB_APP_URL = "https://supervisor.francescosorrentino.com"
+
+
+def web_pair_link(line):
+    """13/10 (chiesto dal maintainer): lo stesso invito per la web app — <relay.web_app_url>/#pair=<base64url della riga
+    di --text, senza padding>, che parseInvite della web app legge. relay.web_app_url = "" lo spegne."""
+    import base64 as _b64
+    origin = str(R.get("web_app_url", WEB_APP_URL) or "").rstrip("/")
+    return origin + "/#pair=" + _b64.urlsafe_b64encode(line.encode()).rstrip(b"=").decode() if origin else ""
+
+
 def open_on_android(line):
     """1.32 (04/10, zero tocchi sul Chromebook, scelto dal maintainer): se un adb vede l'Android della stessa macchina
     (ARC, relay.adb_serial = emulator-5554) apre l'invito nell'app con `am start`; l'app chiede comunque conferma.
@@ -1459,6 +1470,8 @@ def pair(timeout=None, text=False, add=False):
             log(f"pair --add: invito {'aperto su ' + why_not if opened else 'non aperto (' + why_not + ')'}")
     else:
         print(M("relay.pair_code", code=code))
+    if app and web_pair_link(line):
+        print(M("relay.pair_web_link", link=web_pair_link(line), min=max(1, int(round(ttl / 60)))))
     sys.stdout.flush()
     log(f"pair: codice {code}, id {pair_id}, scade {exp}" + ("" if app else f", senza QR ({why})"))
     attempts = 0

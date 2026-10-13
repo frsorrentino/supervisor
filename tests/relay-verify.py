@@ -681,6 +681,38 @@ except ValueError:
 T.check("R5 (1.15) pair --text: one JSON line {v:1, i:<id node>, c:pc_pub, h, e:exp, f:{k,p,a,d,t}} above the code, no QR drawn", len(head) == 1 and qr_doc.get("v") == 1 and qr_doc.get("i") == pid_node and qr_doc.get("c") == STORE["pair"][pid_node]["pc_pub"] and qr_doc.get("h") == "crostini-test" and qr_doc.get("e") == STORE["pair"][pid_node]["exp"] and qr_doc.get("f") == {"k": APP["api_key"], "p": APP["project_id"], "a": APP["app_id"], "d": URL, "t": "watch"}, str(head)[:400])
 pair_stop(pr)
 T.wait_until(lambda: code not in (STORE.get("pair") or {}) and pid_node not in (STORE.get("pair") or {}), 3)
+
+
+# R5h (13/10, chiesto dal maintainer): accanto al codice il link della web app con l'invito dentro —
+# <relay.web_app_url>/#pair=<base64url della riga di --text, senza padding>, e la riga che lo dice segreto
+def _after_code(pr_):
+    """Le righe dopo il codice: il pair scade da solo (timeout corto) e si legge fino alla fine. Un select sul fd non
+    basta: le righe stampate insieme al codice sono gia' nel buffer di Python."""
+    out = pr_.stdout.read().splitlines()
+    pr_.wait(timeout=10)
+    return out
+
+
+def _web_q(lines, origin):
+    m = re.search(re.escape(origin) + r"/#pair=([A-Za-z0-9_-]+)$", lines[0] if lines else "")
+    return base64.urlsafe_b64decode(m.group(1) + "=" * (-len(m.group(1)) % 4)).decode() if m and "=" not in m.group(1) else None
+
+
+for _extra, _origin in (({}, "https://supervisor.francescosorrentino.com"), ({"web_app_url": "https://example.web.app/"}, "https://example.web.app")):
+    write_cfg(firebase_app=APP, **_extra)
+    pr, code, head = pair_run(3, "--text")
+    _w = _after_code(pr)
+    T.check(f"R5h pair --text prints after the code «Web app: {_origin}/#pair=<base64url of the --text line, no padding>» and a line that says it is secret, {_extra or 'default origin'}",
+            head and _web_q(_w, _origin) == head[-1] and _w[0].startswith("Web app: ") and len(_w) > 1 and "Segreto come il QR" in _w[1] and "vale 1 min" in _w[1], str(_w))
+write_cfg(firebase_app=APP, web_app_url="")
+pr, code, head = pair_run(3, "--add", "--text")
+_w = _after_code(pr)
+T.check("R5h relay.web_app_url = \"\" → no web app link", code and not any("#pair=" in l for l in _w), str(_w))
+write_cfg(firebase_app=APP)
+pr, code, head = pair_run(3, "--add", "--text")
+_w = _after_code(pr)
+T.check("R5h pair --add --text prints the web app link too", any(_web_q([l], "https://supervisor.francescosorrentino.com") == head[-1] for l in _w if "#pair=" in l), str(_w))
+T.wait_until(lambda: not any(isinstance(v, dict) and v.get("pc_pub") for v in (STORE.get("pair") or {}).values()), 3)
 # senza --text: il QR a mezzi blocchi, margine di 2 moduli, decodificato (OpenCV, se c'e') = quel JSON
 pr, code, head = pair_run(8)
 T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)

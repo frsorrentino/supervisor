@@ -338,6 +338,7 @@
   "relay.pair_code_add": "Code (for a watch, {min} min): {code}. On a phone, tablet or Chromebook: scan the QR in the app, or paste the line above.",
   "relay.pair_opened_android": "invite opened in the app on {serial}: confirm there «Pair this device?»",
   "relay.pair_clipboard": "invite copied to the clipboard (adb: {why}): paste it in the app",
+  "relay.pair_web_link": "Web app: {link}\n  Secret like the QR: valid for {min} min, the first to open it gets in and the PC accepts on its own. Send it only to yourself.",
   "relay.pair_scan": "Scan the QR with the phone app (or type the code below on the watch):",
   "relay.pair_no_qr": "no QR: {why} — the six-digit code stays (doctor says how to add the app's data)",
   "relay.pair_qr_narrow": "the terminal has {cols} columns, the QR needs {need}: widen it, or use `relay pair --text`",

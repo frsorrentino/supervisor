@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.14 — 2026-10-13: `relay pair` prints the web app link with the invite inside.**
+  - Asked by the maintainer on 13/10 at 19:05. `relay pair` and `relay pair --add` print, under the code, `https://supervisor.francescosorrentino.com/#pair=<base64url of the --text line, no padding>`: the web app reads the invite from the link (`parseInvite`), the same encoding as `cmwatch://pair?q=`. A second line says it is as secret as the QR: valid until the pairing expires, the first browser to open it gets in and the PC accepts on its own, so it goes only to oneself. `relay.web_app_url` sets the origin for a copy of the web app hosted elsewhere; `""` turns the link off. Only with the app's Firebase data, like the QR. Test R5h.
+  - README, «On your phone: the web app»: the link as a third way to pair.
 - **0.8.13 — 2026-10-13: a new user gets from install to the first session by following the README, and a handoff without fable-director.**
   - From an install from scratch in a clean Ubuntu 24.04 WSL distro, following «Try it» and the Quickstart to the letter (13/10).
   - `launch` on a fresh install: `session.dialog_patterns` is empty by default since 0.8.0, and the empty regex matched every screen, so `launch` pressed Down and Enter on Claude Code's sign-in screen and then waited until the timeout. An empty list now matches nothing. A sign-in, first-start or trust screen stops the wait, and `launch` says the session is waiting for the person, without waiting for a Remote Control link that cannot come yet. Test L6b, and tried in the distro.

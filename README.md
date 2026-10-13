@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.13-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.14-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 [![supervisor, the film (2:24): the web app on a tablet, the master's list of sessions on the left and three sessions at work in columns; payments-api got its «1 · yes» from the phone and is deploying 2.4. Demo data.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/supervisor)
 
@@ -87,7 +87,11 @@ On the phone, open [supervisor.francescosorrentino.com](https://supervisor.franc
 On iPhone and iPad, first add it to the Home Screen (Share › Add to Home Screen)
 and open it from there: the Home Screen app keeps its own data, apart from Safari.
 Scan the QR in the terminal with the app's camera button, or paste the line that
-`relay pair --text` prints, and confirm the PC's name. Everything is encrypted end
+`relay pair --text` prints, and confirm the PC's name. Or open the web app link that
+`relay pair` prints under the code (`…/#pair=…`, the invite is inside): it is as
+secret as the QR, valid for five minutes, and the first browser to open it gets in,
+so send it only to yourself. `relay.web_app_url` points it at your own copy of the
+web app; `""` turns it off. Everything is encrypted end
 to end: Firebase sees only blobs, and the web app keeps the key only in that
 browser.
 
