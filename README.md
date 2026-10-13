@@ -2,15 +2,27 @@
 
 ![Version](https://img.shields.io/badge/version-0.8.14-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
-[![supervisor, the film (2:24): the web app on a tablet, the master's list of sessions on the left and three sessions at work in columns; payments-api got its «1 · yes» from the phone and is deploying 2.4. Demo data.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/supervisor)
+**See every Claude Code session on one screen, answer the blocked ones from your
+phone, and get them all back after a reboot.** A supervisor for the sessions you
+already run, on your own computer.
 
-**A supervisor for the Claude Code sessions you already run, on your own
-computer.**
+[![supervisor, the film (2:24): the web app on a tablet, the master's list of sessions on the left and three sessions at work in columns; payments-api got its «1 · yes» from the phone and is deploying 2.4. Demo data.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/supervisor)
 
 The film (2 min 24 s, on the plugin's page) shows every session on one screen,
 the blocked ones first, one session that runs the others, the advice on model
 and context, the daily recap, work set for the night, and answers given from
 the phone and the watch. Names and numbers in it are demo data.
+
+```bash
+claude plugin install supervisor --marketplace frsorrentino/supervisor
+~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor init --yes --shim --shell
+```
+
+One command installs the plugin (Claude Code 2.1.292 or newer; older versions:
+the two commands of the [Quickstart](#quickstart)), the second writes the
+configuration and puts `supervisor` in `~/.local/bin`. Then `supervisor doctor`.
+
+⭐ Star the repo if it helps you · [Try the demo, no install](https://supervisor.francescosorrentino.com/?demo)
 
 ## Who it is for
 
