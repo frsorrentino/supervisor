@@ -91,11 +91,12 @@ Scan the QR in the terminal with the app's camera button, or paste the line that
 to end: Firebase sees only blobs, and the web app keeps the key only in that
 browser.
 
-**Android phone and Wear OS watch: native apps, beta.** Sign up at
+**Android phone and Wear OS watch: native apps, coming to Google Play.** The
+closed test opens soon. Join
 [groups.google.com/g/claude-master-testers](https://groups.google.com/g/claude-master-testers)
-to get them from Google Play: an Android 13+ phone and a Wear OS 4+ watch. Pair the
-phone with the same `supervisor relay pair` QR; the phone passes the key to the
-watch, which then works on its own.
+and you get the invitation when it opens. They need an Android 13+ phone and a
+Wear OS 4+ watch, and pair with the same `supervisor relay pair` QR; the phone
+passes the key to the watch, which then works on its own.
 Details: [Relay for the Wear OS app](#relay-for-the-wear-os-app).
 
 **No PC at hand?** On the watch's pairing screen, tap «Try the demo»: sessions,
