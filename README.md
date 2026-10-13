@@ -93,7 +93,7 @@ browser.
 
 **Android phone and Wear OS watch: native apps, coming to Google Play.** The
 closed test opens soon. Join
-[groups.google.com/g/claude-master-testers](https://groups.google.com/g/claude-master-testers)
+[groups.google.com/g/supervisor-testers](https://groups.google.com/g/supervisor-testers)
 and you get the invitation when it opens. They need an Android 13+ phone and a
 Wear OS 4+ watch, and pair with the same `supervisor relay pair` QR; the phone
 passes the key to the watch, which then works on its own.
