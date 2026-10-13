@@ -8,6 +8,8 @@ L3  nome: radice → root_session_name; `sito.com` → `sito-com` (T2); seconda 
 L4  account forzato contro il percorso → avviso e procede (T49); --aziendale → secondo account con avviso
 L5  --continue → -c; --resume con id inesistente → exit 4 con l'elenco (T10); con id vero → --resume ID
 L6  dialogo trust risposto (Down+Enter, T3); trust in ritardo (T4); trust + bypass in sequenza (T61)
+L6b dialog_patterns vuoto (il default dal 07/10) e schermata di accesso: nessun tasto premuto, launch smette di aspettare
+    e dice che la sessione aspetta la persona (prova d'installazione da zero, 13/10)
 L7  schermo lento (T5): avvia lo stesso con nota; sessione morta subito → exit 5
 L8  finestra: backend fake attacca → «attaccata»; --no-window → nessuna apertura; T8 secondo tentativo
 L15 accounts.<nome>.remote_control prevale su session.remote_control (anche al contrario)
@@ -252,6 +254,23 @@ with T.PrivateTmux() as tm:
     # L14 (S09): --agent codex e' una prova spenta di default; accesa, lancia Codex CLI in tmux senza gli argomenti di Claude
     r = run(str(home / "ws" / "personali" / "alfa"), "--agent", "codex", "--no-window")
     T.check("L14 --agent codex with experimental.codex off → exit 2 naming the option", r.returncode == 2 and "experimental.codex" in r.stderr, r.stdout + r.stderr)
+    # L6b (13/10): config senza dialog_patterns e un claude fermo sulla schermata di accesso, che registra ogni tasto
+    keys = tmp / "signin-keys.log"
+    fake_signin = tmp / "fake-signin.sh"
+    fake_signin.write_text('#!/bin/bash\necho " Welcome to Claude Code"\necho " How do you want to sign in?"\n'
+                           'echo " ❯ 1. Claude account with subscription"\necho "   2. Anthropic Console account"\n'
+                           'while IFS= read -rsn1 k; do printf "%%q\\n" "$k" >> "%s"; done\nexec sleep 300\n' % keys)
+    fake_signin.chmod(0o755)
+    cfg6b = tmp / "config-l6b.json"
+    c6b = json.loads(cfg.read_text()); c6b["session"] = dict(c6b["session"], dialog_patterns=[])
+    cfg6b.write_text(json.dumps(c6b))
+    (home / "ws" / "personali" / "signin").mkdir(exist_ok=True)
+    t0 = time.time()
+    r = run(str(home / "ws" / "personali" / "signin"), "--no-window", extra={"CC_SUPERVISOR_CONFIG": str(cfg6b), "CM_CLAUDE_BIN": str(fake_signin)})
+    took = time.time() - t0
+    T.check("L6b empty dialog_patterns + sign-in screen → no key pressed, launch stops waiting and says the session waits for the person",
+            r.returncode == 0 and not (keys.is_file() and keys.read_text().strip()) and "aspetta te" in r.stdout and took < 20,
+            f"rc={r.returncode} took={took:.0f}s keys={keys.read_text() if keys.is_file() else ''}\n" + r.stdout + r.stderr)
     fake_codex = tmp / "fake-codex.sh"
     fake_codex.write_text('#!/bin/sh\necho "$@" > "%s"\necho ">_ OpenAI Codex (v0-demo)"\nexec sleep 300\n' % (tmp / "codex-args.log"))
     fake_codex.chmod(0o755)

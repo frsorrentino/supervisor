@@ -209,6 +209,8 @@ SRC1 = {
 }
 KINDS = {"personal": "personal", "work": "work"}   # 1.8: come li calcola il relay dalla config del test
 SRC1["account_kinds"] = KINDS
+# 1.51: il comando dell'handoff per sessione — fable-director, quello di supervisor, nessuno
+SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-shop": "/supervisor:handoff --here", "field-notes": None}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
 SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Checkout refactor across many files: Fable 5.1 high; switch after the current task",
                                  "switch_cost_tokens": 36000, "at": 1789210700, "source": "fable-director", "when": "next_task", "differs": True}}

@@ -49,7 +49,8 @@
       "color": "#3B82F6",
       "low_priority": "offered",
       "suggestion": null,
-      "goal": null
+      "goal": null,
+      "handoff": "/fable-director:handoff --here"
     },
     {
       "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
@@ -89,6 +90,7 @@
         "since": 1789210700,
         "met": false
       },
+      "handoff": "/supervisor:handoff --here",
       "advice": {
         "model": "claude-fable-5-1",
         "effort": "high",
@@ -149,6 +151,7 @@
       "low_priority": "off",
       "suggestion": "commit the README changes and open a PR",
       "goal": null,
+      "handoff": null,
       "finished": true
     },
     {
@@ -177,7 +180,8 @@
       "color": "#9B59B6",
       "low_priority": null,
       "suggestion": null,
-      "goal": null
+      "goal": null,
+      "handoff": null
     }
   ],
   "quota": {

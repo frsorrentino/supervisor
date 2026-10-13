@@ -16,6 +16,8 @@ C12 init --yes scrive; secondo giro rifiuta senza --force; --dry-run non scrive
 C15 init --tmux: blocco da tmux.keybindings; --yes accoda a ~/.tmux.conf una volta sola
 C13 doctor: WARN hook duplicato, WARN chrome-bridge assente, FAIL account mancante
 C13d doctor: relay.enabled → PASS/FAIL cryptography e crontab con il rimedio; relay spento → niente riga
+C13g prerequisiti (13/10): sistema e gestore riconosciuti (apt, dnf, pacman, brew, ChromeOS, WSL2), comando di
+     installazione per ciascuno, versioni minime di python3 e claude, il claude di Windows in WSL, init --dry-run li mostra
 C13e doctor: dati dell'app Firebase per il QR (1.15) → WARN senza, PASS da relay.firebase_app o google-services.json
 C14 shim: risolve la radice da installed_plugins.json ed esegue il dispatcher
 """
@@ -257,18 +259,62 @@ m13d = json.loads(Path(machine).read_text())
 cfg13d = json.loads(target.read_text())
 cfg13d["relay"] = dict(cfg13d.get("relay") or {}, enabled=True)
 (Path(tmp) / "relay-on.json").write_text(json.dumps(cfg13d))
-m13d["which"] = [w for w in m13d["which"] if w != "crontab"]; m13d["modules"] = []
+m13d["which"] = [w for w in m13d["which"] if w != "crontab"] + ["apt-get"]; m13d["modules"] = []
 (Path(tmp) / "machine-c13d-none.json").write_text(json.dumps(m13d))
 r = T.run_config(["doctor"], home, Path(tmp) / "relay-on.json", Path(tmp) / "machine-c13d-none.json")
 T.check("C13d relay on, both missing → FAIL crypto_missing and FAIL crontab_missing with the remedies, exit 1",
         r.returncode == 1 and "FAIL crypto_missing" in r.stdout and "FAIL crontab_missing" in r.stdout
-        and "apt install python3-cryptography" in r.stdout and "pip install --user cryptography" in r.stdout and "apt install cron" in r.stdout, r.stdout)
+        and "sudo apt install python3-cryptography" in r.stdout and "sudo apt install cron" in r.stdout, r.stdout)
 m13d["which"] = m13d["which"] + ["crontab"]; m13d["modules"] = ["cryptography.hazmat.primitives.ciphers.aead"]
 (Path(tmp) / "machine-c13d-all.json").write_text(json.dumps(m13d))
 r = T.run_config(["doctor"], home, Path(tmp) / "relay-on.json", Path(tmp) / "machine-c13d-all.json")
 T.check("C13d relay on, both present → PASS crypto_ok and PASS crontab_ok, exit 0", r.returncode == 0 and "PASS crypto_ok" in r.stdout and "PASS crontab_ok" in r.stdout, r.stdout)
 r = T.run_config(["doctor"], home, target, Path(tmp) / "machine-c13d-none.json")
-T.check("C13d relay off → no crypto/crontab line even if both are missing", r.returncode == 0 and "crypto" not in r.stdout and "crontab" not in r.stdout, r.stdout)
+T.check("C13d relay off, both missing → INFO lines «only for the relay» with the remedy, no FAIL, exit 0",
+        r.returncode == 0 and "INFO relay_crypto_missing" in r.stdout and "INFO relay_crontab_missing" in r.stdout
+        and "FAIL crypto" not in r.stdout and "FAIL crontab" not in r.stdout, r.stdout)
+
+# C13g (13/10): prerequisiti con il comando di installazione del sistema in uso. Dalla prova d'installazione da zero.
+cfg13g = json.loads(target.read_text())
+cfg13g["language"] = "en"; cfg13g["terminal"]["backend"] = "none"
+(Path(tmp) / "c13g.json").write_text(json.dumps(cfg13g))
+
+
+def doctor_on(name, **kw):
+    mm = json.loads(Path(machine).read_text())
+    mm.update(kw)
+    (Path(tmp) / f"machine-c13g-{name}.json").write_text(json.dumps(mm))
+    return T.run_config(["doctor"], home, Path(tmp) / "c13g.json", Path(tmp) / f"machine-c13g-{name}.json")
+
+base = [w for w in json.loads(Path(machine).read_text())["which"] if w != "tmux"]
+r = doctor_on("apt", which=base + ["apt-get"], exists=[])
+T.check("C13g Linux + apt: tmux missing → FAIL with «sudo apt install tmux», system line, firebase INFO with npm",
+        r.returncode == 1 and "FAIL tool_missing — tmux" in r.stdout and "fix: sudo apt install tmux" in r.stdout
+        and "system: Linux · package manager: apt" in r.stdout and "npm install -g firebase-tools" in r.stdout, r.stdout)
+r = doctor_on("dnf", which=base + ["dnf"], exists=[])
+T.check("C13g dnf → «sudo dnf install tmux», cronie for crontab", "fix: sudo dnf install tmux" in r.stdout and "sudo dnf install cronie" in r.stdout, r.stdout)
+r = doctor_on("pacman", which=base + ["pacman"], exists=[])
+T.check("C13g pacman → «sudo pacman -S tmux», python-cryptography", "fix: sudo pacman -S tmux" in r.stdout and "sudo pacman -S python-cryptography" in r.stdout, r.stdout)
+r = doctor_on("brew", which=base, exists=[], platform="darwin")
+T.check("C13g macOS → brew, crontab is not a missing package", "system: macOS · package manager: brew" in r.stdout and "fix: brew install tmux" in r.stdout, r.stdout)
+r = doctor_on("none", which=base, exists=[])
+T.check("C13g no package manager → generic line naming the tool", "install tmux with your system's tools" in r.stdout, r.stdout)
+r = doctor_on("cros", which=base + ["apt-get"])
+T.check("C13g ChromeOS → system line names the Linux development environment, apt", "system: ChromeOS (Linux development environment) · package manager: apt" in r.stdout, r.stdout)
+r = doctor_on("wslwin", which=base + ["tmux", "apt-get"], exists=[], env={"LANG": "en_US.UTF-8", "WSL_DISTRO_NAME": "Ubuntu"},
+              paths={"claude": "/mnt/c/Users/u/AppData/Roaming/npm/claude"})
+T.check("C13g WSL2 with the Windows claude → FAIL claude_windows with the native installer",
+        r.returncode == 1 and "system: WSL2" in r.stdout and "FAIL claude_windows" in r.stdout and "curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash" in r.stdout, r.stdout)
+r = doctor_on("old", which=base + ["tmux", "apt-get"], versions={"python3": "Python 3.6.9", "claude": "2.1.200 (Claude Code)", "tmux": "tmux 3.4"})
+T.check("C13g too old: python3 3.6 and claude 2.1.200 → FAIL too_old, claude update",
+        "FAIL too_old — python3 Python 3.6.9: needs 3.8 or newer" in r.stdout and "FAIL too_old — claude 2.1.200" in r.stdout and "fix: claude update" in r.stdout, r.stdout)
+r = doctor_on("new", which=base + ["tmux", "apt-get"], versions={"python3": "Python 3.12.3", "claude": "2.1.296 (Claude Code)"})
+T.check("C13g recent versions → PASS, no too_old", "too_old" not in r.stdout and "PASS tool_ok — claude 2.1.296" in r.stdout, r.stdout)
+r = doctor_on("noterm", which=[w for w in base if w != "gnome-terminal"] + ["tmux", "apt-get"], exists=[], env={"LANG": "en_US.UTF-8", "WSL_DISTRO_NAME": "Ubuntu"})
+r = T.run_config(["init", "--dry-run"], home, Path(tmp) / "absent.json", Path(tmp) / "machine-c13g-noterm.json")
+T.check("C13g init --dry-run prints the prerequisites: WSL2 with no terminal → Windows Terminal via winget",
+        r.returncode == 0 and "winget install Microsoft.WindowsTerminal" in r.stdout
+        and "FAIL, " in r.stdout, r.stdout)
 
 # C13e (24/09, contratto 1.15): i dati dell'app Firebase per il QR di `relay pair` — WARN senza, PASS da relay.firebase_app
 # o da un google-services.json (il suo client Android; relay.app_package se ne ha piu' d'uno); relay spento: niente riga

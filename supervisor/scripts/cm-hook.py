@@ -265,6 +265,16 @@ def main(argv):
         r = recent_recap(p)
         if r:
             sys.stdout.write(r + "\n")
+        if p.get("source", "startup") in ("clear", "startup", ""):
+            try:   # 13/10: l'handoff di /supervisor:handoff scritto prima di /clear, una volta sola
+                spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
+                ho = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(ho)
+                line = ho.announce(p.get("cwd") or os.getcwd())
+                if line:
+                    sys.stdout.write(line + "\n")
+            except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
+                pass
         try:   # 23/09: i messaggi arrivati mentre la sessione era chiusa (casella persistente)
             box = inbox().deliver_block(my_tmux_name(), p.get("cwd") or os.getcwd(), "session-start")
             if box:

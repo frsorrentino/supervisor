@@ -38,6 +38,7 @@
       "low_priority": "off",
       "suggestion": null,
       "goal": null,
+      "handoff": null,
       "finished": true
     }
   ],

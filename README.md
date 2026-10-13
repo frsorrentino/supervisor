@@ -1,8 +1,13 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.12-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.13-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
-[![supervisor in 40 seconds: a question from a Claude Code session on a Wear OS watch — «Staging is green. Deploy 2.8.0?» — answered with one tap.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/claude-master-watch)
+[![supervisor, the film (2:24): the web app on a tablet, the master's list of sessions on the left and three sessions at work in columns; payments-api got its «1 · yes» from the phone and is deploying 2.4. Demo data.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/supervisor)
+
+The film (2 min 24 s, on the plugin's page) shows every session on one screen,
+the blocked ones first, one session that runs the others, the advice on model
+and context, the daily recap, work set for the night, and answers given from
+the phone and the watch. Names and numbers in it are demo data.
 
 **A supervisor for the Claude Code sessions you already run, on your own
 computer.** It works with Claude Code in your terminal and in tmux, in any
@@ -59,24 +64,38 @@ WSL2 ([not native Windows](#windows)).
 
 ```bash
 claude plugin marketplace add frsorrentino/supervisor && claude plugin install supervisor@supervisor-dev --scope user
+~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor init --yes --shim --shell
 ```
 
-Then `supervisor init --yes --shim --shell` and `supervisor doctor`:
-the [Quickstart](#quickstart) has each step.
+The plugin's own command is on the PATH only inside Claude Code, so the first
+`init` runs it by its full path; `--shim` puts `supervisor` in `~/.local/bin`
+for every later call. Then `supervisor doctor`: the [Quickstart](#quickstart)
+has each step, and [If something goes wrong](#if-something-goes-wrong) the
+problems seen on a clean install.
 
-**Phone and watch: beta, testers welcome.** Sign up at [groups.google.com/g/claude-master-testers](https://groups.google.com/g/claude-master-testers) to get the
-phone and watch apps from Google Play. You need an Android 13+ phone, a Wear OS
-4+ watch, and on the PC `python3-cryptography`, `crontab` and the Firebase CLI
-logged in (`npm install -g firebase-tools`, `firebase login`). Then, on the PC:
+**On your phone: the web app.** Any phone or tablet, iPhone and iPad included, no
+store and no tester group. On the PC you need `python3-cryptography`, `crontab` and
+the Firebase CLI logged in (`npm install -g firebase-tools`, `firebase login`). Then:
 
 ```bash
 supervisor relay setup     # your own Firebase project, guided; --dry-run shows the steps
-supervisor relay pair      # a QR: scan it with the phone app
 supervisor relay install   # keeps the relay running
+supervisor relay pair      # a QR for the first device; later ones: relay pair --add
 ```
 
-The phone pairs with the PC and passes the key to the watch, which then works
-on its own. Everything is encrypted end to end; Firebase sees only blobs.
+On the phone, open [supervisor.francescosorrentino.com](https://supervisor.francescosorrentino.com).
+On iPhone and iPad, first add it to the Home Screen (Share › Add to Home Screen)
+and open it from there: the Home Screen app keeps its own data, apart from Safari.
+Scan the QR in the terminal with the app's camera button, or paste the line that
+`relay pair --text` prints, and confirm the PC's name. Everything is encrypted end
+to end: Firebase sees only blobs, and the web app keeps the key only in that
+browser.
+
+**Android phone and Wear OS watch: native apps, beta.** Sign up at
+[groups.google.com/g/claude-master-testers](https://groups.google.com/g/claude-master-testers)
+to get them from Google Play: an Android 13+ phone and a Wear OS 4+ watch. Pair the
+phone with the same `supervisor relay pair` QR; the phone passes the key to the
+watch, which then works on its own.
 Details: [Relay for the Wear OS app](#relay-for-the-wear-os-app).
 
 **No PC at hand?** On the watch's pairing screen, tap «Try the demo»: sessions,
@@ -90,22 +109,90 @@ sessions); the other terminals are supported in code but not yet tried on real
 hardware: [Terminal backends](#terminal-backends) says which. On ChromeOS the
 window commands also need [chrome-bridge](https://github.com/frsorrentino/chrome-bridge).
 
+Claude Code must be installed on the machine that runs the sessions, and
+signed in once (`claude` in any folder). In WSL2 that means inside the Linux
+distro, not the Windows one, and with the Windows folders out of the PATH:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash
+```
+
+The installer runs `npm uninstall -g @anthropic-ai/claude-code` to clean up an
+old npm install; in WSL2 `npm` is the Windows one, and the plain
+`curl … | bash` removes the Claude Code of Windows.
+
 ```bash
 claude plugin marketplace add frsorrentino/supervisor
 claude plugin install supervisor@supervisor-dev --scope user
-supervisor init --dry-run             # reads your machine and shows every value it found, with its source
-supervisor init --yes --shim --shell  # writes the config; --shim = the `supervisor` command in ~/.local/bin;
-                                         # --shell = the file that makes `claude` open a named tab
-supervisor doctor                     # all green, or one line per thing to fix
-supervisor launch ~/projects/x        # your first session, in its own tab
+S=~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor
+$S init --dry-run              # reads your machine: every value with its source, then the prerequisites,
+                               # each missing one with the command that installs it on your system
+$S init --yes --shim --shell   # writes the config; --shim = the `supervisor` command in ~/.local/bin;
+                               # --shell = the file that makes `claude` open a named tab
+supervisor doctor              # PASS, INFO or WARN with a fix on each line; FAIL = something to install first
+supervisor launch ~/projects/x --create   # your first session, in its own tab (--create makes the folder)
 ```
 
-`init --shell` prints one line to add to your `.bashrc` or `.zshrc`. From then
+If `supervisor` is not found after `init`, `~/.local/bin` is not on your PATH
+yet: open a new terminal. `init --shell` prints one line to add to your
+`.bashrc` or `.zshrc`. From then
 on, typing `claude` in a project folder opens that project's session in a
 named, coloured tab instead of an anonymous window. To undo everything:
 `claude plugin uninstall supervisor`, remove that line, and
 `supervisor recap uninstall` / `night uninstall` / `guard uninstall` if you
 had turned those on.
+
+## If something goes wrong
+
+`supervisor doctor` is the first thing to run: each line that is not PASS says
+what to do. These are the problems seen on clean installs.
+
+- **`supervisor: command not found` right after `claude plugin install`.** The
+  plugin's `bin/` is on the PATH only inside Claude Code. Run the first `init`
+  by its full path, as in the [Quickstart](#quickstart); `--shim` then writes
+  `~/.local/bin/supervisor`.
+- **`supervisor: command not found` after `init --shim`.** `~/.local/bin` is
+  not on the PATH of this terminal: open a new one, or add
+  `export PATH="$HOME/.local/bin:$PATH"` to `.bashrc` / `.zshrc`. If
+  `supervisor` runs but is a different program (the npm package of the same
+  name), doctor says so: put `~/.local/bin` first, or use the full path.
+- **In WSL2, `claude` answers before you installed it.** That is the Windows
+  Claude Code, reached through the Windows PATH; sessions need the one inside
+  the distro. Install it there with the Windows folders out of the PATH
+  (`curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash`, then open a new terminal): the installer uninstalls the npm
+  Claude Code it finds, and in WSL2 that is the Windows one. doctor marks the
+  Windows `claude` FAIL. To keep Windows programs out of the distro's PATH
+  altogether: `appendWindowsPath = false` under `[interop]` in
+  `/etc/wsl.conf`, then `wsl --shutdown`.
+- **The Windows Claude Code stopped working after installing it in WSL2.** The
+  installer ran the Windows `npm uninstall`. In PowerShell:
+  `npm install -g @anthropic-ai/claude-code`.
+- **A missing tool or a version too old.** `init --dry-run` and `doctor` list
+  tmux, bash, python3 (3.8+), Claude Code (2.1.263+) and the terminal, each with
+  the install command for your system (apt, dnf, pacman, zypper, Homebrew).
+  `claude update` brings Claude Code up to date.
+- **The first `launch` says the session is waiting for you.** Claude Code has
+  not been signed in on this machine, or shows its first-start screens, or asks
+  whether to trust the folder. Answer in the session's window (or
+  `tmux attach -t =<name>`). supervisor never answers these by itself unless you
+  list them in `session.dialog_patterns`.
+- **`the directory does not exist`.** `launch` does not create folders unless
+  you add `--create`.
+- **`WINDOW NOT OPENED`.** The session is running; only the tab is missing.
+  Open it with the `tmux attach` line that `launch` prints. Over ssh, or with
+  no supported terminal, set `terminal.backend` to `none` and attach by hand.
+- **doctor: `WARN inbound_held`.** It matters only with two accounts: without
+  `"crossSessionInbound": "accept"` in an account's `settings.json`, `talk`
+  from the other account waits for confirmation. With one account, ignore it.
+- **doctor: `plugin_stale` or the hooks behave like an old version.**
+  `claude plugin update supervisor`, then restart the sessions.
+- **The relay for the phone and watch.** `doctor` and `init` list
+  `python3-cryptography`, `crontab` and the Firebase CLI with their install
+  commands; `relay pair` and `relay install` stop before changing anything if
+  one is missing. `relay setup` also needs `firebase login`.
+- **Native Windows.** supervisor needs WSL2; outside it the command exits 3 with
+  one line saying so, and the hooks stay quiet. `claude plugin disable supervisor`
+  removes it.
 
 ## What you get
 
@@ -184,6 +271,16 @@ minute; `restart list` shows them. `--clean` starts fresh with the memory
 intact, `--switch-account` continues the same conversation on the other
 account. A kill from inside a tool would land mid-turn: the hook is the only
 safe instant.
+
+When a long session gets expensive, a handoff plus `/clear` keeps what matters
+for a fraction of the cost. `/supervisor:handoff --here` writes a short
+distillate of the session (goal, decisions, verified facts, open items, paths,
+what to invoke next) into the project's `docs/`. After `/clear`, the next start
+points the session to that file once. The app's «Handoff» button sends the
+command each session has. The optional companion plugin
+[fable-director](https://github.com/frsorrentino/fable-director) has its own
+`/fable-director:handoff`, which also checks that no budget is open and that
+the task is at a verified boundary. Sessions where it is enabled use that one.
 
 ### Your screen, arranged
 
@@ -790,6 +887,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor hosts [poll [--cron]\|install\|uninstall]` | the host table; one round of the poller, or its crontab line |
 | `supervisor offload <dir> --recipe NAME [--host H] [--explain] [--dirty]` · `offload --needs k=v,… -- <command>` · `offload list\|status\|log [-f]\|wait\|fetch\|cancel\|clean <id>` | a heavy job on the host that does it best: exact commit, declared assets, results back with sha256 |
 | `supervisor heavy run [--needs …] -- <command>` · `heavy status` | the same scheduler for a command a session would run here: it stays here inside a lease, or becomes an offload and waits |
+| `supervisor handoff --prepare [--here]` · `--written PATH` | the handoff of `/supervisor:handoff`: where to write it and with which sections, then records it so the next start after `/clear` points to it once |
 | `supervisor task add FILE\|- [--topic T]` · `list` · `show ID` · `start ID` · `result ID FILE` · `done ID [--constraint T]` · `wait-ok ID --what W --where D` · `approve ID --by B --text T` · `cancel ID` · `board [--json]` · `constraint add\|list` | the task registry: contracts validated, done only when the check rerun here is green, results, approvals and constraints recorded; `board` aggregates states and outcomes |
 | `supervisor plan check FILE` · `approve FILE --by B --text T` · `run FILE\|ID [--parallel N] [--turn-timeout S] [--dry-run]` · `status ID` | the map engine: approve a plan once, run its units in parallel where no edge joins them, retry only the red unit |
 | `supervisor timeline [NAME] [--since 6h] [--json] [--limit N]` | per session, in time order: prompts, tests with their summary, commits, «Esito:» lines, registry outcomes |

@@ -565,7 +565,7 @@ class Machine:
 
     def which(self, cmd):
         if self.fake is not None:
-            return f"/fake/bin/{cmd}" if cmd in self.fake.get("which", []) else None
+            return self.fake.get("paths", {}).get(cmd, f"/fake/bin/{cmd}") if cmd in self.fake.get("which", []) else None
         return shutil.which(cmd)
 
     def exists(self, path):
@@ -578,6 +578,11 @@ class Machine:
         if self.fake is not None:
             return self.fake.get("env", {}).get(name, default)
         return os.environ.get(name, default)
+
+    def platform(self):
+        if self.fake is not None:
+            return self.fake.get("platform", "linux")
+        return sys.platform
 
     def has_module(self, name):
         """Un modulo Python importabile (nome puntato, es. cryptography.hazmat.primitives.ciphers.aead).
@@ -627,6 +632,8 @@ class Machine:
         return out
 
     def version(self, cmd):
+        if self.fake is not None:
+            return self.fake.get("versions", {}).get(cmd, "")
         try:
             # tmux risponde a -V; con --version stampa l'usage
             r = subprocess.run([cmd, "-V" if cmd == "tmux" else "--version"], capture_output=True, text=True, timeout=10)
@@ -650,6 +657,142 @@ def relay_deps_missing(m=None, crontab_cmd="crontab"):
     if not m.which(crontab_cmd):
         missing.append("crontab")
     return missing
+
+
+# ------------------------------------------------------------------ prerequisiti (13/10)
+# init e doctor dicono cosa manca e come installarlo sul sistema in uso. Nato dalla prova d'installazione da zero
+# del 13/10: un utente nuovo scopriva le mancanze solo come errore, e in WSL il `claude` di Windows (dal PATH di
+# Windows) passava per buono. Nessuna installazione automatica: si stampa il comando, lo lancia la persona.
+MIN_PYTHON = (3, 8)
+MIN_CLAUDE = (2, 1, 263)
+INSTALL = {   # prerequisito → gestore di pacchetti → comando
+    "tmux": {"apt": "sudo apt install tmux", "dnf": "sudo dnf install tmux", "pacman": "sudo pacman -S tmux",
+             "zypper": "sudo zypper install tmux", "brew": "brew install tmux"},
+    "python3": {"apt": "sudo apt install python3", "dnf": "sudo dnf install python3", "pacman": "sudo pacman -S python",
+                "zypper": "sudo zypper install python3", "brew": "brew install python"},
+    "bash": {"apt": "sudo apt install bash", "dnf": "sudo dnf install bash", "pacman": "sudo pacman -S bash",
+             "zypper": "sudo zypper install bash", "brew": "brew install bash"},
+    "cryptography": {"apt": "sudo apt install python3-cryptography", "dnf": "sudo dnf install python3-cryptography",
+                     "pacman": "sudo pacman -S python-cryptography", "zypper": "sudo zypper install python3-cryptography",
+                     "brew": "python3 -m pip install --user cryptography"},
+    "crontab": {"apt": "sudo apt install cron", "dnf": "sudo dnf install cronie", "pacman": "sudo pacman -S cronie",
+                "zypper": "sudo zypper install cronie", "brew": "crontab ships with macOS"},
+}
+CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
+FIREBASE_INSTALL = "npm install -g firebase-tools && firebase login"
+PKG_MANAGERS = (("apt", "apt-get"), ("dnf", "dnf"), ("pacman", "pacman"), ("zypper", "zypper"))
+
+
+def system_kind(m):
+    """(sistema, gestore di pacchetti): sistema fra macos, chromeos, wsl, linux; gestore fra apt, dnf, pacman,
+    zypper, brew, "" se nessuno. ChromeOS = il contenitore Linux (Crostini), Debian: apt; WSL2 di solito Ubuntu."""
+    if m.platform() == "darwin":
+        return "macos", "brew"
+    pm = next((k for k, b in PKG_MANAGERS if m.which(b)), "")
+    if m.exists("/dev/.cros_milestone") or m.exists("/opt/google/cros-containers/bin/garcon"):
+        return "chromeos", pm
+    if m.env("WSL_DISTRO_NAME") or m.env("WSL_INTEROP"):
+        return "wsl", pm
+    return "linux", pm
+
+
+def version_tuple(text):
+    found = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", text or "")
+    return tuple(int(x or 0) for x in found.groups()) if found else None
+
+
+# in WSL2 l'installer lancia `npm uninstall -g @anthropic-ai/claude-code` e `npm` e' quello di Windows: senza le
+# cartelle di Windows nel PATH non tocca il Claude Code di Windows (provato il 13/10 con un npm finto)
+CLAUDE_INSTALL_WSL = "curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash"
+
+
+def install_hint(cfg, what, pm, kind=""):
+    if what == "claude":
+        return CLAUDE_INSTALL_WSL if kind == "wsl" else CLAUDE_INSTALL
+    if what == "firebase":
+        return FIREBASE_INSTALL
+    return INSTALL[what].get(pm) or msg(cfg, "prereq.no_pkg_manager", what=what)
+
+
+def prereq_rows(m, cfg):
+    """Le righe dei prerequisiti, nel formato di doctor: (livello, chiave, kwargs, rimedio gia' scritto o None).
+    Il relay (cryptography, crontab, firebase): FAIL/WARN con relay.enabled, altrimenti INFO solo se manca."""
+    kind, pm = system_kind(m)
+    rows = [("INFO", "prereq.system", {"system": msg(cfg, f"prereq.sys_{kind}"), "pm": pm or "-"}, None)]
+
+    def add(tool, ok, key, kw, what):
+        if ok:
+            rows.append(("PASS", key, kw, None))
+        else:
+            rows.append(("FAIL", key, kw, install_hint(cfg, what, pm)))
+
+    for tool in ("tmux", "bash"):
+        p = m.which(tool)
+        add(tool, p, "doctor.tool_ok" if p else "doctor.tool_missing", {"tool": tool, "version": m.version(tool) if p else ""}, tool)
+    p = m.which("python3")
+    if not p:
+        add("python3", False, "doctor.tool_missing", {"tool": "python3"}, "python3")
+    else:
+        v = m.version("python3")
+        vt = version_tuple(v)
+        if vt and vt[:2] < MIN_PYTHON:
+            rows.append(("FAIL", "prereq.too_old", {"tool": "python3", "version": v, "min": "3.8"}, install_hint(cfg, "python3", pm)))
+        else:
+            rows.append(("PASS", "doctor.tool_ok", {"tool": "python3", "version": v}, None))
+    p = m.which("claude")
+    if not p:
+        rows.append(("FAIL", "doctor.tool_missing", {"tool": "claude"}, install_hint(cfg, "claude", pm, kind)))
+    elif kind == "wsl" and p.startswith("/mnt/"):
+        # il `claude` di Windows, arrivato col PATH di Windows: le sessioni girerebbero fuori da WSL
+        rows.append(("FAIL", "prereq.claude_windows", {"path": p}, CLAUDE_INSTALL_WSL))
+    else:
+        v = m.version("claude")
+        vt = version_tuple(v)
+        if vt and vt < MIN_CLAUDE:
+            rows.append(("FAIL", "prereq.too_old", {"tool": "claude", "version": v, "min": "2.1.263"}, "claude update"))
+        else:
+            rows.append(("PASS", "doctor.tool_ok", {"tool": "claude", "version": v}, None))
+
+    be = cfg["terminal"]["backend"]
+    if be == "chromeos":
+        g = cfg["terminal"]["garcon"]
+        rows.append(("PASS", "doctor.backend_ok", {"backend": be, "bin": g}, None) if m.exists(g)
+                    else ("FAIL", "doctor.backend_bin_missing", {"backend": be, "bin": g}, None))
+    elif be in ("none", "auto"):
+        rows.append(("INFO", "doctor.backend_none", {}, msg(cfg, f"prereq.terminal_{kind}")))
+    else:
+        b = BACKEND_BIN.get(be, be)
+        rows.append(("PASS", "doctor.backend_ok", {"backend": be, "bin": b}, None) if m.which(b)
+                    else ("FAIL", "doctor.backend_bin_missing", {"backend": be, "bin": b}, msg(cfg, f"prereq.terminal_{kind}")))
+
+    on = cfg["relay"]["enabled"]
+    missing = relay_deps_missing(m)
+    mod = RELAY_CRYPTO_MODULE.split(".")[0]
+    if "crypto" in missing:
+        rows.append(("FAIL" if on else "INFO", "doctor.crypto_missing" if on else "prereq.relay_crypto_missing", {"module": mod}, install_hint(cfg, "cryptography", pm)))
+    elif on:
+        rows.append(("PASS", "doctor.crypto_ok", {"module": mod}, None))
+    if "crontab" in missing:
+        rows.append(("FAIL" if on else "INFO", "doctor.crontab_missing" if on else "prereq.relay_crontab_missing", {}, install_hint(cfg, "crontab", pm)))
+    elif on:
+        rows.append(("PASS", "doctor.crontab_ok", {"path": m.which("crontab")}, None))
+    if not m.which("firebase"):
+        # serve a `relay setup` (il progetto Firebase); un relay gia' configurato ne fa a meno: WARN, non FAIL
+        rows.append(("WARN" if on else "INFO", "prereq.firebase_missing", {}, install_hint(cfg, "firebase", pm)))
+    return rows
+
+
+def print_rows(cfg, rows):
+    """Stampa le righe nel formato di doctor; torna (fail, warn)."""
+    fails = warns = 0
+    for level, key, kw, fix in rows:
+        detail = msg(cfg, key, **kw) if key.startswith(("doctor.", "prereq.")) else f"{key} {kw.get('path', '')}"
+        print(msg(cfg, f"doctor.{level.lower()}", name=key.split(".")[-1], detail=detail))
+        if fix:
+            print(msg(cfg, "doctor.fix", fix=msg(cfg, fix) if fix.startswith("doctor.") else fix))
+        fails += level == "FAIL"
+        warns += level == "WARN"
+    return fails, warns
 
 
 def read_json(path):
@@ -1096,6 +1239,9 @@ def cmd_init(args):
             return 0
     else:
         print_detected(cfg, src)
+        print(msg(cfg, "prereq.header"))
+        fails, warns = print_rows(cfg, prereq_rows(m, cfg))
+        print(msg(cfg, "doctor.summary", fails=fails, warns=warns))
     if dry or not yes:
         if not yes:
             print(msg(cfg, "init.dry_run", path=target))
@@ -1165,19 +1311,10 @@ def cmd_doctor():
         cfg = load(None, warn=False) if False else normalize_accounts(apply_state_defaults(defaults_for("en")))
         rows.append(("FAIL", "doctor.config_bad", {"error": e}, None))
 
-    for tool in ("tmux", "claude", "python3"):
-        if m.which(tool):
-            rows.append(("PASS", "doctor.tool_ok", {"tool": tool, "version": m.version(tool) if m.fake is None else ""}, None))
-        else:
-            rows.append(("FAIL", "doctor.tool_missing", {"tool": tool}, None))
+    # prerequisiti: strumenti, terminale, dipendenze del relay, con il comando per installarli (13/10)
+    rows += prereq_rows(m, cfg)
 
-    # relay dell'app Wear OS: cryptography e crontab solo se relay.enabled (spento: niente riga)
     if cfg["relay"]["enabled"]:
-        missing = relay_deps_missing(m)
-        rows.append(("FAIL", "doctor.crypto_missing", {"module": RELAY_CRYPTO_MODULE.split(".")[0]}, "doctor.fix_crypto") if "crypto" in missing
-                    else ("PASS", "doctor.crypto_ok", {"module": RELAY_CRYPTO_MODULE.split(".")[0]}, None))
-        rows.append(("FAIL", "doctor.crontab_missing", {}, "doctor.fix_crontab") if "crontab" in missing
-                    else ("PASS", "doctor.crontab_ok", {"path": m.which("crontab")}, None))
         # 1.15: i dati dell'app Firebase nel QR di `relay pair` — senza, il QR non compare e resta il codice a 6 cifre
         app, why = relay_firebase_app(cfg)
         rows.append(("PASS", "doctor.firebase_app_ok", {"project": app["project_id"], "source": why}, None) if app
@@ -1203,18 +1340,6 @@ def cmd_doctor():
                 rows.append(("WARN", "doctor.hook_dup", {"account": name, "path": a["config_dir"] + "/settings.json"}, "doctor.fix_hook_dup"))
         else:
             rows.append(("FAIL", "doctor.account_dir_missing", {"account": name, "path": a["config_dir"]}, None))
-
-    be = cfg["terminal"]["backend"]
-    if be == "chromeos":
-        g = cfg["terminal"]["garcon"]
-        rows.append(("PASS" if m.exists(g) else "FAIL", "doctor.backend_ok" if m.exists(g) else "doctor.backend_bin_missing",
-                     {"backend": be, "bin": g}, None))
-    elif be in ("none", "auto"):
-        rows.append(("INFO", "doctor.backend_none", {}, None))
-    else:
-        b = BACKEND_BIN.get(be, be)
-        rows.append(("PASS" if m.which(b) else "FAIL", "doctor.backend_ok" if m.which(b) else "doctor.backend_bin_missing",
-                     {"backend": be, "bin": b}, None))
 
     cb = cfg["tile"]["chrome_bridge_cli"]
     if not cb:
@@ -1262,14 +1387,7 @@ def cmd_doctor():
         rows.append(("INFO", "doctor.legacy", {"path": LEGACY_SKILL}, None))
 
     print(msg(cfg, "doctor.header"))
-    fails = warns = 0
-    for level, key, kw, fix in rows:
-        detail = msg(cfg, key, **kw) if key.startswith("doctor.") else f"{key} {kw.get('path', '')}"
-        print(msg(cfg, f"doctor.{level.lower()}", name=key.split(".")[-1], detail=detail))
-        if fix:
-            print(msg(cfg, "doctor.fix", fix=msg(cfg, fix)))
-        fails += level == "FAIL"
-        warns += level == "WARN"
+    fails, warns = print_rows(cfg, rows)
     print(msg(cfg, "doctor.summary", fails=fails, warns=warns))
     return 1 if fails else 0
 

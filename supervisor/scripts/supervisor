@@ -87,6 +87,7 @@ case "$cmd" in
                           exec python3 "$S/cm-hosts.py" list "$@" ;;
   offload|delega)         exec python3 "$S/cm-offload.py" offload "$@" ;;
   heavy|pesante)          exec python3 "$S/cm-offload.py" heavy "$@" ;;
+  handoff|consegne)       exec python3 "$S/cm-handoff.py" "$@" ;;   # 13/10: l'handoff per chi non ha fable-director
   task|compito)           exec python3 "$S/cm-tasks.py" "$@" ;;   # 03/10: registro dei compiti (fase 1)
   plan|piano)             exec python3 "$S/cm-plan.py" "$@" ;;    # 03/10: il motore della mappa (fase 1)
   timeline|cronologia)    exec python3 "$S/cm-timeline.py" "$@" ;;   # 03/10: cosa hanno fatto le sessioni (fase 2)

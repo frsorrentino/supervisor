@@ -321,6 +321,10 @@ def build_session(row, src):
         # 1.23: il prompt suggerito in grigio dopo «❯», solo per una sessione ferma al prompt (null altrimenti)
         "suggestion": (str(row.get("suggestion"))[:300] or None) if st == "idle" and row.get("suggestion") else None,
         "goal": _goal(row.get("goal_status")),
+        # 1.51 (13/10/2026): il comando slash dell'handoff che il tasto dell'app fa scrivere alla sessione, gia' con gli
+        # argomenti: «/fable-director:handoff --here» se la sessione ha fable-director, «/supervisor:handoff --here»
+        # altrimenti, null se nessuno dei due (o non si sa: sessione su un altro host). Assente = relay prima della 1.51
+        "handoff": (src.get("handoffs") or {}).get(tmux) or None,
     }
     # 1.37 (05/10/2026), solo quando ci sono (lo stato sta in 8 KB: un campo vuoto per sessione pesa): `advice`, il
     # consiglio di modello ed effort di fable-director {model, effort, reason, switch_cost_tokens, at, source, when,

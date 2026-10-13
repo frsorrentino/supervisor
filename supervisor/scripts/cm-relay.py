@@ -685,10 +685,44 @@ def collect_sources(now=None):
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
+        "handoffs": handoffs_of(rows),
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
     }
+
+
+# ------------------------------------------------------------------ 1.51: il comando dell'handoff per sessione
+HANDOFF_FD = "/fable-director:handoff --here"
+HANDOFF_SV = "/supervisor:handoff --here"
+
+
+def handoffs_of(rows):
+    """{tmux: comando o None}. Dalle impostazioni dell'account della sessione (enabledPlugins): fable-director
+    abilitato → il suo handoff; altrimenti supervisor abilitato → il nostro; altrimenti None. Una sessione su un altro
+    host: None, le sue impostazioni non si leggono da qui. Solo letture di file, una per account."""
+    plugins = {}
+
+    def enabled(account):
+        if account not in plugins:
+            accs = CFG.get("accounts") or {}
+            acc = accs.get(account or "") or accs.get(CFG.get("default_account") or "") or {}
+            p = Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "settings.json"
+            try:
+                ep = json.loads(p.read_text()).get("enabledPlugins") or {}
+            except (OSError, ValueError):
+                ep = {}
+            plugins[account] = {k.split("@", 1)[0] for k, v in ep.items() if v is True}
+        return plugins[account]
+    out = {}
+    for r in rows:
+        tm = r.get("tmux") or r.get("name") or ""
+        if r.get("host") not in (None, "", "local"):
+            out[tm] = None
+            continue
+        on = enabled(r.get("account") or "")
+        out[tm] = HANDOFF_FD if "fable-director" in on else HANDOFF_SV if "supervisor" in on else None
+    return out
 
 
 # ------------------------------------------------------------------ 1.37: consiglio, doppioni, approvazioni

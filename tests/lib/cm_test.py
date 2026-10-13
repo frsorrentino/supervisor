@@ -106,7 +106,7 @@ def fake_home(tmp, legacy=True, second_account=True, workspace=True, language="I
 def fake_machine(tmp, home, chromeos=True, procs=None, which=None, env=None):
     """Descrizione della macchina finta letta da cm-config.py (CM_FAKE_MACHINE)."""
     m = {
-        "which": which if which is not None else ["tmux", "claude", "python3", "gnome-terminal"],
+        "which": which if which is not None else ["tmux", "claude", "python3", "bash", "gnome-terminal"],
         "exists": [ "/opt/google/cros-containers/bin/garcon" ] if chromeos else [],
         "env": env or {"LANG": "en_US.UTF-8"},
         "procs": procs if procs is not None else [

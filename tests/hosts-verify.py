@@ -221,7 +221,9 @@ r = run("cm-hosts.py", "add", "box", "--ssh", "fakebox", "--no-bench", "--no-web
 T.check("O1 add without --yes and without a terminal: no remote write", r.returncode == 0
         and not (remote_home / ".claude-master-remote").exists() and "host update box" in r.stdout, r.stdout + r.stderr)
 cfg_now = json.loads(cfgf.read_text())
-T.check("O2 host declared in config, kind detected", cfg_now["hosts"]["box"]["kind"] == "linux-tmux"
+# il remoto finto e' questa macchina: dentro WSL (le suite su win) cm-remote.sh dice giustamente «wsl»
+IN_WSL = "microsoft" in (Path("/proc/version").read_text().lower() if Path("/proc/version").is_file() else "")
+T.check("O2 host declared in config, kind detected", cfg_now["hosts"]["box"]["kind"] == ("wsl" if IN_WSL else "linux-tmux")
         and cfg_now["hosts"]["box"]["transport"] == {"ssh": "fakebox"}, str(cfg_now.get("hosts")))
 T.check("O2b first contact used accept-new", "StrictHostKeyChecking=accept-new" in (tmp / "ssh.log").read_text())
 r = run("cm-hosts.py", "update", "box", "--yes")

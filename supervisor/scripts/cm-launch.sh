@@ -262,15 +262,23 @@ REG_FILE=""
 # T1/T54: il prefisso "=" vale per has-session, non per capture-pane/send-keys.
 schermo() { cm_tmux capture-pane -p -t "$NOME" 2>/dev/null; }
 e_dialogo() {  # una delle domande da accettare con "Yes" (trust T3, bypass T61)
+  # Nessun pattern (il default dal 07/10): nessun dialogo da accettare. `grep -E ""` riconosce ogni riga: su
+  # un'installazione nuova launch premeva Giu'+Invio sulla schermata di accesso e aspettava fino allo scadere
+  # (prova d'installazione da zero del 13/10).
+  [ -n "$CM_SESSION_DIALOG_REGEX" ] || { cat >/dev/null; return 1; }
   grep -qiE "$CM_SESSION_DIALOG_REGEX"
 }
+# Una schermata a cui risponde la persona: l'accesso di Claude Code, il primo avvio, o un dialogo di fiducia o
+# permessi che la config non accetta da se'. Si smette di aspettare la registrazione e si apre la finestra.
+PER_LA_PERSONA='How do you want to sign in|Select login method|Choose the text style|Do you trust the|trust (this|the) folder|Is this a project you|Bypass Permissions mode'
+per_la_persona() { grep -qiE "$PER_LA_PERSONA"; }
 # Attesa dell'avvio: un solo ciclo che sorveglia insieme la registrazione nel
 # registro peer (avvio riuscito, 1.2), lo schermo e i dialoghi, che possono
 # comparire quando pare (T4: il 2026-08-20 la fiducia e' arrivata dopo un ciclo
 # separato di 15 s). Si risponde una volta per dialogo: un secondo Invio finirebbe
 # come TESTO nella casella (T3). Dalla 2.1.25x la prima voce e' "No, exit": si porta
 # il cursore su "Yes" e si conferma.
-RISPOSTE=0; SCHERMO=""; REGISTRATA=no
+RISPOSTE=0; SCHERMO=""; REGISTRATA=no; ASPETTA_PERSONA=no
 for _ in $(seq 1 "$CM_SESSION_STARTUP_TIMEOUT_S"); do
   cm_tmux has-session -t "=$NOME" 2>/dev/null || break
   SCHERMO=$(schermo)
@@ -298,6 +306,7 @@ for _ in $(seq 1 "$CM_SESSION_STARTUP_TIMEOUT_S"); do
   fi
   REG_FILE=$(reg_file)
   [ -n "$REG_FILE" ] && { REGISTRATA=si; break; }
+  per_la_persona <<<"$SCHERMO" && { ASPETTA_PERSONA=si; break; }
   sleep 1
 done
 
@@ -357,6 +366,7 @@ else
   echo "  locale:    $(cm_msg launch.window_none "name=$NOME")"
 fi
 [ "$ILLEGGIBILE" = si ] && echo "  nota:      $(cm_msg launch.slow_screen)"
+[ "$ASPETTA_PERSONA" = si ] && echo "  nota:      $(cm_msg launch.needs_person "name=$NOME")"
 # Il link Remote Control: dal registro (1.2), altrimenti dallo schermo (ripiego T55).
 # Il registro nasce PRIMA che il bridge sia connesso: bridgeSessionId arriva qualche secondo
 # dopo (con --continue la master ha letto «non ancora nel registro» il 09/09, poi il link c'era):
@@ -368,6 +378,7 @@ leggi_link() {
 }
 LINK=""; ATTESA=0; [ "$RC" = true ] && ATTESA="${CM_SESSION_LINK_WAIT_S:-10}"
 [ "$AGENT" = codex ] && ATTESA=0   # S09: Codex non ha Remote Control
+[ "$ASPETTA_PERSONA" = si ] && ATTESA=0   # 13/10: prima della risposta della persona il registro non nasce
 i=0
 while :; do
   LINK=$(leggi_link)

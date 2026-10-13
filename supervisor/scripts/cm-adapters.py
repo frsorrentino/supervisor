@@ -129,8 +129,10 @@ class SSH:
     def run(self, remote_cmd, timeout=60, input=None):
         argv = [self.ssh_bin] + self.opts() + [self.alias, remote_cmd]
         try:
+            # senza input, stdin chiuso: ereditato, ssh passava al comando remoto le risposte che `host doctor`
+            # aspettava dalla tastiera (O9c, visto con le suite in WSL il 13/10)
             p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, input=input,
-                               encoding="utf-8", errors="replace")
+                               stdin=subprocess.DEVNULL if input is None else None, encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired:
             raise HostError("unreachable", f"timeout {timeout}s")
         self._check(p.returncode, p.stderr)
