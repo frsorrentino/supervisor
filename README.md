@@ -4,127 +4,73 @@
 
 [![supervisor, the film (2:24): the web app on a tablet, the master's list of sessions on the left and three sessions at work in columns; payments-api got its «1 · yes» from the phone and is deploying 2.4. Demo data.](assets/readme/promo-poster.jpg)](https://www.francescosorrentino.com/plugins/supervisor)
 
+**A supervisor for the Claude Code sessions you already run, on your own
+computer.**
+
 The film (2 min 24 s, on the plugin's page) shows every session on one screen,
 the blocked ones first, one session that runs the others, the advice on model
 and context, the daily recap, work set for the night, and answers given from
 the phone and the watch. Names and numbers in it are demo data.
 
-**A supervisor for the Claude Code sessions you already run, on your own
-computer.** It works with Claude Code in your terminal and in tmux, in any
-folder, whether it is a GitHub repository or not. Each project gets its own
-terminal tab; one list shows every session of every account and which one is
-waiting for you; you can answer it from another session, from your phone,
-tablet or watch; after a reboot every session comes back with its conversation.
-One session, the **master** on your workspace root, launches, watches, answers
-and closes the others.
+## Who it is for
 
-Around that:
+People who keep three or more Claude Code sessions open at once, in a terminal,
+on their own computer: Linux, macOS, ChromeOS or WSL2. It works in any folder,
+whether it is a GitHub repository or not, with one or two Claude accounts, and
+with a second computer for heavy sessions. If you open one session at a time,
+you do not need it. supervisor is an independent plugin, not made by Anthropic.
 
-- **two accounts, each with its own quota**: the folder decides which one a
-  session uses, and the quota guard warns before one runs out;
-- **a second computer** for heavy sessions (a Windows PC over ssh), in the same
-  list, with its conversation and its questions on the phone;
-- **the night queue**: jobs that run one at a time while memory and quota allow,
-  with a report in the morning;
-- **a registry of tasks and recorded oks**, and an optional guard that lets
-  `git push` and releases through only inside an approved task.
+- **Not Claude Code Projects.** [Projects](https://code.claude.com/docs/en/claude-projects)
+  coordinates threads that usually run in the cloud, on github.com repositories
+  or uploaded files. supervisor starts from the sessions you open yourself, in a
+  terminal, on your machines. The two combine: a session that supervisor
+  launches has Remote Control on, so it shows in claude.ai/code and in the
+  Claude app as well. [The comparison](details/claude-code-projects.md).
+- **Not plain tmux.** tmux keeps sessions alive; it does not know which Claude
+  account a folder belongs to, which session is waiting on a question, how to
+  ask another session something and read the answer, or how to bring eight
+  conversations back after a reboot. supervisor adds that, on top of tmux.
 
-It is for people who keep three or more sessions open at once. If you open one
-at a time, you do not need it. supervisor is an independent plugin, not made by
-Anthropic.
+## What it does
 
-## supervisor and Claude Code Projects
-
-[Claude Code Projects](https://code.claude.com/docs/en/claude-projects) (public
-beta on Pro and Max, rolling out gradually; not yet on Team or Enterprise) lets
-one conversation coordinate a stream of tasks as parallel threads. Threads are
-usually cloud sessions working on github.com repositories or on files you
-upload, followed from claude.ai/code, the desktop app or the Claude mobile app,
-with an Overview of what is waiting on you and what is ready for review. A
-thread runs on your computer only through Remote Control, and a session you
-started locally cannot be moved into a project.
-
-supervisor starts from the other end: the sessions you open yourself, in a
-terminal, on your machines.
-
-- **Projects** fits work that lives on GitHub or in files you can upload, can
-  run in the cloud, and should go on with your laptop closed.
-- **supervisor** fits work that needs your computer: folders that are not on
-  GitHub, tools, databases or devices on your machine, a second PC, more than
-  one account, sessions you started in the terminal.
-- They do not exclude each other: a session that supervisor launches has Remote
-  Control on by default, so it shows in claude.ai/code and in the Claude app as
-  well.
+- **Every session on one screen, the blocked ones first.** One list shows every
+  session of every account, and which one is stopped on a question waiting for
+  you.
+- **A master that opens and instructs the others.** One session, the master on
+  your workspace root, launches, watches, answers and closes the others.
+- **The day's recap and work for the night.** At 20:00 one sentence per project
+  on what was done and the next step; at 02:00 a queue of jobs runs one at a
+  time while memory and quota allow, with a report in the morning.
+- **Answers from the phone, encrypted.** A question reaches your phone, tablet
+  or watch with its options as buttons, encrypted end to end through your own
+  Firebase project.
+- **Back after a reboot, across accounts and computers.** Every session comes
+  back with its conversation; two accounts each with its own quota guard; a
+  second computer in the same list; a registry of tasks that lets `git push`
+  and releases through only inside an approved task.
 
 ## Try it
 
-**The plugin.** Claude Code 2.1.263 or newer, `tmux`, `python3` 3.8+, `bash`
-and a [supported terminal](#terminal-backends), on Linux, macOS, ChromeOS or
-WSL2 ([not native Windows](#windows)).
+Claude Code 2.1.263 or newer, `tmux`, `python3` 3.8+, `bash` and a
+[supported terminal](#terminal-backends), on Linux, macOS, ChromeOS or WSL2
+([not native Windows](#windows)). It runs daily on one workstation (ChromeOS,
+two accounts, up to eight sessions); the other terminals are supported in code
+but not yet tried on real hardware. On ChromeOS the window commands also need
+[chrome-bridge](https://github.com/frsorrentino/chrome-bridge).
 
-```bash
-claude plugin marketplace add frsorrentino/supervisor && claude plugin install supervisor@supervisor-dev --scope user
-~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor init --yes --shim --shell
-```
+### Quickstart
 
-The plugin's own command is on the PATH only inside Claude Code, so the first
-`init` runs it by its full path; `--shim` puts `supervisor` in `~/.local/bin`
-for every later call. Then `supervisor doctor`: the [Quickstart](#quickstart)
-has each step, and [If something goes wrong](#if-something-goes-wrong) the
-problems seen on a clean install.
-
-**On your phone: the web app.** Any phone or tablet, iPhone and iPad included, no
-store and no tester group. On the PC you need `python3-cryptography`, `crontab` and
-the Firebase CLI logged in (`npm install -g firebase-tools`, `firebase login`). Then:
-
-```bash
-supervisor relay setup     # your own Firebase project, guided; --dry-run shows the steps
-supervisor relay install   # keeps the relay running
-supervisor relay pair      # a QR for the first device; later ones: relay pair --add
-```
-
-On the phone, open [supervisor.francescosorrentino.com](https://supervisor.francescosorrentino.com).
-On iPhone and iPad, first add it to the Home Screen (Share › Add to Home Screen)
-and open it from there: the Home Screen app keeps its own data, apart from Safari.
-Scan the QR in the terminal with the app's camera button, or paste the line that
-`relay pair --text` prints, and confirm the PC's name. Or open the web app link that
-`relay pair` prints under the code (`…/#pair=…`, the invite is inside): it is as
-secret as the QR, valid for five minutes, and the first browser to open it gets in,
-so send it only to yourself. `relay.web_app_url` points it at your own copy of the
-web app; `""` turns it off. Everything is encrypted end
-to end: Firebase sees only blobs, and the web app keeps the key only in that
-browser.
-
-**Android phone and Wear OS watch: native apps, coming to Google Play.** The
-closed test opens soon. Join
-[groups.google.com/g/supervisor-testers](https://groups.google.com/g/supervisor-testers)
-and you get the invitation when it opens. They need an Android 13+ phone and a
-Wear OS 4+ watch, and pair with the same `supervisor relay pair` QR; the phone
-passes the key to the watch, which then works on its own.
-Details: [Relay for the Wear OS app](#relay-for-the-wear-os-app).
-
-**No PC at hand?** On the watch's pairing screen, tap «Try the demo»: sessions,
-questions and quota of a demo set, with no PC and no pairing. Settings → «Demo
-mode» turns it off.
-
-## Quickstart
-
-It runs daily on one workstation (ChromeOS, two accounts, up to eight
-sessions); the other terminals are supported in code but not yet tried on real
-hardware: [Terminal backends](#terminal-backends) says which. On ChromeOS the
-window commands also need [chrome-bridge](https://github.com/frsorrentino/chrome-bridge).
-
-Claude Code must be installed on the machine that runs the sessions, and
-signed in once (`claude` in any folder). In WSL2 that means inside the Linux
-distro, not the Windows one, and with the Windows folders out of the PATH:
+Claude Code must be installed on the machine that runs the sessions, and signed
+in once (`claude` in any folder). In WSL2 that means inside the Linux distro,
+with the Windows folders out of the PATH: the installer runs
+`npm uninstall -g @anthropic-ai/claude-code`, and in WSL2 `npm` is the Windows
+one, so the plain `curl … | bash` removes the Claude Code of Windows.
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash
 ```
 
-The installer runs `npm uninstall -g @anthropic-ai/claude-code` to clean up an
-old npm install; in WSL2 `npm` is the Windows one, and the plain
-`curl … | bash` removes the Claude Code of Windows.
+Then the plugin:
 
 ```bash
 claude plugin marketplace add frsorrentino/supervisor
@@ -138,14 +84,52 @@ supervisor doctor              # PASS, INFO or WARN with a fix on each line; FAI
 supervisor launch ~/projects/x --create   # your first session, in its own tab (--create makes the folder)
 ```
 
-If `supervisor` is not found after `init`, `~/.local/bin` is not on your PATH
-yet: open a new terminal. `init --shell` prints one line to add to your
-`.bashrc` or `.zshrc`. From then
-on, typing `claude` in a project folder opens that project's session in a
-named, coloured tab instead of an anonymous window. To undo everything:
-`claude plugin uninstall supervisor`, remove that line, and
-`supervisor recap uninstall` / `night uninstall` / `guard uninstall` if you
+The plugin's own command is on the PATH only inside Claude Code, so the first
+`init` runs it by its full path. If `supervisor` is not found after `init`,
+`~/.local/bin` is not on your PATH yet: open a new terminal. `init --shell`
+prints one line to add to your `.bashrc` or `.zshrc`; from then on, typing
+`claude` in a project folder opens that project's session in a named, coloured
+tab. To undo everything: `claude plugin uninstall supervisor`, remove that line,
+and `supervisor recap uninstall` / `night uninstall` / `guard uninstall` if you
 had turned those on.
+
+### On your phone: the web app
+
+Any phone or tablet, iPhone and iPad included, no store and no tester group. On
+the PC you need `python3-cryptography`, `crontab` and the Firebase CLI logged in
+(`npm install -g firebase-tools`, `firebase login`). Then:
+
+```bash
+supervisor relay setup     # your own Firebase project, guided; --dry-run shows the steps
+supervisor relay install   # keeps the relay running
+supervisor relay pair      # a QR for the first device; later ones: relay pair --add
+```
+
+On the phone, open [supervisor.francescosorrentino.com](https://supervisor.francescosorrentino.com).
+On iPhone and iPad, first add it to the Home Screen (Share › Add to Home Screen)
+and open it from there: the Home Screen app keeps its own data, apart from
+Safari. Then pair in one of three ways, and confirm the PC's name:
+
+- scan the QR in the terminal with the app's camera button;
+- paste the line that `relay pair --text` prints;
+- open the link that `relay pair` prints under the code (`…/#pair=…`, the
+  invite is inside). It is as secret as the QR: valid for five minutes, and the
+  first browser to open it gets in, so send it only to yourself.
+  `relay.web_app_url` points it at your own copy of the web app; `""` turns it
+  off.
+
+Everything is encrypted end to end: Firebase sees only blobs, and the web app
+keeps the key only in that browser.
+
+### Android phone and Wear OS watch
+
+Native apps, coming to Google Play; the closed test opens soon. Join
+[groups.google.com/g/supervisor-testers](https://groups.google.com/g/supervisor-testers)
+and you get the invitation when it opens. They need an Android 13+ phone and a
+Wear OS 4+ watch, and pair with the same `supervisor relay pair` QR; the phone
+passes the key to the watch, which then works on its own. No PC at hand? On the
+watch's pairing screen, tap «Try the demo»: sessions, questions and quota of a
+demo set, with no PC and no pairing. Settings → «Demo mode» turns it off.
 
 ## If something goes wrong
 
@@ -199,469 +183,7 @@ what to do. These are the problems seen on clean installs.
   one line saying so, and the hooks stay quiet. `claude plugin disable supervisor`
   removes it.
 
-## What you get
-
-![One master session runs all the others: the root session launches, watches, answers and closes the parallel sessions of every project, from the terminal and from the wrist — beside it, the session list of the Wear OS app (beta), rendered from the app's code, on the demo set.](assets/readme/card0-hero.png)
-
-Every function has a card; every card has a function behind it. The sessions
-in the pictures (`master`, `atlas-shop`, `ledger-api`, `field-notes`, `orbit-docs`) are a demo set.
-
-### Sessions at a glance
-
-![Sessions at a glance: the real `supervisor sessions` table on the demo set — PID, account, name, state, folder, window, channel, uptime — with the session waiting for an answer and nobody attached on the first row.](assets/readme/card1-sessions.png)
-
-`supervisor sessions` lists every session of every account: busy, idle, or
-stopped on a question waiting for you, whether a tab is attached, which
-channel reaches it. A detached session stuck on a question is work standing
-still, not work in progress: it goes first. `supervisor next` picks the one
-that needs you most. Three more notes on a row, read without asking anyone:
-«at lower priority» when the session runs past its limit in `/low-priority`
-mode (slow but alive; it shows only on the session's own screen, so the note
-needs its tmux pane), «goal: …» when a native `/goal` is still open (from the
-transcript), and «idle for N h» with the close command when a session has done
-nothing for `sessions.idle_hours` hours. `quota` counts the lower-priority
-sessions per account under its table; `wait` says when it returns on an open
-goal (idle with a goal not met is «Goal paused», not finished work).
-
-The `work-` in front of two names is the tmux prefix of the `work` account in the
-demo set: every account has its own, set in `accounts.<name>.tmux_prefix`.
-
-### Launch by a piece of a name
-
-![Launch by a piece of a name: launch resolves a folder fragment under the workspace root, deduces the account from the folder, opens the session as a tab of the Terminal window already open and prints its Remote Control link.](assets/readme/card2-launch.png)
-
-`supervisor launch atlas` resolves the folder under your workspace root,
-deduces the account (personal or work, by a map you set once: a warning, never
-a refusal), stops on the trust and bypass dialogs for you to accept them (or
-answers them, if you list them in `session.dialog_patterns`), and opens the session as a
-tab of the Terminal window you already have, with no start tab beside it. A
-typo never becomes a folder: `--create` only when you ask, with the full path
-shown first. Typing `claude` inside a project folder does the same. Past
-`sessions.max_sessions` sessions at work (5 by default; busy or idle, the
-master excluded) `launch` stops with the count and the free memory and asks;
-without a terminal it exits 7 and says to close an idle session or repeat with
-`--force`. It never closes anything on its own.
-
-### Talk. Answer its question.
-
-![Talk and answer: a prompt sent to another session and its reply read from its transcript; the question a session is stuck on, with numbered options, answered by number — and the same question on the Wear OS app, rendered from the app's code, on the demo set.](assets/readme/card3-talk.png)
-
-`supervisor talk ledger-api "deploy done?"` delivers a prompt to another
-session, on either account, and reads the answer back from its transcript.
-`supervisor answer ledger-api --show` reads the question a session is stuck on,
-options numbered; `answer ledger-api 1` answers it: a message in the inbox never
-unblocks a dialog, this does. The phone gets the same question with its
-options as buttons the moment the session stops.
-
-### Survive a reboot with everything
-
-![Survive a reboot: the sessions alive before the reboot, the reconciled registry and the last good set side by side; the first shell after the reboot proposes all of them with a source and a date and relaunches each with its conversation.](assets/readme/card4-reboot.png)
-
-The first shell after a reboot offers to bring every session back, each with
-its own conversation. Two lists feed it: the registry, reconciled every five
-minutes, and the «last good set», which grows with the sessions and never
-shrinks on its own — two windows closed by hand before the reboot cannot make
-a session disappear from the proposal. `supervisor restore --dry-run` shows
-what would come back, with the source and the date of each.
-
-### Restart in place, keep talking
-
-![Restart in place: restart arm sets one flag per session; at the end of the turn the Stop hook exits the session cleanly, frees the tmux name and launches it again with --continue, so the conversation continues.](assets/readme/card5-restart.png)
-
-`supervisor restart arm` restarts the current session when its turn ends
-and resumes where it was, because hooks, settings and plugins are read at
-startup only. It keeps the model too: a new default model reaches a resumed
-session only through `/model`, while `launch` starts on it. One flag per session, so eight sessions can arm in the same
-minute; `restart list` shows them. `--clean` starts fresh with the memory
-intact, `--switch-account` continues the same conversation on the other
-account. A kill from inside a tool would land mid-turn: the hook is the only
-safe instant.
-
-When a long session gets expensive, a handoff plus `/clear` keeps what matters
-for a fraction of the cost. `/supervisor:handoff --here` writes a short
-distillate of the session (goal, decisions, verified facts, open items, paths,
-what to invoke next) into the project's `docs/`. After `/clear`, the next start
-points the session to that file once. The app's «Handoff» button sends the
-command each session has. The optional companion plugin
-[fable-director](https://github.com/frsorrentino/fable-director) has its own
-`/fable-director:handoff`, which also checks that no budget is open and that
-the task is at a verified boundary. Sessions where it is enabled use that one.
-
-### Your screen, arranged
-
-![Your screen, arranged: the master session as the big window on the left and the other four stacked on the right, each an app window of the ChromeOS Terminal with no start tab; the tile, merge, move and layout commands beside it.](assets/readme/card6-screen.png)
-
-On ChromeOS, `supervisor tile` gives every session an app window of its
-own and arranges them: equal columns, a grid when they get narrow, and with an
-odd count that includes the master, the master big on the left and the others
-stacked on the right. `merge` brings them back as tabs of one window, `move
-destra` sends them to another monitor, `layout save mattina` remembers a
-layout. The Terminal's start tab is evicted, never left beside a session.
-
-### From your wrist
-
-![From your wrist: the Wear OS app (beta) on the demo set — a session's card, a question with its options, the quota — real screens rendered from the app's code.](assets/readme/card7-wrist.png)
-
-The native Wear OS app is out in **beta**:
-[github.com/frsorrentino/supervisor-app](https://github.com/frsorrentino/supervisor-app).
-Sign up as a tester ([Try it](#try-it)), or build it yourself from the app's
-README. The relay runs on your PC, with your own Firebase. The list shows every
-session with its state and icon; a tap opens its card — state, outcome, next
-step; a question comes with its options, and one tap answers it. A list that is
-no longer fresh says so and never looks live, the watch is paired once with a
-6-digit code from your PC, and it buzzes for questions, outcomes and sessions
-that end.
-
-The plugin works without the app: everything above happens in the terminal
-either way. watchOS is not supported. Telegram only sends notices (below).
-
-### Telegram, one-way
-
-Telegram sends; nobody answers it. The interactive bot — bare-word commands,
-inline keyboards, session cards, «follow», the long-polling daemon and the 08:00
-digest — was retired on 16/09/2026: the watch does all of it in real time, and
-Telegram had become a second copy of every notice. What goes out now is what a
-watch cannot carry or will not receive:
-
-- the day's diary at 20:00 and the night shift's report, which are long texts;
-- the quota warnings, when no watch is receiving them;
-- a question a session is stuck on, when the watch is not paired, or the relay
-  or the network is down — the phone is then the only channel left.
-
-`supervisor bot status` shows the token, the allowed chats and the log; there
-is no daemon to keep alive any more. The morning «what waits for you» lives on
-the watch, which shows without pause who is waiting on a question and who is
-idle.
-
-### Relay for the Wear OS app
-
-`supervisor relay` puts the PC on the bus of the native watch app
-([github.com/frsorrentino/supervisor-app](https://github.com/frsorrentino/supervisor-app),
-whose README has the watch side under «Set up»):
-`relay push` publishes an encrypted `/state` (the v1 contract in
-`tests/fixtures/relay/`) to Firebase RTDB, appends `/events` and wakes the watch
-with FCM; `relay serve` listens on `/cmd` and runs the allow-listed commands
-(answer, prompt, launch — with an optional first message — follow, resume, reopen, screen, allow_all, last, model, effort) through the CLI,
-writing `/result`; `relay pair` shows a QR for the phone app and a six-digit
-code for the watch, and agrees the AES key over X25519 with whichever answers
-first. Setup: a Firebase project with RTDB and FCM, its
-service account JSON in `~/.cc-supervisor/relay/service-account.json` (0600,
-never in the repo), `relay.enabled`, `relay.firebase_url` and `relay.fcm_topic`
-in the config, then `relay pair`, `relay install`. RTDB rules: `/state`,
-`/events` and `/result` readable only by a uid present in `/allowed`, `/cmd`
-and `/share/<id>` writable only by those, `/pair/<code>/watch` and `/pair/<id>/watch` writable by
-an anonymous user; the PC writes with the service account. `relay push
---dry-run` prints the clear state without touching the network.
-
-Contract 1.16 adds two fields to every session in `/state`: `low_priority`
-(`off`, `offered` when Claude Code proposes `/low-priority` at the usage limit,
-`active` when the session runs on past it, `null` when there is no screen to
-read it from — that state lives only in the session's memory) and `goal`
-(`{text, since, met}` from the last `goal_status` of the transcript, `null`
-without a `/goal`).
-
-Contract 1.17 lets the app edit tonight's queue: `night_add` (the folder of a
-published project and the prompt, run as `supervisor night add`) and
-`night_remove` (the job id), and `/state` carries `night.items`, the queue in
-run order with each prompt cut to 160 characters. The field is there even when
-the queue is empty: its absence tells the app to ask for an update. The queue
-holds at most `night.max_queued` jobs (8), and a job that has started cannot be
-removed.
-
-Contract 1.18 sends the long texts to the app too, as events with the FCM
-wake-up: `recap` (the 20:00 diary) and `night_report` (the night shift's
-summary), with the Telegram text without markup, cut at a line end within 4000
-characters, and the day in `ref`; the quota guard's resume at the reset is a
-`quota` event like the threshold warning.
-
-Contract 1.19 is «Share» from the phone: the phone writes an image, encrypted
-like a command, in `/share/<id>` (at most 1.5 MB, JPEG or PNG), then sends
-`report` with the session, the text and that id; the relay runs
-`supervisor report <session folder> <image|-> "<text>" --session <name>` and
-deletes the node, whatever the outcome (unread nodes go after 10 minutes).
-`/state` carries `share: {max_bytes}` so the app knows it can.
-
-Contract 1.21 adds the Stop button: `interrupt` with the session runs
-`supervisor interrupt`, and `/state` carries `ops`, the command ops this relay
-executes, so the app shows a button only when its op is there.
-
-Contract 1.22 is the conversation for the phone's chat: `transcript` with `n`,
-`n:before=<id>` or `n:after=<id>` answers with the session's entries read from
-its transcript — what the person typed, Claude's text, one line per tool call
-(with its description, whether it failed, and the media or documents it wrote or
-sent), and the tokens and times of each closed turn — at most 60 KB a page.
-
-Contract 1.23 adds `suggestion` to every session in `/state`: the prompt Claude
-Code suggests in dim text after `❯` when the input is empty, read with its
-colours from the pane, for a session at the prompt only — never typed text.
-
-Contract 1.24 opens a file from the conversation on the phone: `file` with the
-session and, as `arg`, a `path` exactly as `transcript` lists it in `files`.
-The relay serves only a path listed in that session's transcript and writes it
-to `/file/<command id>`, encrypted like `/share`, as `{mime, data}`. An image
-over the 1.5 MB envelope is reduced to a JPEG; any other file over it is
-refused. The device deletes the node after reading it; unread nodes go after
-10 minutes. Refusals: «no session …», «not in the transcript», «missing or
-unreadable», «too large: <bytes>».
-
-Contract 1.25 sends slash commands from the phone: `slash` with the session, the
-command without «/» as `arg` and its arguments as `text`. Only the commands in
-`relay.slash_commands` (default compact, clear, exit, context, cost), listed in
-`/state` as `slash`, are accepted. The relay types the command in the session's
-pane like the person at the terminal; through the inbox socket it would arrive as
-another session's message and not run. A busy session, or one on a dialog, is
-refused («<name> is busy»), as is a command outside the list («not allowed: …»).
-A command that opens a panel over the prompt (`/cost`, `/usage`) has its text
-read and sent back in the result, then the panel is closed with one Esc
-(`supervisor panel <name>`), so nothing stays open on the PC.
-
-Contract 1.26 gives the phone the whole project list for «Launch»: `projects`
-answers with every project of every account (the fields of `/state.projects`),
-most recently used first, at most 60 KB. When `/state` must drop projects to
-fit in 8 KB, it keeps the most recently used ones instead of the first by name.
-
-Contract 1.27 lets the phone search every conversation: `search` with the text
-(1 to 200 characters) looks through the user and assistant messages of the live
-sessions and of those closed in the last 7 days, on both accounts, ignoring case
-and accents. It answers at most 50 hits, newest first, each with the session,
-the folder, the entry id of `transcript` to jump to, and a snippet of up to 160
-characters with the word's position; past 50 hits, 60 KB or 10 s, `more` is true.
-
-Contract 1.28 lets the phone send files of any format, not only images: a PDF,
-a text, an archive lands in `.claude-master-inbox/` inside the session's folder
-(ignored by git) and the session is told its name, type, size and path.
-
-Contract 1.30 adds a device without unpairing the others: `relay pair --add`
-keeps the relay's key and hands it to the new device encrypted inside the
-pairing confirmation; the devices already paired stay (eight at most, contract 1.39: a browser with the web app counts as one). A plain
-`relay pair` still replaces the key and every device.
-From the phone the same happens without the PC's terminal (contract 1.31, op
-`pair_add`): the relay opens the round by itself and the phone shows its QR to
-the new device.
-On a Chromebook the invite opens by itself in the app on the same machine
-(contract 1.32, through adb to its Android), and `/state.devices` lists every
-paired device with its kind and when it last read.
-Contract 1.34 sends a file of the chat in parts of 1 MB, up to 25 MB, so a
-long HTML report or a PDF opens on the phone as it is.
-Contract 1.35 serves the web app on the same machine: with `relay.web.enabled`
-the relay daemon listens on `127.0.0.1:<relay.web.port>` (8765 by default),
-serves the built web app from `relay.web.dir` on `/` and a local API with the
-contract's JSON in clear (state, events, a state stream, commands, files,
-attachments) behind a local token. `supervisor relay web` prints the address
-with the token and opens it in the browser.
-Contract 1.36 labels what comes from the web app («via the web app»), and
-contract 1.37 brings the master's help to the app: fable-director's advice of
-model and effort for each session, the registry's tasks waiting for an ok with
-an «Approve» button (op `approve`), «Save as decision» for the master's memory
-(op `decision`), and the sessions that are finished or duplicated.
-Contract 1.42 serves the app's live mode: a prompt dictated by voice
-(`voice: true`) carries short spoken-answer instructions after the device's
-prefix, and an approval given from the wrist (`via: "live"`) counts only with a
-double confirmation (`confirmations` of 2 or more).
-
-Contract 1.20 counts the phone as well as the watch before falling back to
-Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
-when it reads `/state`; if no paired device has read an event within
-`relay.telegram_fallback_after_s`, the event goes to Telegram once. Until some
-device writes `/seen`, only the old rule applies (the bus refusing the push).
-
-The QR (contract 1.15) carries the pairing id, the PC's public key, the host,
-the expiry and the data the phone needs to join the Firebase project: the
-app's API key, project id and Android app id, from `relay.firebase_app`, or read
-from the `google-services.json` named in `relay.google_services` (its Android
-client; `relay.app_package` picks one when the file has more than one); the
-database URL and the FCM topic
-come from the relay's own config. Without those data `relay pair` says so, shows
-no QR and the six-digit code still works; `doctor` shows a WARN. The QR is
-drawn in the terminal with half blocks, error correction L and a two-module
-margin (about 70 columns wide; `relay pair --text` prints its JSON on one line
-instead). The same
-document sits under `/pair/<code>` and `/pair/<id>`; the first valid answer
-wins, the other node is deleted, expiry and attempts are shared. The phone may
-answer with `uids` (up to four) and `names`: every uid goes to `/allowed`, and
-`devices.json` keeps each with its name.
-
-`relay setup` builds the Firebase side, guided and idempotent, on the Firebase
-CLI already logged in (`npm install -g firebase-tools`, `firebase login`): it
-picks or creates the project, creates the Realtime Database instance
-(`relay.setup_location`, europe-west1 by default), deploys the rules above,
-enables anonymous sign-in, registers the Android app of `relay.app_package`
-without a SHA fingerprint (the API key is not restricted: the Play signature
-differs from the development one), saves its data in `relay.firebase_app` and
-`<relay.dir>/google-services.json`, creates the firebase-adminsdk key at
-`relay.service_account` (0600) and writes `relay.enabled`, `relay.firebase_url`
-and `relay.fcm_topic` into the config in use, `CC_SUPERVISOR_CONFIG` included.
-The database instance, anonymous sign-in and the key go through Google's REST
-APIs with the CLI's own token; when that token is missing, those steps print
-the exact console link and wait for Enter. On a project born a minute ago
-Authentication has to be opened once in the console («Get started»), because
-no API initializes it without billing: `relay setup` says so, waits, then
-enables the provider. A key file that belongs to another project is never
-replaced. `--dry-run` lists what would be done and writes nothing; `--yes` takes
-the defaults; the end is a summary like `doctor`'s.
-
-To try the app without touching the watch already paired, point
-`CC_SUPERVISOR_CONFIG` at a trial config with its own `relay.dir`,
-`relay.service_account` and `relay.firebase_url`: `relay pair`, `relay push` and
-`relay serve` then work only there, and the main config's key, `devices.json`,
-`/allowed` and crontab stay as they are.
-
-Each session in `/state` carries the badge the watch draws: `icon`, the emoji
-of its Terminal tab (stable for the session's life, the last known one once it
-is gone), and `color`, the hue alone as `#RRGGBB` whatever the shape — the
-watch takes the shape from the account (round for the personal one, square for
-the others) and the colour from here, so a session looks the same on the PC, in
-Telegram and on the wrist. `relay.colors` overrides the emoji-to-hex map.
-
-Each session also carries what it is running on: its model (id and short name),
-its effort level and how much of the context window it has used, read from its
-transcript. They are null when they cannot be read, and the percentage is left
-out rather than guessed when the model changed mid-session.
-
-When a push cannot reach the bus, or the wake-up fails, the relay notes when the
-outage started and, once it lasts longer than `relay.telegram_fallback_after_s`
-(ten minutes by default), the notices go out on Telegram instead, until a push
-works again.
-
-### Guard, diary, night
-
-![Guard, diary and night shift: on a phone, the Telegram chat with the 20:00 recap — one sentence per project with its icon, the ones waiting on a question first, the next step under each; beside it the quota warning at 95 percent and the resume at the reset, what one-way Telegram still sends, and the overnight queue.](assets/readme/card8-guard.png)
-
-`supervisor guard` warns once per window when an account passes 95 % of
-its quota and, at the reset, sends «resume where you were» to the sessions
-that hit the wall. At 20:00 the recap: one sentence per project on what was
-done and the next step, the ones waiting on a question first, the same line
-appended to the project's `docs/recap.md`. At 02:00 the night queue runs one
-job at a time, only while free memory and quota allow, leaving a report in the
-project. What waits for you in the morning is on the watch, which never stops
-showing it.
-
-### Tasks and plans
-
-A plan is a JSON file of units of work. Each unit names its folder, a check
-that can fail (a command that exits 0 when the work is right), the files it may
-touch, and a lane: open (local commits, tests, docs), wide (shared code) or
-closed (push, release, publication). Edges exist only where one unit's output
-really enters the next, and each edge says what passes. `supervisor plan
-approve` records the approval once; `supervisor plan run` does the rest:
-ready units run in parallel, each in a session of its folder (opened and closed
-for it), a script unit without a session; the session's own outcome is
-recorded, but only the check rerun by the engine marks a unit done. A red unit
-goes back alone, with the reason and the narrowed perimeter, three times at
-most; then it is failed, the units after it are cancelled and the root session
-is told. The registry (`supervisor task`, SQLite next to the configuration)
-keeps every task, result and approval, and the constraints that failed tasks
-leave behind are attached to the next tasks of the same project.
-
-The closed-lane guard (`tasks.guard`, off by default) is a PreToolUse hook on
-Bash: `git push`, `gh release`, `npm publish` and `release.sh` pass only inside
-a running task of an approved plan, or after a recorded ok.
-
-fable-director is optional. When it is installed and enabled in the session's
-account, the unit's brief asks it to open its budget with the unit's check as
-`--verify` and its files as `--paths`; the task contract
-(`schemas/task-contract.v1.json`) is the same file in both plugins. Without it,
-nothing changes: the engine reruns the check itself.
-
-`supervisor timeline` shows what the sessions did, in time order: the
-prompts, the tests they ran with their summary line, the folder's commits, the
-«Esito:» lines and the registry's outcomes, from code. The phone reads the same
-timeline (contract 1.29, op `timeline`) for its summary; there each session's
-`project` is relative to the projects' root, as in `state.sessions[].project`.
-
-### More machines
-
-One control machine, other computers doing the heavy work. You declare a host
-by name and ssh alias; supervisor measures it and proposes what it can do:
-
-```bash
-supervisor host add laptop --ssh laptop     # pins the host key, asks before installing a 3-file helper
-supervisor host doctor laptop               # OS, cores, RAM, GPU, WebGL, tools, a 20 s benchmark, bandwidth
-supervisor host confirm laptop              # roles, limits and trust, as proposed or edited
-supervisor offload ~/film --recipe render   # the exact commit, the declared assets, the result back
-```
-
-- **Measured, not guessed.** `doctor` runs one remote command that returns
-  JSON: system, GPU (`nvidia-smi`, `lspci`, `Win32_VideoController`), WebGL
-  from a headless Chrome (hardware or software renderer), tool versions, which
-  Claude accounts are logged in, foreign credentials (named, never read), and a
-  micro-benchmark relative to the control machine. It proposes roles
-  (`compute`, `render`, `sessions`), per-host limits from a written formula,
-  and trust `work` without secrets and without client folders. Until you
-  confirm, the host gets nothing.
-- **Jobs declare needs, not hosts.** A recipe in `<project>/.cm-offload.json`
-  says role, threads, RAM, GPU, tools, operating systems and a command per host
-  kind (`{threads}` takes the host's value). The scheduler filters hosts by
-  trust and requirements, drops those without a free slot or above the load
-  gate, and chooses: a light job stays here while this machine has room; a
-  heavy one goes out when the measured time saved beats the copy cost (bytes to
-  send ÷ measured bandwidth, plus setup). `--explain` prints the whole table;
-  `--host` forces the choice but never trust or hard requirements.
-- **What travels.** `git archive` of the exact commit (a dirty tree is refused,
-  or sent as `git stash create` with `--dirty`); `.env*`, keys and credentials
-  never leave, and a scan for private keys and known tokens blocks the send
-  naming the file. Ignored assets travel once: the host keeps a content-addressed
-  cache. Dependencies install once per lockfile hash. Results come back with
-  their sha256 checked, into an ignored output folder or the state directory,
-  never over a tracked file.
-- **Surviving the link.** Jobs are detached so a dropped ssh does not kill
-  them: `systemd-run --user` or `setsid` on Linux, a one-shot scheduled task on
-  Windows. `offload wait <id>` blocks until the end, from a background shell.
-  Since Claude Code 2.1.288 a background command's time limit (its `timeout`,
-  two hours at most) applies only to unattended sessions (`-p`, Agent SDK, CI,
-  cloud); for those, `wait` gives up by itself after 110 minutes (`--max-min`)
-  with exit 4 and says the job is still running: run it again until it exits 0
-  or 1. A terminal session has no limit.
-- **Seeing it.** `hosts poll` (cron, every minute; every 30 s while something
-  runs) writes one snapshot per host. `sessions` shows the other hosts'
-  sessions as `HOST:name` and one line per host with load, RAM, disk and the
-  heavy job's progress; `quota` merges the readings of every host and says
-  where the freshest came from. An unreachable host is a line with the age of
-  its last good read, never a hang.
-- **A whole session elsewhere.** `launch <dir> --host win` starts a Claude
-  session on a `windows-native` host with the `sessions` role, with Remote
-  Control on, so it shows in `sessions` and in the app as `win:<name>`
-  (read by the hosts poller in the crontab, which `launch --host` installs
-  when it is missing and `doctor` checks). A rule in the config
-  decides which folders may go, and every refusal names the condition it
-  failed: the folder's account is in the host's `trust.accounts`; the folder is
-  not in the client perimeter and is under the workspace root; it matches
-  `hosts.H.sessions.allow` and no `deny` entry; no secrets (not in a recipe,
-  not in the file names, not in the content). What goes there is a snapshot of
-  HEAD (`git archive`, no secret files), never the history; the host has no git
-  credentials. `host fetch win <name>` brings the commits made there back as
-  patches on a local branch `win/<name>`, applied in a temporary worktree so the
-  shared checkout is untouched; merge and push happen here. When this machine is
-  loaded (1-minute load above its cores, or less than 2 GB free) `launch`
-  suggests the host in one line; `--host auto` picks it.
-  `talk win:<name> "…"`, `wait win:<name>` and `close win:<name>` reach it
-  through its native inbox (the named pipe, the text in base64) and read the
-  reply from its transcript there; `close` refuses a session mid-turn without
-  `--force` and leaves the folder for `host fetch`.
-
-Host kinds: `linux-tmux` (this machine or over ssh), `windows-native` (OpenSSH,
-PowerShell 5.1+), `macos-tmux` and `wsl` over ssh. ssh options always go on the
-command line with a dedicated `known_hosts`; `~/.ssh/config` is never touched.
-Remote sessions start, talk and come back as above.
-
-### Doctor, for both accounts
-
-![Doctor: one PASS, WARN or FAIL line per thing checked — the plugin's cache and version in each account, the hooks, the relay's daemon, the cron lines — each with the command that fixes it.](assets/readme/card9-doctor.png)
-
-`supervisor doctor` checks both accounts: the plugin in the cache at the
-right version, the hooks wired in, the relay's daemon alive, the cron lines
-present; each line says what to do. Run it after every update: hooks run
-from the cache, and a live session keeps its old version until it restarts.
-
-**Why not plain tmux?** tmux keeps sessions alive; it does not know which
-Claude account a folder belongs to, which session is waiting on a question,
-how to ask another session something and read the answer, or how to bring
-eight conversations back after a reboot. That is the part this plugin adds,
-on top of tmux, not instead of it.
-
-## What it does
-
-Ten commands cover a normal day; the complete reference is at the end.
+## A normal day
 
 | you want to… | you type |
 |---|---|
@@ -684,48 +206,159 @@ is loaded at every start so the agent knows how to resolve a half-typed folder
 name, that it may create a folder only if you asked, and how to reach another
 session.
 
+The complete reference is in [Commands](#commands).
+
+## What you get
+
+![One master session runs all the others: the root session launches, watches, answers and closes the parallel sessions of every project, from the terminal and from the wrist — beside it, the session list of the Wear OS app (beta), rendered from the app's code, on the demo set.](assets/readme/card0-hero.png)
+
+Every function has a card; every card has a function behind it. The sessions
+in the pictures (`master`, `atlas-shop`, `ledger-api`, `field-notes`, `orbit-docs`) are a demo set.
+
+### Sessions at a glance
+
+![Sessions at a glance: the real `supervisor sessions` table on the demo set — PID, account, name, state, folder, window, channel, uptime — with the session waiting for an answer and nobody attached on the first row.](assets/readme/card1-sessions.png)
+
+`supervisor sessions` lists every session of every account: busy, idle, or
+stopped on a question waiting for you, whether a tab is attached, which channel
+reaches it. A detached session stuck on a question goes first; `supervisor
+next` picks the one that needs you most.
+
+### Launch by a piece of a name
+
+![Launch by a piece of a name: launch resolves a folder fragment under the workspace root, deduces the account from the folder, opens the session as a tab of the Terminal window already open and prints its Remote Control link.](assets/readme/card2-launch.png)
+
+`supervisor launch atlas` resolves the folder under your workspace root,
+deduces the account from the folder (a warning, never a refusal) and opens the
+session as a tab of the Terminal window you already have. A typo never becomes
+a folder: `--create` only when you ask.
+
+### Talk. Answer its question.
+
+![Talk and answer: a prompt sent to another session and its reply read from its transcript; the question a session is stuck on, with numbered options, answered by number — and the same question on the Wear OS app, rendered from the app's code, on the demo set.](assets/readme/card3-talk.png)
+
+`supervisor talk ledger-api "deploy done?"` delivers a prompt to another
+session, on either account, and reads the answer back from its transcript.
+`answer ledger-api --show` reads the question a session is stuck on, options
+numbered; `answer ledger-api 1` answers it.
+
+### Survive a reboot with everything
+
+![Survive a reboot: the sessions alive before the reboot, the reconciled registry and the last good set side by side; the first shell after the reboot proposes all of them with a source and a date and relaunches each with its conversation.](assets/readme/card4-reboot.png)
+
+The first shell after a reboot offers to bring every session back, each with
+its own conversation. `supervisor restore --dry-run` shows what would come
+back, with the source and the date of each.
+
+### Restart in place, keep talking
+
+![Restart in place: restart arm sets one flag per session; at the end of the turn the Stop hook exits the session cleanly, frees the tmux name and launches it again with --continue, so the conversation continues.](assets/readme/card5-restart.png)
+
+`supervisor restart arm` restarts the current session when its turn ends and
+resumes where it was, because hooks, settings and plugins are read at startup
+only. When a long session gets expensive, `/supervisor:handoff --here` writes a
+short distillate of it into the project's `docs/`, and after `/clear` the next
+start points the session to that file once. The optional companion plugin
+[fable-director](https://github.com/frsorrentino/fable-director) has its own
+`/fable-director:handoff`; sessions where it is enabled use that one.
+
+### Your screen, arranged
+
+![Your screen, arranged: the master session as the big window on the left and the other four stacked on the right, each an app window of the ChromeOS Terminal with no start tab; the tile, merge, move and layout commands beside it.](assets/readme/card6-screen.png)
+
+On ChromeOS, `supervisor tile` gives every session an app window of its own and
+arranges them; `merge` brings them back as tabs of one window, `move destra`
+sends them to another monitor, `layout save mattina` remembers a layout.
+
+### From your wrist
+
+![From your wrist: the Wear OS app (beta) on the demo set — a session's card, a question with its options, the quota — real screens rendered from the app's code.](assets/readme/card7-wrist.png)
+
+The web app and the native apps
+([github.com/frsorrentino/supervisor-app](https://github.com/frsorrentino/supervisor-app),
+Wear OS in beta) show every session with its state; a tap opens its card, a
+question comes with its options, and one tap answers it. The plugin works
+without them: everything above happens in the terminal either way. watchOS is
+not supported.
+
+### Relay for the Wear OS app
+
+`supervisor relay` puts the PC on the bus of the apps, through your own
+Firebase project: it publishes the encrypted state of the sessions, wakes the
+devices with FCM, and runs the allow-listed commands they send. Setup is in
+[On your phone: the web app](#on-your-phone-the-web-app). The relay covers
+«sessions closed, machine awake», not «machine off»: after a reboot nobody is
+logged in and scheduled tasks do not run. Protocol, RTDB rules, pairing and the
+contract's history: [details/relay.md](details/relay.md).
+
+### Telegram, one-way
+
+Telegram only sends, through Claude Code's `telegram` plugin: the day's diary at
+20:00, the night shift's report, the quota warnings when no device is receiving
+them, and a question when no device is paired or the relay is down.
+`supervisor bot status` shows the token, the allowed chats and the log.
+
+### Guard, diary, night
+
+![Guard, diary and night shift: on a phone, the Telegram chat with the 20:00 recap — one sentence per project with its icon, the ones waiting on a question first, the next step under each; beside it the quota warning at 95 percent and the resume at the reset, what one-way Telegram still sends, and the overnight queue.](assets/readme/card8-guard.png)
+
+`supervisor guard` warns once per window when an account passes 95 % of its
+quota and, at the reset, sends «resume where you were» to the sessions that hit
+the wall. At 20:00 the recap, also appended to the project's `docs/recap.md`; at
+02:00 the night queue.
+
+### Tasks and plans
+
+A plan is a JSON file of units of work, each with a check that can fail; `plan
+approve` records the approval once and `plan run` runs the units, marking one
+done only when the check rerun by the engine is green. The registry
+(`supervisor task`) keeps every task, result and approval, and the closed-lane
+guard (`tasks.guard`, off by default) lets `git push` and releases through only
+inside an approved task. More: [details/tasks-and-plans.md](details/tasks-and-plans.md).
+
+### More machines
+
+```bash
+supervisor host add laptop --ssh laptop     # pins the host key, asks before installing a 3-file helper
+supervisor host doctor laptop               # OS, cores, RAM, GPU, WebGL, tools, a 20 s benchmark, bandwidth
+supervisor host confirm laptop              # roles, limits and trust, as proposed or edited
+supervisor offload ~/film --recipe render   # the exact commit, the declared assets, the result back
+```
+
+One control machine, other computers doing the heavy work: supervisor measures
+a host and proposes what it can do, sends jobs there when the time saved beats
+the copy cost, and can run a whole session there (`launch <dir> --host win`).
+Secrets never leave. More: [details/more-machines.md](details/more-machines.md).
+
+### Doctor, for both accounts
+
+![Doctor: one PASS, WARN or FAIL line per thing checked — the plugin's cache and version in each account, the hooks, the relay's daemon, the cron lines — each with the command that fixes it.](assets/readme/card9-doctor.png)
+
+`supervisor doctor` checks both accounts: the plugin in the cache at the right
+version, the hooks, the relay's daemon, the cron lines; each line says what to
+do. Run it after every update.
+
+The full text of every card: [details/features.md](details/features.md).
+
 ## What you are trusting
 
-Four things are worth knowing before you turn them on.
-
 - **Sessions start with `--dangerously-skip-permissions`** if `init` sees that
-  your existing sessions use it (it says so, with the source). Without it,
-  every session asks you to confirm each command, as Claude Code does by
-  default: nothing breaks, but a session stops at each command until someone
-  presses "allow". What suffers is what runs with nobody at the keyboard:
-  prompts and answers sent from the phone or from another session, a restart
-  at the end of a turn, the night queue. Keep it where sessions must work
-  unattended; remove it from `session.claude_args` where you prefer to
-  confirm each command.
-- **`crossSessionInbound: accept`** in an account's settings lets another
-  session on this machine send prompts to that account's sessions. It is
-  needed only for `talk` across accounts, and it means: whoever can run
-  commands on this machine can talk to those sessions.
-- **Telegram is one-way**: the plugin only sends, to the chats already in the
-  `telegram` plugin's allow list, and reads nothing back — no message from
-  anywhere can start, answer or stop a session. What can act on a session is
-  the paired watch, and before a «yes» from the watch reaches a session the
+  your existing sessions use it (it says so). Without it nothing breaks, but
+  what runs with nobody at the keyboard (prompts from the phone, restarts, the
+  night queue) stops at each command. Remove it from `session.claude_args` where
+  you prefer to confirm each command.
+- **`crossSessionInbound: accept`** lets another session on this machine send
+  prompts to that account's sessions; it is needed only for `talk` across
+  accounts.
+- **Telegram is one-way**: nothing from it can start, answer or stop a session.
+  The paired devices can, and before a «yes» from them reaches a session the
   plugin takes a git checkpoint of its workspace.
-- **Errors of supervisor's own commands are recorded, locally.** A
-  `PostToolUseFailure` hook ([claude-observe](https://github.com/frsorrentino/claude-observe),
-  in `supervisor/observe/`) writes each failed `supervisor` command
-  (except the exit codes documented as normal, like a refused restart) and
-  each watch command the relay could not carry out to
-  `~/.local/state/claude-observe/supervisor.jsonl` (or under
-  `$XDG_STATE_HOME`), a 0600 file on this computer; the same error again is
-  one line with a count. Of a command only its name, subcommand and option
-  names are kept: arguments become `<ARG>`, error texts are cleaned of the
-  home path, emails, URL queries and secrets, and no parameter value is ever
-  stored. Nothing leaves the computer on its own: the only way out is a
-  GitHub issue, which Claude offers once a few errors have piled up, shows
-  you anonymized, and sends only after your yes (with `gh`, or as a
-  prefilled link you open). Turn it
-  off with `{"enabled": false}` in `~/.config/claude-observe/config.json`;
-  `{"propose": false}` keeps the file and stops the offers.
+- **Errors of supervisor's own commands are recorded, locally**, anonymized, in
+  a 0600 file; they leave the computer only as a GitHub issue you approve.
 
-Each session is a Claude Code process (a few hundred MB each); the only
-process the plugin adds is the relay's daemon, a few MB waiting on a socket;
-the diary and the night queue are scheduled tasks that run for seconds.
+In full: [details/trust.md](details/trust.md). Each session is a Claude Code
+process (a few hundred MB each); the only process the plugin adds is the relay's
+daemon.
 
 ## Data handling
 
@@ -785,29 +418,6 @@ longer adds up. A minimal example for two accounts:
 
 The full list with defaults: [`supervisor/config.example.json`](supervisor/config.example.json).
 
-## From the phone and from the wrist
-
-The watch is where you act from: the relay puts this PC on its bus, and from
-there a session can be answered, prompted, launched, followed, reopened or read
-aloud. The phone gets what a watch cannot carry — the 20:00 diary, the night
-report — and whatever the watch is not receiving.
-
-```bash
-# config.json: "bot": {"enabled": true}   — the token and chats of the `telegram` plugin
-supervisor bot status       # token, allowed chats, log; nothing to keep alive
-supervisor recap install    # the day's diary to those chats at 20:00 (recap.cron_time)
-supervisor night install    # the overnight queue at 02:00 (night.cron_time); fill it with `night add`
-supervisor relay setup      # the Firebase project, guided (--dry-run to see the steps)
-supervisor relay pair       # once: a QR for the phone, a 6-digit code for the watch
-supervisor relay install    # the relay's daemon and its keeper
-```
-
-Two limits, stated plainly. After a **reboot** nobody is logged in and
-scheduled tasks do not run: the relay covers «sessions closed, machine awake»,
-not «machine off» — on a Chromebook, set the power options so the machine does
-not sleep while charging. And the diary reports *what happened*, not what it
-cost: costs stay where they are measured (for me, fable-director).
-
 ## Terminal backends
 
 | backend | tried on real hardware | notes |
@@ -839,16 +449,9 @@ only sees a monitor that has a window on it: `move` tells you to drag one there.
 
 ### Windows
 
-supervisor runs sessions in tmux and reads processes from `/proc`, so it
-does not run on native Windows: use it inside WSL2, where it is Linux. On
-native Windows, installed by mistake or through a shared settings file, it stays
-quiet instead of failing. Claude Code runs its hooks through Git Bash; they
-start Python through `scripts/py.sh` (`python3`, then `python`, then `py -3`,
-skipping the Microsoft Store alias) and stop at once: the first session prints
-one line saying WSL2 is needed, later ones print nothing, and with no Python at
-all each hook writes one line to its log and exits 0. The `supervisor`
-command prints the same line and exits 3; only `version` and `root` answer.
-`claude plugin disable supervisor` removes it.
+supervisor does not run on native Windows: use it inside WSL2. Installed there
+by mistake it stays quiet: the `supervisor` command prints one line and exits 3,
+and `claude plugin disable supervisor` removes it. [How](details/windows.md).
 
 ## Commands
 
@@ -870,6 +473,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor model <name> <model>` · `supervisor effort <name> <level>` | switches another session's model or effort **for that session only**, through its own picker: the default for new sessions is never touched. Refuses a session that is working, has a question open or has text typed in its prompt; values come from `tune.models` and `tune.efforts` |
 | `supervisor screen <name> [--lines N]` | the last 30 lines of a session's terminal, for the phone («screen NAME» to the root session) |
 | `supervisor wait <name> [--timeout S]` | blocks until that session is idle; says if a `/goal` is still open there |
+| `supervisor panel <name>` | reads the text of a panel open over a session's prompt (`/cost`, `/usage`) and closes it with one Esc, so nothing stays open on the PC |
 | `supervisor interrupt <name>` | stops the turn that session is running: one Esc, sent only while «esc to interrupt» is on its screen (never a double Esc at an idle prompt, never on an open dialog) |
 | `supervisor report <project> <image\|-> "text" [--no-launch]` | screenshot into the project's `docs/segnalazioni/`, prompt delivered |
 | `supervisor queue <name> "prompt" [--expires M] \| --show \| --clear` | a prompt delivered when that session's next turn ends |
@@ -898,6 +502,16 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor timeline [NAME] [--since 6h] [--json] [--limit N]` | per session, in time order: prompts, tests with their summary, commits, «Esito:» lines, registry outcomes |
 | `supervisor render FILE.md\|- [--title T] [--meta M] [--out F]` | a Markdown summary as one HTML page with a fixed template, shown in the phone's chat under the command |
 | `supervisor recurring list\|add ID --label L --prompt P [--param]\|remove ID\|used ID` | the master's recurring actions, shown in the app's «Recurring» box, last used first |
+
+## Details
+
+- [The relay](details/relay.md): protocol, RTDB rules, pairing, setup and the history of contract 1.x.
+- [More machines](details/more-machines.md): hosts, offload and remote sessions.
+- [Tasks and plans](details/tasks-and-plans.md): plans, the registry and the closed-lane guard.
+- [What you get, in full](details/features.md): the long version of every card.
+- [What you are trusting, in full](details/trust.md), and [PRIVACY.md](PRIVACY.md).
+- [Windows](details/windows.md).
+- [supervisor and Claude Code Projects](details/claude-code-projects.md).
 
 ## Tests
 

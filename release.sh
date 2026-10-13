@@ -91,7 +91,7 @@ echo "== 4/6 commit on the local main (never pushed) =="
 # Senza docs/ (14/09/2026: un'altra sessione vi lavora, e `git add docs` prendeva anche i suoi file non
 # tracciati; docs/ non va comunque sul ramo pubblico: chi ci scrive lo committa da se'), e il commit SOLO
 # su questi percorsi: quello che altri hanno in stage nel frattempo resta fuori.
-REL_PATHS=(README.md CHANGELOG.md LICENSE release.sh cutover.sh .claude-plugin .gitignore "$PLUGIN" tests)
+REL_PATHS=(README.md CHANGELOG.md LICENSE release.sh cutover.sh .claude-plugin .gitignore "$PLUGIN" tests details)
 git add "${REL_PATHS[@]}"
 if git diff --cached --quiet -- "${REL_PATHS[@]}"; then
   echo "(nothing new to commit — releasing HEAD as is)"
