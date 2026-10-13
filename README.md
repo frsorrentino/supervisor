@@ -18,12 +18,12 @@ claude plugin install supervisor --marketplace frsorrentino/supervisor
 ~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor init --yes --shim --shell
 ```
 
-One command installs the plugin (Claude Code 2.1.292 or newer; older versions:
+One command installs the plugin (Claude Code 2.1.275 or newer; older versions:
 the two commands of the [Quickstart](#quickstart)), the second writes the
 configuration and puts `supervisor` in `~/.local/bin`. Then `supervisor doctor`, and
 `supervisor relay web` for every session on one screen, in this computer's browser.
 
-⭐ Star the repo if it helps you · [Try the demo, no install](https://supervisor.francescosorrentino.com/?demo)
+⭐ Star the repo if it helps you · [Try the demo, no install](https://supervisor.francescosorrentino.com/?demo&lang=en)
 
 ## Who it is for
 
