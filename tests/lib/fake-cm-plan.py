@@ -4,6 +4,7 @@
 Il comportamento delle sessioni sta in FAKE_CM_DIR/script.json: {cartella: [azioni per talk]}, dove ogni azione
 e' {"touch": [file], "say": "testo della risposta"}; oltre la lista si ripete l'ultima. Ogni chiamata va in
 calls.log (una riga JSON), cosi' il test vede ordine, brief e chiusure."""
+import fcntl
 import json
 import os
 import sys
@@ -22,7 +23,17 @@ def rows():
 
 
 def save(r):
-    STATE.write_text(json.dumps(r))
+    tmp = STATE.with_name(f"{STATE.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(r))
+    os.replace(tmp, STATE)   # chi legge vede il file di prima o quello nuovo, mai uno a meta'
+
+
+def locked():
+    """14/10: plan run lancia a e b in parallelo; senza lock i due launch leggevano lo stesso file e uno scriveva sopra
+    l'altro, la sessione di a non compariva piu' e P3 cadeva dopo 120 s («no session appeared», release 0.8.20)."""
+    f = open(D / "sessions.lock", "w")
+    fcntl.flock(f, fcntl.LOCK_EX)
+    return f
 
 
 def log(args):
@@ -37,9 +48,10 @@ if cmd == "sessions":
     print(json.dumps(rows()))
 elif cmd == "launch":
     proj = args[1]
-    r = rows()
-    r.append({"tmux": Path(proj).name, "name": Path(proj).name, "cwd": proj, "account": "personal"})
-    save(r)
+    with locked():
+        r = rows()
+        r.append({"tmux": Path(proj).name, "name": Path(proj).name, "cwd": proj, "account": "personal"})
+        save(r)
     print(f"launched {Path(proj).name}")
 elif cmd == "talk":
     name, text = args[1], args[2]
@@ -62,7 +74,8 @@ elif cmd == "wait":
     p = D / f"reply-{name}.txt"
     print(p.read_text() if p.exists() else "")
 elif cmd == "close":
-    save([x for x in rows() if x["tmux"] != args[1]])
+    with locked():
+        save([x for x in rows() if x["tmux"] != args[1]])
     print(f"closed {args[1]}")
 else:
     print(f"fake: unknown {cmd}")

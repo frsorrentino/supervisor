@@ -257,6 +257,17 @@ def tmux_panes():
     return out
 
 
+def tmux_client_activity():
+    """1.62 (14/10): {sessione tmux: epoch dell'ultimo tasto premuto in un client attaccato a quella sessione}. La
+    sessione attaccata ma lasciata li' non conta: serve un tasto recente (client_activity)."""
+    out = {}
+    for line in (tmux("list-clients", "-F", "#{client_session} #{client_activity}") or "").splitlines():
+        s, _, t = line.rpartition(" ")
+        if s and t.strip().isdigit():
+            out[s] = max(out.get(s, 0), int(t))
+    return out
+
+
 def tmux_attached():
     out = {}
     for line in (tmux("list-sessions", "-F", "#{session_name} #{session_attached}") or "").splitlines():
@@ -546,8 +557,10 @@ def collect(read_screen=True):
             "channel": "(questa)" if is_ancestor(pid) else "talk",
             "version": proc_version(pid),
         })
+    activity = tmux_client_activity()
     for r in rows:
         r["outdated"] = older(r.get("version", ""), disk)
+        r["pc_activity"] = activity.get(r.get("tmux") or "") or None   # 1.62
     core = None
     for r in rows:
         r["fallback"] = None

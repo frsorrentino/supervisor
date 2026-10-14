@@ -2,6 +2,15 @@
 
 ## 0.3.x
 
+- **0.8.21 — 2026-10-14: restore resumes each session by its id, a failed turn reaches the phone, the phone stays quiet while you are at the PC, messages at a set time, a new folder from the phone; plan-verify P3 no longer flaky.**
+  - Approved by the maintainer on 14/10 at 20:25, from a study of competing tools.
+  - `restore` resumes each session with `--resume <session_id>` when the registry has the id and its transcript exists (the same check as `launch --resume`); otherwise with `--continue`, and the list says so for that session. With `--continue` two sessions in the same folder both resumed the folder's last conversation.
+  - A failed turn on the phone (contract 1.61). A StopFailure that is not a quota limit (529 overloaded, 500, authentication) sends a `turn_failed` event: the reason in one line, secrets hidden as in 1.56, and `continue_text`, the text the app's «continue» button sends with the `prompt` op. At most one per session per minute.
+  - Quiet while you are at the PC (contract 1.62). `sessions[].at_pc` when the session is attached and a key was pressed in its terminal in the last 2 minutes (tmux `client_activity`, new `pc_activity` in `sessions --json`); that session's events carry `quiet: true`, also in the FCM data, and the app neither rings nor vibrates. Without the datum the field is absent and it rings.
+  - Send at HH:MM (contract 1.63). `supervisor queue <session> "text" --at HH:MM` (today, or tomorrow if past); the Stop hook delivers an item only once its time has come; `queue --due`, run every minute by `relay ensure`, delivers it to a session that is idle. The `prompt` op takes `at` (epoch, within 7 days): the prompt goes to the queue, result «scheduled for HH:MM: …».
+  - New folder from the phone (contract 1.64). Op `project_new`: `arg` = a parent folder from the new `project_parents` in the state (the parents of the published projects), `text` = the name (letters, digits, `. _ -`). Without `confirm: true` nothing is created and the result is «confirm: create <full path>»; with it the folder is created and launched, with the first message in `prompt`. An existing folder, a bad name or a parent outside the list are refused.
+  - plan-verify P3: the fake supervisor read and wrote its sessions file without a lock, and two parallel launches lost one session (P3 failed after 120 s in the 0.8.20 release). Lock and atomic write; ten runs in a row green on WSL.
+  - Fixtures: the two 1.52 answers kept by the app, a scheduled prompt, two `project_new`, a `turn_failed` event and a quiet outcome; `at_pc`, `project_parents` and `project_new` in the states.
 - **0.8.20 — 2026-10-14: an outcome with a secret no longer reaches the lock screen, and the contract fixtures show every field of 1.53-1.58.**
   - Contract 1.60 (additive, asked by the app for 1.56): `sessions[].outcome.preview` = {short, full} without tokens, keys and passwords, present only when something was hidden. An outcome is the session's last message and can carry a secret; the app's outcome notification uses it. `fit_state` cuts it like `full`.
   - `redact_preview` keeps the full stop after a hidden value («TOKEN=•••.»).

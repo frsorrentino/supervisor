@@ -134,6 +134,13 @@ r = hook("Stop", {"session_id": "sid3", "cwd": str(home), "stop_hook_active": Tr
 T.check("H4 stop_hook_active → no block, queue untouched", not r.stdout.strip() and "terza" in (q / "sid3").read_text(), r.stdout)
 rows = [json.loads(l) for l in ledger.read_text().splitlines()]
 T.check("H4 ledger has stop rows with truncated last", any(x["event"] == "stop" and len(x.get("last", "")) == 300 for x in rows), str(rows[-1]))
+# H4d (1.63, 14/10): una voce con `at` aspetta la sua ora; lo Stop consegna la prima gia' dovuta e lascia le altre
+(q / "sid4").write_text(json.dumps({"text": "alle nove", "at": time.time() + 3600}) + "\n" + json.dumps({"text": "gia' dovuta", "at": time.time() - 5}) + "\n")
+r = hook("Stop", {"session_id": "sid4", "cwd": str(home), "last_assistant_message": "x", "stop_hook_active": False})
+out = json.loads(r.stdout) if r.stdout.strip() else {}
+r2 = hook("Stop", {"session_id": "sid4", "cwd": str(home), "last_assistant_message": "x", "stop_hook_active": False})
+T.check("H4d Stop delivers the item whose time has come and keeps the one for later; the next Stop delivers nothing yet",
+        out.get("decision") == "block" and "gia' dovuta" in out.get("reason", "") and "alle nove" in (q / "sid4").read_text() and not r2.stdout.strip(), r.stdout + r2.stdout)
 # H5
 # H4c: la riga stop porta anche `tail` (ultima riga di testo) ed `esito` (riga «Esito:»), per il polso
 r = hook("Stop", {"session_id": "sid-esito", "cwd": str(home), "last_assistant_message": "Ho fatto **tante** cose.\n\n```\ncodice\n```\n\nEsito: tre file toccati, test verdi.\n"})

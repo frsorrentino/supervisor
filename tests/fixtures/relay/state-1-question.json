@@ -116,7 +116,8 @@
           "blocking": false
         }
       ],
-      "permission_mode": "bypassPermissions"
+      "permission_mode": "bypassPermissions",
+      "at_pc": true
     },
     {
       "id": "3d1b2c4e-0000-4000-8000-000000000003",
@@ -340,7 +341,8 @@
     "night",
     "agenda",
     "agenda_set",
-    "quota_route"
+    "quota_route",
+    "project_new"
   ],
   "slash": [
     "compact",
@@ -416,5 +418,10 @@
       "prompt": "Check what the competing plugins shipped this week and sum it up",
       "param": false
     }
+  ],
+  "project_parents": [
+    "/home/demo/workspaces/personal",
+    "/home/demo/workspaces/work/clients",
+    "/home/demo/workspaces/work/own"
   ]
 }

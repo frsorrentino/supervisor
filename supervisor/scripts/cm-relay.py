@@ -69,7 +69,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -695,6 +695,7 @@ def collect_sources(now=None):
             runtime[r.get("tmux") or r.get("name") or ""] = rt
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             pass
+    inv = inventory()
     return {
         "host": str(R.get("host") or socket.gethostname()),
         "root": cm.expand(CFG["workspace"]["root"]), "prefixes": prefixes(), "high_words": R.get("tier_high") or None,
@@ -702,12 +703,12 @@ def collect_sources(now=None):
         "state_max_kb": R.get("state_max_kb") or 8,
         "rows": rows, "ledger": ledger, "questions": questions,
         "quota": _json_cmd("quota", "--json", expect="{") or {},
-        "projects": inventory(), "night": night_queue(), "night_report": night_report_latest(), "recap": recap_today(now), "ops": list(OPS), "slash": slash_allowed(),
+        "projects": inv, "night": night_queue(), "night_report": night_report_latest(), "recap": recap_today(now), "ops": list(OPS), "slash": slash_allowed(),
         "follow": followed(), "awaiting": aw, "next": nexts, "next_at": nexts_at, "tools": tools,
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
-        "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now),
+        "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1004,7 +1005,8 @@ def _push(dry_run=False, now=None, m=None):
         woken = True
         for e in events:
             try:
-                fcm_send({"kind": e["kind"], "session": e["session"], "ts": e["ts"], "key": e["key"]})
+                # 1.62: «quiet» anche nella sveglia, cosi' l'app sa senza leggere l'evento che non deve suonare
+                fcm_send({"kind": e["kind"], "session": e["session"], "ts": e["ts"], "key": e["key"], **({"quiet": "1"} if e.get("quiet") else {})})
             except (urllib.error.URLError, OSError, ValueError) as ex:
                 woken = False
                 log(f"fcm FAILED: {ex}")
@@ -2882,6 +2884,19 @@ def execute(cmd):
                 return False, "empty prompt"
             if not is_live(tm):
                 return False, M("relay.cmd_not_running", name=session)
+            if cmd.get("at") is not None:
+                # 1.63 (14/10): «manda alle HH:MM» — l'ora l'ha calcolata il dispositivo (epoch); va nella coda della sessione
+                try:
+                    at = float(cmd["at"])
+                except (TypeError, ValueError):
+                    at = 0.0
+                if not time.time() - 60 <= at <= time.time() + 7 * 86400:
+                    return False, M("relay.cmd_prompt_bad_at")
+                voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
+                rc, out = run_cm("queue", tm, prefix_for(cmd, tm) + voice + " " + text, "--at-epoch", str(at))
+                if rc != 0:
+                    return False, (out.splitlines() or ["queue failed"])[0]
+                return True, M("relay.cmd_prompt_scheduled", name=session, t=time.strftime("%H:%M", time.localtime(at)))
             ago = duplicate_prompt(tm, text)
             if ago is not None:
                 return False, M("relay.cmd_prompt_duplicate", name=session, s=ago)
@@ -3016,6 +3031,8 @@ def execute(cmd):
             return agenda_set(cmd, arg)
         if op == "quota_route":
             return quota_route(cmd, session, tm, arg)
+        if op == "project_new":
+            return project_new(cmd, arg, cmd.get("text"))
         if op == "search":
             return search(arg)
         if op == "timeline":
@@ -3775,6 +3792,68 @@ def quota_limit(tm):
     return 0
 
 
+TURN_FAILED_GAP_S = 60   # 1.61: un evento per sessione al minuto, anche se Claude Code riprova e fallisce di fila
+
+
+def turn_failed(tm, error):
+    """1.61 (14/10, dall'analisi dei concorrenti): un turno finito in errore (529 overloaded, 500, autenticazione...)
+    lasciava la sessione ferma come se avesse finito. Un evento turn_failed al telefono: il motivo in una riga, senza
+    segreti (come le anteprime della 1.56), e `continue_text`, il testo che il tasto «continua» manda con l'op prompt.
+    La quota ha il suo evento (1.58)."""
+    p = rdir() / "turn-failed.json"
+    seen = read_json(p, {})
+    now = time.time()
+    if now - float(seen.get(tm) or 0) < TURN_FAILED_GAP_S:
+        return 0
+    seen[tm] = now
+    write_json(p, {k: v for k, v in seen.items() if now - float(v or 0) < 86400})
+    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None) or {}
+    name = S.short_name(tm, prefixes())
+    reason = S.redact_preview(S.short_of(error or "?", 120))
+    emit("turn_failed", M("relay.event_turn_failed", name=name, reason=reason), "", ref=name, account=row.get("account"), session=name,
+         extra={"reason": reason, "continue_text": M("relay.continue_text")})
+    return 0
+
+
+PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+
+def project_parents():
+    """1.64: le cartelle madri ammesse per un progetto nuovo, quelle dei progetti pubblicati (inventory): una cartella
+    creata li' compare subito fra i progetti."""
+    return sorted({str(Path(p["path"]).parent) for p in inventory()})
+
+
+def project_new(cmd, parent, name):
+    """1.64 (14/10, dall'analisi dei concorrenti): una cartella nuova dal telefono, mai creata senza conferma (regola 8
+    del kernel: mai creare cartelle per un refuso). `arg` = la cartella madre, una di project_parents(); `text` = il
+    nome. Senza `confirm: true` non crea niente e risponde ok: false con il percorso completo da mostrare; con
+    `confirm: true` crea la cartella e lancia la sessione (account dalla cartella, come launch), con il primo
+    messaggio se c'e' `prompt`."""
+    name = str(name or "").strip()
+    if not PROJECT_NAME.fullmatch(name):
+        return False, M("relay.cmd_project_bad_name", name=name or "?")
+    real = os.path.realpath(str(parent or ""))
+    if real not in {os.path.realpath(x) for x in project_parents()}:
+        return False, M("relay.cmd_project_bad_parent", path=str(parent or "?"))
+    path = Path(real) / name
+    if path.exists():
+        return False, M("relay.cmd_project_exists", path=str(path))
+    if cmd.get("confirm") is not True:
+        return False, M("relay.cmd_project_confirm", path=str(path))
+    path.mkdir()
+    rc, out = run_cm("launch", str(path), "--window")
+    if rc != 0:
+        return False, (out.splitlines() or ["launch failed"])[0]
+    new = [r.get("tmux") or r.get("name") for r in (_json_cmd("sessions", "--json", "--no-screen") or [])
+           if r.get("cwd") and os.path.realpath(r["cwd"]) == str(path)]
+    extra = {"session": S.short_name(new[0], prefixes())} if new else {}
+    prompt = " ".join(str(cmd.get("prompt") or "").split())
+    if prompt and new:
+        relay_talk(new[0], prefix_for(cmd, new[0]) + " " + prompt, "--no-wait")
+    return True, M("relay.cmd_project_created", path=str(path), account=account_for_path(path)), extra
+
+
 def quick_handoff(row):
     """1.58: un passaggio di consegne scritto dal relay, senza modello (la sessione ferma per la quota non puo' scriverlo):
     cartella, conversazione, le ultime richieste della persona, l'ultimo messaggio, il «prossimo» del recap. Il file
@@ -3899,6 +3978,8 @@ def main(argv):
         return 0
     if cmd == "stats":
         return stats(rest)
+    if cmd == "turn-failed":   # 1.61: lanciato dall'hook di StopFailure, in background
+        return turn_failed(rest[0], rest[1] if len(rest) > 1 else "") if rest and R.get("enabled") else 0
     if cmd == "quota-limit":   # 1.58: lanciato dall'hook di StopFailure, in background
         return quota_limit(rest[0]) if rest and R.get("enabled") else 0
     if cmd == "task-check":   # 1.57: lanciato dall'hook di Stop, in background
@@ -3936,7 +4017,14 @@ def main(argv):
     if cmd == "web":
         return web(rest)
     if cmd == "ensure":
-        return ensure()
+        rc = ensure()
+        try:   # 1.63: dal cron ogni minuto, i messaggi programmati per le sessioni ferme (senza voci in coda: niente)
+            qd = Path(cm.expand(CFG["state_dir"])) / "queue"
+            if qd.is_dir() and any(qd.iterdir()):
+                run_cm("queue", "--due", timeout=300)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return rc
     if cmd == "status":
         return status()
     if cmd == "install":

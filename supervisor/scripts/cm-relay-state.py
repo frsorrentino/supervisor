@@ -417,6 +417,12 @@ def build_session(row, src):
         out["permission_mode"] = str(rt["permission_mode"])
     if (src.get("resolved") or {}).get(name):
         out["resolved"] = dict(src["resolved"][name], by="terminal")
+    # 1.62 (14/10, dall'analisi dei concorrenti): la sessione e' attaccata e qualcuno ha premuto un tasto nel suo
+    # terminale negli ultimi AT_PC_S: chi e' al PC la vede gia', telefono e orologio non suonano. Senza il dato
+    # (sessione su un altro host, tmux che non risponde) il campo manca e si suona: fail open
+    act = row.get("pc_activity")
+    if row.get("attached") and act and src.get("_now") and 0 <= float(src["_now"]) - float(act) <= AT_PC_S:
+        out["at_pc"] = True
     return out
 
 
@@ -490,7 +496,11 @@ def build_devices(devices, seen):
     return out
 
 
+AT_PC_S = 120
+
+
 def build_state(src, now, fit=True):
+    src = dict(src, _now=now)   # 1.62: build_session confronta l'attivita' al PC con l'ora della raccolta
     sessions = order_sessions([build_session(r, src) for r in (src.get("rows") or [])])
     # 1.13: last_used = l'ultima trascrizione di quella cartella (epoch s) o null; l'ordine resta per nome
     projects = sorted(({"path": p.get("path", ""), "name": p.get("name", ""), "account": p.get("account", ""),
@@ -532,6 +542,9 @@ def build_state(src, now, fit=True):
     # 1.33: le azioni ricorrenti della master (box «Ricorrenti»); senza lista il campo manca e l'app non mostra il box
     if src.get("recurring"):
         state["recurring"] = [dict(x) for x in src["recurring"]][:8]
+    # 1.64: le cartelle madri ammesse per un progetto nuovo dal telefono (op project_new); assente = relay precedente
+    if src.get("project_parents"):
+        state["project_parents"] = list(src["project_parents"])
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state
@@ -655,7 +668,7 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
         nonlocal seq
         out.append({"key": f"{ts}_{seq:03d}", "kind": kind, "session": s["name"] if s else None,
                     "account": s["account"] if s else None, "ts": ts, "title": title, "body": body, "ref": ref,
-                    **preview_of(title, body)})
+                    **preview_of(title, body), **({"quiet": True} if s and s.get("at_pc") else {})})   # 1.62
         seq += 1
     for name, s in cv.items():
         p = pv.get(name)

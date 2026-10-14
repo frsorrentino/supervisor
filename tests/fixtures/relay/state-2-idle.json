@@ -150,7 +150,9 @@
     "unpair",
     "night",
     "agenda",
-    "agenda_set", "quota_route"
+    "agenda_set",
+    "quota_route",
+    "project_new"
   ],
   "slash": [
     "compact",

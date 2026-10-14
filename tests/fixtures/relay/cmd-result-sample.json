@@ -541,6 +541,58 @@
       "device": "phone",
       "issued": 1789211430,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0520-4000-8000-000000000520",
+      "op": "answer",
+      "session": "ledger-api",
+      "arg": "1",
+      "question": "q-1789210500-1",
+      "device": "phone",
+      "issued": 1789211400,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0521-4000-8000-000000000521",
+      "op": "answer",
+      "session": "ledger-api",
+      "arg": "1",
+      "question": "q-1789210380-1",
+      "device": "phone",
+      "issued": 1789211410,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0630-4000-8000-0000000000630",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "tag the release",
+      "at": 1789225200,
+      "device": "phone",
+      "issued": 1789211500,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0640-4000-8000-0000000000640",
+      "op": "project_new",
+      "session": null,
+      "arg": "/home/demo/workspaces/personal",
+      "text": "brand-new",
+      "device": "phone",
+      "issued": 1789211510,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0641-4000-8000-0000000000641",
+      "op": "project_new",
+      "session": null,
+      "arg": "/home/demo/workspaces/personal",
+      "text": "brand-new",
+      "confirm": true,
+      "prompt": "set up a README",
+      "device": "phone",
+      "issued": 1789211520,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -913,6 +965,37 @@
       "ok": false,
       "text": "atlas-shop: the same message was sent 12 s ago, not sent again",
       "at": 1789211431
+    },
+    {
+      "id": "6f1c2d3e-0520-4000-8000-000000000520",
+      "ok": true,
+      "text": "answered 1. yes",
+      "at": 1789211402
+    },
+    {
+      "id": "6f1c2d3e-0521-4000-8000-000000000521",
+      "ok": false,
+      "text": "ledger-api: the question changed after your answer, nothing was pressed",
+      "at": 1789211411
+    },
+    {
+      "id": "6f1c2d3e-0630-4000-8000-0000000000630",
+      "ok": true,
+      "text": "scheduled for 17:00: atlas-shop gets it then (at its first stop after, if it is working)",
+      "at": 1789211501
+    },
+    {
+      "id": "6f1c2d3e-0640-4000-8000-0000000000640",
+      "ok": false,
+      "text": "confirm: create /home/demo/workspaces/personal/brand-new",
+      "at": 1789211511
+    },
+    {
+      "id": "6f1c2d3e-0641-4000-8000-0000000000641",
+      "ok": true,
+      "text": "created /home/demo/workspaces/personal/brand-new and launched it (personal)",
+      "session": "brand-new",
+      "at": 1789211521
     }
   ]
 }

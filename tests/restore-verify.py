@@ -2,12 +2,13 @@
 """Verifica cm-restore.sh con il claude finto e un tmux privato; init --cron.
 
 X1  --dry-run: elenca le sessioni da rilanciare, salta la viva e la cartella sparita, non lancia
-X2  --yes: rilancia in parallelo con --continue e --account, quella di `restore.last` per ultima; log per sessione
+X2  --yes: rilancia in parallelo (--resume <id> o --continue, X5) e --account, quella di `restore.last` per ultima; log per sessione
 X4  fotografia: solo le voci viste entro restore.snapshot_window_min dall'ultimo segno di vita prima dell'avvio
 X3  registro assente → exit 1; registro vuoto → exit 1 (X3b: con la fotografia si propone da quella)
 K1  init --cron stampa la riga del crontab con la cadenza di config; --yes la installa (crontab finto via CM_CRONTAB_CMD)
 """
 import json
+import re
 import os
 import subprocess
 import sys
@@ -48,16 +49,23 @@ def env(**extra):
     return e
 
 
+# X5 (14/10): alfa ha l'id e la sua trascrizione → --resume; pix-beta ha un id senza trascrizione e master nessun id → -c, detto
+SID_ALFA = "a1fa0000-0000-4000-8000-000000000001"
+_slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(str(home / "ws" / "personali" / "alfa")))
+(home / ".claude" / "projects" / _slug).mkdir(parents=True, exist_ok=True)
+(home / ".claude" / "projects" / _slug / f"{SID_ALFA}.jsonl").write_text("{}\n")
+
 with T.PrivateTmux() as tm:
     subprocess.run(["tmux", "-L", tm.socket, "new-session", "-d", "-s", "viva", "bash", "--norc"], env=env(), check=True)
     reg.write_text(json.dumps({"salvato": "2026-09-09T08:00:00+0200", "sessioni": [
         {"nome": "master", "cartella": str(home / "ws"), "account": "personale"},
-        {"nome": "alfa", "cartella": str(home / "ws" / "personali" / "alfa"), "account": "personale"},
+        {"nome": "alfa", "cartella": str(home / "ws" / "personali" / "alfa"), "account": "personale", "session_id": SID_ALFA},
         {"nome": "viva", "cartella": str(home / "ws" / "personali" / "viva"), "account": "personale"},
-        {"nome": "pix-beta", "cartella": str(home / "ws" / "pro" / "beta"), "account": "professionale"},
+        {"nome": "pix-beta", "cartella": str(home / "ws" / "pro" / "beta"), "account": "professionale", "session_id": "0000dead-0000-4000-8000-000000000000"},
         {"nome": "sparita", "cartella": str(home / "ws" / "nope"), "account": "personale"},
     ]}))
     r = subprocess.run([str(T.SCRIPTS / "cm-restore.sh"), "--dry-run"], capture_output=True, text=True, env=env(), timeout=60)
+    dry1 = r.stdout
     T.check("X1 dry-run lists 3 to restore, skips the live one and the missing folder", r.returncode == 0 and "(3)" in r.stdout and "viva" in r.stdout and "sparita" in r.stdout
             and "alfa" in r.stdout and "pix-beta" in r.stdout and tm("has-session", "-t", "=alfa").returncode != 0, r.stdout + r.stderr)
     r = subprocess.run([str(T.SCRIPTS / "cm-restore.sh")], capture_output=True, text=True, env=env(), timeout=60)
@@ -65,7 +73,12 @@ with T.PrivateTmux() as tm:
     r = subprocess.run([str(T.SCRIPTS / "cm-restore.sh"), "--yes"], capture_output=True, text=True, env=env(), timeout=240)
     T.check("X2 --yes relaunches alfa, pix-beta and master", r.returncode == 0 and all(tm("has-session", "-t", f"={n}").returncode == 0 for n in ("alfa", "pix-beta", "master")), r.stdout + r.stderr + tm("list-sessions").stdout)
     lines = argslog.read_text().splitlines()
-    T.check("X2 every relaunch uses -c; master launched last", all(" -c" in f" {l} " or l.startswith("-c") for l in lines[-3:]) and "-n master" in lines[-1], "\n".join(lines[-3:]))
+    T.check("X2 master launched last", "-n master" in lines[-1], "\n".join(lines[-3:]))
+    T.check("X5 alfa (id and transcript) relaunched with --resume <id>; pix-beta (id, no transcript) and master (no id) with -c",
+            any(f"--resume {SID_ALFA}" in l and " -c" not in f" {l} " for l in lines[-3:])
+            and sum(1 for l in lines[-3:] if " -c" in f" {l} " or l.startswith("-c")) == 2, "\n".join(lines[-3:]))
+    T.check("X5 the list says how each one resumes, and says it for the ones that fall back to --continue",
+            f"resume {SID_ALFA[:8]}" in dry1 and dry1.count("(--continue)") == 2 and "per pix-beta" in dry1 and "per master" in dry1, dry1)
     pane_env = subprocess.run(["bash", "-c", f"tr '\\0' '\\n' < /proc/$(tmux -L {tm.socket} list-panes -t pix-beta -F '#{{pane_pid}}')/environ"], capture_output=True, text=True).stdout
     T.check("X2 professionale relaunched on its account", f"CLAUDE_CONFIG_DIR={home}/.claude-pixel" in pane_env, pane_env[:200])
     T.check("X2 per-session logs", (tmp / "state" / "restore" / "alfa.log").exists() and (tmp / "state" / "restore" / "master.log").exists(), str(list((tmp / "state" / "restore").glob("*"))))

@@ -196,7 +196,12 @@ def pop_queue(p):
     if not items:
         q.unlink(missing_ok=True)
         return None
-    item, rest = items[0], items[1:]
+    # 1.63: una voce con `at` aspetta la sua ora; si consegna la prima gia' dovuta
+    item = next((i for i in items if not i.get("at") or i["at"] <= now), None)
+    if item is None:
+        q.write_text("\n".join(json.dumps(i, ensure_ascii=False) for i in items) + "\n")
+        return None
+    rest = [i for i in items if i is not item]
     if rest:
         q.write_text("\n".join(json.dumps(i, ensure_ascii=False) for i in rest) + "\n")
     else:
@@ -384,11 +389,15 @@ def main(argv):
     elif ev == "StopFailure":
         ledger("stop-failure", p, error=str(p.get("error", ""))[:200])
         # 1.58 (14/10): un turno fermato dal limite della quota → il telefono propone le tre strade
-        if (CFG.get("relay") or {}).get("enabled") and re.search(r"rate.?limit|usage.?limit|limit reached|quota", str(p.get("error", "")) + " " + str(p.get("error_details", "")), re.I):
-            name = my_tmux_name()
-            if name:
-                subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name], stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        err = (str(p.get("error", "")) + " " + str(p.get("error_details", ""))).strip()
+        name = my_tmux_name() if (CFG.get("relay") or {}).get("enabled") else ""
+        if name and re.search(r"rate.?limit|usage.?limit|limit reached|quota", err, re.I):
+            subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        elif name:
+            # 1.61 (14/10): ogni altro turno fallito (529 overloaded, 500, accesso) al telefono, con il motivo e «continua»
+            subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "turn-failed", name, err[:500]], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         subprocess.run([str(HERE / "cm-restart.sh"), "failed"], input=json.dumps(p), capture_output=True, text=True)
     return 0
 

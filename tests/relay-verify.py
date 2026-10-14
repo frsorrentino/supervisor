@@ -215,6 +215,9 @@ KINDS = {"personal": "personal", "work": "work"}   # 1.8: come li calcola il rel
 SRC1["account_kinds"] = KINDS
 # 1.55: field-notes ha risolto al terminale la sua domanda di prima
 SRC1["resolved"] = {"field-notes": {"id": "q-1789120500-1", "text": "Commit the README changes now?", "at": 1789210600}}
+# 1.62: atlas-shop e' attaccata e qualcuno ha premuto un tasto 30 s fa → at_pc; 1.64: le cartelle madri dei progetti
+SRC1["rows"][1]["pc_activity"] = 1789210770
+SRC1["project_parents"] = [ROOT_WS + "/personal", ROOT_WS + "/work/clients", ROOT_WS + "/work/own"]
 # 1.51: il comando dell'handoff per sessione — fable-director, quello di supervisor, nessuno
 SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-shop": "/supervisor:handoff --here", "field-notes": None}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
@@ -326,7 +329,7 @@ T.check("R2 over 8 KB → fit_state trims (old gone sessions, projects past 10, 
 # (job-*: work- e' il prefisso tmux dell'account work; 60 progetti: lo stato resta oltre gli 8 KB finche' le sessioni
 # finite non scendono a tre anche con i nomi inglesi, piu' corti)
 # 14/09 dal vivo: tre sessioni al lavoro con un esito lungo + dieci finite → prima ogni full diventava short
-live = dict(SRC1, devices={}, seen={}, recurring=[], approvals=[], advice={})   # 1.32 (e 1.37): questi casi misurano i tagli delle sessioni, senza dispositivi ne approvazioni
+live = dict(SRC1, devices={}, seen={}, recurring=[], approvals=[], advice={}, project_parents=[])   # 1.32 (e 1.37): questi casi misurano i tagli delle sessioni, senza dispositivi ne approvazioni
 long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 9
 live["rows"] = [{"name": f"job-{i}", "tmux": f"job-{i}", "account": "personal", "cwd": ROOT_WS + f"/personal/job-{i}", "status": "idle", "waiting": False, "session_id": f"sid-job-{i}", "link": "https://claude.ai/code/session_" + "x" * 24, "attached": False, "started_at": 1789200000000} for i in range(3)] + \
     [{"name": f"old-{i:02d}", "tmux": f"old-{i:02d}", "account": "personal", "cwd": ROOT_WS + f"/personal/old-progetto-{i:02d}", "status": "dead", "session_id": f"0000000{i:02d}-aaaa-bbbb-cccc-dddddddddddd", "link": "https://claude.ai/code/session_" + "y" * 24, "visto_ts": 1789100000 + i, "started_at": 1789000000000} for i in range(10)]
@@ -393,7 +396,7 @@ T.check("R2 awaiting state: a session with a wrist prompt pending is «awaiting�
 # R3: eventi dal diff
 EV = json.loads((FIX / "events-sample.json").read_text())
 # 1.56-1.58: preview (quando qualcosa e' nascosto) e i campi di quota_limit sono facoltativi; gli altri sempre
-EV_OPT = {"preview", "reset_at", "window", "other_account", "actions"}
+EV_OPT = {"preview", "reset_at", "window", "other_account", "actions", "reason", "continue_text", "quiet"}
 ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
 ev, seq = S.events_between(F2, F1, 1789210800, 1)
 T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "❓ ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
@@ -2562,5 +2565,76 @@ T.check("R45 (1.59) a second push with the transcript unchanged writes no /tail"
 rows_alive("ledger-api", "field-notes")
 relay("push")
 T.check("R45 (1.59) a session that is no longer live loses its /tail node", "S-A" not in (STORE.get("tail") or {}), str(list(STORE.get("tail") or {})))
+
+
+# R46 (contratto 1.61, 14/10, dall'analisi dei concorrenti): turno fallito al telefono, con il motivo e «continua»
+f46 = tmp / "f46"
+f46.mkdir()
+_rd, _jc, _em = RL.rdir, RL._json_cmd, RL.emit
+got46 = []
+RL.rdir = lambda: f46
+RL._json_cmd = lambda *a, **kw: [{"name": "atlas-shop", "tmux": "atlas-shop", "account": "personal"}]
+RL.emit = lambda kind, title, body, **kw: got46.append((kind, title, body, kw))
+RL.turn_failed("atlas-shop", "api_error: 529 overloaded_error (request id req_abc, key sk-abcdefghijklmnopqrstuv)")
+RL.turn_failed("atlas-shop", "api_error: 529 overloaded_error again")
+RL.rdir, RL._json_cmd, RL.emit = _rd, _jc, _em
+k46 = got46[0][3] if got46 else {}
+T.check("R46 (1.61) turn_failed: one event per session per minute, the reason in one line with the key hidden, continue_text for the button",
+        len(got46) == 1 and got46[0][0] == "turn_failed" and "529 overloaded_error" in got46[0][1] and "sk-abc" not in got46[0][1]
+        and k46["extra"]["reason"].endswith("key •••)") and k46["extra"]["continue_text"] and k46["session"] == "atlas-shop" and k46["ref"] == "atlas-shop", str(got46))
+
+
+# R47 (contratto 1.62, 14/10): telefono e orologio zitti quando la sessione e' usata al PC
+row47 = {"name": "atlas-shop", "tmux": "atlas-shop", "status": "busy", "session_id": "S-A", "account": "personal"}
+s47 = lambda **kw: S.build_session(dict(row47, **kw), {"_now": 1789210800})  # noqa: E731
+T.check("R47 (1.62) at_pc only when attached with a key pressed in the last 120 s; detached, idle for longer or without the datum → absent (it rings)",
+        s47(attached=True, pc_activity=1789210750).get("at_pc") is True and "at_pc" not in s47(attached=False, pc_activity=1789210750)
+        and "at_pc" not in s47(attached=True, pc_activity=1789210600) and "at_pc" not in s47(attached=True), "")
+prev47 = {"sessions": [dict(S.build_session(dict(row47, status="busy"), {"_now": 1789210800}), state="busy")]}
+cur47 = {"sessions": [dict(S.build_session(dict(row47, status="idle", attached=True, pc_activity=1789210790), {"_now": 1789210800}), state="idle",
+                           outcome={"short": "done", "full": "done", "at": 1789210790})]}
+ev47, _ = S.events_between(prev47, cur47, 1789210800, 1)
+T.check("R47 (1.62) an event of a session used at the PC carries quiet: true", ev47 and all(e.get("quiet") is True for e in ev47 if e["session"] == "atlas-shop"), str(ev47))
+
+
+# R48 (contratto 1.63, 14/10): «manda alle HH:MM» — il prompt con `at` va nella coda della sessione
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+relay("ensure")   # R6 uninstall ha fermato il demone: R48 e R49 mandano comandi sul bus
+T.wait_until(lambda: serve_pid() > 0, 10)
+at48 = int(time.time()) + 3600
+n48 = len(cm_calls())
+res48 = send_cmd({"id": "6f1c2d3e-0630-4000-8000-000000000630", "op": "prompt", "session": "atlas-shop", "arg": "tag the release", "at": at48, "device": "phone", "issued": int(time.time()), "by": "phone-pixel8"})
+bad48 = send_cmd({"id": "6f1c2d3e-0631-4000-8000-000000000631", "op": "prompt", "session": "atlas-shop", "arg": "tag the release", "at": int(time.time()) + 30 * 86400, "issued": int(time.time()), "by": "phone-pixel8"})
+T.check("R48 (1.63) a prompt with `at` → `queue atlas-shop <prefix + text> --at-epoch <at>`, «scheduled for HH:MM»; an `at` past 7 days → refused, nothing queued",
+        res48 and res48["ok"] is True and res48["text"].startswith("scheduled for " + time.strftime("%H:%M", time.localtime(at48)))
+        and any(c.startswith("queue atlas-shop Dall'utente via telefono.") and c.endswith(f"tag the release --at-epoch {float(at48)}") for c in cm_calls()[n48:])
+        and bad48 and bad48["ok"] is False and bad48["text"] == "at: expected an epoch in the next 7 days"
+        and sum(1 for c in cm_calls()[n48:] if c.startswith("queue ")) == 1, str(res48) + str(bad48) + str(cm_calls()[n48:]))
+Q48 = load("cm-queue")
+_t48 = time.mktime((2026, 10, 14, 20, 0, 0, 0, 0, -1))
+T.check("R48 (1.63) queue --at HH:MM: today when still ahead, tomorrow when past; a bad time → None",
+        Q48.at_of("21:30", _t48) == time.mktime((2026, 10, 14, 21, 30, 0, 0, 0, -1)) and Q48.at_of("07:15", _t48) == time.mktime((2026, 10, 15, 7, 15, 0, 0, 0, -1))
+        and Q48.at_of("25:00", _t48) is None and Q48.at_of("nove", _t48) is None, "")
+
+
+# R49 (contratto 1.64, 14/10): cartella nuova dal telefono, creata solo con la conferma
+par49 = str((ws / "personal").resolve())
+new49 = Path(par49) / "brand-new"
+p49 = lambda n, **kw: send_cmd(dict({"id": f"6f1c2d3e-0640-4000-8000-0000000006{n:02d}", "op": "project_new", "session": None, "arg": par49, "text": "brand-new",  # noqa: E731
+                                     "issued": int(time.time()), "by": "phone-pixel8"}, **kw))
+n49 = len(cm_calls())
+ask49 = p49(1)
+T.check("R49 (1.64) project_new without confirm → ok false «confirm: create <full path>», nothing created, nothing launched",
+        ask49 and ask49["ok"] is False and ask49["text"] == f"confirm: create {new49}" and not new49.exists() and not any(c.startswith("launch ") for c in cm_calls()[n49:]), str(ask49))
+bad49 = (p49(2, arg="/tmp", confirm=True), p49(3, text="../escape", confirm=True), p49(4, text=".hidden", confirm=True))
+T.check("R49 (1.64) a parent outside the published projects' parents, a name with a path or starting with a dot → refused, nothing created",
+        [b["ok"] for b in bad49] == [False] * 3 and "is not a parent folder" in bad49[0]["text"] and bad49[1]["text"].startswith("bad project name") and bad49[2]["text"].startswith("bad project name")
+        and not (Path("/tmp") / "brand-new").exists(), str(bad49))
+ok49 = p49(5, confirm=True)
+again49 = p49(6, confirm=True)
+T.check("R49 (1.64) with confirm: the folder is created and launched (`launch <path> --window`); the same name again → «already exists»",
+        ok49 and ok49["ok"] is True and new49.is_dir() and ok49["text"].startswith(f"created {new49}") and any(c == f"launch {new49} --window" for c in cm_calls()[n49:])
+        and again49 and again49["ok"] is False and again49["text"] == f"{new49} already exists", str(ok49) + str(again49) + str(cm_calls()[n49:]))
+T.check("R49 (1.64) the state lists project_parents and project_new is in ops", par49 in (json.loads(relay("push", "--dry-run").stdout).get("project_parents") or []) and "project_new" in RL.OPS, "")
 
 T.finish()
