@@ -2,9 +2,9 @@
 
 ![Version](https://img.shields.io/badge/version-0.8.23-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
-**See every Claude Code session on one screen, answer the blocked ones from your
-phone, and get them all back after a reboot.** A supervisor for the sessions you
-already run, on your own computer.
+**Answer and steer your Claude Code sessions from your phone and watch, with a
+master session that coordinates them and suggests the next step.** A supervisor
+for the sessions you already run, on your own computer.
 
 [![supervisor, the film: the session waiting for you comes first; one tap answers it from the phone. Demo data.](assets/readme/supervisor-film.gif)](https://www.francescosorrentino.com/plugins/supervisor)
 
@@ -46,17 +46,19 @@ you do not need it. supervisor is an independent plugin, not made by Anthropic.
 
 ## What it does
 
+- **Answers from the phone and the watch, encrypted.** A question reaches your
+  phone, tablet or watch with its options as buttons, encrypted end to end
+  through your own Firebase project.
+- **A master that coordinates the others with you.** One session, the master on
+  your workspace root, launches, watches, answers and closes the others, and
+  suggests the next step.
+- **Automations that keep work moving.** At 20:00 one sentence per project on
+  what was done and the next step; at 02:00 a queue of jobs runs one at a time
+  while memory and quota allow, with a report in the morning; when a session
+  hits its limit, your phone offers three ways out.
 - **Every session on one screen, the blocked ones first.** One list shows every
   session of every account, and which one is stopped on a question waiting for
   you.
-- **A master that opens and instructs the others.** One session, the master on
-  your workspace root, launches, watches, answers and closes the others.
-- **The day's recap and work for the night.** At 20:00 one sentence per project
-  on what was done and the next step; at 02:00 a queue of jobs runs one at a
-  time while memory and quota allow, with a report in the morning.
-- **Answers from the phone, encrypted.** A question reaches your phone, tablet
-  or watch with its options as buttons, encrypted end to end through your own
-  Firebase project.
 - **Back after a reboot, across accounts and computers.** Every session comes
   back with its conversation; two accounts each with its own quota guard; a
   second computer in the same list; a registry of tasks that lets `git push`
