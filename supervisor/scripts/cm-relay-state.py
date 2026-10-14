@@ -124,7 +124,7 @@ _SECRET_RES = [
     re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._~+/=-]{8,}"),   # intestazioni Authorization
     # chiave=valore e chiave: valore (variabili d'ambiente, JSON, URL), e le opzioni con lo spazio (--password x)
     re.compile(r"(?i)((?:[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)s?[A-Za-z0-9_-]*)"
-               r"[\"']?\s*[=:]\s*[\"']?|--?(?:pass(?:word|wd)?|secret|token|api[_-]?key|key|auth)\s+[\"']?)([^\s\"',;&|]{4,})"),
+               r"[\"']?\s*[=:]\s*[\"']?|--?(?:pass(?:word|wd)?|secret|token|api[_-]?key|key|auth)\s+[\"']?)([^\s\"',;&|]{3,}[^\s\"',;&|.:!?)])"),   # il punto di fine frase resta
     re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"),   # utente:password@ in un URL
     re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}"
                r"|\bAKIA[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}"),
@@ -272,7 +272,13 @@ def _outcome(events):
     full_src = tail if esito and esito.splitlines()[0] in tail else (esito + ("\n" if esito and tail else "") + tail)
     full = _unbang(strip_markdown(without_watch(full_src)))[:600]
     short = watch_line(str(r.get("watch") or "")) or watch_line(tail) or esito_line(esito) or esito_line(tail) or (full.splitlines() or [""])[-1]
-    return {"short": short_of(short, SHORT_MAX), "full": full, "at": epoch(r.get("ts"))}
+    out = {"short": short_of(short, SHORT_MAX), "full": full, "at": epoch(r.get("ts"))}
+    # 1.60 (14/10, chiesto dall'app per la 1.56): l'esito e' l'ultimo messaggio della sessione e puo' contenere un segreto;
+    # la notifica dell'esito usa preview {short, full}, presente solo quando c'era qualcosa da nascondere
+    pv = {"short": redact_preview(out["short"]), "full": redact_preview(out["full"])}
+    if (pv["short"], pv["full"]) != (out["short"], out["full"]):
+        out["preview"] = pv
+    return out
 
 
 def _finished(events):
@@ -587,6 +593,8 @@ def fit_state(state, max_kb=8):
             o = s.get("outcome")
             if o:
                 o["full"] = cut_at_word(o["full"], n) if n else o["short"]
+                if o.get("preview"):   # 1.60: l'anteprima segue lo stesso taglio
+                    o["preview"]["full"] = cut_at_word(o["preview"]["full"], n) if n else o["preview"]["short"]
         if fits():
             return state
     # 23/09: prima di togliere una sessione viva, i campi facoltativi delle sessioni ferme (nulli per contratto quando
@@ -618,6 +626,8 @@ def fit_state(state, max_kb=8):
         o = s.get("outcome")
         if o:
             o["full"] = o["short"]
+            if o.get("preview"):
+                o["preview"]["full"] = o["preview"]["short"]
     if fits():
         return state
     state["projects"] = []

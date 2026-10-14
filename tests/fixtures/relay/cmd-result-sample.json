@@ -505,6 +505,42 @@
       "device": "phone",
       "issued": 1789211310,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0580-4000-8000-0000000000580",
+      "op": "quota_route",
+      "session": "field-notes",
+      "arg": "other_account",
+      "device": "phone",
+      "issued": 1789211400,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0581-4000-8000-0000000000581",
+      "op": "quota_route",
+      "session": "field-notes",
+      "arg": "at_reset",
+      "device": "phone",
+      "issued": 1789211410,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0582-4000-8000-0000000000582",
+      "op": "quota_route",
+      "session": "field-notes",
+      "arg": "pass:ghost",
+      "device": "phone",
+      "issued": 1789211420,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0583-4000-8000-0000000000583",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "check the cart totals too",
+      "device": "phone",
+      "issued": 1789211430,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -852,6 +888,31 @@
       "ok": false,
       "text": "image missing or unreadable",
       "at": 1789211311
+    },
+    {
+      "id": "6f1c2d3e-0580-4000-8000-0000000000580",
+      "ok": true,
+      "text": "field-notes-2 continues on work from the handoff",
+      "session": "field-notes-2",
+      "at": 1789211401
+    },
+    {
+      "id": "6f1c2d3e-0581-4000-8000-0000000000581",
+      "ok": true,
+      "text": "field-notes resumes by itself at 15:00, when the quota resets",
+      "at": 1789211411
+    },
+    {
+      "id": "6f1c2d3e-0582-4000-8000-0000000000582",
+      "ok": false,
+      "text": "ghost is not running: nothing sent",
+      "at": 1789211421
+    },
+    {
+      "id": "6f1c2d3e-0583-4000-8000-0000000000583",
+      "ok": false,
+      "text": "atlas-shop: the same message was sent 12 s ago, not sent again",
+      "at": 1789211431
     }
   ]
 }

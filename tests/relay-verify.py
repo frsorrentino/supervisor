@@ -183,9 +183,12 @@ SRC1 = {
         {"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210300), "last": "x", "esito": "Esito: migrations 008-011 applied, tests green.", "tail": "Esito: migrations 008-011 applied, tests green.\nThe test seeds and the admin page are still to review.\nProssimi: !ok to deploy on staging · review the test seeds\nWatch: Migrations 008-011 applied, tests green", "watch": "Watch: Migrations 008-011 applied, tests green"},
         {"event": "prompt", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210700)},
         {"event": "start", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789120000)},
-        {"event": "stop", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789121000), "last": "x", "esito": "Esito: README rewritten with the three sections asked for.", "tail": "Esito: README rewritten with the three sections asked for.\nWatch: README rewritten", "watch": "Watch: README rewritten"},
+        {"event": "stop", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789121000), "last": "x", "esito": "Esito: README rewritten with the three sections asked for.", "tail": "Esito: README rewritten with the three sections asked for.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.\nWatch: README rewritten", "watch": "Watch: README rewritten"},
     ],
-    "questions": {"work-ledger-api": {"tool": "AskUserQuestion", "text": "Deploy ready, waiting for the client's ok. Deploy now?", "options": ["yes", "no"], "asked_at": 1789210500}},
+    # 1.53: la consigliata e le spiegazioni dal payload dell'hook; 1.56: un token nel testo → question.preview
+    "questions": {"work-ledger-api": {"tool": "AskUserQuestion", "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
+                                      "options": ["yes (Recommended)", "no"], "asked_at": 1789210500,
+                                      "descriptions": {"yes (Recommended)": "Deploy 2.4 to production now", "no": "Wait for the client's ok"}}},
     "quota": {"personal": {"cinque_ore_pct": 11, "settimana_pct": 36, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False},
               "work": {"cinque_ore_pct": None, "settimana_pct": 75.2, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": True}},
     "projects": [{"path": ROOT_WS + "/work/own/orbit-docs", "name": "orbit-docs", "account": "work", "last_used": 1789203600}, {"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789210700}, {"path": ROOT_WS + "/work/clients/ledger-api", "name": "ledger-api", "account": "work", "last_used": 1789210500}],
@@ -201,14 +204,17 @@ SRC1 = {
     "icons": {"work-ledger-api": "🟦", "atlas-shop": "🟢", "field-notes": "🟡", "work-orbit-docs": "🟪"},
     "next_at": {"work-ledger-api": 1789171200, "atlas-shop": 1789171200, "work-orbit-docs": 1789171200}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]},
     # 1.11: quello che ogni sessione viva sta usando (la gone non ha trascrizione da rileggere)
-    "runtime": {"work-ledger-api": {"model": {"id": "claude-opus-5[1m]", "label": "Opus 5"}, "effort": "high", "context": 62},
-                "atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18},
+    # 1.54: la modalita' dei permessi su due sessioni
+    "runtime": {"work-ledger-api": {"model": {"id": "claude-opus-5[1m]", "label": "Opus 5"}, "effort": "high", "context": 62, "permission_mode": "plan"},
+                "atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18, "permission_mode": "bypassPermissions"},
                 # 1.14: field-notes e' passata da sola a Sonnet 5 dopo un messaggio segnalato
                 "field-notes": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "low", "context": 4,
                                 "fallback": {"from": "claude-opus-5-5", "to": "claude-sonnet-5", "category": "cyber", "at": 1789210300}}},
 }
 KINDS = {"personal": "personal", "work": "work"}   # 1.8: come li calcola il relay dalla config del test
 SRC1["account_kinds"] = KINDS
+# 1.55: field-notes ha risolto al terminale la sua domanda di prima
+SRC1["resolved"] = {"field-notes": {"id": "q-1789120500-1", "text": "Commit the README changes now?", "at": 1789210600}}
 # 1.51: il comando dell'handoff per sessione — fable-director, quello di supervisor, nessuno
 SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-shop": "/supervisor:handoff --here", "field-notes": None}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
@@ -386,8 +392,11 @@ T.check("R2 awaiting state: a session with a wrist prompt pending is «awaiting�
 
 # R3: eventi dal diff
 EV = json.loads((FIX / "events-sample.json").read_text())
+# 1.56-1.58: preview (quando qualcosa e' nascosto) e i campi di quota_limit sono facoltativi; gli altri sempre
+EV_OPT = {"preview", "reset_at", "window", "other_account", "actions"}
+ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
 ev, seq = S.events_between(F2, F1, 1789210800, 1)
-T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(set(e) == set(EV[0]) for e in ev) and ev[1]["title"] == "❓ ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
+T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "❓ ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
 ev2, _ = S.events_between(F1, F2, 1789214400, 1)
 T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone)", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes")] and ev2[1]["title"] == "✗ ledger-api", str(ev2))
 q_prev = {"sessions": [F1["sessions"][0]], "quota": {"personal": {"h5": 90, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
@@ -1098,7 +1107,7 @@ ev = new_events("recap", before)
 T.check("R14 (1.18) recap --send → one `recap` event: title «Diario del dd/mm», body = the plain diary as printed (no Telegram HTML), ref = the day, key after the push seq (a push in background may take a number first); FCM with kind recap",
         r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Diario del " + time.strftime("%d/%m") and ev[0]["ref"] == today and "<b>" not in ev[0]["body"]
         and ev[0]["body"].splitlines()[0] == r.stdout.splitlines()[0] and int(ev[0]["key"].split("_")[1]) > seq0 and ev[0]["session"] is None
-        and set(ev[0]) == set(EV[0]) and CALLS["fcm"][n_fcm:] and CALLS["fcm"][-1]["message"]["data"]["kind"] == "recap", r.stdout[-300:] + r.stderr[-300:] + str(ev))
+        and ev_ok(ev[0]) and CALLS["fcm"][n_fcm:] and CALLS["fcm"][-1]["message"]["data"]["kind"] == "recap", r.stdout[-300:] + r.stderr[-300:] + str(ev))
 nq = state_dir / "night-queue.jsonl"
 nq.write_text(json.dumps({"id": "c0ffee01", "dir": str(ws / "personal" / "atlas-shop"), "prompt": "fix the flaky tests", "account": "personal", "model": "", "effort": "", "max_turns": 5, "added": iso(1789207200)}) + "\n")
 before = set(STORE.get("events") or {})
@@ -1860,13 +1869,13 @@ T.check("R28 (1.31) already 8 devices (1.39) → ok false «already 8 devices»,
 (rdir2 / "devices.json").write_text(_dev28); http("PUT", "/allowed.json", _all28 or {})
 T.check("R28 (1.31) /state ops carries pair_add", "pair_add" in json.loads(relay("push", "--dry-run").stdout).get("ops", []), "")
 T.check("R14 (1.18) events-sample: a recap, a night_report and the quota resume, with the shape of the other events",
-        [e["kind"] for e in EV if e["kind"] in ("recap", "night_report", "quota")][-3:] == ["recap", "night_report", "quota"] and all(set(e) == set(EV[0]) for e in EV)
+        [e["kind"] for e in EV if e["kind"] in ("recap", "night_report", "quota")][-3:] == ["recap", "night_report", "quota"] and all(ev_ok(e) for e in EV)
         and next(e for e in EV if e["kind"] == "recap")["ref"] == "2026-09-12", str([e["kind"] for e in EV])[:300])
 T.check("R34 (1.40) events-sample: restart_failed, a restart that did not succeed (no session, ref = the session's name), with the shape of the other events",
-        (_rf := next((e for e in EV if e["kind"] == "restart_failed"), {})) and _rf["session"] is None and _rf["ref"] == "field-notes" and set(_rf) == set(EV[0]), str(_rf))
+        (_rf := next((e for e in EV if e["kind"] == "restart_failed"), {})) and _rf["session"] is None and _rf["ref"] == "field-notes" and ev_ok(_rf), str(_rf))
 _rs = next((e for e in EV if e["kind"] == "relay_stale"), {})
 T.check("R38 (1.45) events-sample: relay_stale, no session and no ref, with the shape of the other events",
-        _rs and _rs["session"] is None and _rs["ref"] is None and _rs["title"].startswith("⚠") and set(_rs) == set(EV[0]), str(_rs))
+        _rs and _rs["session"] is None and _rs["ref"] is None and _rs["title"].startswith("⚠") and ev_ok(_rs), str(_rs))
 rows_alive("ledger-api", "atlas-shop", "field-notes")
 r = relay("push", "--dry-run"); dry11 = json.loads(r.stdout)
 p_atlas = next(p_ for p_ in dry11["projects"] if p_["name"] == "atlas-shop")

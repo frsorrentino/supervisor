@@ -21,19 +21,23 @@
       "question": {
         "id": "q-1789210500-1",
         "kind": "ask",
-        "text": "Deploy ready, waiting for the client's ok. Deploy now?",
+        "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
         "options": [
           {
             "n": 1,
-            "label": "yes"
+            "label": "yes",
+            "description": "Deploy 2.4 to production now",
+            "recommended": true
           },
           {
             "n": 2,
-            "label": "no"
+            "label": "no",
+            "description": "Wait for the client's ok"
           }
         ],
         "tier": "medium",
-        "asked_at": 1789210500
+        "asked_at": 1789210500,
+        "preview": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?"
       },
       "outcome": null,
       "next": "Wait for the go",
@@ -50,7 +54,8 @@
       "low_priority": "offered",
       "suggestion": null,
       "goal": null,
-      "handoff": "/fable-director:handoff --here"
+      "handoff": "/fable-director:handoff --here",
+      "permission_mode": "plan"
     },
     {
       "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
@@ -110,7 +115,8 @@
           "text": "review the test seeds",
           "blocking": false
         }
-      ]
+      ],
+      "permission_mode": "bypassPermissions"
     },
     {
       "id": "3d1b2c4e-0000-4000-8000-000000000003",
@@ -129,8 +135,12 @@
       "question": null,
       "outcome": {
         "short": "README rewritten",
-        "full": "Esito: README rewritten with the three sections asked for.",
-        "at": 1789121000
+        "full": "Esito: README rewritten with the three sections asked for.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.",
+        "at": 1789121000,
+        "preview": {
+          "short": "README rewritten",
+          "full": "Esito: README rewritten with the three sections asked for.\nThe preview build uses PREVIEW_TOKEN=•••."
+        }
       },
       "next": null,
       "next_at": null,
@@ -152,7 +162,13 @@
       "suggestion": "commit the README changes and open a PR",
       "goal": null,
       "handoff": null,
-      "finished": true
+      "finished": true,
+      "resolved": {
+        "id": "q-1789120500-1",
+        "text": "Commit the README changes now?",
+        "at": 1789210600,
+        "by": "terminal"
+      }
     },
     {
       "id": "3d1b2c4e-0000-4000-8000-000000000004",
@@ -323,7 +339,8 @@
     "unpair",
     "night",
     "agenda",
-    "agenda_set", "quota_route"
+    "agenda_set",
+    "quota_route"
   ],
   "slash": [
     "compact",
