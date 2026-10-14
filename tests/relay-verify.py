@@ -407,6 +407,14 @@ good_json = tmp / "good.json"      # la fotografia del registro (registry --good
 launch_adds = tmp / "launch-adds.json"   # se c'e', launch la copia su alive: la sessione nata dal lancio
 GOOD_ORBIT = {"nome": "work-orbit-docs", "cartella": str(ws / "work" / "own" / "orbit-docs"), "account": "work", "visto": "2026-09-12T09:00:00"}
 good_json.write_text(json.dumps({"sessioni": [GOOD_ORBIT]}))
+# 0319ab: il talk finto scrive il record nella casella come quello vero (cm-inbox.put, origin «session»)
+fake_talk = tmp / "fake-talk.py"
+fake_talk.write_text(f"""import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cm_inbox", {str(T.SCRIPTS / "cm-inbox.py")!r})
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.put(sys.argv[1], sys.argv[2], "supervisor")
+""")
 fake_cm = tmp / "supervisor"
 fake_cm.write_text(f"""#!/bin/sh
 printf '%s\\n' "$*" >> "{argslog}"
@@ -417,7 +425,7 @@ case "$1" in
   answer) if [ "$3" = "--show" ]; then if [ "$2" = "work-ledger-api" ]; then echo "«$2» chiede — Deploy: Deploy ready, waiting for the client ok. Deploy now?"; echo "  ❯ 1. yes"; echo "    2. no"; else echo "nessuna domanda aperta sullo schermo"; exit 1; fi; else case "$3" in 1|2) echo "«$2»: risposto $3. yes  (Deploy now?)" ;; --text) echo "«$2»: risposto 3. $4  (Deploy now?)" ;; --chat) echo "«$2»: risposto 4. Chat about this  (Deploy now?)" ;; *) echo "opzione $3 inesistente" >&2; exit 2 ;; esac; fi ;;
   screen) i=1; while [ $i -le 30 ]; do echo "riga $i dello schermo"; i=$((i+1)); done ;;
   panel) if [ "$2" = "field-notes" ]; then echo "   Session"; echo "   Total cost:            \$0.42"; else exit 1; fi ;;
-  talk) if [ -f "{tmp / 'talk-saved'}" ]; then echo "supervisor talk: «$2» è chiusa; messaggio m1 salvato nella casella, le arriva quando riparte (stato: supervisor talk --status m1)" >&2; else echo "consegnato"; fi ;;
+  talk) if [ -f "{tmp / 'talk-saved'}" ]; then echo "supervisor talk: «$2» è chiusa; messaggio m1 salvato nella casella, le arriva quando riparte (stato: supervisor talk --status m1)" >&2; else python3 "{fake_talk}" "$2" "$3"; echo "consegnato"; fi ;;
   model) echo "$2: model Sonnet 5, this session only" ;;
   effort) if [ "$2" = "atlas-shop" ]; then echo "atlas-shop is working: try again when it is idle"; exit 3; else echo "$2: effort $3, this session only"; fi ;;
   report) if [ "$3" != "-" ]; then cp "$3" "{tmp / 'report-img'}"; echo "segnalazione consegnata a «$6»"; echo "  immagine: $2/docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg"; else echo "segnalazione consegnata a «$6»"; fi ;;
@@ -909,6 +917,10 @@ T.check("R6 the command is annotated in the ledger: event watch-cmd with op, nam
 T.check("R6 after a command /state is republished (a new PUT of /state, from the push in background)", T.wait_until(lambda: len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")]) > n_state_puts, 30), "")
 res = send_cmd(CMDS[1])   # prompt atlas-shop
 T.check("R6 prompt without device → talk atlas-shop with the neutral prefix «via app», not «polso» (1.36; Watch: line requested) --no-wait, «delivered», atlas-shop awaiting", res and res["ok"] and res["text"] == "delivered" and any(c.startswith("talk atlas-shop Dall'utente via app.") and "Watch:" in c and c.endswith("review the test seeds --no-wait") for c in cm_calls()) and "atlas-shop" in json.loads((rdir2 / "awaiting.json").read_text()), str(res) + str(cm_calls()[-3:]))
+box_a = sorted((state_dir / "inbox" / "atlas-shop").glob("*.json"), key=lambda q: json.loads(q.read_text())["created"])
+rec_a = json.loads(box_a[-1].read_text()) if box_a else {}
+T.check("R6 (0319ab) the relay's message in the recipient's inbox has origin «relay» (talk writes «session»: the master tells an ok from the phone from a session's message)",
+        rec_a.get("origin") == "relay" and rec_a.get("text", "").startswith("Dall'utente via app.") and rec_a.get("from") == "supervisor", str(rec_a))
 res = send_cmd(CMDS[2])   # launch path fuori dai progetti pubblicati
 T.check("R6 launch of a path outside the published projects → ok false, no launch", res and res["ok"] is False and "not a published project" in res["text"] and not any(c.startswith("launch ") for c in cm_calls()), str(res))
 res = send_cmd(dict(CMDS[2], id="6f1c2d3e-0003-4000-8000-0000000000aa", arg=str(ws / "work" / "own" / "orbit-docs")))

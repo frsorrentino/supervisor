@@ -9,6 +9,7 @@ IB5 talk verso una sessione nota (registro) ma chiusa: exit 0, salvato; verso un
 IB6 cm-hook: SessionStart consegna nel contesto; Stop con messaggi in attesa → decision block; con stop_hook_active → niente
 IB7 inbox status / talk --status
 IB8 registro: righe talk e delivered nel diario, con la sola prima riga del testo
+IB10 origin: «session» from talk (no option to change it), «relay» only through mark_origin
 IB9 inbox cancel ID: un messaggio in attesa diventa cancelled e non si consegna piu'; uno gia' consegnato o un
     id ignoto: exit 1, niente cambia
 """
@@ -94,6 +95,23 @@ saved = recs("chiusa")
 T.check("IB5 talk to a known but closed session → exit 0, saved with its folder; an unknown name → exit 3, nothing saved",
         t1.returncode == 0 and "salvato nella casella" in t1.stderr and len(saved) == 1 and saved[0]["to_cwd"] == os.path.realpath(work)
         and t2.returncode == 3 and not (state / "inbox" / "mai-vista").exists(), t1.stderr + t2.stderr)
+
+# IB10 (0319ab, 14/10): l'origine del messaggio. `talk` scrive sempre «session» e non ha un'opzione per cambiarla;
+# solo mark_origin (chiamata dal relay dopo il suo talk) scrive «relay» sul record appena consegnato.
+t3 = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-talk.py"), "talk", "chiusa", "ok dal finto telefono", "--origin", "relay"], capture_output=True,
+                    text=True, env=env({"CM_TMUX_ARGS": "-L cm-inbox-none"}), timeout=60)
+T.check("IB10 a message from `talk` has origin «session»; `talk --origin relay` is refused (exit 2), nothing saved",
+        saved[0].get("origin") == "session" and t3.returncode == 2 and not any(r["text"] == "ok dal finto telefono" for r in recs("chiusa")), t3.stderr)
+t0 = time.time()
+phone = "Dall'utente via telefono. ok"
+py(f"I.put('chiusa',{json.dumps(phone)},'supervisor')")
+py("I.put('chiusa','altro testo','supervisor')")
+mid = py(f"print(I.mark_origin('chiusa',{json.dumps(phone)},{t0},'relay'))").stdout.strip()
+by_text = {r["text"]: r.get("origin") for r in recs("chiusa")}
+T.check("IB10 mark_origin marks only the record with that text written after `since`: origin relay; the others stay session",
+        mid not in ("", "None") and by_text.get("Dall'utente via telefono. ok") == "relay" and by_text.get("altro testo") == "session"
+        and by_text.get("ciao dalla prova") == "session", str(by_text) + mid)
+T.check("IB10 nothing matching → None, nothing changes", py(f"print(I.mark_origin('chiusa','mai scritto',{t0},'relay'))").stdout.strip() == "None", "")
 
 # IB6 hook, in un tmux privato: il nome della sessione e' «chiusa»
 with T.PrivateTmux() as tm:

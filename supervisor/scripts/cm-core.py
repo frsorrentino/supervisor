@@ -401,6 +401,61 @@ def _base_model(model_id):
     return str(model_id or "").split("[")[0]
 
 
+FALLBACK_SCAN_CHUNK = 8 * 1024 * 1024
+
+
+def _fallback_marks(path, f):
+    """Le posizioni di FALLBACK_MARK nel file, in ordine. Afdc2b (14/10): la ricerca rifaceva ogni volta tutto il file con
+    mmap.rfind, che e' lento (2,75 s su 89 MB a macchina ferma, 13 s sotto carico, contro 0,07 di bytes.rfind), e
+    `sessions --json` la chiamava per ogni sessione a ogni push e quasi a ogni comando del relay: con la trascrizione
+    della master a 85 MB la raccolta arrivava a 124 s e le push aspettavano fino a 37 minuti. Ora si legge a pezzi con
+    bytes.find e solo la parte aggiunta dall'ultima volta (la trascrizione cresce in coda): cache in
+    <state_dir>/fallback-scan.json, {path: {size, marks}}; un file piu' corto di prima si rilegge da capo."""
+    cache_p = Path(cm.expand(_cfg()["state_dir"])) / "fallback-scan.json"
+    path = os.path.realpath(path)
+    try:
+        cache = json.loads(cache_p.read_text())
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    size = os.fstat(f.fileno()).st_size
+    c = cache.get(path) if isinstance(cache.get(path), dict) else {}
+    done, marks = int(c.get("size") or 0), [int(x) for x in c.get("marks") or []]
+
+    def edge(n):   # gli ultimi byte gia' letti e i primi del file: se cambiano, il file non e' solo cresciuto
+        f.seek(0)
+        h = f.read(64)
+        f.seek(max(0, n - 64))
+        return (h + f.read(min(64, n))).hex()
+    if done > size or (done and edge(done) != c.get("edge")):
+        done, marks = 0, []
+    if done == size:
+        return marks
+    pos = max(0, done - len(FALLBACK_MARK) + 1)
+    while pos < size:
+        f.seek(pos)
+        chunk = f.read(FALLBACK_SCAN_CHUNK + len(FALLBACK_MARK) - 1)
+        if not chunk:
+            break
+        i = chunk.find(FALLBACK_MARK)
+        while i >= 0:
+            if pos + i not in marks:
+                marks.append(pos + i)
+            i = chunk.find(FALLBACK_MARK, i + 1)
+        pos += FALLBACK_SCAN_CHUNK
+    cache[path] = {"size": size, "marks": marks, "edge": edge(size)}
+    if len(cache) > 300:   # le trascrizioni sparite escono per prime
+        cache = {k: v for k, v in cache.items() if os.path.exists(k) or k == path}
+    try:
+        tmp = cache_p.with_name(f"{cache_p.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(cache))
+        os.replace(tmp, cache_p)
+    except OSError:
+        pass
+    return marks
+
+
 def model_fallback(row, tail_bytes=512 * 1024):
     """La sessione e' passata a un altro modello perche' le salvaguardie hanno segnalato un messaggio? (22/09/2026)
     {"from", "to", "category", "at"} oppure None. Definizione comune con fable-director (hook PostModelSwitch).
@@ -414,29 +469,32 @@ def model_fallback(row, tail_bytes=512 * 1024):
     `revert` e l'ultimo turno vero e' ancora sul suo fallbackModel: chi torna indietro con /model o
     `supervisor model` scrive turni sul modello di prima, e il segno sparisce da se'. Un cambio fatto da
     `supervisor model` dopo la riga, non ancora scritto in un turno, lo spegne subito (tune.file)."""
-    import mmap
     path = transcript_of(row)
     if not path:
         return None
     try:
-        with open(path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+        with open(path, "rb") as f:
             # la riga si cerca in tutto il file: il messaggio segnalato puo' essere di ore fa, ben prima della coda
-            end, entry = len(mm), None
-            while entry is None:
-                i = mm.rfind(FALLBACK_MARK, 0, end)
-                if i < 0:
-                    return None
-                a = mm.rfind(b"\n", 0, i) + 1
-                b = mm.find(b"\n", i)
-                end = a
+            entry = None
+            for i in reversed(_fallback_marks(path, f)):
+                f.seek(i)
+                tail = f.read(64 * 1024)
+                f.seek(max(0, i - 64 * 1024))
+                head = f.read(i - max(0, i - 64 * 1024))
+                line = head[head.rfind(b"\n") + 1:] + tail.split(b"\n", 1)[0]
                 try:
-                    d = json.loads(mm[a:b if b >= 0 else len(mm)])
+                    d = json.loads(line)
                 except ValueError:
                     continue
                 if d.get("type") == "system" and d.get("subtype") == "model_refusal_fallback" and d.get("scope") != "local":
                     entry = d
+                    break
+            if entry is None:
+                return None
             last = None
-            for raw in reversed(mm[max(0, len(mm) - tail_bytes):].split(b"\n")):
+            size = os.fstat(f.fileno()).st_size
+            f.seek(max(0, size - tail_bytes))
+            for raw in reversed(f.read().split(b"\n")):
                 if b'"type":"assistant"' not in raw:
                     continue
                 try:
@@ -446,7 +504,7 @@ def model_fallback(row, tail_bytes=512 * 1024):
                 if m and not m.startswith("<"):
                     last = m
                     break
-    except (OSError, ValueError):   # file vuoto: mmap rifiuta la lunghezza 0
+    except OSError:
         return None
     to = str(entry.get("fallbackModel") or "")
     if entry.get("direction") == "revert" or not to or _base_model(last) != _base_model(to):
@@ -747,7 +805,15 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
     if offset:
         lines = lines[1:]   # la prima riga puo' essere a meta'
     _entry = functools.partial(globals()["_entry"], text_max=text_max)
-    out, by_tool, tokens, peer_seen, queued = [], {}, [0, 0], set(), {}
+    out, by_tool, tokens, peer_seen, queued, taken, waiting_q, qkey = [], {}, [0, 0], set(), {}, [], [], {}
+
+    def unqueue(e):
+        """La voce non e' piu' in coda: resta con l'ora in cui e' stata scritta, e il suo testo non assorbe piu' una
+        voce dopo uguale."""
+        e["queued"] = False
+        k = qkey.get(id(e))
+        if k in queued:
+            queued[k] = [x for x in queued[k] if x is not e]
 
     def human_entry(eid, raw, at):
         """Una voce della persona. Se lo stesso testo e' gia' in coda (enqueue visto prima), quella voce resta — con
@@ -807,6 +873,15 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
             if rel:
                 out.append(dict(_entry(f"{uid}.0", "user", rel[0], at), origin=rel[1]))
                 continue
+            if d.get("isMeta") and not d.get("isCompactSummary"):
+                # afdc2b (14/10): un task programmato (CronCreate) passa dalla coda e arriva come riga meta: la sua voce
+                # in coda e' entrata nel turno. Restava queued per sempre, l'app ancorava la chat li' e non vedeva piu'
+                # le risposte dopo.
+                t, _ = _clean(content)
+                t, _ = _origin_of(t)
+                if queued.get(t):
+                    unqueue(queued[t][0])
+                continue
             if not _human(d):
                 continue
             human_entry(f"{uid}.0", content, at)
@@ -846,7 +921,19 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
                 e = dict(_entry(f"q{int(_turn_epoch(d.get('timestamp')) * 1000)}", "user", t, at), origin=origin, queued=True)
                 out.append(e)
                 queued.setdefault(t, []).append(e)
+                waiting_q.append(e)
+                qkey[id(e)] = t
+        elif kind == "queue-operation" and d.get("operation") in ("dequeue", "remove"):
+            # tolta dalla coda: entra nel turno o e' stata cancellata. Se nessuna riga dopo la riconosce, a fine turno
+            # non e' piu' in coda (afdc2b): una voce queued per sempre bloccava l'ancora della chat nell'app.
+            waiting_q[:] = [x for x in waiting_q if x["queued"]]
+            if waiting_q:
+                taken.append(waiting_q.pop(0))
         elif kind == "system" and d.get("subtype") == "turn_duration":
+            for e in taken:
+                if e["queued"]:
+                    unqueue(e)
+            taken.clear()
             last = next((e for e in reversed(out) if e["role"] != "user"), None)
             if last is not None and last["turn"] is None and at:
                 ms = int(d.get("durationMs") or 0)

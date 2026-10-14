@@ -286,6 +286,19 @@ def write_json(p, obj, mode=0o600):
     os.replace(tmp, p)
 
 
+def relay_talk(name, text, *opts):
+    """`supervisor talk` per un messaggio del relay, poi origin «relay» sul suo record nella casella di chi riceve
+    (0319ab, 14/10): `talk` firma col nome della sessione che ha avviato il demone, e la master non distingueva un ok
+    dal telefono da un messaggio di quella sessione. La CLI scrive sempre «session»."""
+    t0 = time.time()
+    rc, out = run_cm("talk", name, text, *opts)
+    try:
+        _load("cm-inbox").mark_origin(name, text, t0, "relay")
+    except Exception:   # noqa: BLE001 — il messaggio e' partito: l'origine e' un'informazione in piu'
+        pass
+    return rc, out
+
+
 def run_cm(*args, timeout=None):
     p = subprocess.run([CM_BIN, *args], capture_output=True, text=True, timeout=int(timeout or R.get("command_timeout_s") or 120))
     out = (p.stdout + ("\n" + p.stderr if p.stderr.strip() else "")).strip()
@@ -1909,7 +1922,7 @@ def share_multi(cmd, tm, session, sids, row=None):
     except Exception as e:   # noqa: BLE001 — host irraggiungibile, scp fallito
         return False, M("relay.cmd_report_not_saved", error=str(e)[:200])
     msg = M("report.prompt", date=time.strftime("%d/%m/%Y"), text=text or M("relay.report_image_only"))
-    rc, out = run_cm("talk", tm, prefix_for(cmd, tm) + " " + msg + ("\n" + "\n".join(lines) if lines else ""), "--no-wait")
+    rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + msg + ("\n" + "\n".join(lines) if lines else ""), "--no-wait")
     if rc != 0:
         return False, out.splitlines()[0] if out else "talk failed"
     if saved_in_inbox(out):
@@ -1933,7 +1946,7 @@ def share_file(cmd, tm, session, row, mime, data, name, text):
         return False, M("relay.cmd_report_bad_name")
     dest = inbox_save(Place(row), clean, data)
     msg = M("relay.share_file", name=clean, mime=mime, size=_human_size(len(data)), path=str(dest))
-    rc, out = run_cm("talk", tm, prefix_for(cmd, tm) + " " + msg + ("\n\n" + text if text else ""), "--no-wait")
+    rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + msg + ("\n\n" + text if text else ""), "--no-wait")
     if rc != 0:
         return False, out.splitlines()[0] if out else "talk failed"
     if saved_in_inbox(out):
@@ -2100,7 +2113,7 @@ def slash_send(cmd, session, tm, arg):
     if row.get("status") in ("busy", "waiting") or row.get("waiting"):
         return False, M("relay.cmd_slash_busy", name=session)
     text = " ".join(str(cmd.get("text") or "").split())[:SLASH_TEXT_MAX]
-    rc, out = run_cm("talk", row["tmux"], f"/{name} {text}".rstrip(), "--via", "tmux", "--no-wait")
+    rc, out = relay_talk(row["tmux"], f"/{name} {text}".rstrip(), "--via", "tmux", "--no-wait")
     if rc == 4:
         return False, M("relay.cmd_slash_typed", name=session)
     if rc != 0:
@@ -2630,7 +2643,7 @@ def decision_send(cmd, arg):
     project = S.one_line(str(arg or "").strip())[:200]
     msg = M("relay.decision_to_master", device=from_device(cmd), text=text,
             project=M("relay.decision_project", project=project) if project else "")
-    rc, out = run_cm("talk", "master", msg, "--no-wait")
+    rc, out = relay_talk("master", msg, "--no-wait")
     if rc != 0:
         return False, (out.splitlines() or ["talk failed"])[0]
     return True, M("relay.cmd_decision_inbox" if saved_in_inbox(out) else "relay.cmd_decision_sent")
@@ -2741,7 +2754,7 @@ def execute(cmd):
                 return False, M("relay.cmd_not_running", name=session)
             # 1.42: un prompt dettato in modalita' live porta le istruzioni vocali dopo il prefisso (timeline e transcript le tolgono)
             voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
-            rc, out = run_cm("talk", tm, prefix_for(cmd, tm) + voice + " " + text, "--no-wait")
+            rc, out = relay_talk(tm, prefix_for(cmd, tm) + voice + " " + text, "--no-wait")
             if rc != 0:
                 return False, out.splitlines()[0] if out else "talk failed"
             if saved_in_inbox(out):
@@ -2775,7 +2788,7 @@ def execute(cmd):
                 return True, M("relay.cmd_launched", name=proj["name"], account=proj["account"]), extra
             if not new:
                 return False, M("relay.cmd_launch_no_prompt", name=proj["name"], account=proj["account"], line="session not found"), extra
-            rc, out = run_cm("talk", new[0], prefix_for(cmd, new[0]) + " " + prompt, "--no-wait")
+            rc, out = relay_talk(new[0], prefix_for(cmd, new[0]) + " " + prompt, "--no-wait")
             if rc != 0:
                 return False, M("relay.cmd_launch_no_prompt", name=proj["name"], account=proj["account"],
                                 line=(out.splitlines() or ["talk failed"])[0]), extra
@@ -2791,7 +2804,7 @@ def execute(cmd):
                 return False, M("relay.cmd_gone", name=session)
             if not is_live(tm):
                 return False, M("relay.cmd_not_running", name=session)
-            rc, out = run_cm("talk", tm, prefix_for(cmd, tm) + " " + str((CFG.get("guard") or {}).get("resume_prompt") or "riprendi da dove eri"), "--no-wait")
+            rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + str((CFG.get("guard") or {}).get("resume_prompt") or "riprendi da dove eri"), "--no-wait")
             if rc != 0:
                 return False, out.splitlines()[0] if out else "talk failed"
             if saved_in_inbox(out):

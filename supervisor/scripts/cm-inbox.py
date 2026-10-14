@@ -12,7 +12,8 @@ la destinataria stessa: allo Stop di un turno (se era viva ma occupata) o al Ses
                                          uno gia' consegnato o scaduto non si tocca (01/10/2026, dall'app: un /exit
                                          rimasto in casella per una sessione chiusa prima di riceverlo)
 
-File: <state_dir>/inbox/<nome-tmux>/<id>.json — {id, to, to_cwd, from, text, created, expires, status, delivered_at, via}.
+File: <state_dir>/inbox/<nome-tmux>/<id>.json — {id, to, to_cwd, from, text, created, expires, status, delivered_at, via, origin}.
+`origin`: «relay» per i messaggi del relay (dal telefono, dall'orologio, dalla web), «session» per tutti gli altri.
 Identita' della destinataria: il nome tmux (resta uguale nei riavvii) e, se nota, la cartella: una sessione nuova con
 lo stesso nome in un'altra cartella non riceve la posta della vecchia.
 """
@@ -59,17 +60,44 @@ def first_line(text, n=200):
     return (str(text or "").strip().splitlines() or [""])[0][:n]
 
 
-def put(to, text, sender, to_cwd=""):
+def put(to, text, sender, to_cwd="", origin="session"):
     d = box(to)
     d.mkdir(parents=True, exist_ok=True)
     now = time.time()
     rec = {"id": secrets.token_hex(3), "to": to, "to_cwd": os.path.realpath(to_cwd) if to_cwd else "", "from": sender,
-           "text": text, "created": now, "expires": now + EXPIRES_S, "status": "pending", "delivered_at": None, "via": None}
+           "text": text, "created": now, "expires": now + EXPIRES_S, "status": "pending", "delivered_at": None, "via": None,
+           # 0319ab (14/10): «relay» solo per cio' che consegna il relay (talk_as dentro il suo processo), mai dalla CLI
+           "origin": origin}
     p = d / f"{rec['id']}.json"
     with open(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
         json.dump(rec, f, ensure_ascii=False)
     ledger("talk", sender=sender, to=to, id=rec["id"], text=first_line(text))
     return rec
+
+
+def mark_origin(to, text, since, origin):
+    """0319ab (14/10): il relay consegna con `supervisor talk`, che scrive sempre origin «session»; subito dopo il relay
+    marca come suo il record appena scritto: stesso destinatario e testo, creato da `since` in poi. Torna l'id o None.
+    La CLI non ha un modo per scrivere un'origine diversa."""
+    best = None
+    for r in messages(to, include_all=True):
+        if r.get("text") == text and float(r.get("created") or 0) >= since - 1 and (best is None or r["created"] > best["created"]):
+            best = r
+    if best is None:
+        return None
+    p = _path_of(best["id"])
+    if not p:
+        return None
+    try:
+        rec = json.loads(p.read_text())
+        rec["origin"] = origin
+        tmp = p.with_name(p.name + ".tmp")
+        with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+            json.dump(rec, f, ensure_ascii=False)
+        os.replace(tmp, p)
+    except (OSError, ValueError, TypeError):
+        return None
+    return best["id"]
 
 
 def _path_of(rec_id):

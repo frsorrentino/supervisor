@@ -8,6 +8,7 @@ cm-bot-ui.py sono stati ritirati.
 """
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -220,7 +221,50 @@ tuned9 = proj / "tuned9.json"
 tuned9.write_text(json.dumps({"S-9": {"at": 1790107200, "model": {"id": "claude-opus-5-5[1m]", "label": "Opus 5.5"}}}))
 core._CFG["tune"]["file"] = str(tuned9)
 T.check("CO12 supervisor model back after the fallback, no new turn yet → None", fb(ripiego(), turno("claude-opus-5")) is None, "")
+# CO14 (afdc2b, 14/10): la ricerca della riga di ripiego legge solo la parte aggiunta dall'ultima volta
+scan = Path(core.cm.expand(core._cfg()["state_dir"])) / "fallback-scan.json"
+core._CFG["tune"]["file"] = ""
+fb(turno("claude-opus-5-5"))
+cached = json.loads(scan.read_text()).get(os.path.realpath(str(t9))) or {}
+with open(t9, "a") as f:
+    f.write(ripiego() + "\n" + turno("claude-opus-5") + "\n")
+grown = core.model_fallback(row9)
+cached2 = json.loads(scan.read_text()).get(os.path.realpath(str(t9))) or {}
+T.check("CO14 the scan is cached by size; after an append only the new part is read and the new fallback line is found",
+        cached.get("marks") == [] and cached.get("size") == len(turno("claude-opus-5-5")) + 1 and grown and grown["to"] == "claude-opus-5"
+        and len(cached2.get("marks") or []) == 1 and cached2.get("size") == t9.stat().st_size, str(cached) + str(cached2) + str(grown))
+T.check("CO14 a file rewritten (not only grown) is read again from the start: the old marks do not survive",
+        fb(turno("claude-opus-5-5"), turno("claude-opus-5")) is None and (json.loads(scan.read_text()).get(os.path.realpath(str(t9))) or {}).get("marks") == [], scan.read_text()[:300])
 core._CFG["tune"]["file"] = ""
 T.check("CO7 no transcript → the three fields are absent, without an error",
         core.session_runtime({"session_id": "nope", "cwd": str(cwd), "account": "personal"}) == {"model": None, "effort": None, "context": None}, "")
+
+# CO13 (difetto afdc2b, 14/10): un task programmato (CronCreate) entra in coda, esce e arriva come riga user isMeta.
+# La voce restava queued per sempre: l'app ancora la chat alla voce prima della prima queued e chiedeva sempre le
+# stesse voci, e le risposte della master delle 13:33 e delle 16:10 non arrivavano mai al telefono.
+tq = Path(tempfile.mkdtemp(prefix="cm-core-")) / "q.jsonl"
+
+
+def qline(**d):
+    return json.dumps(d) + "\n"
+
+
+with open(tq, "w") as f:
+    f.write(qline(type="queue-operation", operation="enqueue", timestamp="2026-10-14T11:33:11.731Z", content="[Post su X] segui la ricetta"))
+    f.write(qline(type="queue-operation", operation="dequeue", timestamp="2026-10-14T11:33:11.950Z"))
+    f.write(qline(type="user", isMeta=True, uuid="m1", timestamp="2026-10-14T11:33:12.336Z", message={"role": "user", "content": "[Post su X] segui la ricetta"}))
+    f.write(qline(type="assistant", uuid="a1", timestamp="2026-10-14T11:33:20.000Z", message={"content": [{"type": "text", "text": "Post pronto."}]}))
+    f.write(qline(type="system", subtype="turn_duration", timestamp="2026-10-14T11:33:21.000Z", durationMs=9000))
+    # tolto dalla coda (consegnato in un altro modo o cancellato) e mai rivisto: finito il turno non e' piu' in coda
+    f.write(qline(type="queue-operation", operation="enqueue", timestamp="2026-10-14T11:34:00.000Z", content="altro messaggio"))
+    f.write(qline(type="queue-operation", operation="remove", timestamp="2026-10-14T11:34:01.000Z"))
+    f.write(qline(type="assistant", uuid="a2", timestamp="2026-10-14T11:34:05.000Z", message={"content": [{"type": "text", "text": "Risposta delle 13:34."}]}))
+    f.write(qline(type="system", subtype="turn_duration", timestamp="2026-10-14T11:34:06.000Z", durationMs=5000))
+    # ancora davvero in coda: resta queued
+    f.write(qline(type="queue-operation", operation="enqueue", timestamp="2026-10-14T11:35:00.000Z", content="ancora in coda"))
+eq = core.transcript_entries(str(tq), 0)
+qs = {e["text"]: e["queued"] for e in eq if e["role"] == "user"}
+T.check("CO13 a scheduled task (enqueue, dequeue, isMeta user line) stops being queued; one taken off the queue stops being queued when the turn ends; one still in the queue stays queued; no duplicate",
+        qs == {"[Post su X] segui la ricetta": False, "altro messaggio": False, "ancora in coda": True}
+        and sum(1 for e in eq if e["role"] == "user") == 3, str([(e["id"], e["role"], e["queued"], e["text"]) for e in eq]))
 T.finish()
