@@ -57,6 +57,7 @@ if os.name == "nt" and __name__ == "__main__":
 import datetime
 import importlib.util
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -203,6 +204,35 @@ def pop_queue(p):
     return item
 
 
+def task_check_on_stop():
+    """1.57 (14/10): se questa sessione ha un task running, il relay riesegue il suo controllo e dice al telefono verde
+    o rosso. Qui solo una lettura del registro (sqlite, millisecondi) e un figlio staccato: l'hook non aspetta."""
+    R = CFG.get("relay") or {}
+    if not R.get("enabled"):
+        return
+    name = my_tmux_name()
+    if not name:
+        return
+    try:
+        import sqlite3
+        spec = importlib.util.spec_from_file_location("cm_tasks", HERE / "cm-tasks.py")
+        db = Path(os.environ.get("CM_TASKS_DB") or "")
+        if not db.name:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            db = mod.db_path()
+        if not db.exists():
+            return
+        con = sqlite3.connect(str(db), timeout=2)
+        hit = con.execute("SELECT 1 FROM tasks WHERE state='running' AND session=? LIMIT 1", (name,)).fetchone()
+        con.close()
+    except Exception:   # noqa: BLE001 — un extra: mai far fallire lo Stop
+        return
+    if hit:
+        subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "task-check", name], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
 def relay_push():
     """L'orologio (0.4.0): chiede una push al relay, solo con relay.enabled; torna subito (debounce nel relay).
     08/10 (piano prestazioni, fase 1): con il demone vivo basta toccare <relay.dir>/push-req/hook, il suo worker
@@ -241,6 +271,8 @@ def waiting_summary(p):
         # le etichette delle opzioni: il relay le usa quando lo schermo non e' ancora disegnato (16:15 del 12/09:
         # la push partiva 3 s dopo l'hook, `answer --show` non trovava il dialogo e il polso riceveva il JSON grezzo)
         keep["options"] = [str(o.get("label") or "")[:80] for o in (qs[0].get("options") or []) if isinstance(o, dict)][:8]
+        # 1.53 (14/10): la riga che spiega ogni opzione, nello stesso ordine (sotto il tasto, sul telefono)
+        keep["descriptions"] = [str(o.get("description") or "")[:200] for o in (qs[0].get("options") or []) if isinstance(o, dict)][:8]
     return {"tool": p.get("tool_name", "?"), "input": keep}
 
 
@@ -328,6 +360,7 @@ def main(argv):
         watch = next((l[:200] for l in reversed(righe) if l.lower().lstrip("*_#> ").startswith("watch")), "")
         ledger("stop", p, last=last, tail=tail, esito=esito, watch=watch)
         relay_push()
+        task_check_on_stop()
         if CFG["hooks"]["restart_stop"]["enabled"]:
             r = subprocess.run([str(HERE / "cm-restart.sh"), "hook"], input=json.dumps(p), capture_output=True, text=True,
                                env={**os.environ, "CM_HOOK_SESSION_ID": sid})
@@ -350,6 +383,12 @@ def main(argv):
                 sys.stdout.write(json.dumps({"decision": "block", "reason": box}, ensure_ascii=False) + "\n")
     elif ev == "StopFailure":
         ledger("stop-failure", p, error=str(p.get("error", ""))[:200])
+        # 1.58 (14/10): un turno fermato dal limite della quota → il telefono propone le tre strade
+        if (CFG.get("relay") or {}).get("enabled") and re.search(r"rate.?limit|usage.?limit|limit reached|quota", str(p.get("error", "")) + " " + str(p.get("error_details", "")), re.I):
+            name = my_tmux_name()
+            if name:
+                subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         subprocess.run([str(HERE / "cm-restart.sh"), "failed"], input=json.dumps(p), capture_output=True, text=True)
     return 0
 

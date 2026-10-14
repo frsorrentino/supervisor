@@ -117,6 +117,44 @@ def strip_markdown(text):
     return t.strip()
 
 
+# 1.56 (14/10, dagli spunti della valutazione di Kaya): niente segreti sulla schermata di blocco. Le notifiche di
+# telefono e orologio usano `preview`; il testo intero resta nei campi di sempre, cifrato, e l'app lo mostra aperta.
+_SECRET_RES = [
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)", re.S),
+    re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._~+/=-]{8,}"),   # intestazioni Authorization
+    # chiave=valore e chiave: valore (variabili d'ambiente, JSON, URL), e le opzioni con lo spazio (--password x)
+    re.compile(r"(?i)((?:[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)s?[A-Za-z0-9_-]*)"
+               r"[\"']?\s*[=:]\s*[\"']?|--?(?:pass(?:word|wd)?|secret|token|api[_-]?key|key|auth)\s+[\"']?)([^\s\"',;&|]{4,})"),
+    re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"),   # utente:password@ in un URL
+    re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}"
+               r"|\bAKIA[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}"),
+    re.compile(r"\b[A-Fa-f0-9]{32,}\b|\b[A-Za-z0-9+/_-]{40,}={0,2}"),   # stringhe lunghe da chiave (hex, base64)
+]
+MASK = "•••"
+
+
+def redact_preview(text):
+    """Il testo con token, chiavi e password sostituiti da •••: per le anteprime delle notifiche, mai per il testo
+    che l'app mostra aperta. Di proposito largo: un falso positivo nasconde una parola nell'anteprima, un falso
+    negativo mette un segreto sulla schermata di blocco."""
+    t = str(text or "")
+    if not t:
+        return t
+    t = _SECRET_RES[0].sub(MASK, t)
+    t = _SECRET_RES[1].sub(lambda m: m.group(1) + " " + MASK, t)
+    t = _SECRET_RES[2].sub(lambda m: m.group(1) + MASK, t)
+    for r in _SECRET_RES[3:]:
+        t = r.sub(MASK, t)
+    return t
+
+
+def preview_of(title, body):
+    """1.56: {"preview": {title, body}} di un evento senza segreti, per la notifica; {} se non c'e' niente da nascondere
+    (l'app usa title e body: niente byte doppi nello stato)."""
+    p = {"title": redact_preview(title), "body": redact_preview(body)}
+    return {"preview": p} if (p["title"], p["body"]) != (title, body) else {}
+
+
 def one_line(text):
     return " ".join(str(text or "").split())
 
@@ -255,6 +293,26 @@ def _turn_started(events, before=None):
     return ts[-1] if ts else None
 
 
+RECOMMENDED = re.compile(r"\s*\((?:recommended|consigliat[ao])\)\s*$", re.I)
+
+
+def option_of(i, label, descriptions):
+    """1.53 (14/10, dagli spunti della valutazione di Kaya): {n, label, description?, recommended?}. La spiegazione e' la
+    description dell'opzione di AskUserQuestion (assente se non c'e'); «(Recommended)» in fondo all'etichetta diventa
+    recommended: true e lascia l'etichetta pulita. Campi assenti = non scritti (lo stato ha un tetto di 8 KB)."""
+    label = str(label)
+    desc = descriptions.get(label) or descriptions.get(label.strip())
+    clean = RECOMMENDED.sub("", label)
+    if not desc:
+        desc = next((d for lb, d in descriptions.items() if RECOMMENDED.sub("", lb) == clean), None)
+    out = {"n": i + 1, "label": clean or label}
+    if desc:
+        out["description"] = " ".join(str(desc).split())
+    if clean != label:
+        out["recommended"] = True
+    return out
+
+
 def build_session(row, src):
     name = short_name(row.get("name") or row.get("tmux") or "?", src.get("prefixes") or ())
     tmux = row.get("tmux") or row.get("name") or ""
@@ -274,11 +332,15 @@ def build_session(row, src):
         turn = _turn_started(events) if st in ("busy", "awaiting") else None
     question = None
     if q:
-        options = [{"n": i + 1, "label": str(o)} for i, o in enumerate(q.get("options") or [])]
+        options = [option_of(i, o, q.get("descriptions") or {}) for i, o in enumerate(q.get("options") or [])]
         kind = q.get("kind") or ("ask" if (q.get("tool") or "") == "AskUserQuestion" else "plan" if q.get("tool") == "ExitPlanMode" else "permission")
         question = {"id": f"q-{asked}-1", "kind": kind, "text": one_line(q.get("text") or ""), "options": options,
+
                     "tier": tier_of(kind, q.get("tool"), (q.get("text") or "") + " " + str(q.get("detail") or ""), src.get("high_words")),
                     "asked_at": asked}
+        pv = redact_preview(question["text"])
+        if pv != question["text"]:
+            question["preview"] = pv   # 1.56: solo quando c'era qualcosa da nascondere
     rt = (src.get("runtime") or {}).get(tmux) or {}
     out = {
         "id": row.get("session_id") or tmux,
@@ -342,6 +404,13 @@ def build_session(row, src):
     steps = next_steps(stops[-1].get("tail") or stops[-1].get("last") or "") if stops and out["outcome"] else []
     if steps:
         out["next_steps"] = steps
+    # 1.54 (14/10): la modalita' dei permessi (default, acceptEdits, plan, bypassPermissions...), dall'ultima riga della
+    # trascrizione che la dice. 1.55: la domanda risolta al PC negli ultimi minuti, {id, text, at, by: "terminal"}.
+    # Assenti = non si sa / nessuna
+    if rt.get("permission_mode"):
+        out["permission_mode"] = str(rt["permission_mode"])
+    if (src.get("resolved") or {}).get(name):
+        out["resolved"] = dict(src["resolved"][name], by="terminal")
     return out
 
 
@@ -575,7 +644,8 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
     def add(kind, s, title, body, ref=None):
         nonlocal seq
         out.append({"key": f"{ts}_{seq:03d}", "kind": kind, "session": s["name"] if s else None,
-                    "account": s["account"] if s else None, "ts": ts, "title": title, "body": body, "ref": ref})
+                    "account": s["account"] if s else None, "ts": ts, "title": title, "body": body, "ref": ref,
+                    **preview_of(title, body)})
         seq += 1
     for name, s in cv.items():
         p = pv.get(name)

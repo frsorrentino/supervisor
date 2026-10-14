@@ -159,7 +159,7 @@ DEFAULTS = {
               "token_url": "https://oauth2.googleapis.com/token", "fcm_url": "https://fcm.googleapis.com", "host": "",
               "log": "", "command_timeout_s": 120, "pair_ttl_s": 300, "pair_attempts": 5,
               "web_app_url": "https://supervisor.francescosorrentino.com", "serve_timeout_s": 50,
-              "colors": {}, "awaiting_max_s": 1800, "agenda_file": "", "agenda_owner": "owner",
+              "colors": {}, "awaiting_max_s": 1800, "agenda_file": "", "agenda_owner": "owner", "duplicate_prompt_s": 60,
               # scorta su Telegram quando il polso non riceve da tanto (0 = mai): 10 minuti
               "telegram_fallback_after_s": 600,
               # contesto di una sessione (1.13.1): dove una statusline salva la finestra dichiarata da Claude Code, e i

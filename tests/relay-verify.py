@@ -324,7 +324,8 @@ live = dict(SRC1, devices={}, seen={}, recurring=[], approvals=[], advice={})   
 long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 9
 live["rows"] = [{"name": f"job-{i}", "tmux": f"job-{i}", "account": "personal", "cwd": ROOT_WS + f"/personal/job-{i}", "status": "idle", "waiting": False, "session_id": f"sid-job-{i}", "link": "https://claude.ai/code/session_" + "x" * 24, "attached": False, "started_at": 1789200000000} for i in range(3)] + \
     [{"name": f"old-{i:02d}", "tmux": f"old-{i:02d}", "account": "personal", "cwd": ROOT_WS + f"/personal/old-progetto-{i:02d}", "status": "dead", "session_id": f"0000000{i:02d}-aaaa-bbbb-cccc-dddddddddddd", "link": "https://claude.ai/code/session_" + "y" * 24, "visto_ts": 1789100000 + i, "started_at": 1789000000000} for i in range(10)]
-live["ledger"] = [{"event": "stop", "session_id": f"sid-job-{i}", "ts": iso(1789210000), "tail": long_tail + "\nWatch: " + "paused at a clean point; resume steps are in the plan and the tests are green on both suites", "watch": "Watch: paused at a clean point; resume steps are in the plan and the tests are green on both suites"} for i in range(3)]
+# 14/10: senza «on both suites» (la 1.58 allunga ops di 15 byte e lo stato stava a un byte dal tetto)
+live["ledger"] = [{"event": "stop", "session_id": f"sid-job-{i}", "ts": iso(1789210000), "tail": long_tail + "\nWatch: " + "paused at a clean point; resume steps are in the plan and the tests are green", "watch": "Watch: paused at a clean point; resume steps are in the plan and the tests are green"} for i in range(3)]
 live["questions"] = {}
 live["projects"] = [{"path": f"{ROOT_WS}/personal/progetto-{i:02d}", "name": f"progetto-{i:02d}", "account": "personal"} for i in range(60)]
 stl = S.build_state(live, 1789210800)
@@ -373,7 +374,7 @@ T.check("R2 (06/10) a state that cannot fit: every LIVE session stays (never rem
         and all(x["outcome"] is None or x["outcome"]["full"] == x["outcome"]["short"] for x in fat["sessions"]), f"{len(_live_many)} live, {len(fat['sessions'])} kept, {S.size_of(fat)} bytes")
 T.check("R2 (1.7) even under a tiny cap one recap item stays, cut to RECAP_CUT at a word (items go from the end, never the last)",
         len(tiny["recap"]["items"]) == 1 and tiny["recap"]["items"][0]["project"] == "progetto-00" and len(tiny["recap"]["items"][0]["done"]) <= S.RECAP_CUT, str(tiny["recap"]))
-T.check("R2 (1.6) short = the whole Watch line up to 200, cut at a word, no «…»", works[0]["outcome"]["short"] == "paused at a clean point; resume steps are in the plan and the tests are green on both suites" and S.short_of("parola " * 40, S.SHORT_MAX) == ("parola " * 40)[:200].rsplit(" ", 1)[0].rstrip() and "…" not in S.short_of("parola " * 40, S.SHORT_MAX), works[0]["outcome"]["short"])
+T.check("R2 (1.6) short = the whole Watch line up to 200, cut at a word, no «…»", works[0]["outcome"]["short"] == "paused at a clean point; resume steps are in the plan and the tests are green" and S.short_of("parola " * 40, S.SHORT_MAX) == ("parola " * 40)[:200].rsplit(" ", 1)[0].rstrip() and "…" not in S.short_of("parola " * 40, S.SHORT_MAX), works[0]["outcome"]["short"])
 T.check("R2 cut_at_word keeps newlines and cuts at a word", S.cut_at_word("uno due\ntre quattro", 12) == "uno due\ntre" and S.cut_at_word("corto", 50) == "corto", repr(S.cut_at_word("uno due\ntre quattro", 12)))
 T.check("R2 tier_of: dangerous words in a PERMISSION → high; Read → low; Bash → medium; ask/plan → always medium", S.tier_of("permission", "Bash", "rm -rf build") == "high" and S.tier_of("permission", "Read", "cat x") == "low" and S.tier_of("permission", "Bash", "ls") == "medium" and S.tier_of("ask", "AskUserQuestion", "Deploy now?") == "medium" and S.tier_of("ask", None, "git push origin main?") == "medium" and S.tier_of("permission", "Bash", "git push origin main") == "high", "")
 T.check("R2 (1.5) tool_note carries the intent of the running command (null when the session is not working)", st1["sessions"][1]["tool_note"] == "Run the test suite" and st1["sessions"][2]["tool_note"] is None, str([(x["name"], x["tool_note"]) for x in st1["sessions"]]))
@@ -475,7 +476,7 @@ def write_cfg(enabled=True, **extra):
          "bot": {"api_base": TG_API, "token_file": str(tgdir / ".env"), "access_file": str(tgdir / "access.json")},
          "accounts": {"personal": {"config_dir": str(home / ".claude")}, "work": {"config_dir": str(home / ".claude-pixel"), "tmux_prefix": "work-"}},
          "relay": {"enabled": enabled, "firebase_url": URL, "service_account": str(SA), "token_url": URL + "/token", "fcm_url": URL,
-                   "dir": str(rdir2), "host": "crostini-test", "debounce_s": 1, "fcm_topic": "watch",
+                   "dir": str(rdir2), "host": "crostini-test", "debounce_s": 1, "fcm_topic": "watch", "duplicate_prompt_s": 0,
                    "adb": str(Path(__file__).resolve().parent / "lib" / "fake-adb.py"), **extra},   # 1.32: mai l'adb vero
          # i modelli delle fixture del contratto (Opus 5, 1.12): dal 22/09 il default e' Opus 5.5 (2.1.280), e le fixture
          # restano identiche a quelle dell'app (R0), che si aggiornano dal suo lato
@@ -916,7 +917,7 @@ led_rows = lambda: [json.loads(l) for l in ledger.read_text().splitlines() if l.
 T.check("R6 the command is annotated in the ledger: event watch-cmd with op, name, by (who answered) and ok", any(x.get("event") == "watch-cmd" and x.get("op") == "answer" and x.get("name") == "ledger-api" and x.get("by") == "watch-pixel5" and x.get("ok") is True for x in led_rows()), str([x for x in led_rows() if x.get("event") == "watch-cmd"][-2:]))
 T.check("R6 after a command /state is republished (a new PUT of /state, from the push in background)", T.wait_until(lambda: len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")]) > n_state_puts, 30), "")
 res = send_cmd(CMDS[1])   # prompt atlas-shop
-T.check("R6 prompt without device → talk atlas-shop with the neutral prefix «via app», not «polso» (1.36; Watch: line requested) --no-wait, «delivered», atlas-shop awaiting", res and res["ok"] and res["text"] == "delivered" and any(c.startswith("talk atlas-shop Dall'utente via app.") and "Watch:" in c and c.endswith("review the test seeds --no-wait") for c in cm_calls()) and "atlas-shop" in json.loads((rdir2 / "awaiting.json").read_text()), str(res) + str(cm_calls()[-3:]))
+T.check("R6 prompt without device → talk atlas-shop with the neutral prefix «via app», not «polso» (1.36; Watch: line requested) --no-wait; atlas-shop is busy → «queued: … reads it when the turn ends» (14/10), atlas-shop awaiting", res and res["ok"] and res["text"] == "queued: atlas-shop is working, it reads it when the turn ends" and any(c.startswith("talk atlas-shop Dall'utente via app.") and "Watch:" in c and c.endswith("review the test seeds --no-wait") for c in cm_calls()) and "atlas-shop" in json.loads((rdir2 / "awaiting.json").read_text()), str(res) + str(cm_calls()[-3:]))
 box_a = sorted((state_dir / "inbox" / "atlas-shop").glob("*.json"), key=lambda q: json.loads(q.read_text())["created"])
 rec_a = json.loads(box_a[-1].read_text()) if box_a else {}
 T.check("R6 (0319ab) the relay's message in the recipient's inbox has origin «relay» (talk writes «session»: the master tells an ok from the phone from a session's message)",
@@ -2457,5 +2458,82 @@ T.check("R41 (1.47) with the lock held elsewhere → «agenda busy», file untou
 T.check("R41 (1.47) relay.agenda_owner names the owner: agenda says it in `owner`, Passa writes it, «owner» is then refused",
         _owner41 == ("someone", (False, "bad blocks: owner"), "someone"), str(_owner41))
 T.check("R41 (1.47) agenda_set is a command in ops, not a passive read", "agenda_set" in RL.OPS and "agenda_set" not in RL.PASSIVE_OPS, "")
+
+# R44 (14/10, gli spunti della valutazione di Kaya, «Passa tutti e 7»): contratti 1.53-1.58
+# 1.53 opzioni spiegate
+o44 = [S.option_of(i, lb, {"Merge now (Recommended)": "Fast-forward main and push", "Wait": ""}) for i, lb in enumerate(["Merge now (Recommended)", "Wait"])]
+T.check("R44 (1.53) an option keeps its description and «(Recommended)» becomes recommended: true with a clean label; without them the two fields are absent",
+        o44 == [{"n": 1, "label": "Merge now", "description": "Fast-forward main and push", "recommended": True}, {"n": 2, "label": "Wait"}], str(o44))
+# 1.54 modalita' dei permessi
+t44 = tmp / "t44.jsonl"
+t44.write_text(json.dumps({"type": "user", "permissionMode": "default", "message": {"role": "user", "content": "x"}}) + "\n"
+               + json.dumps({"type": "permission-mode", "permissionMode": "acceptEdits", "sessionId": "S"}) + "\n")
+_tof = RL.core.transcript_of
+RL.core.transcript_of = lambda row: str(t44) if row.get("session_id") == "S" else ""
+pm44 = (RL.core.permission_mode({"session_id": "S"}), RL.core.permission_mode({"session_id": "none"}))
+RL.core.transcript_of = _tof
+st44 = S.build_session({"name": "x", "tmux": "x", "status": "idle", "session_id": "S"}, {"runtime": {"x": {"permission_mode": "acceptEdits"}}})
+st44b = S.build_session({"name": "x", "tmux": "x", "status": "idle", "session_id": "S"}, {})
+T.check("R44 (1.54) permission_mode: the last value in the transcript's tail (acceptEdits after default), None without a transcript; in the state only when known",
+        pm44 == ("acceptEdits", None) and st44.get("permission_mode") == "acceptEdits" and "permission_mode" not in st44b, str(pm44) + str(st44.get("permission_mode")))
+# 1.55 risolta al terminale
+r44 = tmp / "r44"
+r44.mkdir()
+_rd, _ls, _pf = RL.rdir, RL.last_sessions, RL.prefixes
+RL.rdir, RL.prefixes = (lambda: r44), (lambda: ())
+RL.last_sessions = lambda: {"alfa": {"question": {"id": "q-100-1", "text": "Deploy now?"}}, "beta": {"question": {"id": "q-200-1", "text": "Push?"}},
+                            "gamma": {"question": {"id": "q-300-1", "text": "Old?"}}}
+(r44 / "answered.json").write_text(json.dumps({"q-200-1": 1789210000}))
+rows44 = [{"name": "alfa", "status": "idle"}, {"name": "beta", "status": "idle"}, {"name": "gamma", "status": "waiting"}]
+res44 = RL.resolved_of({"gamma": {"asked_at": 300}}, rows44, 1789211000)
+later44 = RL.resolved_of({}, [{"name": "beta", "status": "idle"}], 1789211000 + RL.RESOLVED_KEEP_S + 1)
+RL.rdir, RL.last_sessions, RL.prefixes = _rd, _ls, _pf
+s44 = S.build_session({"name": "alfa", "tmux": "alfa", "status": "idle"}, {"resolved": res44})
+T.check("R44 (1.55) a question gone without an answer from a device → resolved {id, text, at}; one answered from the phone or still open is not; after RESOLVED_KEEP_S it leaves; in the state with by «terminal»",
+        res44 == {"alfa": {"id": "q-100-1", "text": "Deploy now?", "at": 1789211000}} and later44 == {}
+        and s44.get("resolved") == {"id": "q-100-1", "text": "Deploy now?", "at": 1789211000, "by": "terminal"}, str(res44) + str(later44))
+# 1.56 anteprime senza segreti
+red44 = [S.redact_preview(x) for x in ("curl -H 'Authorization: Bearer abcdefghijklmnop123' https://x", "export API_KEY=sk-abcdefghijklmnopqrstuv",
+                                         "mysql --password hunter22 db", "git push https://me:pw1234@github.com/a/b", "git log --oneline -3")]
+T.check("R44 (1.56) redact_preview hides a bearer token, a key in a variable, an option's password and the password in a URL; a plain command is untouched",
+        red44 == ["curl -H 'Authorization: Bearer •••' https://x", "export API_KEY=•••", "mysql --password ••• db", "git push https://•••@github.com/a/b", "git log --oneline -3"], str(red44))
+q44 = S.build_session({"name": "x", "tmux": "x", "status": "waiting", "waiting": True},
+                      {"questions": {"x": {"tool": "Bash", "text": "Bash export TOKEN=abcdef123456", "options": ["Yes", "No"], "asked_at": 1789210000}}})["question"]
+T.check("R44 (1.56) a question with a secret carries preview (redacted), text stays whole; an event gets preview only when something was hidden",
+        q44["preview"] == "Bash export TOKEN=•••" and q44["text"] == "Bash export TOKEN=abcdef123456"
+        and S.preview_of("▶ x", "work/x") == {} and S.preview_of("? x", "token=abcdef1234") == {"preview": {"title": "? x", "body": "token=•••"}}, str(q44))
+# 2 prompt doppioni
+d44 = tmp / "d44"
+d44.mkdir()
+_rd, _win = RL.rdir, RL.R.get("duplicate_prompt_s")
+RL.rdir = lambda: d44
+RL.R["duplicate_prompt_s"] = 60
+first = RL.duplicate_prompt("alfa", "fai  il deploy")
+RL.duplicate_prompt("alfa", "fai il deploy", record=True)
+again, other = RL.duplicate_prompt("alfa", "fai il deploy"), RL.duplicate_prompt("beta", "fai il deploy")
+RL.R["duplicate_prompt_s"] = 0
+off = RL.duplicate_prompt("alfa", "fai il deploy")
+RL.rdir = _rd
+RL.R["duplicate_prompt_s"] = _win
+T.check("R44 (14/10) the same text to the same session within 60 s after a delivery → seconds since (not sent again); before the delivery, to another session or with the window at 0 → None",
+        first is None and isinstance(again, int) and again >= 1 and other is None and off is None, str((first, again, other, off)))
+# 1.58 quota: le tre strade
+q58 = tmp / "q58"
+q58.mkdir()
+_rd, _jc, _cfgsd = RL.rdir, RL._json_cmd, RL.CFG["state_dir"]
+RL.rdir = lambda: q58
+RL.CFG["state_dir"] = str(q58)
+RL._json_cmd = lambda *a, **kw: ([{"name": "work-ledger-api", "tmux": "work-ledger-api", "account": "work", "cwd": str(ws), "status": "idle"}]
+                                 if a[0] == "sessions" else {"work": {"cinque_ore_pct": 100, "settimana_pct": 40, "reset_cinque_ore": 1789220000, "reset_settimanale": 1789600000}})
+ok58 = RL.quota_route({}, "ledger-api", "work-ledger-api", "at_reset")
+g58 = json.loads((q58 / "guard.json").read_text())
+bad58 = RL.quota_route({}, "ledger-api", "work-ledger-api", "later")
+win58 = RL.quota_window("work")
+RL.rdir, RL._json_cmd = _rd, _jc
+RL.CFG["state_dir"] = _cfgsd
+T.check("R44 (1.58) quota_route at_reset → the guard resumes this session at the 5-hour reset (guard.json resume_at, resume_names), said with the time; an unknown route → the contract's text; other_account picks the other configured account",
+        ok58[0] is True and g58["work"]["resume_at"] == 1789220000 and g58["work"]["resume_names"] == ["work-ledger-api"] and win58 == ("5h", 1789220000)
+        and bad58 == (False, "quota_route later: expected other_account, at_reset or pass:<session>") and RL.other_account("work") == "personal", str(ok58) + str(g58) + str(bad58))
+T.check("R44 (1.58) quota_route is a command in ops", "quota_route" in RL.OPS and "quota_route" not in RL.PASSIVE_OPS, "")
 
 T.finish()

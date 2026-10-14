@@ -69,7 +69,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -672,7 +672,9 @@ def collect_sources(now=None):
                 detail = wi.get("input") if isinstance(wi.get("input"), (str, dict)) else ""
                 questions[tm] = {"tool": tool, "text": text or f"{tool} {json.dumps(detail, ensure_ascii=False)[:200]}",
                                  "options": opts, "asked_at": asked[-1] if asked else int(first_seen or now),
-                                 "detail": json.dumps(detail, ensure_ascii=False) if detail else ""}
+                                 "detail": json.dumps(detail, ensure_ascii=False) if detail else "",
+                                 # 1.53: etichetta → spiegazione, dal payload dell'hook (AskUserQuestion)
+                                 "descriptions": {str(lb): str(ds) for lb, ds in zip(inp.get("options") or [], inp.get("descriptions") or []) if ds}}
         if S.state_of(r) != "waiting" and (r.get("status") == "busy" or tm in aw):
             # anche le «awaiting» (prompt dal polso in corso): senza questo la card restava senza attivita'
             t, note = tool_of(r)
@@ -689,6 +691,7 @@ def collect_sources(now=None):
             rt = core.session_runtime(r)
             # 1.14 (22/09): il ripiego dopo un messaggio segnalato, gia' letto da `sessions --json`
             rt["fallback"] = r.get("fallback") or None
+            rt["permission_mode"] = core.permission_mode(r)   # 1.54
             runtime[r.get("tmux") or r.get("name") or ""] = rt
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             pass
@@ -704,7 +707,7 @@ def collect_sources(now=None):
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
-        "handoffs": handoffs_of(rows),
+        "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now),
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1040,7 +1043,7 @@ def pub_history_add(at):
     write_json(p, (h + [round(at, 2)])[-PUB_HISTORY_N:])
 
 
-def emit(kind, title, body, ref=None, account=None, now=None):
+def emit(kind, title, body, ref=None, account=None, now=None, session=None, extra=None):
     """1.18 (29/09): un evento che non nasce dal diff dello stato — il diario delle 20:00 (`recap`), il resoconto
     della notte (`night_report`), la ripresa della quota all'azzeramento (`quota`) — su /events con la sveglia FCM,
     come gli altri. `body` e' il testo di Telegram senza markup, tagliato a fine riga entro 4000 caratteri. Il seq
@@ -1053,8 +1056,10 @@ def emit(kind, title, body, ref=None, account=None, now=None):
         last_p = rdir() / "last-state.json"
         last = read_json(last_p, {})
         seq = int(last.get("seq") or 0) + 1
-        ev = {"key": f"{now}_{seq:03d}", "kind": kind, "session": None, "account": account, "ts": now,
+        ev = {"key": f"{now}_{seq:03d}", "kind": kind, "session": session, "account": account, "ts": now,
               "title": S.one_line(title), "body": S.cut_lines(body, S.EVENT_BODY_MAX), "ref": ref}
+        ev.update(S.preview_of(ev["title"], ev["body"]))   # 1.56: preview solo se c'era qualcosa da nascondere
+        ev.update(extra or {})   # 1.58: i campi propri di un tipo (quota_limit: reset_at, window, other_account, actions)
         if k:
             rtdb("PATCH", "events", {ev["key"]: C.encrypt(ev, k)}, {"print": "silent"})
         local_events_add([ev], now)
@@ -1065,7 +1070,7 @@ def emit(kind, title, body, ref=None, account=None, now=None):
     try:
         if not k:
             raise OSError("local only")
-        fcm_send({"kind": kind, "session": None, "ts": now, "key": ev["key"]})
+        fcm_send({"kind": kind, "session": session, "ts": now, "key": ev["key"]})
     except (urllib.error.URLError, OSError, ValueError) as ex:
         log(f"fcm FAILED ({kind}): {ex}")
     log(f"evento {kind}: {ev['title']}")
@@ -2671,6 +2676,69 @@ def saved_in_inbox(out):
     return "talk --status" in (out or "")
 
 
+RESOLVED_KEEP_S = 300   # 1.55: per quanto una domanda risolta al PC resta nello stato
+
+
+def mark_answered(session, row):
+    """1.55: l'id della domanda a cui un dispositivo ha appena risposto, perche' resolved_of non la dica «risolta al
+    terminale». answered.json = {id: epoch}, tenuto un giorno."""
+    cur = open_question_at(session, row)
+    if cur is None:
+        return
+    p = rdir() / "answered.json"
+    now = time.time()
+    done = {k: v for k, v in read_json(p, {}).items() if now - float(v or 0) < 86400}
+    done[f"q-{cur}-1"] = now
+    write_json(p, done)
+
+
+def resolved_of(questions, rows, now):
+    """1.55 (14/10, dagli spunti della valutazione di Kaya): una domanda che era nello stato e non c'e' piu', senza una
+    risposta da un dispositivo, e' stata risolta al PC. Resta {id, text, at} per RESOLVED_KEEP_S sotto il nome della
+    sessione, cosi' il telefono la mostra «risolta al terminale» invece di farla sparire; spiega anche un rifiuto
+    relay.cmd_question_changed. Solo sessioni ancora vive. resolved.json = {nome: {id, text, at}}."""
+    p = rdir() / "resolved.json"
+    store = {k: v for k, v in read_json(p, {}).items() if isinstance(v, dict) and now - float(v.get("at") or 0) < RESOLVED_KEEP_S}
+    answered = read_json(rdir() / "answered.json", {})
+    alive = {S.short_name(r.get("name") or r.get("tmux") or "", prefixes()) for r in rows if r.get("status") != "dead"}
+    current = {S.short_name(tm, prefixes()): f"q-{int(q.get('asked_at') or 0)}-1" for tm, q in questions.items()}
+    for name, s_ in last_sessions().items():
+        q = s_.get("question") or {}
+        if not q.get("id") or name not in alive or current.get(name) == q["id"] or q["id"] in answered:
+            continue
+        if (store.get(name) or {}).get("id") != q["id"]:
+            store[name] = {"id": q["id"], "text": str(q.get("text") or ""), "at": int(now)}
+    if store != read_json(p, {}):
+        write_json(p, store)
+    return store
+
+
+DUPLICATE_PROMPT_S = 60
+
+
+def duplicate_prompt(tm, text, record=False):
+    """14/10 (spunti della valutazione di Kaya): lo stesso testo alla stessa sessione entro DUPLICATE_PROMPT_S (la coda
+    offline del telefono, un doppio tocco) parte una volta sola. Torna i secondi dall'invio di prima, o None; con
+    `record` annota l'invio (solo dopo una consegna riuscita: un tentativo fallito si puo' ripetere subito).
+    recent-prompts.json = {sessione: [[epoch, sha1 del testo]]}."""
+    import hashlib
+    p = rdir() / "recent-prompts.json"
+    now = time.time()
+    h = hashlib.sha1(" ".join(text.split()).encode()).hexdigest()
+    window = float(R.get("duplicate_prompt_s", DUPLICATE_PROMPT_S))
+    if window <= 0:
+        return None
+    recent = {k: [x for x in v if now - float(x[0]) < window] for k, v in read_json(p, {}).items() if isinstance(v, list)}
+    hit = next((x for x in recent.get(tm, []) if x[1] == h), None)
+    if hit and not record:
+        return max(1, int(now - float(hit[0])))
+    if not record:
+        return None
+    recent.setdefault(tm, []).append([now, h])
+    write_json(p, {k: v for k, v in recent.items() if v})
+    return None
+
+
 QUESTION_SKEW_S = 60   # 1.52: margine per l'orologio del dispositivo nel ripiego senza `question`
 
 
@@ -2742,6 +2810,7 @@ def execute(cmd):
             rc, out = run_cm("answer", tm, *pick)
             if rc != 0:
                 return False, out.splitlines()[0] if out else "answer failed"
+            mark_answered(session, row)
             clear_waiting((row or {}).get("session_id"))
             m = re.search(r"risposto\s+(\d+)\.\s+(.*?)\s{2,}", out + "  ") or re.search(r"risposto\s+(\d+)\.\s+(\S.*)$", out.splitlines()[0])
             label = m.group(2).strip() if m else ""
@@ -2752,6 +2821,10 @@ def execute(cmd):
                 return False, "empty prompt"
             if not is_live(tm):
                 return False, M("relay.cmd_not_running", name=session)
+            ago = duplicate_prompt(tm, text)
+            if ago is not None:
+                return False, M("relay.cmd_prompt_duplicate", name=session, s=ago)
+            row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
             # 1.42: un prompt dettato in modalita' live porta le istruzioni vocali dopo il prefisso (timeline e transcript le tolgono)
             voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
             rc, out = relay_talk(tm, prefix_for(cmd, tm) + voice + " " + text, "--no-wait")
@@ -2760,10 +2833,14 @@ def execute(cmd):
             if saved_in_inbox(out):
                 return False, M("relay.cmd_inbox_only", name=session)
             aw = read_json(rdir() / "awaiting.json", {}); aw[tm] = int(time.time()); write_json(rdir() / "awaiting.json", aw)
+            duplicate_prompt(tm, text, record=True)
             try:   # 1.33: un'azione ricorrente mandata dal telefono sale in cima alla lista
                 _load("cm-recurring").mark_used(text)
             except Exception:   # noqa: BLE001 — un extra: mai far fallire il prompt
                 pass
+            # 14/10 (spunti della valutazione di Kaya): l'esito dice se la sessione lo legge adesso o a fine turno
+            if row and (row.get("status") in ("busy", "waiting") or row.get("waiting")):
+                return True, M("relay.cmd_prompt_queued", name=session)
             return True, M("relay.cmd_delivered")
         if op == "launch":
             path = str(arg or "")
@@ -2876,6 +2953,8 @@ def execute(cmd):
             return agenda_list()
         if op == "agenda_set":
             return agenda_set(cmd, arg)
+        if op == "quota_route":
+            return quota_route(cmd, session, tm, arg)
         if op == "search":
             return search(arg)
         if op == "timeline":
@@ -2923,6 +3002,7 @@ def execute(cmd):
                 return False, M("relay.cmd_no_allow_all")
             rc, out = run_cm("answer", tm, str(opt["n"]))
             if rc == 0:
+                mark_answered(session, row)
                 clear_waiting((row or {}).get("session_id"))
             return (rc == 0), (M("relay.cmd_answered", n=opt["n"], label=opt["label"]) if rc == 0 else (out.splitlines()[0] if out else "answer failed"))
     except subprocess.TimeoutExpired:
@@ -3594,6 +3674,144 @@ def stats(rest):
     return 0
 
 
+def other_account(acc):
+    """1.58: l'altro account configurato, o None se ce n'e' uno solo (o piu' di due: quale non si indovina)."""
+    others = [a for a in CFG["accounts"] if a != acc]
+    return others[0] if len(others) == 1 else None
+
+
+def quota_window(acc):
+    """1.58: (finestra, reset) del limite toccato da `acc`: «5h» se le cinque ore sono piene, altrimenti «week»."""
+    q = (_json_cmd("quota", "--json", expect="{") or {}).get(acc) or {}
+    if float(q.get("cinque_ore_pct") or 0) >= 99 or float(q.get("settimana_pct") or 0) < 99:
+        return "5h", q.get("reset_cinque_ore")
+    return "week", q.get("reset_settimanale")
+
+
+def quota_limit(tm):
+    """1.58 (14/10, dagli spunti della valutazione di Kaya): la sessione `tm` ha toccato il limite della quota (l'hook di
+    StopFailure). Un evento quota_limit al telefono con l'ora del reset e le tre strade, una per tasto, che l'op
+    quota_route esegue: other_account (handoff sull'altro account), at_reset (riprende da sola al reset),
+    pass (il compito a un'altra sessione). Uno per sessione e finestra di reset."""
+    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    if not row:
+        return 0
+    acc = row.get("account") or ""
+    window, reset = quota_window(acc)
+    p = rdir() / "quota-limits.json"
+    seen = read_json(p, {})
+    if seen.get(tm) == reset:
+        return 0
+    seen[tm] = reset
+    write_json(p, seen)
+    other = other_account(acc)
+    name = S.short_name(tm, prefixes())
+    when = time.strftime("%H:%M", time.localtime(float(reset))) if reset else "?"
+    actions = (["other_account"] if other else []) + ["at_reset", "pass"]
+    emit("quota_limit", M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when),
+         "", ref=name, account=acc, session=name,
+         extra={"reset_at": int(reset) if reset else None, "window": window, "other_account": other, "actions": actions})
+    return 0
+
+
+def quick_handoff(row):
+    """1.58: un passaggio di consegne scritto dal relay, senza modello (la sessione ferma per la quota non puo' scriverlo):
+    cartella, conversazione, le ultime richieste della persona, l'ultimo messaggio, il «prossimo» del recap. Il file
+    in <relay.dir>/handoffs/; torna il percorso."""
+    name = S.short_name(row.get("name") or row.get("tmux") or "?", prefixes())
+    d = rdir() / "handoffs"
+    d.mkdir(parents=True, exist_ok=True)
+    asks = []
+    path = core.transcript_of(row)
+    if path:
+        size = os.path.getsize(path)
+        asks = [e["text"] for e in core.transcript_entries(path, max(0, size - 2 * 1024 * 1024), chat_only=True) if e["role"] == "user"][-3:]
+    nx, _ = next_dated(row.get("cwd")) if row.get("cwd") else ("", None)
+    lines = [f"# {M('relay.handoff_title', name=name)}", "", f"- cwd: {row.get('cwd') or '?'}", f"- session_id: {row.get('session_id') or '?'}",
+             f"- account: {row.get('account') or '?'}", "", f"## {M('relay.handoff_asks')}", ""]
+    lines += [f"- {S.one_line(a)[:600]}" for a in asks] or ["-"]
+    lines += ["", f"## {M('relay.handoff_last')}", "", last_message(row, 3000) or "-"]
+    if nx:
+        lines += ["", f"## {M('relay.handoff_next')}", "", nx]
+    f = d / f"{name}-{int(time.time())}.md"
+    f.write_text("\n".join(lines) + "\n")
+    return f
+
+
+def quota_route(cmd, session, tm, arg):
+    """1.58: una delle tre strade proposte da quota_limit. arg: «other_account» | «at_reset» | «pass:<sessione>»."""
+    a = str(arg or "").strip()
+    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    if not row:
+        return False, M("relay.cmd_not_running", name=session)
+    acc = row.get("account") or ""
+    if a == "at_reset":
+        window, reset = quota_window(acc)
+        if not reset:
+            return False, M("relay.cmd_quota_no_reset", account=acc)
+        gp = Path(cm.expand(CFG["state_dir"])) / "guard.json"
+        g = read_json(gp, {})
+        s_ = g.setdefault(acc, {})
+        s_["resume_at"] = s_.get("resume_at") or reset
+        s_["resume_names"] = sorted(set(s_.get("resume_names") or []) | {tm})
+        write_json(gp, g)
+        return True, M("relay.cmd_resume_at_reset", name=session, t=time.strftime("%H:%M", time.localtime(float(reset))))
+    if a == "other_account":
+        other = other_account(acc)
+        if not other:
+            return False, M("relay.cmd_quota_no_other")
+        f = quick_handoff(row)
+        before = {r.get("tmux") or r.get("name") for r in (_json_cmd("sessions", "--json", "--no-screen") or [])}
+        rc, out = run_cm("launch", row.get("cwd") or "", "--window", "--account", other)
+        if rc != 0:
+            return False, (out.splitlines() or ["launch failed"])[0]
+        here = os.path.realpath(row.get("cwd") or "")
+        new = [r.get("tmux") or r.get("name") for r in (_json_cmd("sessions", "--json", "--no-screen") or [])
+               if (r.get("tmux") or r.get("name")) not in before and r.get("cwd") and os.path.realpath(r["cwd"]) == here]
+        if not new:
+            return False, M("relay.cmd_launch_no_session", name=session)
+        rc, out = relay_talk(new[0], prefix_for(cmd, new[0]) + " " + M("relay.handoff_prompt", name=session, path=str(f)), "--no-wait")
+        return (rc == 0), (M("relay.cmd_quota_other", name=S.short_name(new[0], prefixes()), account=other) if rc == 0 else (out.splitlines() or ["talk failed"])[0]), \
+            ({"session": S.short_name(new[0], prefixes())} if rc == 0 else {})
+    if a.startswith("pass:"):
+        target = tmux_of(a[5:].strip())
+        if not target or not is_live(target) or target == tm:
+            return False, M("relay.cmd_not_running", name=a[5:].strip() or "?")
+        f = quick_handoff(row)
+        rc, out = relay_talk(target, prefix_for(cmd, target) + " " + M("relay.handoff_prompt", name=session, path=str(f)), "--no-wait")
+        return (rc == 0), (M("relay.cmd_quota_passed", name=a[5:].strip()) if rc == 0 else (out.splitlines() or ["talk failed"])[0])
+    return False, M("relay.cmd_quota_bad", arg=a or "?")
+
+
+def task_check(tm):
+    """1.57 (14/10, dagli spunti della valutazione di Kaya): la sessione `tm` si e' fermata. Per ogni suo task running
+    si riesegue il controllo (`task check`, senza cambiare stato) e un evento task_check va al telefono: verde o rosso,
+    il titolo del task, la coda dell'uscita. Solo quando l'esito cambia dall'ultima volta (task-checks.json): una
+    sessione si ferma a ogni turno e il telefono non deve ricevere lo stesso verde dieci volte."""
+    tasks = [t for t in (_json_cmd("task", "list", "--json") or []) if isinstance(t, dict) and t.get("state") == "running" and t.get("session") == tm]
+    if not tasks:
+        return 0
+    p = rdir() / "task-checks.json"
+    seen = read_json(p, {})
+    name = S.short_name(tm, prefixes())
+    for t in tasks:
+        try:
+            rc, out = run_cm("task", "check", t["id"], "--json", timeout=300)
+            res = json.loads(out.splitlines()[-1]) if out.strip().startswith("{") else {"green": False, "tail": out}
+        except (subprocess.TimeoutExpired, ValueError):
+            res = {"green": False, "tail": "timeout"}
+        green = bool(res.get("green"))
+        if seen.get(t["id"]) == green:
+            continue
+        seen[t["id"]] = green
+        key_ = "relay.event_task_check_green" if green else "relay.event_task_check_red"
+        body = S.one_line(t.get("title") or "") + ("\n" + "\n".join(str(res.get("tail") or "").splitlines()[-3:]) if not green and res.get("tail") else "")
+        emit("task_check", M(key_, task=t["id"]), body, ref=t["id"], session=name)
+        log(f"task_check {t['id']} ({name}): {'verde' if green else 'rosso'}")
+    write_json(p, seen)
+    return 0
+
+
 # ------------------------------------------------------------------ CLI
 def main(argv):
     cmd = argv[0] if argv else ""
@@ -3620,6 +3838,10 @@ def main(argv):
         return 0
     if cmd == "stats":
         return stats(rest)
+    if cmd == "quota-limit":   # 1.58: lanciato dall'hook di StopFailure, in background
+        return quota_limit(rest[0]) if rest and R.get("enabled") else 0
+    if cmd == "task-check":   # 1.57: lanciato dall'hook di Stop, in background
+        return task_check(rest[0]) if rest and R.get("enabled") else 0
     if cmd == "setup":   # il progetto Firebase, guidato (R2, 24/09): la sua CLI, non cryptography ne' crontab
         return _load("cm-relay-setup").main(rest)
     if cmd == "pair":

@@ -180,8 +180,9 @@ def run():
         if ra and t >= float(ra) and (pct < float(G["warn_pct"]) or reset != ra):
             failed = failed_since(float(s.get("warned_at") or 0))
             resumed = []
+            asked = set(s.get("resume_names") or [])   # 1.58: «riprendi al reset» scelto dal telefono
             for name, sid in live_sessions().items():
-                if account_of_name(name) != acc or sid not in failed:
+                if account_of_name(name) != acc or (sid not in failed and name not in asked):
                     continue
                 try:
                     subprocess.run([CM_BIN, "talk", name, str(G["resume_prompt"]), "--no-wait"], capture_output=True, text=True, timeout=60)
@@ -203,6 +204,7 @@ def run():
             notify(back)
             log(f"{acc}: reset reached → resumed {resumed}, night={night}")
             s["resume_at"] = None
+            s["resume_names"] = []
             s["resumed_at"] = t
             changed = True
     if changed:

@@ -7,6 +7,7 @@
   supervisor task show ID [--json]
   supervisor task start ID [--session NOME]  in corso (la guardia della corsia chiusa lo cerca)
   supervisor task result ID FILE|-           l'esito che la sessione manda indietro (non e' accettazione)
+  supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
   supervisor task wait-ok ID --what W --where D   attende ok (corsia chiusa fuori da un piano approvato)
@@ -346,6 +347,14 @@ def main(argv):
             print("\n".join(errs), file=sys.stderr)
             return 2
         return 0
+    if verb == "check":
+        # 14/10 (spunti della valutazione di Kaya): il controllo rieseguito SENZA cambiare stato ne' contare tentativi,
+        # per dire al telefono verde o rosso quando la sessione si ferma. Solo `done` accetta.
+        task = json.loads(get_task(con, args[0])["contract"])["task"]
+        rc, tail = run_check(task)
+        res = {"task": args[0], "green": rc == 0, "rc": rc, "tail": tail, "title": task.get("title") or ""}
+        print(json.dumps(res, ensure_ascii=False) if as_json else f"{args[0]}: {'green' if rc == 0 else 'red'} (exit {rc})")
+        return 0 if rc == 0 else 1
     if verb == "done":
         constraint = _opt(args, "--constraint")
         green, res = done(con, args[0], constraint)

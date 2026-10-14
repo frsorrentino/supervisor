@@ -132,6 +132,18 @@ spec.loader.exec_module(mod)
 T.check("T8 a full contract (task, result, measures) is valid; a wrong schema_version is not",
         mod.validate(full) == [] and mod.validate(dict(full, schema_version=2)) != [], str(mod.validate(full)))
 
+# T10 (14/10, spunti della valutazione di Kaya): `task check` riesegue il controllo senza cambiare niente
+add(contract("t10"))
+cm("start", "t10")
+(proj / "ok.txt").unlink(missing_ok=True)
+rc_r, out_r, _ = cm("check", "t10", "--json")
+(proj / "ok.txt").write_text("x")
+rc_g, out_g, _ = cm("check", "t10")
+s10 = show("t10")
+T.check("T10 task check: red → exit 1 with JSON {task, green false, rc, tail, title}; green → exit 0; the state stays running, no result, no attempt counted",
+        rc_r == 1 and json.loads(out_r)["green"] is False and json.loads(out_r)["title"] == "unit t10" and rc_g == 0 and "green" in out_g
+        and s10["state"] == "running" and s10["results"] == [], out_r + out_g + str(s10["state"]))
+
 # T9 lo schema e' lo stesso di fable-director, byte per byte (saltato se il repo o la copia non ci sono)
 fd = Path.home() / "Desktop/workspaces/personali/fable-director/fable-director-marketplace/fable-director/schemas/task-contract.v1.json"
 if fd.exists():

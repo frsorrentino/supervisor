@@ -290,6 +290,24 @@ def session_runtime(row, tail_bytes=512 * 1024, head_bytes=1024 * 1024):
     return _tuned(row, out, last_turn)
 
 
+def permission_mode(row, tail_bytes=512 * 1024):
+    """1.54 (14/10, dagli spunti della valutazione di Kaya): la modalita' dei permessi della sessione. Claude Code la
+    scrive in una riga {"type":"permission-mode","permissionMode":...} quando cambia e su ogni prompt della persona
+    ("permissionMode" della riga user): vale l'ultima nella coda del file. None se non c'e'."""
+    path = transcript_of(row)
+    if not path:
+        return None
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            f.seek(max(0, size - tail_bytes))
+            data = f.read()
+    except OSError:
+        return None
+    found = re.findall(rb'"permissionMode":\s*"([A-Za-z]{1,40})"', data)
+    return found[-1].decode() if found else None   # un nome nuovo di Claude Code passa com'e': l'app lo mostra come testo
+
+
 def _tuned(row, out, last_turn):
     """(contratto 1.12, 16/09) `supervisor model|effort` cambia la sessione dal suo selettore, ma la trascrizione
     lo scrive solo al turno successivo: fino ad allora vale l'annotazione in tune.file. Un turno piu' recente

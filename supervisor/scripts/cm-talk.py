@@ -192,6 +192,13 @@ def talk_tmux(row, text, force, max_wait, quiet, no_wait):
     tmux("send-keys", "-t", tm, "-l", text)
     time.sleep(0.4)
     tmux("send-keys", "-t", tm, "Enter")
+    # 14/10 (spunti della valutazione di Kaya): un Invio perso lascia il prompt sulla riga e la sessione non parte.
+    # Se dopo un attimo il testo e' ancora nella casella, Invio una volta sola, e lo si dice.
+    time.sleep(1.5)
+    head = " ".join(text.split())[:30]
+    if head and " ".join(typed_text(tm).split()).startswith(head):
+        tmux("send-keys", "-t", tm, "Enter")
+        print(M("talk.enter_again", name=tm), file=sys.stderr)
     if no_wait:
         return []
     start = time.time()

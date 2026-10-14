@@ -230,6 +230,7 @@
     "awaiting_max_s": 1800,
     "agenda_file": "",
     "agenda_owner": "owner",
+    "duplicate_prompt_s": 60,
     "telegram_fallback_after_s": 600,
     "window_hint_dir": "~/.claude/fable-director/sessions",
     "window_unmarked": [
