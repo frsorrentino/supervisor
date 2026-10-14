@@ -11,6 +11,9 @@
     "result": {
       ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true"
     },
+    "tail": {
+      ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true"
+    },
     "cmd": {
       ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true",
       ".write": "auth != null && root.child('allowed').child(auth.uid).val() === true"

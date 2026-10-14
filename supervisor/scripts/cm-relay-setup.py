@@ -68,6 +68,7 @@ ALLOWED = "auth != null && root.child('allowed').child(auth.uid).val() === true"
 RULES = {"rules": {
     ".read": False, ".write": False,
     "state": {".read": ALLOWED}, "events": {".read": ALLOWED}, "result": {".read": ALLOWED},
+    "tail": {".read": ALLOWED},   # 1.59 (14/10): le ultime voci della chat di ogni sessione, scritte solo dal PC
     "cmd": {".read": ALLOWED, ".write": ALLOWED},
     # 1.19: l'immagine di «Condividi», scritta dal telefono e letta (poi cancellata) dal PC con il service account
     # 1.48: o a pezzi, /share/<id>/parts/<0..49> e /share/<id>/meta, ognuno entro 1,5 MB (50 pezzi da 1 MB = 50 MB)

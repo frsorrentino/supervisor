@@ -2536,4 +2536,22 @@ T.check("R44 (1.58) quota_route at_reset → the guard resumes this session at t
         and bad58 == (False, "quota_route later: expected other_account, at_reset or pass:<session>") and RL.other_account("work") == "personal", str(ok58) + str(g58) + str(bad58))
 T.check("R44 (1.58) quota_route is a command in ops", "quota_route" in RL.OPS and "quota_route" not in RL.PASSIVE_OPS, "")
 
+# R45 (contratto 1.59, 14/10, il manutentore: «quando cambio una chat vedo per qualche secondo il testo vecchio»): /tail/<id>
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+(tdir_a / "S-A.jsonl").write_text("\n".join(json.dumps({"type": "assistant", "uuid": f"t{i}", "timestamp": "2026-09-12T10:00:00.000Z",
+                                                       "message": {"content": [{"type": "text", "text": f"voce {i}"}]}}) for i in range(40)) + "\n")
+(rdir2 / "tail-seen.json").unlink(missing_ok=True)
+r45 = relay("push")
+tail45 = {kk: C.decrypt(v, k) for kk, v in (STORE.get("tail") or {}).items()}
+a45 = tail45.get("S-A") or {}
+T.check("R45 (1.59) after a push /tail/<id> of a live session with a transcript: encrypted {session, id, tx, at, entries, more}, the last 30 entries, more true",
+        r45.returncode == 0 and a45.get("session") == "atlas-shop" and a45.get("id") == "S-A" and [e["text"] for e in a45.get("entries") or []] == [f"voce {i}" for i in range(10, 40)]
+        and a45.get("more") is True and a45.get("tx"), r45.stderr[-300:] + str(list(tail45)) + str({x: a45.get(x) for x in ("session", "id", "more", "tx")}))
+n45 = len([x for x in CALLS["requests"] if x == ("PATCH", "/tail.json")])
+relay("push")
+T.check("R45 (1.59) a second push with the transcript unchanged writes no /tail", len([x for x in CALLS["requests"] if x == ("PATCH", "/tail.json")]) == n45, str(CALLS["requests"][-6:]))
+rows_alive("ledger-api", "field-notes")
+relay("push")
+T.check("R45 (1.59) a session that is no longer live loses its /tail node", "S-A" not in (STORE.get("tail") or {}), str(list(STORE.get("tail") or {})))
+
 T.finish()

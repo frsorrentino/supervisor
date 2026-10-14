@@ -997,6 +997,10 @@ def _push(dry_run=False, now=None, m=None):
             prune_local(now)
         if local_only():
             return
+        try:
+            push_tails(src["rows"], full, now)
+        except Exception as ex:   # noqa: BLE001 — la chat fresca e' un extra: mai far cadere la push
+            log(f"tail FAILED: {ex}")
         woken = True
         for e in events:
             try:
@@ -1015,6 +1019,63 @@ def _push(dry_run=False, now=None, m=None):
 
 
 PRUNE_EVERY_S = 600
+
+TAIL_N = 30                 # 1.59: le ultime voci della chat di ogni sessione viva, in /tail/<id>
+TAIL_MAX_BYTES = 32000      # il JSON in chiaro di un nodo; oltre si tolgono le voci piu' vecchie (more = true)
+TAIL_MIN_S = 10             # al piu' una scrittura ogni 10 s per sessione mentre lavora: il traffico resta basso
+TAIL_WINDOW = 2 * 1024 * 1024
+
+
+def tail_key(sid):
+    """La chiave RTDB di una sessione: il suo id di sessions[] con i caratteri che RTDB non accetta cambiati in «_»."""
+    return re.sub(r"[.#$\[\]/]", "_", str(sid))
+
+
+def push_tails(rows, full, now):
+    """1.59 (14/10, il manutentore dal telefono: «quando cambio una chat vedo per qualche secondo il testo vecchio»): per ogni
+    sessione viva le ultime TAIL_N voci della chat (lo stesso formato dell'op transcript) in /tail/<id>, cifrate come
+    /state: {session, id, tx, at, entries, more}. Si riscrive solo quando la trascrizione e' cambiata (tx = dimensione
+    e mtime del file) e al piu' ogni TAIL_MIN_S; una sessione ferma non costa niente. L'app apre la chat da qui e poi
+    chiede le voci dopo l'ultima con `transcript n:after=<id>`, come prima. tail-seen.json = {chiave: [tx, epoch]}."""
+    k = key()
+    seen = read_json(rdir() / "tail-seen.json", {})
+    by_tm = {r.get("tmux") or r.get("name"): r for r in rows if r.get("status") != "dead"}
+    out, live = {}, set()
+    for s_ in full.get("sessions") or []:
+        if s_.get("state") == "gone":
+            continue
+        row = next((r for tm, r in by_tm.items() if r.get("session_id") == s_.get("id") or tm == s_.get("id")), None)
+        path = core.transcript_of(row) if row else ""
+        if not path:
+            continue
+        kk = tail_key(s_["id"])
+        live.add(kk)
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        tx = f"{st.st_size}-{st.st_mtime_ns}"
+        prev = seen.get(kk) or [None, 0]
+        if prev[0] == tx or now - float(prev[1] or 0) < TAIL_MIN_S:
+            continue
+        entries = core.transcript_entries(path, max(0, st.st_size - TAIL_WINDOW))
+        page, more = entries[-TAIL_N:], len(entries) > TAIL_N or st.st_size > TAIL_WINDOW
+        body = {"session": s_["name"], "id": s_["id"], "tx": tx, "at": int(now), "entries": page, "more": bool(more)}
+        while body["entries"] and len(json.dumps(body, ensure_ascii=False).encode()) > TAIL_MAX_BYTES:
+            body["entries"] = body["entries"][1:]
+            body["more"] = True
+        out[kk] = C.encrypt(body, k)
+        seen[kk] = [tx, now]
+    if out:
+        rtdb("PATCH", "tail", out, {"print": "silent"})
+    # le sessioni finite: via il loro nodo e il ricordo (una gone si riapre dalla trascrizione, come prima)
+    gone = [x for x in seen if x not in live]
+    if gone:
+        rtdb("PATCH", "tail", {x: None for x in gone}, {"print": "silent"})
+        for x in gone:
+            seen.pop(x, None)
+    if out or gone:
+        write_json(rdir() / "tail-seen.json", seen)
 
 
 def prune_due(now):
