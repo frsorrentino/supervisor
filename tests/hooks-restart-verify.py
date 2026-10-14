@@ -106,7 +106,8 @@ T.check("H2 SessionStart triggers the registry", (tmp / "registry.json").exists(
 # H3
 k = r.stdout
 # 2200 (02/10/2026): la regola 10, «Prossimi:» per i consigli toccabili del telefono, approvata dal maintainer
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2200 and len(k.strip().splitlines()) <= 13, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 14/10: 2400 caratteri, con la regola 11 (needs-you)
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2400 and len(k.strip().splitlines()) <= 13, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
@@ -160,6 +161,21 @@ T.check("H5c PostToolUse clears the waiting flag (a question answered on the key
 n_led = len(ledger.read_text().splitlines())
 r = hook("PostToolUse", {"session_id": "sid-none", "tool_name": "Read"})
 T.check("H5c PostToolUse without a flag: exit 0, no output, nothing written (it runs at every tool call)", r.returncode == 0 and not r.stdout and len(ledger.read_text().splitlines()) == n_led, r.stdout + r.stderr)
+
+# H6 (1.68, 14/10): il prompt dopo chiude «ferma per te»; nella master ogni prompt porta la riga «Ti aspettano»
+(state / "needs-you").mkdir(exist_ok=True)
+(state / "needs-you" / "sid-ny.json").write_text(json.dumps({"reason": "login su win", "at": int(time.time()) - 300}))
+hook("UserPromptSubmit", {"session_id": "sid-ny", "cwd": str(home), "prompt": "fatto"})
+T.check("H6 UserPromptSubmit removes the session's needs-you file (the prompt after closes «waiting for you»)", not (state / "needs-you" / "sid-ny.json").exists(), "")
+rl6 = home / ".cc-supervisor" / "relay"
+rl6.mkdir(parents=True, exist_ok=True)
+(rl6 / "last-state.json").write_text(json.dumps({"full": {"attention": [
+    {"kind": "needs_you", "session": "pix-docs", "ref": "pix-docs", "title": "login su win", "since": int(time.time()) - 720},
+    {"kind": "question", "session": "master", "ref": "q-1-1", "title": "la sua", "since": int(time.time()) - 60}]}}))
+m6 = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master")
+o6 = hook("UserPromptSubmit", {"session_id": "sid-o", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="alfa")
+T.check("H6 in the master every prompt carries «Ti aspettano: pix-docs — login su win, da 12 min», without its own items; in another session nothing",
+        "Ti aspettano: pix-docs — login su win, da 12 min" in m6.stdout and "la sua" not in m6.stdout and "Ti aspettano" not in o6.stdout, m6.stdout + m6.stderr + o6.stdout)
 
 # ---- restart con tmux privato e claude finto
 with T.PrivateTmux() as tm:

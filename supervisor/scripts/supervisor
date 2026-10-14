@@ -55,6 +55,7 @@ case "$cmd" in
   attach|attacca)         exec "$S/cm-attach.sh" "$@" ;;
   quota|quote)            exec python3 "$S/cm-quota.py" "$@" ;;
   statusline)             exec python3 "$S/cm-statusline.py" "$@" ;;   # 14/10: la quota senza fable-director
+  needs-you|serve-te)     exec python3 "$S/cm-needsyou.py" "$@" ;;   # 14/10 (1.68): la sessione e' ferma per l'utente
   talk|parla-con)         exec python3 "$S/cm-talk.py" talk "$@" ;;
   wait|aspetta)           exec python3 "$S/cm-talk.py" wait "$@" ;;
   interrupt|interrompi)   exec python3 "$S/cm-talk.py" interrupt "$@" ;;

@@ -9,3 +9,4 @@ SUPERVISOR (sessioni parallele; comandi `supervisor sessions|launch|close|talk|w
 8. Percorsi parziali: risolvili tu, chiedi se ambiguo; mai creare cartelle per un refuso (`--create` solo se chiesto).
 9. Chiudi ogni turno con UNA riga di esito (cosa è cambiato o deciso), mai «Fatto.» da solo: alimenta recap, `next`, registro.
 10. Se ti fermi con un seguito naturale, dopo «Esito:» metti `Prossimi: a · b · c`: fino a 3 prompt da un tocco (40 caratteri), solo seguiti di QUESTA risposta; una proposta passata e non scelta non torna. «!» solo davanti all'ok o alla scelta che ferma un lavoro adesso. Senza seguito niente riga. «Watch:», se richiesta, resta ultima.
+11. Ti serve qualcosa che solo l'utente può fare (login, codice, tasto fisico, file)? `supervisor needs-you "<cosa>"` prima di fermarti: arriva a telefono e master. Mai aspettare in silenzio.

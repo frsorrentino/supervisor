@@ -2676,4 +2676,40 @@ T.check("R51 (1.65) prompt with reopen to a closed session → `talk … --no-wa
         and any(c.startswith("talk ") and c.endswith("pick up the pricing page --no-wait --reopen") for c in cm_calls()[n51:])
         and plain51 and plain51["ok"] is False and "is not running" in plain51["text"] and sum(1 for c in cm_calls()[n51:] if c.startswith("talk ")) == 1, str(res51) + str(plain51) + str(cm_calls()[n51:]))
 
+
+# R52 (contratto 1.68, 14/10): «ferma per te», la fine turno bloccante, i promemoria
+row52 = {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P", "account": "work"}
+led52 = [{"event": "stop", "session_id": "S-P", "ts": iso(1789210000), "tail": "Ho preparato tutto.\nDa te:\n1. Fai il login su win e rimandami il codice.\n2. altro"}]
+b52 = S.build_session(row52, {"ledger": led52, "_now": 1789210800})
+n52 = S.build_session(row52, {"ledger": led52, "needs_you": {"pix-docs": {"reason": "login su win", "at": 1789210100}}, "_now": 1789210800})
+led52b = [{"event": "stop", "session_id": "S-P", "ts": iso(1789210000), "tail": "Esito: pronto.\nProssimi: !ok al deploy · rivedi i test"}]
+p52 = S.build_session(row52, {"ledger": led52b, "_now": 1789210800})
+T.check("R52 (1.68) a turn ending with a «Da te» list or a «!» step → turn_blocking {text, at}; needs_you {reason, at} from `supervisor needs-you`",
+        b52.get("turn_blocking") == {"text": "Fai il login su win e rimandami il codice.", "at": 1789210000} and p52.get("turn_blocking", {}).get("text") == "ok al deploy"
+        and n52.get("needs_you") == {"reason": "login su win", "at": 1789210100}, str((b52.get("turn_blocking"), p52.get("turn_blocking"), n52.get("needs_you"))))
+st52 = S.build_state(dict(SRC1, rows=[row52], ledger=led52, questions={}, needs_you={"pix-docs": {"reason": "login su win", "at": 1789210100}}), 1789210800, fit=False)
+ev52, _ = S.events_between({"sessions": [dict(S.build_session(row52, {"ledger": [], "_now": 1789210800}))]}, st52, 1789210800, 1)
+T.check("R52 (1.68) state.attention has the needs_you item (and not also turn_blocking for the same session); an event needs_you «✋ pix-docs»",
+        [(x["kind"], x["title"]) for x in st52.get("attention") or []] == [("needs_you", "login su win")] and any(e["kind"] == "needs_you" and e["title"] == "✋ pix-docs" and e["body"] == "login su win" for e in ev52), str((st52.get("attention"), ev52)))
+r52 = tmp / "r52"
+r52.mkdir()
+_rd, _em = RL.rdir, RL.emit
+got52 = []
+RL.rdir, RL.emit = (lambda: r52), (lambda kind, title, body, **kw: got52.append((kind, title, kw.get("ref"))))
+full52 = {"attention": [{"kind": "needs_you", "session": "pix-docs", "ref": "pix-docs", "title": "login su win", "since": 1789210000}]}
+RL.attention_reminders(full52, 1789210000 + 300)   # vista per la prima volta a 5 min: niente
+RL.attention_reminders(full52, 1789210000 + 700)
+RL.attention_reminders(full52, 1789210000 + 800)
+RL.attention_reminders(full52, 1789210000 + 1900)
+RL.rdir, RL.emit = _rd, _em
+RL.rdir, RL.emit = (lambda: r52), (lambda kind, title, body, **kw: got52.append((kind, title, kw.get("ref"))))
+old52 = {"attention": [{"kind": "question", "session": "x", "ref": "q-1-1", "title": "old", "since": 1789000000}]}
+n_old52 = len(got52)
+RL.attention_reminders(old52, 1789210000)
+RL.attention_reminders(old52, 1789210060)
+RL.rdir, RL.emit = _rd, _em
+T.check("R52 (1.68) an item first seen already old (after a restart) does not fire its past reminders at once", len(got52) == n_old52, str(got52[n_old52:]))
+T.check("R52 (1.68) attention_reminder after 10 and after 30 minutes, once each, while the item is open",
+        [g[0] for g in got52] == ["attention_reminder", "attention_reminder"] and "(10 min)" in got52[0][1] and "(30 min)" in got52[1][1] and got52[0][2] == "pix-docs", str(got52))
+
 T.finish()

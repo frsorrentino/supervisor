@@ -67,6 +67,7 @@ _spec = importlib.util.spec_from_file_location("cm_config", HERE / "cm-config.py
 cm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cm)
 CFG = cm.load(warn=False)
+M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731   (1.68: la riga «Ti aspettano» nella master)
 STATE = Path(cm.expand(CFG["state_dir"]))
 
 DAYS = {"it": ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
@@ -209,6 +210,28 @@ def pop_queue(p):
     return item
 
 
+def waiting_for_you(now=None):
+    """1.68 (14/10): solo nella master, a ogni prompt, una riga con chi aspetta la persona — «Ti aspettano: <sessione> —
+    <motivo>, da N min» — dalla lista «Serve te» dell'ultimo stato del relay, cosi' la master la riporta anche quando si
+    parla d'altro. Niente se la lista e' vuota o se questa non e' la master."""
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    if my_tmux_name() != master:
+        return ""
+    R = CFG.get("relay") or {}
+    try:
+        last = json.loads((Path(cm.expand(R.get("dir") or "~/.cc-supervisor/relay")) / "last-state.json").read_text())
+    except (OSError, ValueError):
+        return ""
+    items = [x for x in ((last.get("full") or last.get("state") or {}).get("attention") or []) if x.get("session") != master]
+    if not items:
+        return ""
+    now = now or time.time()
+    parts = [M("hook.waiting_item", name=x.get("session") or "?", what=str(x.get("title") or x.get("kind") or "")[:90],
+               min=max(0, int((now - float(x.get("since") or now)) // 60))) for x in items[:5]]
+    more = M("hook.waiting_more", n=len(items) - 5) if len(items) > 5 else ""
+    return M("hook.waiting_for_you", items="; ".join(parts) + more)
+
+
 def task_check_on_stop():
     """1.57 (14/10): se questa sessione ha un task running, il relay riesegue il suo controllo e dice al telefono verde
     o rosso. Qui solo una lettura del registro (sqlite, millisecondi) e un figlio staccato: l'hook non aspetta."""
@@ -327,10 +350,14 @@ def main(argv):
     elif ev == "UserPromptSubmit":
         if sid:
             (STATE / "waiting" / sid).unlink(missing_ok=True)
+            (STATE / "needs-you" / f"{sid}.json").unlink(missing_ok=True)   # 1.68: il prompt dopo chiude «ferma per te»
         ledger("prompt", p)   # l'inizio del turno (turn_started per il polso)
         relay_push()   # 08/10 (fase 1): un prompt dalla tastiera arrivava alle app solo al giro del cron
         if CFG["hooks"]["local_time"]["enabled"]:
             sys.stdout.write(local_time() + "\n")
+        line = waiting_for_you()
+        if line:
+            sys.stdout.write(line + "\n")
     elif ev == "PermissionRequest":
         if sid:
             (STATE / "waiting").mkdir(parents=True, exist_ok=True)

@@ -257,6 +257,23 @@ def next_steps(text):
     return []
 
 
+DA_TE_RE = re.compile(r"^\s*[*_#>\s]*da te\b", re.I)
+NUM_RE = re.compile(r"^\s*\d+[.)]\s+(.*\S)")
+
+
+def da_te(text):
+    """1.68 (14/10): la prima voce di un elenco numerato sotto una riga «Da te» (regola globale dell'utente: quello che
+    deve fare fuori dalla chat, il piu' bloccante per primo), o ""."""
+    lines = str(text or "").splitlines()
+    for i, line in enumerate(lines):
+        if DA_TE_RE.match(line):
+            for nxt in lines[i + 1:i + 8]:
+                m = NUM_RE.match(strip_markdown(nxt))
+                if m:
+                    return m.group(1).strip()
+    return ""
+
+
 def _unbang(text):
     """La riga «Prossimi:» senza i «!» davanti alle voci: un'app che legge ancora `outcome.full` manda il prompt pulito."""
     return "\n".join(re.sub(r"((?:^|·|:)\s*\**\s*`?)!+", r"\1", l) if NEXT_RE.match(strip_markdown(l)) else l for l in str(text).split("\n"))
@@ -410,6 +427,16 @@ def build_session(row, src):
     steps = next_steps(stops[-1].get("tail") or stops[-1].get("last") or "") if stops and out["outcome"] else []
     if steps:
         out["next_steps"] = steps
+    # 1.68 (14/10, una sessione aspettava un login e risultava al lavoro): un turno che finisce con una voce
+    # bloccante («Prossimi:» con «!», o un elenco «Da te») e' una domanda aperta: {text, at}, finche' la sessione e' ferma
+    if st == "idle" and out["outcome"]:
+        block = next((x["text"] for x in steps if x.get("blocking")), "") or da_te(stops[-1].get("tail") or stops[-1].get("last") or "")
+        if block:
+            out["turn_blocking"] = {"text": one_line(block)[:200], "at": out["outcome"]["at"]}
+    # 1.68: la sessione ha detto `supervisor needs-you "<motivo>"`: {reason, at}, finche' non riceve il prompt dopo
+    if (src.get("needs_you") or {}).get(tmux) and st != "gone":
+        nyu = src["needs_you"][tmux]
+        out["needs_you"] = {"reason": one_line(nyu.get("reason") or "")[:200], "at": int(nyu.get("at") or 0)}
     # 1.54 (14/10): la modalita' dei permessi (default, acceptEdits, plan, bypassPermissions...), dall'ultima riga della
     # trascrizione che la dice. 1.55: la domanda risolta al PC negli ultimi minuti, {id, text, at, by: "terminal"}.
     # Assenti = non si sa / nessuna
@@ -548,6 +575,10 @@ def build_state(src, now, fit=True):
     att = [{"kind": "question", "session": s["name"], "ref": s["question"]["id"],
             "title": s["question"].get("preview") or s["question"]["text"][:200], "since": s["question"]["asked_at"]}
            for s in sessions if s.get("question")]
+    att += [{"kind": "needs_you", "session": s["name"], "ref": s["name"], "title": redact_preview(s["needs_you"]["reason"]), "since": s["needs_you"]["at"]}
+            for s in sessions if s.get("needs_you")]
+    att += [{"kind": "turn_blocking", "session": s["name"], "ref": s["name"], "title": redact_preview(s["turn_blocking"]["text"]), "since": s["turn_blocking"]["at"]}
+            for s in sessions if s.get("turn_blocking") and not s.get("needs_you")]
     att += [dict(x) for x in (src.get("attention") or [])]
     if att:
         state["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
@@ -691,6 +722,11 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
         po, o = (p or {}).get("outcome"), s.get("outcome")
         if o and p is not None and (not po or po.get("at") != o.get("at")):
             add("outcome", s, f"✓ {name}", o["short"])
+        # 1.68: «ferma per te» e la fine turno bloccante, un evento quando compaiono o cambiano
+        if s.get("needs_you") and (p is None or (p.get("needs_you") or {}).get("at") != s["needs_you"]["at"]):
+            add("needs_you", s, f"✋ {name}", s["needs_you"]["reason"], name)
+        elif s.get("turn_blocking") and p is not None and (p.get("turn_blocking") or {}) != s["turn_blocking"]:
+            add("turn_blocking", s, f"✋ {name}", s["turn_blocking"]["text"], name)
         if s["state"] == "gone" and p is not None and p["state"] != "gone":
             add("gone", s, f"✗ {name}", "")
     for name, p in pv.items():

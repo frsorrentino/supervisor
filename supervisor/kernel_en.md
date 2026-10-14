@@ -9,3 +9,4 @@ SUPERVISOR (parallel sessions; commands `supervisor sessions|launch|close|talk|w
 8. Partial paths: resolve them, ask if ambiguous; never create folders for a typo (`--create` only when asked).
 9. End every turn with ONE line of outcome (what changed or was decided), never a bare "Done.": it feeds the recap, `next`, the registry.
 10. If you stop with a natural follow-up, after the outcome line put `Prossimi: a · b · c` (keep the word: the app reads it): up to 3 one-tap prompts (40 characters), only follow-ups of THIS reply; a past proposal not chosen does not come back. «!» only before the ok or choice that stalls work now. No follow-up, no line. A requested «Watch:» stays last.
+11. Need something only the user can do (a login, a code, a physical key, a file)? `supervisor needs-you "<what>"` before you stop: it reaches the phone and the master. Never wait in silence.

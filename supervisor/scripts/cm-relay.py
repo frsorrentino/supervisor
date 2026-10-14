@@ -708,7 +708,7 @@ def collect_sources(now=None):
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
-        "attention": attention_open(rows, ledger),
+        "attention": attention_open(rows, ledger), "needs_you": needs_you_of(rows),
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
@@ -1003,6 +1003,10 @@ def _push(dry_run=False, now=None, m=None):
             push_tails(src["rows"], full, now)
         except Exception as ex:   # noqa: BLE001 — la chat fresca e' un extra: mai far cadere la push
             log(f"tail FAILED: {ex}")
+        try:
+            attention_reminders(full, now)
+        except Exception as ex:   # noqa: BLE001 — un promemoria in meno, mai una push in meno
+            log(f"reminders FAILED: {ex}")
         woken = True
         for e in events:
             try:
@@ -3835,6 +3839,49 @@ def quota_limit(tm):
         log(f"quota_limit {name}: notte, altro account in automatico → {'ok' if ok else 'ERR'} {text}")
         emit("quota_limit", M("relay.event_quota_auto", name=name, text=text), "", ref=name, account=acc, session=name)
     return 0
+
+
+def needs_you_of(rows):
+    """1.68: {tmux: {reason, at}} dai file <state_dir>/needs-you/<session_id>.json che scrive `supervisor needs-you`
+    (l'hook del prompt dopo li toglie)."""
+    d = Path(cm.expand(CFG["state_dir"])) / "needs-you"
+    if not d.is_dir():
+        return {}
+    by_sid = {r.get("session_id"): (r.get("tmux") or r.get("name")) for r in rows if r.get("session_id") and r.get("status") != "dead"}
+    out = {}
+    for f in d.glob("*.json"):
+        tm = by_sid.get(f.stem)
+        if tm:
+            out[tm] = read_json(f, {})
+    return out
+
+
+REMIND_AFTER_S = (600, 1800)   # 1.68: promemoria di una voce di «Serve te» ancora aperta dopo 10 e dopo 30 minuti
+
+
+def attention_reminders(full, now):
+    """1.68 (14/10): per ogni voce di state.attention ancora aperta, un evento attention_reminder dopo 10 e dopo 30
+    minuti, una volta ciascuno (reminders.json); le voci chiuse escono dal file."""
+    items = full.get("attention") or []
+    p = rdir() / "reminders.json"
+    sent = read_json(p, {})
+    live = {}
+    for x in items:
+        key = f"{x.get('kind')}|{x.get('ref')}|{x.get('since')}"
+        if key not in sent:
+            # vista ora per la prima volta (dopo un riavvio, o una voce nata gia' vecchia): le soglie gia' passate non
+            # suonano tutte insieme, contano solo quelle che si passano da qui in poi
+            live[key] = [a for a in REMIND_AFTER_S if now - float(x.get("since") or now) >= a]
+            continue
+        done = list(sent.get(key) or [])
+        for after in REMIND_AFTER_S:
+            if after not in done and now - float(x.get("since") or now) >= after:
+                done.append(after)
+                emit("attention_reminder", M("relay.event_attention_reminder", min=after // 60, title=S.one_line(x.get("title") or "")[:120]), "",
+                     ref=x.get("ref"), session=x.get("session"), extra={"attention_kind": x.get("kind")})
+        live[key] = done
+    if live != sent:
+        write_json(p, live)
 
 
 def attention_mark(kind, session, ref, title, now=None, remove=False):

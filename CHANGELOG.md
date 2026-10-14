@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.24 — 2026-10-14: a session that needs you says so, a turn that ends waiting for you counts as a question, reminders until it is solved, and the master hears of it.**
+  - Approved by the maintainer on 14/10 at 22:45 after a session waited for a login on another computer while it showed as working, and nothing reached the phone.
+  - `supervisor needs-you "<what you need>"` (alias `serve-te`), contract 1.68: from a session, for something only the user can do (a login, a code, a physical key, a file). `sessions[].needs_you` = {reason, at} until the session's next prompt (the UserPromptSubmit hook removes it, `--clear` too); an event `needs_you` «✋ <session>»; a silent record in the master's inbox. Rule 11 of the kernel every session gets at start tells sessions to use it instead of waiting in silence.
+  - A turn that ends waiting for you is an open question (1.68): «Prossimi:» with a «!» step, or a numbered list under «Da te», on an idle session → `sessions[].turn_blocking` = {text, at} and an event `turn_blocking`.
+  - One list and reminders (1.68): `state.attention` (1.66) also carries `needs_you` and `turn_blocking`; every open item gets an `attention_reminder` event after 10 and after 30 minutes, once each (an item first seen already old, after a restart, does not fire its past reminders).
+  - The master as the hub: in the master, every prompt carries a line «Waiting for you: <session> — <what>, for N min» from the last state's list, so it reports it even when the talk is about something else.
+  - Tests R52 in `relay-verify`, H6 in `hooks-restart-verify` (the kernel's bound goes from 2200 to 2400 characters for rule 11).
 - **0.8.23 — 2026-10-14: a message reopens a closed session, the quota without fable-director, one «Needs you» list, weekly reset reminders and an optional automatic account switch.**
   - Chosen by the maintainer on 14/10 at 21:55 from a weighted list of ideas from competing tools.
   - `supervisor talk --reopen` (contract 1.65): a message to a closed session relaunches it from the registry snapshot, with `--resume <session_id>` when its transcript exists and `--continue` otherwise, and delivers it as soon as it is live. If the relaunch fails the message stays in the inbox, as before. The `prompt` op takes `reopen: true` for the same from the phone: «<session> was closed: reopened and delivered».
