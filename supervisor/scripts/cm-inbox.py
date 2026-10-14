@@ -78,10 +78,11 @@ def put(to, text, sender, to_cwd="", origin="session"):
 def mark_origin(to, text, since, origin):
     """0319ab (14/10): il relay consegna con `supervisor talk`, che scrive sempre origin «session»; subito dopo il relay
     marca come suo il record appena scritto: stesso destinatario e testo, creato da `since` in poi. Torna l'id o None.
-    La CLI non ha un modo per scrivere un'origine diversa."""
+    La CLI non ha un modo per scrivere un'origine diversa. `text` None (21:43, la segnalazione: il testo lo compone
+    cm-report.sh) = il record piu' recente da `since` in poi, chiunque l'abbia scritto."""
     best = None
     for r in messages(to, include_all=True):
-        if r.get("text") == text and float(r.get("created") or 0) >= since - 1 and (best is None or r["created"] > best["created"]):
+        if (text is None or r.get("text") == text) and float(r.get("created") or 0) >= since - 1 and (best is None or r["created"] > best["created"]):
             best = r
     if best is None:
         return None

@@ -441,7 +441,7 @@ case "$1" in
   talk) if [ -f "{tmp / 'talk-saved'}" ]; then echo "supervisor talk: «$2» è chiusa; messaggio m1 salvato nella casella, le arriva quando riparte (stato: supervisor talk --status m1)" >&2; else python3 "{fake_talk}" "$2" "$3"; echo "consegnato"; fi ;;
   model) echo "$2: model Sonnet 5, this session only" ;;
   effort) if [ "$2" = "atlas-shop" ]; then echo "atlas-shop is working: try again when it is idle"; exit 3; else echo "$2: effort $3, this session only"; fi ;;
-  report) if [ "$3" != "-" ]; then cp "$3" "{tmp / 'report-img'}"; echo "segnalazione consegnata a «$6»"; echo "  immagine: $2/docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg"; else echo "segnalazione consegnata a «$6»"; fi ;;
+  report) python3 "{fake_talk}" "$6" "segnalazione: $4"; if [ "$3" != "-" ]; then cp "$3" "{tmp / 'report-img'}"; echo "segnalazione consegnata a «$6»"; echo "  immagine: $2/docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg"; else echo "segnalazione consegnata a «$6»"; fi ;;
   interrupt) case "$2" in atlas-shop) echo "$2: fermata" ;; field-notes) echo "$2: niente da fermare" >&2; exit 1 ;; *) echo "supervisor interrupt: «$2» non è viva" >&2; exit 3 ;; esac ;;
   night) case "$2" in
       add) if [ "$4" = "FULL" ]; then echo "coda piena: 8 lavori, night.max_queued è 8" >&2; exit 4; fi; echo "in coda: 7b21d4e8 · $3 · account «work» (2 in coda)" ;;
@@ -1146,6 +1146,10 @@ calls = [c for c in cm_calls()[n_calls:] if c.startswith("report ")]
 T.check("R15 (1.19) report with an image → `report <session folder> <temp .jpg> <text> --session <tmux>`, the bytes intact, /result = the fixture's text",
         res and res["ok"] is True and res["text"] == RES[14]["text"] and len(calls) == 1 and calls[0].startswith(f"report {atlas} ") and ".jpg the client says" in calls[0]
         and calls[0].endswith("--session atlas-shop") and (tmp / "report-img").read_bytes() == IMG, str(res) + str(calls))
+box15 = sorted((state_dir / "inbox" / "atlas-shop").glob("*.json"), key=lambda q: json.loads(q.read_text())["created"])
+rec15 = json.loads(box15[-1].read_text()) if box15 else {}
+T.check("R15 (0319ab, 21:43) the report's message in the session's inbox has origin «relay», like the prompts",
+        rec15.get("text", "").startswith("segnalazione:") and rec15.get("origin") == "relay", str(rec15))
 T.check("R15 (1.19) after the command /share/<id> is deleted and the temporary file is gone",
         sid not in (STORE.get("share") or {}) and not any((rdir2 / "share-tmp").glob("*")), str(list((STORE.get("share") or {}))) + str(list((rdir2 / "share-tmp").glob("*"))))
 res = send_cmd(CMDS[15])

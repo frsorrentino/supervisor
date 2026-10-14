@@ -1816,6 +1816,7 @@ def _share_report(cmd, tm, session, sid):
         tmpd.mkdir(parents=True, exist_ok=True)
         img = tmpd / f"{sid}.{ext}"
         img.write_bytes(data)
+    t0 = time.time()
     try:
         rc, out = run_cm("report", row["cwd"], str(img) if img else "-", text or M("relay.report_image_only"), "--session", tm)
     finally:
@@ -1823,6 +1824,10 @@ def _share_report(cmd, tm, session, sid):
             img.unlink(missing_ok=True)
     if rc != 0:
         return False, (out.splitlines() or ["report failed"])[0]
+    try:   # 0319ab (21:43): anche la segnalazione e' un messaggio del relay; il testo lo scrive cm-report.sh
+        _load("cm-inbox").mark_origin(tm, None, t0, "relay")
+    except Exception:   # noqa: BLE001 — il messaggio e' partito: l'origine e' un'informazione in piu'
+        pass
     saved = next((l.split(":", 1)[1].strip() for l in out.splitlines() if l.strip().startswith(("image:", "immagine:"))), "")
     if saved:
         return True, M("relay.cmd_report_sent_image", name=session, file=os.path.relpath(saved, row["cwd"]))
@@ -2776,6 +2781,25 @@ def resolved_of(questions, rows, now):
     return store
 
 
+def mark_queued(tm, text):
+    """0319ab (21:43): la voce appena messa in coda da un prompt programmato prende origin «relay», cosi' quando
+    `queue --due` la consegna il record nella casella e' del relay. Scritta qui, nel file della coda: la CLI di queue
+    non ha un'opzione per farlo."""
+    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    if not row or not row.get("session_id"):
+        return
+    p = Path(cm.expand(CFG["state_dir"])) / "queue" / row["session_id"]
+    try:
+        items = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    except (OSError, ValueError):
+        return
+    for it in reversed(items):
+        if it.get("text") == text and not it.get("origin"):
+            it["origin"] = "relay"
+            break
+    p.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in items))
+
+
 DUPLICATE_PROMPT_S = 60
 
 
@@ -2893,9 +2917,11 @@ def execute(cmd):
                 if not time.time() - 60 <= at <= time.time() + 7 * 86400:
                     return False, M("relay.cmd_prompt_bad_at")
                 voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
-                rc, out = run_cm("queue", tm, prefix_for(cmd, tm) + voice + " " + text, "--at-epoch", str(at))
+                full_text = prefix_for(cmd, tm) + voice + " " + text
+                rc, out = run_cm("queue", tm, full_text, "--at-epoch", str(at))
                 if rc != 0:
                     return False, (out.splitlines() or ["queue failed"])[0]
+                mark_queued(tm, full_text)
                 return True, M("relay.cmd_prompt_scheduled", name=session, t=time.strftime("%H:%M", time.localtime(at)))
             ago = duplicate_prompt(tm, text)
             if ago is not None:

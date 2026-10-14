@@ -69,7 +69,10 @@ def due():
         if sid not in todo or r.get("status") != "idle" or r.get("waiting") or not r.get("tmux"):
             continue
         p, items, hit = todo[sid]
+        t0 = time.time()
         rc = subprocess.run([str(HERE / "supervisor"), "talk", r["tmux"], hit["text"], "--no-wait"], capture_output=True, text=True, timeout=120).returncode
+        if rc == 0 and hit.get("origin") == "relay":   # 0319ab: la voce l'ha marcata il relay (mark_queued), non la CLI
+            _load("cm-inbox").mark_origin(r["tmux"], hit["text"], t0, "relay")
         if rc == 0:
             rest = [i for i in items if i is not hit]
             p.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in rest)) if rest else p.unlink(missing_ok=True)

@@ -112,6 +112,12 @@ T.check("IB10 mark_origin marks only the record with that text written after `si
         mid not in ("", "None") and by_text.get("Dall'utente via telefono. ok") == "relay" and by_text.get("altro testo") == "session"
         and by_text.get("ciao dalla prova") == "session", str(by_text) + mid)
 T.check("IB10 nothing matching → None, nothing changes", py(f"print(I.mark_origin('chiusa','mai scritto',{t0},'relay'))").stdout.strip() == "None", "")
+t1 = time.time()
+py("I.put('chiusa','testo composto da cm-report','supervisor')")
+mid2 = py(f"print(I.mark_origin('chiusa',None,{t1},'relay'))").stdout.strip()
+by_text = {r["text"]: r.get("origin") for r in recs("chiusa")}
+T.check("IB10 mark_origin with text None (the report composes its own text) marks the newest record from `since`, not the older ones",
+        mid2 not in ("", "None") and by_text.get("testo composto da cm-report") == "relay" and by_text.get("altro testo") == "session", str(by_text))
 
 # IB6 hook, in un tmux privato: il nome della sessione e' «chiusa»
 with T.PrivateTmux() as tm:

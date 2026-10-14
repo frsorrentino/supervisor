@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.22 — 2026-10-14: a report from the phone is marked as the relay's in the inbox, like the prompts.**
+  - Reported by the master on 14/10 at 21:43 (defect 0319ab, follow-up): the reports with the phone's screenshot reached its inbox with origin «session». `cm-report.sh` delivers with its own `talk`, outside the relay's marking. The relay now marks the report's record right after it returns (`mark_origin` with no text: the newest record from that moment). A prompt scheduled from the phone (1.63) is marked in the queue file by the relay, and `queue --due` gives its inbox record origin «relay» when it delivers it. The queue's CLI has no option for this. Every other relay path that writes to a session already went through the relay's `talk` with the marking. Tests R15 (0319ab) in `relay-verify`, IB10 in `inbox-verify`.
 - **0.8.21 — 2026-10-14: restore resumes each session by its id, a failed turn reaches the phone, the phone stays quiet while you are at the PC, messages at a set time, a new folder from the phone; plan-verify P3 no longer flaky.**
   - Approved by the maintainer on 14/10 at 20:25, from a study of competing tools.
   - `restore` resumes each session with `--resume <session_id>` when the registry has the id and its transcript exists (the same check as `launch --resume`); otherwise with `--continue`, and the list says so for that session. With `--continue` two sessions in the same folder both resumed the folder's last conversation.

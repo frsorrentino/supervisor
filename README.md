@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.21-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.22-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **See every Claude Code session on one screen, answer the blocked ones from your
 phone, and get them all back after a reboot.** A supervisor for the sessions you
