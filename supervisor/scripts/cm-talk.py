@@ -2,7 +2,7 @@
 """supervisor talk — manda un prompt a un'altra sessione Claude e restituisce la sua risposta.
 supervisor wait — aspetta che una sessione torni ferma e stampa la sua ultima risposta.
 
-  supervisor talk <nome> "prompt" [--wait S] [--quiet S] [--no-wait] [--force]
+  supervisor talk <nome> "prompt" [--wait S] [--quiet S] [--no-wait] [--force] [--reopen]
                                      [--via auto|socket|tmux] [--no-native-hint]
   supervisor wait <nome> [--timeout S]
 
@@ -236,6 +236,43 @@ def sender_name():
     return CFG["talk"]["from_name"]
 
 
+REOPEN_WAIT_S = 90
+
+
+def reopen_session(name):
+    """14/10 (dall'analisi dei concorrenti, «Parla» riapre e consegna): `talk --reopen` verso una sessione chiusa la
+    rilancia dalla fotografia del registro, nella sua cartella e col suo account, con --resume <session_id> quando la
+    trascrizione c'e' (come restore), altrimenti --continue; poi aspetta che sia viva e la riga torna a cmd_talk, che
+    consegna come sempre. None se il rilancio non riesce: allora il messaggio resta in casella, come senza --reopen."""
+    entry = None
+    for key in ("good_file", "file"):
+        try:
+            d = json.loads(Path(cm.expand(CFG["registry"][key])).read_text())
+        except (OSError, ValueError, KeyError):
+            continue
+        entry = next((s for s in d.get("sessioni") or [] if s.get("nome") == name), None)
+        if entry:
+            break
+    if not entry or not os.path.isdir(entry.get("cartella") or ""):
+        return None
+    acc, sid, folder = entry.get("account") or "", entry.get("session_id") or "", entry["cartella"]
+    conf = cm.expand(((CFG.get("accounts") or {}).get(acc) or {}).get("config_dir") or "")
+    slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(folder))
+    how = ["--resume", sid] if sid and conf and os.path.isfile(os.path.join(conf, "projects", slug, sid + ".jsonl")) else ["--continue"]
+    cmd = [os.environ.get("CM_TALK_CM") or str(HERE / "supervisor"), "launch", folder, *how] + (["--account", acc] if acc else [])   # CM_TALK_CM: prove
+    print(M("talk.reopening", name=name, how=" ".join(how)), file=sys.stderr)
+    if subprocess.run(cmd, capture_output=True, text=True, timeout=300).returncode != 0:
+        return None
+    end = time.time() + REOPEN_WAIT_S
+    while time.time() < end:
+        row = find(name)
+        if row:
+            time.sleep(3)   # il prompt di Claude Code si disegna un attimo dopo il registro
+            return find(name) or row
+        time.sleep(2)
+    return None
+
+
 def cmd_talk(argv):
     if argv and argv[0] == "--status":
         return inbox().main(["status"] + argv[1:2])
@@ -247,6 +284,7 @@ def cmd_talk(argv):
     quiet = int(os.environ.get("QUIETE", CFG["talk"]["quiet_s"]))
     force = os.environ.get("FORZA") == "si"
     no_wait = False
+    reopen = False
     via = "auto"
     hint = CFG["talk"]["warn_native_channel"] and os.environ.get("NATIVO") != "no"
     a = argv[2:]
@@ -265,6 +303,8 @@ def cmd_talk(argv):
             via = a[i + 1]; i += 1
         elif x == "--no-native-hint":
             hint = False
+        elif x == "--reopen":
+            reopen = True
         else:
             die("talk.unknown_option", 2, opt=x)
         i += 1
@@ -278,14 +318,17 @@ def cmd_talk(argv):
         # 23/09: una sessione nota ma chiusa riceve il messaggio quando riparte (casella persistente); un nome mai
         # visto resta un errore, perche' e' quasi sempre un refuso
         known, cwd = inbox().known_session(name)
-        if known:
+        if known and reopen:
+            row = reopen_session(name)
+        if known and not row:
             rec = inbox().put(name, text, sender_name(), cwd)
             print(M("talk.saved", name=name, id=rec["id"]), file=sys.stderr)
             return 0
-        print(M("talk.missing", name=name), file=sys.stderr)
-        live = [r["tmux"] or r["name"] for r in sessions.collect(read_screen=False)]
-        print("  " + " ".join(live), file=sys.stderr)
-        sys.exit(3)
+        if not row:
+            print(M("talk.missing", name=name), file=sys.stderr)
+            live = [r["tmux"] or r["name"] for r in sessions.collect(read_screen=False)]
+            print("  " + " ".join(live), file=sys.stderr)
+            sys.exit(3)
     if row["channel"] == "(questa)":
         die("talk.self", 2, name=name)
     if hint and row["channel"] == "nativo" and os.environ.get("CLAUDE_CODE_MESSAGING_SOCKET"):

@@ -179,7 +179,21 @@
     "cron_minutes": 5,
     "night_after_reset": true,
     "night_timeout_s": 3600,
-    "resume_prompt": "La quota è tornata disponibile: riprendi da dove eri rimasto."
+    "resume_prompt": "La quota è tornata disponibile: riprendi da dove eri rimasto.",
+    "week_unused_hours": 12,
+    "week_unused_pct": 60,
+    "week_pace_margin_h": 12,
+    "week_pace_min_pct": 30
+  },
+  "auto_switch": {
+    "accounts": [],
+    "at_pct": 90,
+    "back_pct": 75,
+    "min_s": 1800,
+    "night_hours": [
+      0,
+      7
+    ]
   },
   "night": {
     "cron_time": "02:00",

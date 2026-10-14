@@ -419,6 +419,15 @@
       "param": false
     }
   ],
+  "attention": [
+    {
+      "kind": "question",
+      "session": "ledger-api",
+      "ref": "q-1789210500-1",
+      "title": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?",
+      "since": 1789210500
+    }
+  ],
   "project_parents": [
     "/home/demo/workspaces/personal",
     "/home/demo/workspaces/work/clients",

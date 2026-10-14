@@ -54,6 +54,7 @@ case "$cmd" in
   color|colore)           exec "$S/cm-color.sh" "$@" ;;
   attach|attacca)         exec "$S/cm-attach.sh" "$@" ;;
   quota|quote)            exec python3 "$S/cm-quota.py" "$@" ;;
+  statusline)             exec python3 "$S/cm-statusline.py" "$@" ;;   # 14/10: la quota senza fable-director
   talk|parla-con)         exec python3 "$S/cm-talk.py" talk "$@" ;;
   wait|aspetta)           exec python3 "$S/cm-talk.py" wait "$@" ;;
   interrupt|interrompi)   exec python3 "$S/cm-talk.py" interrupt "$@" ;;

@@ -134,6 +134,39 @@ n_args = len(args)
 r = guard("run", now=RESET + 400)
 T.check("GU3 a later pass repeats nothing", len(argslog.read_text().splitlines()) == n_args and len(CALLS["sendMessage"]) == 2, r.stdout + r.stderr)
 
+# GU5 (1.67, 14/10): il reset settimanale — personale al 20% a 6 ore dal reset (quota da usare); professionale all'80%
+# dopo 2 giorni su 7 (a questo ritmo finisce prima del reset). Un avviso ciascuno, una volta per finestra
+(state / "guard.json").unlink(missing_ok=True)
+(state / "ledger.jsonl").write_text("")
+qfile(home / ".claude").write_text(json.dumps({"weekly_used_pct": 20.0, "weekly_resets_at": NOW + 6 * 3600}))
+qfile(home / ".claude-pixel").write_text(json.dumps({"weekly_used_pct": 80.0, "weekly_resets_at": NOW + 5 * 86400}))
+n5 = len(CALLS["sendMessage"])
+r = guard("run")
+msgs5 = [c["text"] for c in CALLS["sendMessage"][n5:]]
+r2 = guard("run", now=NOW + 600)
+T.check("GU5 weekly reset: «80 % still unused» for personale, «at this pace the week runs out» for professionale; a second pass repeats neither",
+        r.returncode == 0 and len(msgs5) == 2 and any("personale" in m and "80 %" in m for m in msgs5) and any("professionale" in m and "⏳" in m for m in msgs5)
+        and len(CALLS["sendMessage"]) == n5 + 2, r.stdout + r.stderr + str(msgs5))
+
+# GU6 (14/10): cambio automatico di account al limite, solo per gli account elencati, con isteresi e attesa
+_cfg6 = json.loads(cfg.read_text())
+cfg.write_text(json.dumps(dict(_cfg6, auto_switch={"accounts": ["personale"], "at_pct": 90, "back_pct": 75, "min_s": 1800})))
+(state / "guard.json").unlink(missing_ok=True)
+qfile(home / ".claude").write_text(json.dumps({"five_hour_used_pct": 95.0, "five_hour_resets_at": NOW + 3600}))
+qfile(home / ".claude-pixel").write_text(json.dumps({"five_hour_used_pct": 96.0, "five_hour_resets_at": NOW + 3600}))
+guard("run")
+both6 = guard("switch-for", "personale").stdout.strip()
+qfile(home / ".claude-pixel").write_text(json.dumps({"five_hour_used_pct": 30.0, "five_hour_resets_at": NOW + 3600}))
+on6, pro6 = guard("switch-for", "personale").stdout.strip(), guard("switch-for", "professionale").stdout.strip()
+qfile(home / ".claude").write_text(json.dumps({"five_hour_used_pct": 60.0, "five_hour_resets_at": NOW + 3600}))
+guard("run", now=NOW + 600)
+still6 = guard("switch-for", "personale").stdout.strip()
+guard("run", now=NOW + 2000)
+off6 = guard("switch-for", "personale").stdout.strip()
+cfg.write_text(json.dumps(_cfg6))
+T.check("GU6 auto_switch: personale at 95% → new sessions on professionale (not while professionale is past the threshold too); professionale (not listed) stays itself; under 75% only after min_s it goes back",
+        both6 == "personale" and on6 == "professionale" and pro6 == "professionale" and still6 == "professionale" and off6 == "personale", str((both6, on6, pro6, still6, off6)))
+
 # GU4
 r = guard("install")
 T.check("GU4 install: cron every 5 minutes", r.returncode == 0 and "*/5 * * * *" in cron.read_text() and "guard run" in cron.read_text(), r.stdout + cron.read_text())

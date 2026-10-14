@@ -91,6 +91,12 @@ DEDUZIONE=""
 if [ -z "$ACCOUNT" ]; then
   ACCOUNT="${DEDOTTO:-$CM_DEFAULT_ACCOUNT}"
   [ -n "$DEDOTTO" ] && DEDUZIONE=si
+  # 14/10: cambio automatico al limite (auto_switch.accounts), solo per una sessione NUOVA: --resume e --continue
+  # riprendono una conversazione che sta nell'account di partenza
+  if [ "$CONTINUA" = no ] && [ -z "$RIPRENDI" ]; then
+    ALT=$(python3 "$CM_SCRIPTS/cm-guard.py" switch-for "$ACCOUNT" 2>/dev/null)
+    if [ -n "$ALT" ] && [ "$ALT" != "$ACCOUNT" ]; then cm_msg launch.auto_switched "from=$ACCOUNT" "to=$ALT" >&2; ACCOUNT="$ALT"; DEDUZIONE=""; fi
+  fi
 elif [ -n "$DEDOTTO" ] && [ "$DEDOTTO" != "$ACCOUNT" ] && [ "$CM_ACCOUNTS_WARN_ON_MISMATCH" = true ]; then
   cm_msg launch.account_mismatch "deduced=$DEDOTTO" "asked=$ACCOUNT" >&2
 fi

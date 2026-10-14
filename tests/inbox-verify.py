@@ -119,6 +119,23 @@ by_text = {r["text"]: r.get("origin") for r in recs("chiusa")}
 T.check("IB10 mark_origin with text None (the report composes its own text) marks the newest record from `since`, not the older ones",
         mid2 not in ("", "None") and by_text.get("testo composto da cm-report") == "relay" and by_text.get("altro testo") == "session", str(by_text))
 
+# IB11 (14/10): talk --reopen verso una sessione chiusa la rilancia (per session_id se la trascrizione c'e') e consegna;
+# se il rilancio non riesce il messaggio resta in casella come senza --reopen
+fake_cm = tmp / "fake-cm.sh"
+fake_cm.write_text(f"#!/bin/sh\necho \"$*\" >> {tmp / 'fake-cm.log'}\nexit 1\n")
+fake_cm.chmod(0o755)
+good.write_text(json.dumps({"salvato": "x", "sessioni": [{"nome": "chiusa", "cartella": str(work), "account": "personale", "session_id": "5e55-1d"}]}))
+_slug = __import__("re").sub(r"[^A-Za-z0-9]", "-", os.path.realpath(work))
+(home / ".claude" / "projects" / _slug).mkdir(parents=True, exist_ok=True)
+(home / ".claude" / "projects" / _slug / "5e55-1d.jsonl").write_text("{}\n")
+t4 = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-talk.py"), "talk", "chiusa", "riapri e leggi", "--reopen", "--no-wait"], capture_output=True, text=True,
+                    env=env({"CM_TMUX_ARGS": "-L cm-inbox-none", "CM_TALK_CM": str(fake_cm)}), timeout=120)
+log4 = (tmp / "fake-cm.log").read_text() if (tmp / "fake-cm.log").exists() else ""
+T.check("IB11 talk --reopen: «reopening (--resume <id>)», `launch <folder> --resume <id> --account personale`; the launch fails → saved in the inbox, exit 0",
+        t4.returncode == 0 and "--resume 5e55-1d" in t4.stderr and log4.strip() == f"launch {work} --resume 5e55-1d --account personale"
+        and any(r["text"] == "riapri e leggi" for r in recs("chiusa")), t4.stderr + log4)
+good.write_text(json.dumps({"salvato": "x", "sessioni": [{"nome": "chiusa", "cartella": str(work), "account": "personale"}]}))
+
 # IB6 hook, in un tmux privato: il nome della sessione e' «chiusa»
 with T.PrivateTmux() as tm:
     tm("new-session", "-d", "-s", "chiusa", "-x", "100", "-y", "20", "sleep 60")

@@ -84,6 +84,121 @@ def quota_of(account):
     return None, None, ""
 
 
+def auto_switch_state():
+    try:
+        return json.loads((Path(cm.expand(CFG["state_dir"])) / "auto-switch.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def other_of(acc):
+    others = [a for a in CFG["accounts"] if a != acc]
+    return others[0] if len(others) == 1 else None
+
+
+def switch_for(acc):
+    """L'account su cui far partire una sessione NUOVA di `acc`: l'altro se `acc` e' sopra soglia (auto-switch.json, che
+    scrive il giro della guardia) e l'altro non lo e'; altrimenti `acc`. Lo usa launch."""
+    st = auto_switch_state()
+    other = other_of(acc)
+    if other and (st.get(acc) or {}).get("switched") and not (st.get(other) or {}).get("switched"):
+        # se anche l'altro e' sopra soglia spostarsi non serve: resta dov'e'
+        if (top_pct(other) or 0) < float((CFG.get("auto_switch") or {}).get("at_pct", 90)):
+            return other
+    return acc
+
+
+def top_pct(acc):
+    """La quota piu' alta dell'account (5 ore o settimana), o None."""
+    import hashlib
+    conf = cm.expand(CFG["accounts"][acc]["config_dir"])
+    f = Path(cm.expand(CFG["quota"]["source"])) / f"quota-{hashlib.sha256(str(conf).encode()).hexdigest()[:8]}.json"
+    try:
+        d = json.loads(f.read_text())
+    except (OSError, ValueError):
+        return None
+    vals = [float(v) for v in (d.get("five_hour_used_pct"), d.get("weekly_used_pct")) if v is not None]
+    return max(vals) if vals else None
+
+
+def auto_switch_run(t):
+    """Il giro dell'isteresi per gli account di auto_switch.accounts: switched quando la quota piu' alta (5 ore o
+    settimana) arriva a at_pct; torna normale sotto back_pct e non prima di min_s dal cambio. Lo dice su Telegram."""
+    A = CFG.get("auto_switch") or {}
+    accs = [a for a in (A.get("accounts") or []) if a in CFG["accounts"]]
+    if not accs:
+        return
+    import hashlib
+    p = Path(cm.expand(CFG["state_dir"])) / "auto-switch.json"
+    st = auto_switch_state()
+    before = json.dumps(st, sort_keys=True)
+    for acc in accs:
+        conf = cm.expand(CFG["accounts"][acc]["config_dir"])
+        f = Path(cm.expand(CFG["quota"]["source"])) / f"quota-{hashlib.sha256(str(conf).encode()).hexdigest()[:8]}.json"
+        try:
+            d = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        vals = [float(v) for v in (d.get("five_hour_used_pct"), d.get("weekly_used_pct")) if v is not None]
+        if not vals:
+            continue
+        pct, s = max(vals), st.setdefault(acc, {})
+        if not s.get("switched") and pct >= float(A.get("at_pct", 90)) and other_of(acc):
+            s.update(switched=True, since=t)
+            notify(M("guard.switch_on", account=acc, pct=round(pct), other=other_of(acc)))
+        elif s.get("switched") and pct < float(A.get("back_pct", 75)) and t - float(s.get("since") or 0) >= float(A.get("min_s", 1800)):
+            s.update(switched=False, since=t)
+            notify(M("guard.switch_off", account=acc, pct=round(pct)))
+    if json.dumps(st, sort_keys=True) != before:
+        p.write_text(json.dumps(st))
+
+
+WEEK_S = 7 * 86400
+
+
+def week_of(account):
+    """(pct, reset) della finestra settimanale dell'account, o (None, None)."""
+    import hashlib
+    conf = cm.expand(CFG["accounts"][account]["config_dir"])
+    f = Path(cm.expand(CFG["quota"]["source"])) / f"quota-{hashlib.sha256(str(conf).encode()).hexdigest()[:8]}.json"
+    try:
+        d = json.loads(f.read_text())
+        return float(d["weekly_used_pct"]), float(d["weekly_resets_at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+
+
+def week_check(acc, s, t):
+    """1.67 (14/10, dall'analisi dei concorrenti): due avvisi per finestra settimanale, ognuno una volta sola.
+    week_unused: mancano meno di week_unused_hours al reset e la settimana e' sotto week_unused_pct — c'e' quota da
+    usare prima che si azzeri (la notte). week_pace: al ritmo medio della settimana la quota finirebbe piu' di
+    week_pace_margin_h ore prima del reset. Telegram e un evento all'app. True se ha avvisato."""
+    pct, reset = week_of(acc)
+    if pct is None or not reset or reset <= t:
+        return False
+    when = dt.datetime.fromtimestamp(reset).strftime("%a %H:%M")
+    left_h = (reset - t) / 3600
+    if left_h <= float(G.get("week_unused_hours", 12)) and pct < float(G.get("week_unused_pct", 60)) and s.get("week_unused_sent") != reset:
+        s["week_unused_sent"] = reset
+        title = M("relay.event_week_unused", account=acc, pct=round(100 - pct), t=when)
+        notify(title)
+        _load("cm-core").relay_event("week_unused", title, M("guard.week_unused_body", h=round(left_h)), account=acc)
+        log(f"{acc}: settimana al {round(pct)}%, reset {when} → avviso quota non usata")
+        return True
+    elapsed = WEEK_S - (reset - t)
+    if pct >= float(G.get("week_pace_min_pct", 30)) and elapsed > 3600 and pct < 100 and s.get("week_pace_sent") != reset:
+        rate = pct / elapsed   # punti percentuali al secondo, media della settimana
+        out_at = t + (100 - pct) / rate
+        if out_at < reset - float(G.get("week_pace_margin_h", 12)) * 3600:
+            s["week_pace_sent"] = reset
+            title = M("relay.event_week_pace", account=acc, out=dt.datetime.fromtimestamp(out_at).strftime("%a %H:%M"), t=when)
+            notify(title)
+            _load("cm-core").relay_event("week_pace", title, M("guard.week_pace_body", pct=round(pct)), account=acc)
+            log(f"{acc}: al ritmo di adesso la settimana finisce {title}")
+            return True
+    return False
+
+
 def account_of_name(name):
     """L'account dal prefisso del nome tmux (accounts.<n>.tmux_prefix); senza prefisso, quello di default."""
     best = CFG["default_account"]
@@ -162,9 +277,12 @@ def run():
     st = load_state()
     t = now()
     changed = False
+    auto_switch_run(t)
     for acc in CFG["accounts"]:
         pct, reset, window = quota_of(acc)
         s = st.setdefault(acc, {})
+        if week_check(acc, s, t):
+            changed = True
         if pct is None:
             continue
         # 1. avviso, uno per finestra
@@ -263,6 +381,9 @@ def main(argv):
     verb = argv[0] if argv else "status"
     if verb == "run":
         return run()
+    if verb == "switch-for":   # per launch: l'account su cui far partire una sessione nuova
+        print(switch_for(argv[1] if len(argv) > 1 else ""))
+        return 0
     if verb in ("install", "uninstall", "status"):
         return {"install": install, "uninstall": uninstall, "status": status}[verb]()
     print(M("guard.usage"), file=sys.stderr)

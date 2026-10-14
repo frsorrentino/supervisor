@@ -542,6 +542,15 @@ def build_state(src, now, fit=True):
     # 1.33: le azioni ricorrenti della master (box «Ricorrenti»); senza lista il campo manca e l'app non mostra il box
     if src.get("recurring"):
         state["recurring"] = [dict(x) for x in src["recurring"]][:8]
+    # 1.66 (14/10): «Serve te», una lista sola dalla piu' vecchia: le domande aperte, i turni falliti, le sessioni ferme
+    # per la quota, i task rossi. {kind: question|turn_failed|quota_limit|task_red, session, ref, title, since}. Per una
+    # domanda ref = l'id della domanda e title la sua anteprima. Assente quando non c'e' niente
+    att = [{"kind": "question", "session": s["name"], "ref": s["question"]["id"],
+            "title": s["question"].get("preview") or s["question"]["text"][:200], "since": s["question"]["asked_at"]}
+           for s in sessions if s.get("question")]
+    att += [dict(x) for x in (src.get("attention") or [])]
+    if att:
+        state["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
     # 1.64: le cartelle madri ammesse per un progetto nuovo dal telefono (op project_new); assente = relay precedente
     if src.get("project_parents"):
         state["project_parents"] = list(src["project_parents"])

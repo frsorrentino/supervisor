@@ -145,7 +145,17 @@ DEFAULTS = {
     # guardia della quota: avviso sopra warn_pct (una volta per finestra), ripresa delle sessioni
     # fallite e della coda notturna quando la finestra si resetta
     "guard": {"warn_pct": 95, "cron_minutes": 5, "night_after_reset": True, "night_timeout_s": 3600,
-              "resume_prompt": "La quota è tornata disponibile: riprendi da dove eri rimasto."},
+              "resume_prompt": "La quota è tornata disponibile: riprendi da dove eri rimasto.",
+              # 1.67 (14/10): il reset settimanale — avviso se mancano week_unused_hours al reset e la settimana e' sotto
+              # week_unused_pct (c'e' quota da usare, per esempio di notte); avviso se al ritmo di adesso finirebbe piu' di
+              # week_pace_margin_h ore prima del reset (solo da week_pace_min_pct in su)
+              "week_unused_hours": 12, "week_unused_pct": 60, "week_pace_margin_h": 12, "week_pace_min_pct": 30},
+    # 14/10 (dall'analisi dei concorrenti): cambio automatico di account al limite, solo per gli account elencati. Sopra
+    # at_pct (5 ore o settimana, il piu' alto) le sessioni NUOVE di quell'account partono sull'altro; si torna sotto
+    # back_pct e dopo almeno min_s (isteresi e attesa). Di notte (night_hours) la strada «altro account» della 1.58
+    # parte da sola. Ogni sessione cosi' manda il suo lavoro all'altra organizzazione: per questo e' spento finche'
+    # l'utente non elenca gli account
+    "auto_switch": {"accounts": [], "at_pct": 90, "back_pct": 75, "min_s": 1800, "night_hours": [0, 7]},
     # turno di notte (N5): coda di lavori `claude -p` non presidiati, con guardie su RAM e quota
     "night": {"cron_time": "02:00", "min_free_mb": 1500, "max_quota_pct": 80, "item_timeout_s": 3600,
               # 06/10/2026: "default" (nessun permesso allargato); per i lavori che scrivono file serve "acceptEdits",

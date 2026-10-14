@@ -2641,4 +2641,39 @@ T.check("R49 (1.64) with confirm: the folder is created and launched (`launch <p
         and again49 and again49["ok"] is False and again49["text"] == f"{new49} already exists", str(ok49) + str(again49) + str(cm_calls()[n49:]))
 T.check("R49 (1.64) the state lists project_parents and project_new is in ops", par49 in (json.loads(relay("push", "--dry-run").stdout).get("project_parents") or []) and "project_new" in RL.OPS, "")
 
+
+# R50 (contratto 1.66, 14/10): «Serve te», una lista sola dalla piu' vecchia
+a50 = tmp / "a50"
+a50.mkdir()
+_rd, _pf = RL.rdir, RL.prefixes
+RL.rdir, RL.prefixes = (lambda: a50), (lambda: ())
+RL.attention_mark("turn_failed", "atlas-shop", "atlas-shop", "⚠ atlas-shop: turn failed — 529", now=1789210100)
+RL.attention_mark("task_red", "field-notes", "t-7", "✗ t-7: check red", now=1789210200)
+RL.attention_mark("quota_limit", "gone-one", "gone-one", "⛔ gone-one: limit", now=1789210300)
+rows50 = [{"name": "atlas-shop", "status": "busy", "session_id": "S-A"}, {"name": "field-notes", "status": "idle", "session_id": "S-F"}]
+open50 = RL.attention_open(rows50, [])
+after50 = RL.attention_open(rows50, [{"event": "prompt", "session_id": "S-A", "ts": iso(1789210150)}])
+RL.attention_mark("task_red", "field-notes", "t-7", "", remove=True)
+green50 = RL.attention_open(rows50, [])
+RL.rdir, RL.prefixes = _rd, _pf
+T.check("R50 (1.66) open items: a quota limit of a session no longer live drops; a failed turn closes at the next prompt; a red task when it turns green",
+        [x["kind"] for x in open50] == ["turn_failed", "task_red"] and [x["kind"] for x in after50] == ["task_red"] and green50 == [], str((open50, after50, green50)))
+st50 = S.build_state(dict(SRC1, attention=[{"kind": "turn_failed", "session": "atlas-shop", "ref": "atlas-shop", "title": "⚠ atlas-shop: turn failed", "since": 1789210000}]), 1789210800, fit=False)
+T.check("R50 (1.66) state.attention: the open question and the open items together, oldest first; a question carries its id and its preview",
+        [(x["kind"], x["session"]) for x in st50["attention"]] == [("turn_failed", "atlas-shop"), ("question", "ledger-api")]
+        and st50["attention"][1]["ref"] == "q-1789210500-1" and "•••" in st50["attention"][1]["title"], str(st50.get("attention")))
+
+
+# R51 (contratto 1.65, 14/10): un prompt a una sessione chiusa con reopen → talk --reopen, che la riapre e consegna
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+n51 = len(cm_calls())
+res51 = send_cmd({"id": "6f1c2d3e-0650-4000-8000-000000000650", "op": "prompt", "session": "orbit-docs", "arg": "pick up the pricing page", "reopen": True,
+                  "device": "phone", "issued": int(time.time()), "by": "phone-pixel8"})
+plain51 = send_cmd({"id": "6f1c2d3e-0651-4000-8000-000000000651", "op": "prompt", "session": "orbit-docs", "arg": "pick up the pricing page",
+                    "device": "phone", "issued": int(time.time()), "by": "phone-pixel8"})
+T.check("R51 (1.65) prompt with reopen to a closed session → `talk … --no-wait --reopen`, «orbit-docs was closed: reopened and delivered»; without reopen → «is not running», nothing sent",
+        res51 and res51["ok"] is True and res51["text"] == "orbit-docs was closed: reopened and delivered"
+        and any(c.startswith("talk ") and c.endswith("pick up the pricing page --no-wait --reopen") for c in cm_calls()[n51:])
+        and plain51 and plain51["ok"] is False and "is not running" in plain51["text"] and sum(1 for c in cm_calls()[n51:] if c.startswith("talk ")) == 1, str(res51) + str(plain51) + str(cm_calls()[n51:]))
+
 T.finish()

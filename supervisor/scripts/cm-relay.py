@@ -708,6 +708,7 @@ def collect_sources(now=None):
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
+        "attention": attention_open(rows, ledger),
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
@@ -2906,6 +2907,15 @@ def execute(cmd):
             text = str(arg or "").strip()
             if not text:
                 return False, "empty prompt"
+            if not is_live(tm) and cmd.get("reopen") is True:
+                # 1.65 (14/10, dall'analisi dei concorrenti): una sessione chiusa si riapre per session_id e riceve subito il
+                # prompt (`talk --reopen`); se il rilancio non riesce il messaggio resta nella sua casella
+                rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + text, "--no-wait", "--reopen")
+                if rc != 0:
+                    return False, (out.splitlines() or ["talk failed"])[0]
+                if saved_in_inbox(out):
+                    return False, M("relay.cmd_inbox_only", name=session)
+                return True, M("relay.cmd_reopened_delivered", name=session)
             if not is_live(tm):
                 return False, M("relay.cmd_not_running", name=session)
             if cmd.get("at") is not None:
@@ -3812,10 +3822,50 @@ def quota_limit(tm):
     name = S.short_name(tm, prefixes())
     when = time.strftime("%H:%M", time.localtime(float(reset))) if reset else "?"
     actions = (["other_account"] if other else []) + ["at_reset", "pass"]
+    attention_mark("quota_limit", name, name, M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when))
     emit("quota_limit", M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when),
          "", ref=name, account=acc, session=name,
          extra={"reset_at": int(reset) if reset else None, "window": window, "other_account": other, "actions": actions})
+    # 14/10 (cambio automatico al limite): di notte, per un account in auto_switch.accounts, la strada «altro account»
+    # parte da sola; di giorno resta la scelta col tasto
+    A = CFG.get("auto_switch") or {}
+    lo, hi = (list(A.get("night_hours") or [0, 7]) + [0, 7])[:2]
+    if other and acc in (A.get("accounts") or []) and int(lo) <= time.localtime().tm_hour < int(hi):
+        ok, text = quota_route({}, name, tm, "other_account")[:2]
+        log(f"quota_limit {name}: notte, altro account in automatico → {'ok' if ok else 'ERR'} {text}")
+        emit("quota_limit", M("relay.event_quota_auto", name=name, text=text), "", ref=name, account=acc, session=name)
     return 0
+
+
+def attention_mark(kind, session, ref, title, now=None, remove=False):
+    """1.66 (14/10): le cose che aspettano la persona oltre alle domande — un turno fallito (1.61), una sessione ferma
+    per la quota (1.58), un task rosso (1.57) — restano in attention.json finche' non si risolvono. `remove` toglie
+    quella di quel tipo e riferimento (un task tornato verde)."""
+    p = rdir() / "attention.json"
+    items = [x for x in read_json(p, []) if isinstance(x, dict) and not (x.get("kind") == kind and x.get("ref") == ref)]
+    if not remove:
+        items.append({"kind": kind, "session": session, "ref": ref, "title": S.redact_preview(S.one_line(title))[:200], "since": int(now or time.time())})
+    write_json(p, items)
+
+
+def attention_open(rows, ledger):
+    """1.66: le voci di attention.json ancora aperte. Un turno fallito e una quota finita si chiudono al primo prompt
+    dopo (la sessione e' ripartita) o quando la sessione non c'e' piu'; un task rosso quando torna verde (attention_mark)."""
+    p = rdir() / "attention.json"
+    items = [x for x in read_json(p, []) if isinstance(x, dict)]
+    if not items:
+        return []
+    sid_of = {S.short_name(r.get("name") or r.get("tmux") or "", prefixes()): r.get("session_id") or "" for r in rows if r.get("status") != "dead"}
+    keep = []
+    for x in items:
+        if x.get("kind") in ("turn_failed", "quota_limit"):
+            sid = sid_of.get(x.get("session") or "")
+            if not sid or any(e.get("event") == "prompt" and e.get("session_id") == sid and S.epoch(e.get("ts")) > int(x.get("since") or 0) for e in ledger):
+                continue
+        keep.append(x)
+    if keep != items:
+        write_json(p, keep)
+    return keep
 
 
 TURN_FAILED_GAP_S = 60   # 1.61: un evento per sessione al minuto, anche se Claude Code riprova e fallisce di fila
@@ -3836,6 +3886,7 @@ def turn_failed(tm, error):
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None) or {}
     name = S.short_name(tm, prefixes())
     reason = S.redact_preview(S.short_of(error or "?", 120))
+    attention_mark("turn_failed", name, name, M("relay.event_turn_failed", name=name, reason=reason))
     emit("turn_failed", M("relay.event_turn_failed", name=name, reason=reason), "", ref=name, account=row.get("account"), session=name,
          extra={"reason": reason, "continue_text": M("relay.continue_text")})
     return 0
@@ -3971,6 +4022,7 @@ def task_check(tm):
             continue
         seen[t["id"]] = green
         key_ = "relay.event_task_check_green" if green else "relay.event_task_check_red"
+        attention_mark("task_red", name, t["id"], M(key_, task=t["id"]), remove=green)
         body = S.one_line(t.get("title") or "") + ("\n" + "\n".join(str(res.get("tail") or "").splitlines()[-3:]) if not green and res.get("tail") else "")
         emit("task_check", M(key_, task=t["id"]), body, ref=t["id"], session=name)
         log(f"task_check {t['id']} ({name}): {'verde' if green else 'rosso'}")
