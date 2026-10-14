@@ -979,6 +979,38 @@ rows_alive("ledger-api", "atlas-shop", "field-notes")
 relay("push")
 res = send_cmd(CMDS[6])   # allow_all ledger-api
 T.check("R6 allow_all without a «don't ask again» option → ok false with the contract's text", res and res["ok"] is False and res["text"] == "no «don't ask again» option on this question", str(res))
+# R6 (1.52, 14/10): una risposta vale solo per la sua domanda. Il telefono offline teneva il comando in coda, la sessione
+# faceva una domanda nuova e la risposta vecchia ci premeva il tasto. Domanda nuova su ledger-api alle 1789211000.
+ledger_before = ledger.read_text()
+with ledger.open("a") as f:
+    f.write(json.dumps({"ts": iso(1789211000), "event": "waiting", "session_id": "S-L", "tool": "AskUserQuestion"}) + "\n")
+CHANGED = {json.loads((T.ROOT / "supervisor" / "messages" / f"{lg}.json").read_text())["relay.cmd_question_changed"].format(name="ledger-api") for lg in ("en", "it")}
+
+
+def answers():
+    return [c for c in cm_calls() if c.startswith("answer work-ledger-api ") and "--show" not in c]
+
+
+def ans(n, **kw):
+    return dict({"id": f"6f1c2d3e-0052-4000-8000-0000000005{n:02d}", "op": "answer", "session": "ledger-api", "arg": "2", "issued": 1789211005, "by": "phone-pixel9"}, **kw)
+
+
+n_a = len(answers())
+res = send_cmd(ans(1, question="q-1789210500-1", issued=1789210890))
+T.check("R6 (1.52) answer with the id of the previous question → ok false relay.cmd_question_changed, no key pressed", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res) + str(answers()[-2:]))
+res = send_cmd(ans(2, issued=1789210890))
+T.check("R6 (1.52) answer without `question`, issued 110 s before the open question (over the 60 s margin) → refused, no key pressed", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res))
+res = send_cmd(ans(3, op="allow_all", arg=None, question="q-1789210500-1"))
+T.check("R6 (1.52) allow_all with the id of the previous question → refused before anything else, no key pressed", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res))
+res = send_cmd(ans(4, question="garbage"))
+T.check("R6 (1.52) answer with an id that is not «q-<asked_at>-<n>» → refused", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res))
+res = send_cmd(ans(5, question="q-1789211000-1"))
+T.check("R6 (1.52) answer with the open question's id (asked_at read from the ledger, even before a push) → `answer work-ledger-api 2`", res and res["ok"] is True and answers()[-1:] == ["answer work-ledger-api 2"] and len(answers()) == n_a + 1, str(res) + str(answers()[-2:]))
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
+res = send_cmd(ans(6, issued=1789210950))
+T.check("R6 (1.52) answer without `question` issued 50 s before the question (phone clock within the margin) → answered", res and res["ok"] is True and len(answers()) == n_a + 2, str(res))
+ledger.write_text(ledger_before)
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
 # R6 (1.10, 15/09, da claude-master-watch): answer con «text:<testo>» e «chat»
 # R10 (contratto 1.12, 16/09): modello ed effort dal polso, solo per la sessione, via `supervisor model|effort`;
 # il testo di un rifiuto e' la prima riga del comando, breve, così com'è

@@ -2658,6 +2658,45 @@ def saved_in_inbox(out):
     return "talk --status" in (out or "")
 
 
+QUESTION_SKEW_S = 60   # 1.52: margine per l'orologio del dispositivo nel ripiego senza `question`
+
+
+def open_question_at(session, row):
+    """L'asked_at della domanda aperta adesso, con la regola dello stato (ultimo evento waiting del ledger, altrimenti
+    l'asked_at dell'ultima push); None se non se ne conosce nessuna. Letto all'esecuzione, non dall'ultima push: una
+    domanda nuova fa il suo evento waiting subito, anche se la push non e' ancora partita."""
+    sid = (row or {}).get("session_id") or ""
+    ledger = core.ledger_rows()
+    if row and row.get("host") and row.get("host") != "local":
+        ledger += core.remote_events(row)
+    asked = [S.epoch(x.get("ts")) for x in ledger if sid and x.get("session_id") == sid and x.get("event") == "waiting"]
+    if asked:
+        return int(asked[-1])
+    q = (last_sessions().get(session) or {}).get("question") or {}
+    return int(q["asked_at"]) if q.get("asked_at") else None
+
+
+def question_changed(cmd, session, row):
+    """1.52 (14/10, chiesto dal manutentore): una risposta vale solo per la domanda per cui e' stata data.
+    Un comando rimasto in coda sul telefono offline arrivava dopo e premeva il tasto sulla domanda nuova. Con `question`
+    (Question.id, «q-<asked_at>-1») deve coincidere con la domanda aperta; senza (app precedente) si rifiuta se la
+    domanda aperta e' stata posta dopo `issued` piu' QUESTION_SKEW_S. Il testo del rifiuto, o None se si puo' rispondere."""
+    cur = open_question_at(session, row)
+    if cur is None:
+        return None   # nessuna domanda nota: decide cm-answer («no open question»)
+    qid = str(cmd.get("question") or "")
+    if qid:
+        m = re.fullmatch(r"q-(\d+)-\d+", qid)
+        return None if m and int(m.group(1)) == cur else M("relay.cmd_question_changed", name=session)
+    try:
+        issued = float(cmd.get("issued") or 0)
+    except (TypeError, ValueError):
+        issued = 0.0
+    if issued > 1e9 and cur > issued + QUESTION_SKEW_S:
+        return M("relay.cmd_question_changed", name=session)
+    return None
+
+
 def execute(cmd):
     """(ok, testo) per un comando del contratto: {op, session, arg, by}. Allow-list fissa, tutto via la CLI."""
     op = str(cmd.get("op") or "")
@@ -2682,6 +2721,9 @@ def execute(cmd):
             else:
                 return False, M("relay.cmd_bad_answer", arg=a or "?")
             row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+            changed = question_changed(cmd, session, row)
+            if changed:
+                return False, changed
             if row:
                 checkpoint(row.get("cwd"))
             rc, out = run_cm("answer", tm, *pick)
@@ -2857,6 +2899,10 @@ def execute(cmd):
             q = info.get("question") or {}
             if not q:
                 return False, M("relay.cmd_no_question", name=session)
+            row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+            changed = question_changed(cmd, session, row)
+            if changed:
+                return False, changed
             if q.get("tier") == "high":
                 return False, M("relay.cmd_high")
             opt = next((o for o in q.get("options", []) if re.search(r"don.?t ask again|non chiedere|sempre|always", str(o.get("label") or ""), re.I)), None)
@@ -2864,7 +2910,7 @@ def execute(cmd):
                 return False, M("relay.cmd_no_allow_all")
             rc, out = run_cm("answer", tm, str(opt["n"]))
             if rc == 0:
-                clear_waiting(next((r.get("session_id") for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), ""))
+                clear_waiting((row or {}).get("session_id"))
             return (rc == 0), (M("relay.cmd_answered", n=opt["n"], label=opt["label"]) if rc == 0 else (out.splitlines()[0] if out else "answer failed"))
     except subprocess.TimeoutExpired:
         return False, "timeout"

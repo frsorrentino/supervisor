@@ -403,6 +403,7 @@
   "relay.cmd_no_project": "{path} is not a published project",
   "relay.cmd_no_last": "{name}: nessun messaggio da leggere",
   "relay.cmd_no_question": "{name} has no open question",
+  "relay.cmd_question_changed": "{name}: la domanda è cambiata dopo la tua risposta, nessun tasto premuto",
   "relay.cmd_empty_text": "empty text",
   "relay.cmd_superseded": "superseded by a newer read of the same session",
   "relay.cmd_transcript_bad_arg": "transcript {arg}: expected n, n:before=<id> or n:after=<id>",
