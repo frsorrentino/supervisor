@@ -82,6 +82,7 @@ case "$cmd" in
   answer|rispondi)        exec python3 "$S/cm-answer.py" "$@" ;;
   model|modello)          exec python3 "$S/cm-tune.py" model "$@" ;;
   effort)                 exec python3 "$S/cm-tune.py" effort "$@" ;;
+  permissions|permessi)   exec python3 "$S/cm-tune.py" permissions "$@" ;;
   screen|schermo)         exec python3 "$S/cm-screen.py" "$@" ;;
   inbox|casella)          exec python3 "$S/cm-inbox.py" "$@" ;;
   host|macchina)          exec python3 "$S/cm-hosts.py" "$@" ;;

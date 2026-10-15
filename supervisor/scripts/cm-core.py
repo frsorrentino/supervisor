@@ -293,8 +293,18 @@ def session_runtime(row, tail_bytes=512 * 1024, head_bytes=1024 * 1024):
 def permission_mode(row, tail_bytes=512 * 1024):
     """1.54 (14/10, dagli spunti della valutazione di Kaya): la modalita' dei permessi della sessione. Claude Code la
     scrive in una riga {"type":"permission-mode","permissionMode":...} quando cambia e su ogni prompt della persona
-    ("permissionMode" della riga user): vale l'ultima nella coda del file. None se non c'e'."""
+    ("permissionMode" della riga user): vale l'ultima nella coda del file. None se non c'e'.
+
+    1.69 (15/10): un cambio fatto con `supervisor permissions` (Shift+Tab) e' annotato in tune.file; vale finche' la
+    trascrizione non scrive qualcosa di piu' recente dell'annotazione, poi vince di nuovo la trascrizione."""
     path = transcript_of(row)
+    noted = _tuned_field(row, "permission_mode")
+    try:
+        mtime = os.path.getmtime(path) if path else 0.0
+    except OSError:
+        mtime = 0.0
+    if noted and noted[1] > mtime:
+        return noted[0]
     if not path:
         return None
     try:
@@ -306,6 +316,38 @@ def permission_mode(row, tail_bytes=512 * 1024):
         return None
     found = re.findall(rb'"permissionMode":\s*"([A-Za-z]{1,40})"', data)
     return found[-1].decode() if found else None   # un nome nuovo di Claude Code passa com'e': l'app lo mostra come testo
+
+
+def _tuned_field(row, key):
+    """(valore, quando) di un campo annotato da cm-tune per la sessione in tune.file; None se non c'e'."""
+    sid = (row or {}).get("session_id") or ""
+    f = (_cfg().get("tune") or {}).get("file") or ""
+    if not sid or not f:
+        return None
+    try:
+        entry = (json.loads(Path(cm.expand(f)).read_text()) or {}).get(sid) or {}
+    except (OSError, ValueError, AttributeError):
+        return None
+    return (str(entry[key]), float(entry.get("at") or 0)) if entry.get(key) else None
+
+
+BYPASS_FLAGS = re.compile(r"(?:^|\s)(?:--dangerously-skip-permissions|--allow-dangerously-skip-permissions"
+                          r"|--permission-mode[=\s]+bypassPermissions)(?=\s|$)")
+
+
+def permission_bypass(row, mode=None):
+    """1.69: True se la sessione puo' arrivare a bypassPermissions con Shift+Tab. Claude Code la mette nel giro solo
+    se e' partita con uno di questi argomenti; o se ci e' gia'."""
+    if mode == "bypassPermissions":
+        return True
+    pid = (row or {}).get("pid")
+    if not pid or (row or {}).get("host"):   # il pid di una sessione su un altro host non e' un processo di qui
+        return False
+    try:
+        cmd = Path(f"/proc/{int(pid)}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+    except (OSError, ValueError):
+        return False
+    return bool(BYPASS_FLAGS.search(cmd))
 
 
 def _tuned(row, out, last_turn):

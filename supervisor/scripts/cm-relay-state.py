@@ -442,6 +442,9 @@ def build_session(row, src):
     # Assenti = non si sa / nessuna
     if rt.get("permission_mode"):
         out["permission_mode"] = str(rt["permission_mode"])
+    # 1.69 (15/10): la sessione puo' arrivare a bypassPermissions con Shift+Tab (partita con il permesso); assente = no
+    if rt.get("permission_bypass"):
+        out["permission_bypass"] = True
     if (src.get("resolved") or {}).get(name):
         out["resolved"] = dict(src["resolved"][name], by="terminal")
     # 1.62 (14/10, dall'analisi dei concorrenti): la sessione e' attaccata e qualcuno ha premuto un tasto nel suo

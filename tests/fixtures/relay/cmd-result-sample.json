@@ -593,6 +593,24 @@
       "device": "phone",
       "issued": 1789211520,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0690-4000-8000-0000000000690",
+      "op": "permission_mode",
+      "session": "field-notes",
+      "arg": "acceptEdits",
+      "device": "phone",
+      "issued": 1789211530,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0691-4000-8000-0000000000691",
+      "op": "permission_mode",
+      "session": "work-ledger-api",
+      "arg": "bypassPermissions",
+      "device": "phone",
+      "issued": 1789211540,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -996,6 +1014,18 @@
       "text": "created /home/demo/workspaces/personal/brand-new and launched it (personal)",
       "session": "brand-new",
       "at": 1789211521
+    },
+    {
+      "id": "6f1c2d3e-0690-4000-8000-0000000000690",
+      "ok": true,
+      "text": "field-notes: permissions now acceptEdits",
+      "at": 1789211533
+    },
+    {
+      "id": "6f1c2d3e-0691-4000-8000-0000000000691",
+      "ok": false,
+      "text": "work-ledger-api: bypassPermissions is not in this session's Shift+Tab cycle, left on plan",
+      "at": 1789211548
     }
   ]
 }

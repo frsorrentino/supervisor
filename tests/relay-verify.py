@@ -206,7 +206,7 @@ SRC1 = {
     # 1.11: quello che ogni sessione viva sta usando (la gone non ha trascrizione da rileggere)
     # 1.54: la modalita' dei permessi su due sessioni
     "runtime": {"work-ledger-api": {"model": {"id": "claude-opus-5[1m]", "label": "Opus 5"}, "effort": "high", "context": 62, "permission_mode": "plan"},
-                "atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18, "permission_mode": "bypassPermissions"},
+                "atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18, "permission_mode": "bypassPermissions", "permission_bypass": True},
                 # 1.14: field-notes e' passata da sola a Sonnet 5 dopo un messaggio segnalato
                 "field-notes": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "low", "context": 4,
                                 "fallback": {"from": "claude-opus-5-5", "to": "claude-sonnet-5", "category": "cyber", "at": 1789210300}}},
@@ -440,6 +440,7 @@ case "$1" in
   panel) if [ "$2" = "field-notes" ]; then echo "   Session"; echo "   Total cost:            \$0.42"; else exit 1; fi ;;
   talk) if [ -f "{tmp / 'talk-saved'}" ]; then echo "supervisor talk: «$2» è chiusa; messaggio m1 salvato nella casella, le arriva quando riparte (stato: supervisor talk --status m1)" >&2; else python3 "{fake_talk}" "$2" "$3"; echo "consegnato"; fi ;;
   model) echo "$2: model Sonnet 5, this session only" ;;
+  permissions) if [ "$2" = "work-ledger-api" ]; then echo "$2: $3 is not in this session's Shift+Tab cycle, left on plan"; exit 4; else echo "$2: permissions now $3"; fi ;;
   effort) if [ "$2" = "atlas-shop" ]; then echo "atlas-shop is working: try again when it is idle"; exit 3; else echo "$2: effort $3, this session only"; fi ;;
   report) python3 "{fake_talk}" "$6" "segnalazione: $4"; if [ "$3" != "-" ]; then cp "$3" "{tmp / 'report-img'}"; echo "segnalazione consegnata a «$6»"; echo "  immagine: $2/docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg"; else echo "segnalazione consegnata a «$6»"; fi ;;
   interrupt) case "$2" in atlas-shop) echo "$2: fermata" ;; field-notes) echo "$2: niente da fermare" >&2; exit 1 ;; *) echo "supervisor interrupt: «$2» non è viva" >&2; exit 3 ;; esac ;;
@@ -1049,6 +1050,13 @@ T.check("R10 (1.12) effort on a busy session → /result ok=false with the short
 r = relay("push", "--dry-run"); dry10 = json.loads(r.stdout)
 T.check("R10 (1.12) /state carries choices: full model ids (as in session.model.id) with labels, and the five efforts",
         dry10.get("choices") == json.loads((FIX / "state-1-question.json").read_text())["choices"], str(dry10.get("choices")))
+# R53 (15/10, contratto 1.69): il cambio dei permessi passa da `supervisor permissions`, come model ed effort
+res = send_cmd(CMDS[-2])
+T.check("R53 (1.69) permission_mode → `permissions field-notes acceptEdits`, /result ok with the command's line (as in the fixture)",
+        res and res["ok"] is True and res["text"] == RES[-2]["text"] and "permissions field-notes acceptEdits" in cm_calls(), str(res) + str(cm_calls()[-3:]))
+res = send_cmd(CMDS[-1])
+T.check("R53 (1.69) a mode outside the session's Shift+Tab cycle → /result ok=false with the command's line",
+        res and res["ok"] is False and res["text"] == RES[-1]["text"], str(res))
 # R11 (contratto 1.13, 16/09): «Nuova sessione» dal polso col primo messaggio — launch, poi talk sulla sessione NATA
 # (che puo' chiamarsi diversamente dal progetto), e nel /result il suo nome come in sessions[].name
 fn = ws / "personal" / "field-notes"
@@ -2711,5 +2719,31 @@ RL.rdir, RL.emit = _rd, _em
 T.check("R52 (1.68) an item first seen already old (after a restart) does not fire its past reminders at once", len(got52) == n_old52, str(got52[n_old52:]))
 T.check("R52 (1.68) attention_reminder after 10 and after 30 minutes, once each, while the item is open",
         [g[0] for g in got52] == ["attention_reminder", "attention_reminder"] and "(10 min)" in got52[0][1] and "(30 min)" in got52[1][1] and got52[0][2] == "pix-docs", str(got52))
+
+# R53 (15/10, contratto 1.69): il cambio della modalita' dei permessi dal telefono, via `supervisor permissions`
+T.check("R53 (1.69) permission_mode is in state.ops and is a command, not a passive read", "permission_mode" in RL.OPS and "permission_mode" not in RL.PASSIVE_OPS, "")
+st53 = S.build_session({"name": "x", "tmux": "x", "status": "idle", "session_id": "S"}, {"runtime": {"x": {"permission_mode": "auto", "permission_bypass": False}}})
+T.check("R53 (1.69) «auto» passes as permission_mode; permission_bypass absent when false",
+        st53.get("permission_mode") == "auto" and "permission_bypass" not in st53, str(st53))
+t53 = tmp / "t53.jsonl"
+t53.write_text(json.dumps({"type": "permission-mode", "permissionMode": "default", "sessionId": "S53"}) + "\n")
+tune53 = tmp / "tuned53.json"
+_tof, _cf = RL.core.transcript_of, RL.core._cfg
+RL.core.transcript_of = lambda row: str(t53)
+RL.core._cfg = lambda: {"tune": {"file": str(tune53)}}
+tune53.write_text(json.dumps({"S53": {"permission_mode": "plan", "at": time.time() + 5}}))
+pm53a = RL.core.permission_mode({"session_id": "S53"})
+tune53.write_text(json.dumps({"S53": {"permission_mode": "plan", "at": time.time() - 3600}}))
+pm53b = RL.core.permission_mode({"session_id": "S53"})
+RL.core.transcript_of, RL.core._cfg = _tof, _cf
+T.check("R53 (1.69) a change noted by `supervisor permissions` wins until the transcript writes something newer",
+        (pm53a, pm53b) == ("plan", "default"), str((pm53a, pm53b)))
+p53 = [subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", *a]) for a in (["--dangerously-skip-permissions"], ["--permission-mode", "bypassPermissions"], ["--permission-mode", "plan"])]
+time.sleep(0.3)
+b53 = [RL.core.permission_bypass({"pid": p.pid}) for p in p53] + [RL.core.permission_bypass({"pid": p53[0].pid, "host": "win"}), RL.core.permission_bypass({"pid": p53[2].pid}, "bypassPermissions")]
+for p in p53:
+    p.kill()
+T.check("R53 (1.69) permission_bypass: started with --dangerously-skip-permissions or --permission-mode bypassPermissions; not a plain plan session, not a pid of another host; true when already in bypass",
+        b53 == [True, True, False, False, True], str(b53))
 
 T.finish()

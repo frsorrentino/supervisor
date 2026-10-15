@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.24-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.25-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -499,6 +499,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor talk <name> "prompt" [--wait S] [--force]` | a prompt to another session, the reply read from its transcript |
 | `supervisor answer <name> --show` · `answer <name> <n> [--text "…"]` | reads the question another session is stuck on (options numbered) and answers it by number, from any session or from the phone through the root session |
 | `supervisor model <name> <model>` · `supervisor effort <name> <level>` | switches another session's model or effort **for that session only**, through its own picker: the default for new sessions is never touched. Refuses a session that is working, has a question open or has text typed in its prompt; values come from `tune.models` and `tune.efforts` |
+| `supervisor permissions <name> <mode>` | switches another session's permission mode (default, acceptEdits, plan, auto, bypassPermissions) with Shift+Tab, one press per footer change, until its footer shows the mode; at most one cycle, and a mode outside the session's cycle leaves it where it started. Works on a busy session too; refuses an open dialog |
 | `supervisor screen <name> [--lines N]` | the last 30 lines of a session's terminal, for the phone («screen NAME» to the root session) |
 | `supervisor wait <name> [--timeout S]` | blocks until that session is idle; says if a `/goal` is still open there |
 | `supervisor panel <name>` | reads the text of a panel open over a session's prompt (`/cost`, `/usage`) and closes it with one Esc, so nothing stays open on the PC |

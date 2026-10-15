@@ -117,6 +117,7 @@
         }
       ],
       "permission_mode": "bypassPermissions",
+      "permission_bypass": true,
       "at_pc": true
     },
     {
@@ -342,7 +343,8 @@
     "agenda",
     "agenda_set",
     "quota_route",
-    "project_new"
+    "project_new",
+    "permission_mode"
   ],
   "slash": [
     "compact",

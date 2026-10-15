@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.25 — 2026-10-15: change a session's permission mode from the phone.**
+  - Approved by the maintainer on 15/10 at 07:39 together with the app mockup (plan, ask always, automatic edits, automatic, no confirmations, unknown).
+  - Contract 1.69: new op `permission_mode`, arg = default, acceptEdits, plan, auto or bypassPermissions. The relay presses Shift+Tab once per footer change until the footer shows the mode asked for, at most one full cycle; result «<session>: permissions now <mode>». `supervisor permissions <name> <mode>` (alias `permessi`) does the same from the terminal.
+  - Seen live on Claude Code 2.1.300: manual → accept edits → plan → bypass permissions → auto → manual, bypass only for a session started with it. The footer redraws up to 5 s after the key, and two quick presses got lost: each press waits for the change.
+  - Clear refusals: a mode outside the session's cycle («not in this session's Shift+Tab cycle, left on <start>», back where it started), a dialog open, a footer without a known mode, a footer that does not change within 8 s, an unknown name, a session on another host. A session at work or with text typed in its prompt is changed all the same.
+  - `sessions[].permission_bypass: true` when the session can reach bypassPermissions (started with --dangerously-skip-permissions, --allow-dangerously-skip-permissions or --permission-mode bypassPermissions, or already in it). The new mode shows in `sessions[].permission_mode` at once, before the next turn; «auto» is a known name there too.
+  - Tests: `tests/perm-verify.py` (13 checks, fake Claude with the Shift+Tab cycle, a slow footer, a stuck one), R53 in relay-verify, fixtures with an ok and a refusal.
 - **0.8.24 — 2026-10-14: a session that needs you says so, a turn that ends waiting for you counts as a question, reminders until it is solved, and the master hears of it.**
   - Approved by the maintainer on 14/10 at 22:45 after a session waited for a login on another computer while it showed as working, and nothing reached the phone.
   - `supervisor needs-you "<what you need>"` (alias `serve-te`), contract 1.68: from a session, for something only the user can do (a login, a code, a physical key, a file). `sessions[].needs_you` = {reason, at} until the session's next prompt (the UserPromptSubmit hook removes it, `--clear` too); an event `needs_you` «✋ <session>»; a silent record in the master's inbox. Rule 11 of the kernel every session gets at start tells sessions to use it instead of waiting in silence.

@@ -19,8 +19,18 @@ Si agisce solo su una sessione ferma al prompt: niente spinner di lavoro, nessun
 scritto dall'utente sulla riga del prompt (il suggerimento grigio di Claude Code non conta: SGR 2). Il risultato vale
 solo se nel riquadro compare la conferma «this session only»; altrimenti Esc e un errore.
 
-Uscite: 0 fatto; 1 sessione assente; 2 valore o uso non validi; 3 sessione non ferma al prompt; 4 selettore o
-conferma non arrivati. La prima riga dell'output e' il testo per chi chiama (il relay la gira al polso).
+  supervisor permissions <nome> <modalita'>   default, acceptEdits, plan, auto, bypassPermissions (contratto 1.69)
+
+La modalita' dei permessi non ha un selettore: si cambia con Shift+Tab, che fa girare le modalita' nel piè di pagina
+sotto il prompt. Dal vivo il 15/10/2026 su Claude Code 2.1.300, con una sessione partita con
+--dangerously-skip-permissions: manual → accept edits → plan → bypass permissions → auto → manual. Il piè si ridisegna
+anche 5 s dopo il tasto, e due tasti ravvicinati si perdevano: si preme una volta, si aspetta che il piè cambi e solo
+allora si preme di nuovo. Vale anche con la sessione al lavoro e con testo scritto nel prompt (Shift+Tab non lo
+tocca); non con un dialogo aperto. Al massimo un giro: se la modalita' non c'e', la sessione torna a quella di partenza.
+
+Uscite: 0 fatto; 1 sessione assente; 2 valore o uso non validi; 3 sessione non ferma al prompt (per i permessi: un
+dialogo aperto); 4 selettore, conferma o piè non arrivati, o modalita' fuori dal giro; 5 sessione su un altro host
+(solo permessi). La prima riga dell'output e' il testo per chi chiama (il relay la gira al polso).
 """
 import importlib.util
 import re
@@ -337,6 +347,58 @@ def _set_effort(name, level):
     return 0
 
 
+# 1.69: il piè di pagina di Claude Code 2.1.300 per ogni modalita'; «? for shortcuts» e' il piè delle versioni che per
+# default non scrivono niente. L'ordine conta: «manual mode on» e «? for shortcuts» per ultimi.
+MODES = ("default", "acceptEdits", "plan", "auto", "bypassPermissions")
+FOOTER = ((r"plan mode on", "plan"), (r"accept edits on", "acceptEdits"), (r"bypass permissions on", "bypassPermissions"),
+          (r"auto mode on", "auto"), (r"don't ask mode on", "dontAsk"), (r"manual mode on", "default"), (r"\? for shortcuts", "default"))
+PERM_WAIT_S = 8.0
+
+
+def footer_mode(scr):
+    """La modalita' dei permessi letta dal piè, sotto l'ultima riga del prompt; None se il piè non ne mostra una."""
+    tail = below_prompt(scr)
+    return next((mode for pat, mode in FOOTER if re.search(pat, tail)), None)
+
+
+def _set_permissions(name, wanted):
+    if wanted not in MODES:
+        print(M("tune.bad_permission", mode=wanted))
+        return 2
+    scr = screen(name)
+    tail = below_prompt(scr)
+    if "Enter to select" in tail or "to use this session only" in tail or "to adjust" in tail or "Enter to confirm" in tail or "Esc to cancel" in tail:
+        print(M("tune.perm_dialog", name=name))
+        return 3
+    start = footer_mode(scr)
+    if not start:
+        print(M("tune.perm_unreadable", name=name))
+        return 4
+    cur, seen = start, [start]
+    while cur != wanted:
+        keys(name, "BTab", pause=0)
+        end, nxt = time.time() + PERM_WAIT_S, None
+        while time.time() < end:
+            time.sleep(0.25)
+            nxt = footer_mode(screen(name))
+            if nxt and nxt != cur:
+                break
+        if not nxt or nxt == cur:
+            print(M("tune.perm_stuck", name=name, mode=cur))
+            return 4
+        cur = nxt
+        if cur == start:
+            print(M("tune.perm_not_in_cycle", name=name, mode=wanted, start=start))
+            return 4
+        if cur in seen[1:] or len(seen) > 8:   # un giro che non torna al punto di partenza: fermarsi comunque
+            print(M("tune.perm_stuck", name=name, mode=cur))
+            return 4
+        seen.append(cur)
+    remember(name, permission_mode=wanted)
+    print(M("tune.perm_set", name=name, mode=wanted))
+    return 0
+
+
 def set_model(name, wanted):
     with wide(name):
         return _set_model(name, wanted)
@@ -348,12 +410,16 @@ def set_effort(name, level):
 
 
 def main(argv):
-    if len(argv) < 3 or argv[0] not in ("model", "effort"):
+    if len(argv) < 3 or argv[0] not in ("model", "effort", "permissions"):
         print(M("tune.usage"), file=sys.stderr)
         return 2
     what, name, value = argv[0], argv[1], argv[2]
     if tmux("has-session", "-t", f"={name}").returncode != 0:
         hit = _load("cm-rsession").resolve(name)
+        if what == "permissions":
+            # 1.69: per ora solo qui; la console di win non ha ancora un nome per Shift+Tab
+            print(M("tune.perm_remote" if hit else "tune.no_session", name=name))
+            return 5 if hit else 1
         a = _load("cm-hosts").adapter(hit[0]) if hit else None
         if not hasattr(a, "session_console"):
             print(M("tune.no_session", name=name))
@@ -362,6 +428,8 @@ def main(argv):
         REMOTE[name] = (a, hit[1])
         GLYPHS = ("❯", ">")
         WAIT_S *= 3   # una lettura della console di la' costa qualche secondo
+    if what == "permissions":
+        return _set_permissions(name, value)
     return set_model(name, value) if what == "model" else set_effort(name, value)
 
 

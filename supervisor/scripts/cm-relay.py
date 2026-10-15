@@ -69,7 +69,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -692,6 +692,7 @@ def collect_sources(now=None):
             # 1.14 (22/09): il ripiego dopo un messaggio segnalato, gia' letto da `sessions --json`
             rt["fallback"] = r.get("fallback") or None
             rt["permission_mode"] = core.permission_mode(r)   # 1.54
+            rt["permission_bypass"] = core.permission_bypass(r, rt["permission_mode"])   # 1.69
             runtime[r.get("tmux") or r.get("name") or ""] = rt
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             pass
@@ -3017,6 +3018,16 @@ def execute(cmd):
             text = (out.splitlines() or [f"{op} failed"])[0]
             if rc == 0:
                 push_async()   # lo stato riporta subito il valore nuovo (annotato dal comando, cm-core lo usa)
+            return rc == 0, text
+        if op == "permission_mode":
+            # 1.69 (15/10): Shift+Tab finche' il piè di pagina mostra la modalita' chiesta; le verifiche e i rifiuti li
+            # fa `supervisor permissions`, la cui prima riga e' il testo per il telefono
+            if info.get("state") == "gone":
+                return False, M("relay.cmd_gone", name=session)
+            rc, out = run_cm("permissions", tm, str(arg or "").strip())
+            text = (out.splitlines() or ["permission change failed"])[0]
+            if rc == 0:
+                push_async()
             return rc == 0, text
         if op == "night_add":
             # 1.17 (29/09): un lavoro nella coda di stanotte, dalla cartella di un progetto pubblicato come launch;

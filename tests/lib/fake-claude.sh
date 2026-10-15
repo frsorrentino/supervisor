@@ -226,6 +226,44 @@ effort_picker() {
 case "$SCEN" in *,busy,*) echo "✻ Working… (esc to interrupt)";; esac
 # Claude Code 2.1.294: la riga del turno senza «esc to interrupt» (08/10)
 case "$SCEN" in *,busy294,*) echo "● Slithering… (1m 9s · ↓ 2.7k tokens)";; esac
+# 1.69 (15/10/2026): il piè di pagina dei permessi e Shift+Tab come in Claude Code 2.1.300, dal vivo con una sessione
+# partita con --dangerously-skip-permissions: manual → accept edits → plan → bypass permissions → auto → manual.
+#   perm         il giro senza bypass;  perm-bypass  con bypass;  perm-old  il default con «? for shortcuts»
+#   perm-lag     il piè si ridisegna FAKE_CLAUDE_DELAY secondi dopo il tasto (dal vivo fino a 5 s)
+#   perm-stuck   Shift+Tab non cambia niente;  perm-start=<modalita'> la modalita' di partenza
+# Il testo scritto resta sulla riga del prompt; Shift+Tab non lo tocca. Ogni Shift+Tab si annota in FAKE_CLAUDE_KEYS_LOG.
+case "$SCEN" in *,perm,*|*,perm-bypass,*|*,perm-old,*|*,perm-lag,*|*,perm-stuck,*)
+  modes=(default acceptEdits plan auto); case "$SCEN" in *,perm-bypass,*) modes=(default acceptEdits plan bypassPermissions auto);; esac
+  m=0; for i in "${!modes[@]}"; do case "$SCEN" in *",perm-start=${modes[$i]},"*) m=$i;; esac; done
+  pbuf=""
+  pdraw() {
+    local f
+    case "${modes[$m]}" in
+      default) case "$SCEN" in *,perm-old,*) f="? for shortcuts";; *) f="⏸ manual mode on · ← for agents";; esac ;;
+      acceptEdits) f="⏵⏵ accept edits on (shift+tab to cycle) · ← for agents" ;;
+      plan) f="⏸ plan mode on (shift+tab to cycle) · ← for agents" ;;
+      bypassPermissions) f="⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents" ;;
+      auto) f="⏵⏵ auto mode on (shift+tab to cycle) · ← for agents" ;;
+    esac
+    printf '\033[2J\033[H ▐▛███▛█   Claude Code v2.1.300 (fake)\n'
+    case "$SCEN" in *,busy,*) printf '✻ Working… (esc to interrupt)\n';; esac
+    printf '────────────────────────────\n❯ %s\n────────────────────────────\n  %s\n' "$pbuf" "$f"
+  }
+  pdraw
+  while IFS= read -rsn1 k; do
+    case "$k" in
+      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+               if [ "${k2:-}" = "[Z" ]; then
+                 [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "BTab" >> "$FAKE_CLAUDE_KEYS_LOG"
+                 case "$SCEN" in *,perm-stuck,*) continue;; *,perm-lag,*) sleep "$DELAY";; esac
+                 m=$(( (m+1) % ${#modes[@]} )); pdraw
+               fi ;;
+      "") [ "$pbuf" = "/exit" ] && exit 0; pbuf=""; pdraw ;;
+      *) pbuf="$pbuf$k"; pdraw ;;
+    esac
+  done
+  exit 0 ;;
+esac
 printf '❯ '   # senza newline: il testo digitato resta sulla riga del prompt, come in Claude Code
 # resta vivo finche' non riceve /exit (o un segnale)
 while IFS= read -r line; do
