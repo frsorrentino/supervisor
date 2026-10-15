@@ -161,6 +161,12 @@ DEFAULTS = {
               # 06/10/2026: "default" (nessun permesso allargato); per i lavori che scrivono file serve "acceptEdits",
               # scelto dall'utente nella sua config
               "max_turns": 40, "permission_mode": "default", "tool_memory_limit": "2g", "retry_watchdog_max_wait_ms": 900000,
+              # 16/10/2026 (Claude Code 2.1.301): al limite d'uso il watchdog aspetta il reset solo fino a qui, poi
+              # chiude la richiesta (un limite settimanale puo' azzerarsi fra giorni); 0 = non impostata
+              "retry_watchdog_max_usage_limit_wait_ms": 900000,
+              # 16/10/2026 (Claude Code 2.1.292): `claude -p` aspetta i comandi in background e le sveglie dopo il
+              # risultato; la voce si chiude dopo after_result_s senza attivita' dal risultato (0 = fino a item_timeout_s)
+              "after_result_s": 300,
               "out_subdir": "docs/notte", "max_items_per_run": 3, "max_queued": 8, "queue_file": "", "done_file": "", "log": ""},
     # relay per l'app Wear OS (0.4.0): Firebase RTDB + FCM dietro cm-relay.py; service account e chiave in relay.dir
     "relay": {"enabled": False, "firebase_url": "", "service_account": "~/.cc-supervisor/relay/service-account.json",
@@ -175,6 +181,8 @@ DEFAULTS = {
               # contesto di una sessione (1.13.1): dove una statusline salva la finestra dichiarata da Claude Code, e i
               # modelli il cui id non dice se la finestra e' da 1M o standard (sotto i 200k token il contesto resta null)
               "window_hint_dir": "~/.claude/fable-director/sessions", "window_unmarked": ["claude-fable-5-1"],
+              # modelli da 1M che non portano [1m] nell'id (16/10/2026: Haiku 5.5, 1M di contesto)
+              "window_1m": ["claude-haiku-5-5"],
               # 1.15 (24/09/2026): i dati dell'app Firebase nel QR di `relay pair` — o qui, o letti da un
               # google-services.json (project_info + il client con il pacchetto dell'app). Senza: niente QR, il codice basta.
               "firebase_app": {"api_key": "", "project_id": "", "app_id": ""}, "google_services": "",
@@ -195,14 +203,17 @@ DEFAULTS = {
     # cambio di modello ed effort di una sessione dal suo selettore, SOLO per quella sessione (16/09/2026, contratto
     # 1.12): `pick` e' l'etichetta della voce nel selettore di /model, `id` quello che la sessione riporta in model.id.
     # Dalla 2.1.280 (catturato il 22/09/2026) «Opus (1M context)» e' Opus 5.5 e Opus 5 non ha piu' una voce: tenere
-    # claude-opus-5[1m] su quell'etichetta avrebbe scelto Opus 5.5 senza errore
-    "tune": {"timeout_s": 8, "file": "", "efforts": ["low", "medium", "high", "xhigh", "max"],
+    # claude-opus-5[1m] su quell'etichetta avrebbe scelto Opus 5.5 senza errore. Dal 16/10/2026 Sonnet 5.5 e Haiku 5.5
+    # (Claude Code 2.1.293: l'alias «haiku» gira su claude-haiku-5-5), id e nomi come li scrivono le trascrizioni.
+    # compact_timeout_s (2.1.301): verso una finestra piu' piccola la conversazione si riassume prima del cambio; finche'
+    # lo schermo mostra il riassunto non si preme Esc e si aspetta la conferma fino a qui
+    "tune": {"timeout_s": 8, "compact_timeout_s": 300, "file": "", "efforts": ["low", "medium", "high", "xhigh", "max"],
              # `pick`: le etichette nel selettore di /model, una lista perche' cambiano con Claude Code (le seconde fino
              # alla 2.1.280, le prime dalla 2.1.283, dove la voce «(1M context)» non c'e' piu')
              "models": [{"id": "claude-opus-5-5[1m]", "label": "Opus 5.5", "pick": ["Opus 5.5", "Opus (1M context)"]},
                         {"id": "claude-fable-5-1", "label": "Fable 5.1", "pick": ["Fable 5.1", "Fable"]},
-                        {"id": "claude-sonnet-5", "label": "Sonnet 5", "pick": ["Sonnet 5", "Sonnet"]},
-                        {"id": "claude-haiku-4-5", "label": "Haiku 4.5", "pick": ["Haiku 4.5", "Haiku"]}]},
+                        {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5", "pick": ["Sonnet 5.5", "Sonnet"]},
+                        {"id": "claude-haiku-5-5", "label": "Haiku 5.5", "pick": ["Haiku 5.5", "Haiku"]}]},
     # casella persistente (23/09/2026, docs/plans/2026-09-23-approvazioni-casella-registro-design.md): scadenza dei
     # messaggi in attesa. La coda degli ok e' stata tolta la sera stessa (decisione dell'utente, 22:39)
     "inbox": {"expires_h": 48},

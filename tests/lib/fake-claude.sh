@@ -29,7 +29,15 @@ DELAY="${FAKE_CLAUDE_DELAY:-4}"
 case "${1:-}" in agents|attach|logs|stop) exit 1 ;; esac
 case " $* " in *" --cloud "*|*" -p "*)
   ev=""; IFS=, read -ra _evs <<< "${FAKE_CLAUDE_ECHO_ENV:-}"; for _e in "${_evs[@]}"; do ev="$ev ENV $_e=${!_e:-}"; done
-  [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ] && printf '%s%s\n' "$*" "$ev" >> "$FAKE_CLAUDE_ARGS_LOG"; echo "Sent to cloud session (fake)"; exit 0 ;;
+  [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ] && printf '%s%s\n' "$*" "$ev" >> "$FAKE_CLAUDE_ARGS_LOG"
+  # 16/10/2026: la coda notturna chiede stream-json: l'avvio, la risposta e l'evento result, una riga JSON ciascuno
+  case " $* " in *" --output-format stream-json "*)
+    printf '%s\n' '{"type":"system","subtype":"init","session_id":"fake"}' \
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"Sent to cloud session (fake)"}]}}' \
+      '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"Sent to cloud session (fake)","session_id":"fake"}'
+    exit 0 ;;
+  esac
+  echo "Sent to cloud session (fake)"; exit 0 ;;
 esac
 if [ "${1:-}" = remote-control ]; then [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ] && printf '%s\n' "$*" >> "$FAKE_CLAUDE_ARGS_LOG"; echo "Remote Control server (fake) https://claude.ai/code/session_01FAKEDESK"; sleep 600; exit 0; fi
 if [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ]; then
@@ -192,7 +200,19 @@ model_picker() {
                  '[C'|'[D') draw ;;
                  *) printf '\033[2J\033[H  ⎿  Cancelled\n'; return ;;
                esac ;;
-      s) if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '\033[2J\033[H  ⎿  Set model to %s for\n     this session only\n' "${names[$sel]}"
+      s) # model-compact (2.1.301, 16/10/2026): verso una finestra piu' piccola la conversazione si riassume prima del
+         # cambio, con lo spinner a schermo per FAKE_CLAUDE_DELAY secondi; un Esc lo interrompe e il cambio non avviene
+         case "$SCEN" in *,model-compact,*)
+           local end=$((SECONDS + DELAY)) k3
+           printf '\033[2J\033[H✻ Compacting conversation… (esc to interrupt)\n'
+           while [ "$SECONDS" -lt "$end" ]; do
+             if IFS= read -rsn1 -t 0.2 k3 && [ "$k3" = $'\x1b' ]; then
+               [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "Esc during compact" >> "$FAKE_CLAUDE_KEYS_LOG"
+               printf '\033[2J\033[H  ⎿  Interrupted · What should Claude do instead?\n'; return
+             fi
+           done ;;
+         esac
+         if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '\033[2J\033[H  ⎿  Set model to %s for\n     this session only\n' "${names[$sel]}"
          else printf '\033[2J\033[H  ⎿  Set model to %s for this session only\n' "${names[$sel]}"; fi; return ;;
       "") [ -n "${FAKE_CLAUDE_DEFAULT_LOG:-}" ] && echo "model ${names[$sel]}" >> "$FAKE_CLAUDE_DEFAULT_LOG"
           printf '\033[2J\033[H  ⎿  Set model to %s and saved as your default for new sessions\n' "${names[$sel]}"; return ;;

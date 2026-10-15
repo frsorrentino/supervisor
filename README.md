@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.25-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.26-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -18,9 +18,10 @@ claude plugin install supervisor --marketplace frsorrentino/supervisor
 ~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor init --yes --shim --shell
 ```
 
-One command installs the plugin (Claude Code 2.1.275 or newer; older versions:
-the two commands of the [Quickstart](#quickstart)), the second writes the
-configuration and puts `supervisor` in `~/.local/bin`. Then `supervisor doctor`, and
+One command installs the plugin (Claude Code 2.1.292 or newer; from 2.1.275,
+`/plugin install supervisor --marketplace frsorrentino/supervisor` inside Claude
+Code; older versions: the two commands of the [Quickstart](#quickstart)), the
+second writes the configuration and puts `supervisor` in `~/.local/bin`. Then `supervisor doctor`, and
 `supervisor relay web` for every session on one screen, in this computer's browser.
 
 ⭐ Star the repo if it helps you · [Try the demo, no install](https://supervisor.francescosorrentino.com/?demo&lang=en)
@@ -208,8 +209,9 @@ what to do. These are the problems seen on clean installs.
   commands; `relay pair` and `relay install` stop before changing anything if
   one is missing. `relay setup` also needs `firebase login`.
 - **Native Windows.** supervisor needs WSL2; outside it the command exits 3 with
-  one line saying so, and the hooks stay quiet. `claude plugin disable supervisor`
-  removes it.
+  one line saying so. Disable it there with `claude plugin disable supervisor`:
+  without Git for Windows, from Claude Code 2.1.299, its hooks block every
+  permission request and every Bash command.
 
 ## A normal day
 
@@ -478,8 +480,10 @@ only sees a monitor that has a window on it: `move` tells you to drag one there.
 ### Windows
 
 supervisor does not run on native Windows: use it inside WSL2. Installed there
-by mistake it stays quiet: the `supervisor` command prints one line and exits 3,
-and `claude plugin disable supervisor` removes it. [How](details/windows.md).
+by mistake, disable it with `claude plugin disable supervisor`. With Git for
+Windows it stays quiet (the `supervisor` command prints one line and exits 3);
+without it, from Claude Code 2.1.299, its hooks block every permission request
+and every Bash command. [How](details/windows.md).
 
 ## Commands
 

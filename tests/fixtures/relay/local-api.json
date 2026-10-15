@@ -2,7 +2,7 @@
  "contract": "1.35",
  "base": "http://127.0.0.1:8765",
  "token": "Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
- "rules": "Bearer token on every /api call (GET also ?t=); Host 127.0.0.1 or localhost on the relay's port; no CORS headers; `at` varies; JSON in clear, as in the other fixtures",
+ "rules": "Bearer token on every /api call (GET also ?t=); Host 127.0.0.1 or localhost on the relay's port; no CORS headers; `at` varies; JSON in clear, as in the other fixtures; 1.70: GET /api/tail/<id> = the body of /tail/<id> in clear (`at` varies), ?tx= equal to the current tx → 304 without a body, 404 {\"error\": \"no such session\"} for an id with no live transcript",
  "exchanges": [
   {
    "name": "state",
@@ -248,6 +248,92 @@
     "vary": [
      "at"
     ]
+   }
+  },
+  {
+   "name": "tail",
+   "request": {
+    "method": "GET",
+    "path": "/api/tail/f61903c0-ea6a-409c-a961-d01126a0f3ad",
+    "headers": {
+     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+    }
+   },
+   "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "vary": [
+     "at"
+    ],
+    "body": {
+     "session": "atlas-shop",
+     "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
+     "tx": "318-1789210000000000000",
+     "at": 1789210800,
+     "entries": [
+      {
+       "id": "u70.0",
+       "role": "user",
+       "text": "review the test seeds",
+       "at": 1789207200,
+       "tool": null,
+       "note": null,
+       "error": null,
+       "cut": false,
+       "turn": null,
+       "files": null,
+       "origin": "pc",
+       "queued": false
+      },
+      {
+       "id": "a70.0",
+       "role": "assistant",
+       "text": "Seeds reviewed: 3 were flaky, fixed and green.",
+       "at": 1789207205,
+       "tool": null,
+       "note": null,
+       "error": null,
+       "cut": false,
+       "turn": null,
+       "files": null,
+       "origin": null,
+       "queued": false
+      }
+     ],
+     "more": false
+    }
+   }
+  },
+  {
+   "name": "tail-unchanged",
+   "request": {
+    "method": "GET",
+    "path": "/api/tail/f61903c0-ea6a-409c-a961-d01126a0f3ad?tx=318-1789210000000000000",
+    "headers": {
+     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+    }
+   },
+   "response": {
+    "status": 304,
+    "content_type": "application/json; charset=utf-8",
+    "body": null
+   }
+  },
+  {
+   "name": "tail-no-session",
+   "request": {
+    "method": "GET",
+    "path": "/api/tail/00000000-0000-4000-8000-000000000000",
+    "headers": {
+     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+    }
+   },
+   "response": {
+    "status": 404,
+    "content_type": "application/json; charset=utf-8",
+    "body": {
+     "error": "no such session"
+    }
    }
   }
  ]

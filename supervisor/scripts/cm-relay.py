@@ -605,6 +605,8 @@ def collect_sources(now=None):
             rows.append({"tmux": s["nome"], "name": s["nome"], "status": "dead", "cwd": s.get("cartella", ""), "account": s.get("account", ""),
                          "waiting": False, "session_id": s.get("session_id") or "", "link": "", "attached": False,
                          "visto_ts": S.epoch(s.get("visto", "")) if s.get("visto") else 0})
+    # 16/10: mai due sessioni con lo stesso nome nello stato (l'app le indicizza per nome), prima delle chiavi qui sotto
+    S.unique_names(rows, prefixes())
     ledger = core.ledger_rows()
     # 10/10: le sessioni su un altro host non hanno l'hook di qui: le loro righe dalla copia del transcript
     for r in rows:
@@ -998,6 +1000,10 @@ def _push(dry_run=False, now=None, m=None):
                 prune_share(now)
                 prune_share(now, "file")
             prune_local(now)
+        try:
+            note_tail_paths(src["rows"], full)   # 1.70: la API locale apre /api/tail/<id> da qui
+        except Exception as ex:   # noqa: BLE001
+            log(f"tail paths FAILED: {ex}")
         if local_only():
             return
         try:
@@ -1039,6 +1045,37 @@ def tail_key(sid):
     return re.sub(r"[.#$\[\]/]", "_", str(sid))
 
 
+def tail_body(name, sid, path, st, now):
+    """Il corpo di /tail/<id> (1.59) e di GET /api/tail/<id> (1.70): {session, id, tx, at, entries, more}, le ultime
+    TAIL_N voci della chat entro TAIL_MAX_BYTES. tx = dimensione e mtime della trascrizione."""
+    entries = core.transcript_entries(path, max(0, st.st_size - TAIL_WINDOW))
+    page, more = entries[-TAIL_N:], len(entries) > TAIL_N or st.st_size > TAIL_WINDOW
+    body = {"session": name, "id": sid, "tx": f"{st.st_size}-{st.st_mtime_ns}", "at": int(now), "entries": page, "more": bool(more)}
+    while body["entries"] and len(json.dumps(body, ensure_ascii=False).encode()) > TAIL_MAX_BYTES:
+        body["entries"] = body["entries"][1:]
+        body["more"] = True
+    return body
+
+
+def note_tail_paths(rows, full):
+    """1.70 (15/10, da supervisor-app: la web locale rileggeva la chat con l'op transcript, circa 6 s di PC ognuna): a
+    ogni push, per ogni sessione viva con una trascrizione, {id: {session, path}} in local/tail-paths.json. La API
+    locale risponde a GET /api/tail/<id> leggendo da qui, senza raccogliere le sessioni. Si riscrive solo se cambia."""
+    by_tm = {r.get("tmux") or r.get("name"): r for r in rows if r.get("status") != "dead"}
+    paths = {}
+    for s_ in full.get("sessions") or []:
+        if s_.get("state") == "gone":
+            continue
+        row = next((r for tm, r in by_tm.items() if r.get("session_id") == s_.get("id") or tm == s_.get("id")), None)
+        path = core.transcript_of(row) if row else ""
+        if path:
+            paths[str(s_["id"])] = {"session": s_["name"], "path": str(path)}
+    f = rdir() / "local" / "tail-paths.json"
+    if read_json(f, None) != paths:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        write_json(f, paths)
+
+
 def push_tails(rows, full, now):
     """1.59 (14/10, il manutentore dal telefono: «quando cambio una chat vedo per qualche secondo il testo vecchio»): per ogni
     sessione viva le ultime TAIL_N voci della chat (lo stesso formato dell'op transcript) in /tail/<id>, cifrate come
@@ -1066,13 +1103,7 @@ def push_tails(rows, full, now):
         prev = seen.get(kk) or [None, 0]
         if prev[0] == tx or now - float(prev[1] or 0) < TAIL_MIN_S:
             continue
-        entries = core.transcript_entries(path, max(0, st.st_size - TAIL_WINDOW))
-        page, more = entries[-TAIL_N:], len(entries) > TAIL_N or st.st_size > TAIL_WINDOW
-        body = {"session": s_["name"], "id": s_["id"], "tx": tx, "at": int(now), "entries": page, "more": bool(more)}
-        while body["entries"] and len(json.dumps(body, ensure_ascii=False).encode()) > TAIL_MAX_BYTES:
-            body["entries"] = body["entries"][1:]
-            body["more"] = True
-        out[kk] = C.encrypt(body, k)
+        out[kk] = C.encrypt(tail_body(s_["name"], s_["id"], path, st, now), k)
         seen[kk] = [tx, now]
     if out:
         rtdb("PATCH", "tail", out, {"print": "silent"})
@@ -3329,7 +3360,9 @@ def run_cmd(cmd, arrived=None):
     ok, text = res[0], res[1]
     extra = res[2] if len(res) > 2 and isinstance(res[2], dict) else {}   # 1.13: {"session": nome} dopo un launch
     by = str(cmd.get("by") or "?")
-    log(f"cmd {cid}: {cmd.get('op')} {cmd.get('session') or ''} da {by}{' (locale)' if cmd.get('_local') else ''} → {'ok' if ok else 'ERR'} {str(text)[:80]}{timing}")
+    # 15/10: per una risposta, la domanda a cui risponde (1.52) o «senza id»: dal log si vede se l'app la manda
+    asked = (f" · domanda {cmd.get('question')}" if cmd.get("question") else " · senza id domanda") if cmd.get("op") in ("answer", "allow_all") else ""
+    log(f"cmd {cid}: {cmd.get('op')} {cmd.get('session') or ''} da {by}{' (locale)' if cmd.get('_local') else ''}{asked} → {'ok' if ok else 'ERR'} {str(text)[:80]}{timing}")
     row = last_sessions().get(str(cmd.get("session") or "")) or {}
     ledger_write("watch-cmd", op=str(cmd.get("op") or ""), name=str(cmd.get("session") or ""), by=by, ok=bool(ok),
                  text=str(text)[:200], session_id=row.get("id") or "", account=row.get("account") or "")
@@ -3390,6 +3423,24 @@ class LocalApi:
         cmd.setdefault("by", "web")
         cmd.setdefault("device", "web")   # 1.36: dall'API locale arriva solo la web app
         return run_cmd(cmd)
+
+    _tails = {}   # id → l'ultimo corpo di /api/tail, finche' tx non cambia
+
+    def tail(self, sid):
+        """1.70: il corpo di /tail/<id> per la API locale, o None se la sessione non e' viva o non ha trascrizione."""
+        hit = read_json(rdir() / "local" / "tail-paths.json", {}).get(sid)
+        if not hit:
+            return None
+        try:
+            st = os.stat(hit["path"])
+        except (OSError, KeyError, TypeError):
+            return None
+        old = self._tails.get(sid)
+        if old and old["tx"] == f"{st.st_size}-{st.st_mtime_ns}":
+            return old
+        body = tail_body(hit.get("session") or sid, sid, hit["path"], st, time.time())
+        self._tails[sid] = body
+        return body
 
     def file(self, fid):
         p = rdir() / "local" / "file" / f"{fid}.json"

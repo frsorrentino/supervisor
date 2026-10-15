@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """supervisor model / effort — cambiare modello o effort di un'altra sessione, SOLO per quella sessione.
 
-  supervisor model  <nome> <modello>   uno degli id di tune.models (per esempio claude-sonnet-5)
+  supervisor model  <nome> <modello>   uno degli id di tune.models (per esempio claude-sonnet-5-5)
   supervisor effort <nome> <livello>   uno di tune.efforts (low, medium, high, xhigh, max)
 
 Scritti come comando («/model sonnet», «/effort medium») i due cambi salvano anche il DEFAULT per le sessioni
@@ -28,9 +28,15 @@ anche 5 s dopo il tasto, e due tasti ravvicinati si perdevano: si preme una volt
 allora si preme di nuovo. Vale anche con la sessione al lavoro e con testo scritto nel prompt (Shift+Tab non lo
 tocca); non con un dialogo aperto. Al massimo un giro: se la modalita' non c'e', la sessione torna a quella di partenza.
 
+Dalla 2.1.301, verso un modello con la finestra piu' piccola una conversazione troppo lunga viene prima riassunta dal
+modello di prima, con lo spinner «Compacting conversation»: la conferma arriva solo dopo. Finche' lo schermo mostra il
+riassunto non si preme Esc, che lo interromperebbe, e si aspetta fino a tune.compact_timeout_s; scaduto quel tempo,
+uscita 4 e niente Esc: il cambio resta in corso.
+
 Uscite: 0 fatto; 1 sessione assente; 2 valore o uso non validi; 3 sessione non ferma al prompt (per i permessi: un
-dialogo aperto); 4 selettore, conferma o piè non arrivati, o modalita' fuori dal giro; 5 sessione su un altro host
-(solo permessi). La prima riga dell'output e' il testo per chi chiama (il relay la gira al polso).
+dialogo aperto); 4 selettore, conferma o piè non arrivati, riassunto del cambio ancora in corso, o modalita' fuori dal
+giro; 5 sessione su un altro host (solo permessi). La prima riga dell'output e' il testo per chi chiama (il relay la
+gira al polso).
 """
 import importlib.util
 import re
@@ -54,7 +60,9 @@ CFG = cm.load(warn=False)
 M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 T = CFG.get("tune") or {}
 WAIT_S = float(T.get("timeout_s") or 8)
-ORDER = ["low", "medium", "high", "xhigh", "max", "ultracode"]   # le posizioni del cursore, da sinistra
+COMPACT_WAIT_S = float(T.get("compact_timeout_s") or 300)
+COMPACTING = "Compacting conversation"   # lo spinner del riassunto (Claude Code 2.1.301), anche prima di un cambio di modello
+ORDER =["low", "medium", "high", "xhigh", "max", "ultracode"]   # le posizioni del cursore, da sinistra
 # Claude Code 2.1.283 (dal vivo il 26/09/2026): la lista di /model scorre — sette voci a schermo su undici, «↑ n.» sulla
 # prima riga visibile e «↓ n.» sull'ultima quando ce ne sono altre, «… +4 models» in coda; sulla riga del cursore la
 # freccia lascia il posto a «❯». Giu' oltre l'ultima voce torna alla prima.
@@ -307,6 +315,12 @@ def _set_model(name, wanted):
     before = len(re.findall(pat, flat(screen(name))))
     keys(name, "s", pause=0.3)
     line = wait_new(name, pat, before)
+    if not line and COMPACTING in flat(screen(name)):
+        # il modello nuovo ha la finestra piu' piccola: la conversazione si riassume prima del cambio, ed Esc la fermerebbe
+        line = wait_new(name, pat, before, timeout=COMPACT_WAIT_S)
+        if not line and COMPACTING in flat(screen(name)):
+            print(M("tune.compacting", name=name))
+            return 4
     if not line:
         cancel(name)
         print(M("tune.no_confirm", name=name))

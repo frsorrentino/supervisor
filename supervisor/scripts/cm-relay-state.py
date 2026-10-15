@@ -202,6 +202,27 @@ def short_name(name, prefixes=()):
     return name
 
 
+def unique_names(rows, prefixes=()):
+    """16/10/2026 (dal vivo il 15/10 alle 23:40: due `launch --bg` nella stessa cartella, due «pix-claude-plugins», e
+    l'app in crash all'avvio sulla chiave doppia fino a mezzanotte): /state non pubblica mai due sessioni con lo stesso
+    nome corto. Tiene il nome la viva prima della chiusa, poi quella in tmux, poi la piu' vecchia; le altre prendono -2,
+    -3 come fa tmux, solo in `name`. `tmux` resta quello vero: un comando dal telefono raggiunge ancora una sessione in
+    tmux; una --bg rinominata non si trova, e il relay lo dice."""
+    def rank(ir):
+        i, r = ir
+        return (r.get("status") == "dead", not r.get("tmux"), int(r.get("started_at") or 0) or 1 << 62, i)
+    seen = set()
+    for _, r in sorted(enumerate(rows), key=rank):
+        base = r.get("name") or r.get("tmux") or "?"
+        nm, n = base, 2
+        while short_name(nm, prefixes) in seen:
+            nm, n = f"{base}-{n}", n + 1
+        if nm != base:
+            r["name"] = nm
+        seen.add(short_name(nm, prefixes))
+    return rows
+
+
 def tier_of(kind, tool, text, high_words=None):
     """low | medium | high: parole pericolose nel testo → high; permessi su strumenti che scrivono e domande
     → medium; strumenti che leggono → low."""

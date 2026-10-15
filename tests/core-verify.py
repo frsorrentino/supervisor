@@ -175,6 +175,47 @@ with open(tpath, "a") as f:
 rt = core.session_runtime(row)
 T.check("CO11 a trailing «<synthetic>» turn is skipped: the last real turn gives model, effort and context",
         rt == {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 25}, str(rt))
+# CO15 (16/10/2026, Claude Code 2.1.299): la compattazione a sessione ferma riassume senza un turno nuovo. Le righe come
+# nella trascrizione della master del 14/10 alle 23:07: compact_boundary, riassunto, allegati (anche il modello), nessun
+# turno dell'assistente; il contesto e' compactMetadata.postTokens sulla finestra provata da preTokens
+core._CFG["relay"] = {"dir": str(proj / "relay"), "window_unmarked": ["claude-fable-5-1"]}
+
+
+def compattata(meta, after=()):
+    with open(tdir / "S-15.jsonl", "w") as f:
+        f.write(json.dumps({"type": "attachment", "attachment": {"type": "model", "identity": {"modelId": "claude-fable-5-1", "marketingName": "Fable 5.1"}}}) + "\n")
+        f.write(json.dumps({"type": "assistant", "effort": "xhigh", "timestamp": "2026-10-14T22:12:00.000Z", "message": {"model": "claude-fable-5-1", "usage": {
+            "input_tokens": 13, "cache_read_input_tokens": 915_000, "cache_creation_input_tokens": 600}}}) + "\n")
+        f.write(json.dumps({"type": "system", "subtype": "compact_boundary", "content": "Conversation compacted", "timestamp": "2026-10-14T23:07:08.730Z",
+                            "compactMetadata": meta}) + "\n")
+        f.write(json.dumps({"type": "user", "isCompactSummary": True, "message": {"role": "user", "content": "This session is being continued…"}}) + "\n")
+        f.write(json.dumps({"type": "attachment", "attachment": {"type": "model", "identity": {"modelId": "claude-fable-5-1", "marketingName": "Fable 5.1"}}}) + "\n")
+        for line in after:
+            f.write(json.dumps(line) + "\n")
+    return core.session_runtime({"session_id": "S-15", "cwd": str(cwd), "account": "personal"})
+
+
+rt = compattata({"trigger": "auto", "preTokens": 915_613, "durationMs": 65373, "postTokens": 52_000})
+T.check("CO15 compacted after the last turn: postTokens on the 1M window that preTokens proves (52k → 5 %, not 92 %)",
+        rt == {"model": {"id": "claude-fable-5-1", "label": "Fable 5.1"}, "effort": "xhigh", "context": 5}, str(rt))
+rt = compattata({"trigger": "auto", "preTokens": 915_613})
+T.check("CO15 a boundary without postTokens (older CLIs): context null, never the number from before", rt["context"] is None and rt["model"]["id"] == "claude-fable-5-1", str(rt))
+rt = compattata({"trigger": "auto", "preTokens": 915_613, "postTokens": 52_000}, after=[{"type": "assistant", "effort": "xhigh", "message": {
+    "model": "claude-fable-5-1", "usage": {"input_tokens": 10, "cache_read_input_tokens": 300_000, "cache_creation_input_tokens": 0}}}])
+T.check("CO15 a turn after the boundary: that turn counts again (300k → 30 %)", rt["context"] == 30, str(rt))
+# CO16 (16/10/2026): Haiku 5.5 ha 1M senza [1m] nell'id: relay.window_1m, nei default
+core._CFG["relay"] = {"dir": str(proj / "relay"), "window_1m": ["claude-haiku-5-5"]}
+with open(tdir / "S-16.jsonl", "w") as f:
+    f.write(json.dumps({"type": "attachment", "attachment": {"type": "model", "identity": {"modelId": "claude-haiku-5-5", "marketingName": "Haiku 5.5"}}}) + "\n")
+    f.write(json.dumps({"type": "assistant", "effort": "medium", "message": {"model": "claude-haiku-5-5", "usage": {
+        "input_tokens": 0, "cache_read_input_tokens": 120_000, "cache_creation_input_tokens": 0}}}) + "\n")
+rt = core.session_runtime({"session_id": "S-16", "cwd": str(cwd), "account": "personal"})
+T.check("CO16 Haiku 5.5 under 200k tokens: the 1M window from relay.window_1m (120k → 12 %, not 60 %), label «Haiku 5.5»",
+        rt == {"model": {"id": "claude-haiku-5-5", "label": "Haiku 5.5"}, "effort": "medium", "context": 12}, str(rt))
+T.check("CO16 the defaults: claude-haiku-5-5 in relay.window_1m; Sonnet 5.5 and Haiku 5.5 in tune.models",
+        "claude-haiku-5-5" in core.cm.DEFAULTS["relay"]["window_1m"]
+        and [m["id"] for m in core.cm.DEFAULTS["tune"]["models"]][-2:] == ["claude-sonnet-5-5", "claude-haiku-5-5"], str(core.cm.DEFAULTS["tune"]["models"]))
+core._CFG["relay"] = {"dir": str(proj / "relay")}
 # CO12 (22/09/2026, Opus 5.5): il ripiego dopo un messaggio segnalato. Le righe come le scrive Claude Code 2.1.280
 # (schema letto nel binario; nessun messaggio segnalato provocato per vederle)
 row9 = {"session_id": "S-9", "cwd": str(cwd), "account": "personal"}

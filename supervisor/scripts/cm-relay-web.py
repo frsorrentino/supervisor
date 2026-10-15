@@ -153,6 +153,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api.events(since))
             if u.path == "/api/stream":
                 return self._stream()
+            m = re.fullmatch(r"/api/tail/([^/]+)", u.path)
+            if m:
+                # 1.70: la coda della chat come /tail/<id> su Firebase; ?tx= uguale → 304. Il 404 della sessione ha
+                # un corpo suo, cosi' la web lo distingue dal 404 di un relay vecchio che non ha la rotta
+                body = api.tail(urllib.parse.unquote(m.group(1)))
+                if body is None:
+                    return self._err(404, "no such session")
+                if (q.get("tx") or [""])[0] == body["tx"]:
+                    return self._send(304)
+                return self._json(200, body)
             m = re.fullmatch(r"/api/file/([^/]+)", u.path)
             if m:
                 return self._file(m.group(1))

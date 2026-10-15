@@ -158,8 +158,26 @@ else
   BASE=$(basename "$CARTELLA" | tr "$CM_SESSION_NAME_SANITIZE_CHARS" "$(printf '%*s' "${#CM_SESSION_NAME_SANITIZE_CHARS}" '' | tr ' ' '-')")
 fi
 BASE="$PREFIX$BASE"
+# 16/10/2026 (dal vivo il 15/10 alle 23:40): una sessione --bg non sta in tmux, quindi has-session non la vedeva e un
+# secondo `launch --bg` nella stessa cartella riprendeva lo stesso nome: due «pix-claude-plugins», e l'app in crash
+# sulla chiave doppia. Un nome e' preso anche quando lo porta una sessione VIVA del registro di Claude Code, di ogni
+# account: si va avanti con -2, -3 come per tmux. Uno zombie non e' vivo, come per `vivo` di cm-restart.sh: restart
+# rilancia appena il processo vecchio esce, quando la sua voce puo' esserci ancora e /proc/<pid> anche (visto nei test
+# il 16/10: il rilancio diventava «alfa-2»).
+nome_preso() {
+  cm_tmux has-session -t "=$1" 2>/dev/null && return 0
+  local acc f pid
+  for acc in $CM_ACCOUNTS_KEYS; do
+    for f in "$(cm_get "$acc" CONFIG_DIR)"/sessions/*.json; do
+      grep -qF "\"name\":\"$1\"" "$f" 2>/dev/null || continue
+      pid="${f##*/}"; pid="${pid%%.*}"
+      [ -d "/proc/$pid" ] && ! grep -q '^State:.*Z' "/proc/$pid/status" 2>/dev/null && return 0
+    done
+  done
+  return 1
+}
 NOME="$BASE"; n=2
-while cm_tmux has-session -t "=$NOME" 2>/dev/null; do NOME="$BASE-$n"; n=$((n + 1)); done
+while nome_preso "$NOME"; do NOME="$BASE-$n"; n=$((n + 1)); done
 
 # --- --resume: l'id deve esistere (T10) ---------------------------------------------
 if [ -n "$RIPRENDI" ]; then

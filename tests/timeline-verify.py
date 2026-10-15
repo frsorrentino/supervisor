@@ -156,4 +156,33 @@ chat = [e["text"] for e in core.transcript_entries(str(d1 / "S-A.jsonl"), 0, cha
 T.check("TL12 the chat leaves out a compaction summary and keeps the prompt typed",
         "aggiungi il campo IVA al checkout" in chat and not any("being continued" in x for x in chat), str(chat))
 
+# TL13 (16/10/2026, Claude Code 2.1.299): una compattazione a sessione ferma diventa un evento `compact`. Le righe come
+# nella trascrizione della master del 14/10 alle 23:07: metadati senza ora, poi il compact_boundary «auto» ~54 minuti
+# dopo l'ultimo messaggio, poi il riassunto. Una compattazione «auto» subito dopo un turno (contesto pieno) e una
+# manuale dopo un'ora non sono eventi.
+os.environ["CC_SUPERVISOR_CONFIG"] = str(cfg)
+spec = __import__("importlib.util").util.spec_from_file_location("cm_timeline", T.SCRIPTS / "cm-timeline.py")
+tlm = __import__("importlib.util").util.module_from_spec(spec)
+spec.loader.exec_module(tlm)
+T0 = NOW - 9000
+
+
+def boundary(t, trigger, ms, **meta):
+    return json.dumps({"type": "system", "subtype": "compact_boundary", "content": "Conversation compacted", "timestamp": iso(t), "isSidechain": False,
+                       "compactMetadata": dict(trigger=trigger, durationMs=ms, **meta)}, separators=(",", ":"))
+
+
+C = [line("user", "k1", T0, "rileggi il piano", proj), line("assistant", "k2", T0 + 10, [{"type": "text", "text": "Letto."}], proj),
+     json.dumps({"type": "mode", "mode": "normal"}, separators=(",", ":")), json.dumps({"type": "agent-name", "agentName": "atlas"}, separators=(",", ":")),
+     boundary(T0 + 10 + 54 * 60 + 65, "auto", 65000, preTokens=915613, postTokens=14815),
+     line("user", "k3", T0 + 3315, "This session is being continued…", proj, origin=None, isCompactSummary=True),
+     line("user", "k4", T0 + 3400, "continua", proj), line("assistant", "k5", T0 + 3405, [{"type": "text", "text": "Vado."}], proj),
+     boundary(T0 + 3410, "auto", 3000, preTokens=990000, postTokens=20000),
+     line("assistant", "k6", T0 + 3500, [{"type": "text", "text": "Fatto."}], proj),
+     boundary(T0 + 3500 + 3600, "manual", 30000, preTokens=300000, postTokens=12000)]
+(d1 / "S-C.jsonl").write_text("\n".join(C) + "\n")
+comp = [e for e in tlm.transcript_events(str(d1 / "S-C.jsonl"), NOW - 6 * 3600) if e["kind"] == "compact"]
+T.check("TL13 an idle compaction (auto, 54 minutes after the last message) is a `compact` event with the tokens before and after; a full-context one and a manual one are not",
+        comp == [{"at": T0 + 10 + 54 * 60 + 65, "kind": "compact", "text": "compacted after 54 min idle: 916k → 15k tokens", "ok": None, "ref": None}], str(comp))
+
 T.finish()

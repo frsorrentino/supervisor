@@ -204,6 +204,8 @@
     "permission_mode": "default",
     "tool_memory_limit": "2g",
     "retry_watchdog_max_wait_ms": 900000,
+    "retry_watchdog_max_usage_limit_wait_ms": 900000,
+    "after_result_s": 300,
     "out_subdir": "docs/notte",
     "max_items_per_run": 3,
     "max_queued": 8,
@@ -250,6 +252,9 @@
     "window_unmarked": [
       "claude-fable-5-1"
     ],
+    "window_1m": [
+      "claude-haiku-5-5"
+    ],
     "firebase_app": {
       "api_key": "",
       "project_id": "",
@@ -277,6 +282,7 @@
   },
   "tune": {
     "timeout_s": 8,
+    "compact_timeout_s": 300,
     "file": "~/.local/state/cc-supervisor/tuned.json",
     "efforts": [
       "low",
@@ -303,18 +309,18 @@
         ]
       },
       {
-        "id": "claude-sonnet-5",
-        "label": "Sonnet 5",
+        "id": "claude-sonnet-5-5",
+        "label": "Sonnet 5.5",
         "pick": [
-          "Sonnet 5",
+          "Sonnet 5.5",
           "Sonnet"
         ]
       },
       {
-        "id": "claude-haiku-4-5",
-        "label": "Haiku 4.5",
+        "id": "claude-haiku-5-5",
+        "label": "Haiku 5.5",
         "pick": [
-          "Haiku 4.5",
+          "Haiku 5.5",
           "Haiku"
         ]
       }

@@ -1035,6 +1035,11 @@ T.check("R6 (1.52) answer with the open question's id (asked_at read from the le
 (state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
 res = send_cmd(ans(6, issued=1789210950))
 T.check("R6 (1.52) answer without `question` issued 50 s before the question (phone clock within the margin) → answered", res and res["ok"] is True and len(answers()) == n_a + 2, str(res))
+_log6 = (rdir2 / "relay.log").read_text()
+T.check("R6 (1.52) the relay.log line of an answer says which question it answers, or «senza id domanda» without one",
+        "6f1c2d3e-0052-4000-8000-000000000505: answer ledger-api da phone-pixel9 · domanda q-1789211000-1 →" in _log6
+        and "6f1c2d3e-0052-4000-8000-000000000506: answer ledger-api da phone-pixel9 · senza id domanda →" in _log6
+        and "6f1c2d3e-0052-4000-8000-000000000503: allow_all ledger-api da phone-pixel9 · domanda q-1789210500-1 →" in _log6, _log6[-600:])
 ledger.write_text(ledger_before)
 (state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
 # R6 (1.10, 15/09, da claude-master-watch): answer con «text:<testo>» e «chat»
@@ -1506,11 +1511,23 @@ def call30(req):
     return r, data
 
 
+# 1.70: la trascrizione della sessione della fixture, con dimensione e mtime fissi (tx = «318-1789210000000000000»)
+tail70 = tmp / "tail70.jsonl"
+tail70.write_text("".join(json.dumps(x) + "\n" for x in [
+    {"type": "user", "uuid": "u70", "timestamp": "2026-09-12T10:00:00.000Z", "message": {"role": "user", "content": "review the test seeds"}},
+    {"type": "assistant", "uuid": "a70", "timestamp": "2026-09-12T10:00:05.000Z", "message": {"content": [{"type": "text", "text": "Seeds reviewed: 3 were flaky, fixed and green."}]}}]))
+os.utime(tail70, ns=(1789210000000000000, 1789210000000000000))
+
+
 for ex in LA["exchanges"]:
+    if ex["name"].startswith("tail"):   # una push del demone riscrive la mappa dalle sessioni finte: si rimette prima di ogni scambio
+        (rdir2 / "local" / "tail-paths.json").write_text(json.dumps({"f61903c0-ea6a-409c-a961-d01126a0f3ad": {"session": "atlas-shop", "path": str(tail70)}}))
     r, data = call30(ex["request"])
     want = ex["response"]
     exp = json.loads((FIX / want["body_ref"]).read_text()) if "body_ref" in want else ws30(want.get("body"))
-    if want.get("first_event"):
+    if want["status"] == 304:
+        got_ok = data == b""
+    elif want.get("first_event"):
         got_ok = data[0] == f"event: {want['first_event']}" and json.loads(data[1][6:]) == exp
     elif "body_base64" in want:
         got_ok = data == base64.b64decode(want["body_base64"]) and r.getheader("Content-Disposition") == want["content_disposition"]
@@ -2571,6 +2588,9 @@ a45 = tail45.get("S-A") or {}
 T.check("R45 (1.59) after a push /tail/<id> of a live session with a transcript: encrypted {session, id, tx, at, entries, more}, the last 30 entries, more true",
         r45.returncode == 0 and a45.get("session") == "atlas-shop" and a45.get("id") == "S-A" and [e["text"] for e in a45.get("entries") or []] == [f"voce {i}" for i in range(10, 40)]
         and a45.get("more") is True and a45.get("tx"), r45.stderr[-300:] + str(list(tail45)) + str({x: a45.get(x) for x in ("session", "id", "more", "tx")}))
+tp45 = json.loads((rdir2 / "local" / "tail-paths.json").read_text()) if (rdir2 / "local" / "tail-paths.json").is_file() else {}
+T.check("R45 (1.70) the push also notes each live session's transcript in local/tail-paths.json, for GET /api/tail/<id>",
+        (tp45.get("S-A") or {}).get("session") == "atlas-shop" and str(tp45["S-A"]["path"]).endswith("S-A.jsonl"), str(tp45))
 n45 = len([x for x in CALLS["requests"] if x == ("PATCH", "/tail.json")])
 relay("push")
 T.check("R45 (1.59) a second push with the transcript unchanged writes no /tail", len([x for x in CALLS["requests"] if x == ("PATCH", "/tail.json")]) == n45, str(CALLS["requests"][-6:]))
@@ -2745,5 +2765,28 @@ for p in p53:
     p.kill()
 T.check("R53 (1.69) permission_bypass: started with --dangerously-skip-permissions or --permission-mode bypassPermissions; not a plain plan session, not a pid of another host; true when already in bypass",
         b53 == [True, True, False, False, True], str(b53))
+
+# R54 (16/10/2026, dal vivo il 15/10 alle 23:40): due `launch --bg` nella stessa cartella, due sessioni con lo stesso
+# nome nello stato, e l'app in crash all'avvio sulla chiave doppia. /state non pubblica mai due sessioni con lo stesso
+# nome: tiene il nome la sessione in tmux, poi la piu' vecchia; le altre prendono -2 come tmux
+def bg54(sid, name, at, account="personal"):
+    return {"pid": 40 + int(sid[-1]), "name": name, "tmux": "", "cwd": str(ws / "personal" / "atlas-shop"), "status": "idle", "waiting": False,
+            "link": "", "account": account, "session_id": sid, "attached": False, "started_at": at}
+
+
+rows_alive("atlas-shop")
+alive.write_text(json.dumps([bg54("S-P2", "work-plugins", 1789210500000, "work"), bg54("S-P1", "work-plugins", 1789210400000, "work"),
+                             json.loads(alive.read_text())[0], bg54("S-B3", "atlas-shop", 1789200000000)]))
+p54 = relay("push", "--dry-run")
+st54 = json.loads(p54.stdout) if p54.returncode == 0 and p54.stdout.strip().startswith("{") else {"sessions": []}
+names54 = {s_["id"]: s_["name"] for s_ in st54["sessions"]}
+T.check("R54 two --bg sessions with one name, and a --bg one with a tmux session's name: every published name is unique; the oldest --bg keeps «plugins», the tmux session keeps «atlas-shop», the others take -2",
+        {i: names54.get(i) for i in ("S-P1", "S-P2", "S-A", "S-B3")} == {"S-P1": "plugins", "S-P2": "plugins-2", "S-A": "atlas-shop", "S-B3": "atlas-shop-2"}
+        and len(set(names54.values())) == len(names54) == len(st54["sessions"]), str(names54) + p54.stderr[-300:])
+u54 = S.unique_names([{"name": "x", "tmux": "x", "status": "idle", "started_at": 2}, {"name": "pix-x", "tmux": "pix-x", "status": "idle", "started_at": 1},
+                      {"name": "pix-y", "tmux": "pix-y", "status": "dead"}, {"name": "y", "tmux": "y", "status": "dead"}], ("pix-",))
+T.check("R54 unique_names: the same folder on two accounts («x» and «pix-x», both in tmux) → the newer one is published as x-2 and keeps its tmux; two closed ones → the second is -2",
+        [(r["name"], r["tmux"]) for r in u54] == [("x-2", "x"), ("pix-x", "pix-x"), ("pix-y", "pix-y"), ("y-2", "y")], str(u54))
+rows_alive("ledger-api", "atlas-shop", "field-notes")
 
 T.finish()

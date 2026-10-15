@@ -25,7 +25,7 @@ Inside a session the same things are slash commands (`/supervisor:sessions`, `:l
 
 ## Requirements
 
-Claude Code 2.1.263 or newer, `tmux`, `python3` 3.8+ and `bash`, on Linux, macOS, ChromeOS or WSL2. Not on native Windows: there its hooks stay quiet (one line at the first session) and the command says to use WSL2. A terminal from the supported list (ChromeOS Terminal, gnome-terminal, kitty, iTerm2, Terminal.app, Windows Terminal). The window commands on ChromeOS also need [chrome-bridge](https://github.com/frsorrentino/chrome-bridge). Setup after the install: `supervisor init --dry-run` shows every value it found on your machine, `init --yes --shim --shell` writes the config, `supervisor doctor` says what is left.
+Claude Code 2.1.263 or newer, `tmux`, `python3` 3.8+ and `bash`, on Linux, macOS, ChromeOS or WSL2. Not on native Windows: disable it there (`claude plugin disable supervisor`). With Git for Windows its hooks stay quiet (one line at the first session) and the command says to use WSL2; without it, from Claude Code 2.1.299, its hooks block every permission request and every Bash command. A terminal from the supported list (ChromeOS Terminal, gnome-terminal, kitty, iTerm2, Terminal.app, Windows Terminal). The window commands on ChromeOS also need [chrome-bridge](https://github.com/frsorrentino/chrome-bridge). Setup after the install: `supervisor init --dry-run` shows every value it found on your machine, `init --yes --shim --shell` writes the config, `supervisor doctor` says what is left.
 
 ## What it runs
 

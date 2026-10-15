@@ -13,8 +13,11 @@ stato del relay, che sta in 8 KB). `run` le prende in ordine, al massimo
 (`night.max_quota_pct`, dai file di fable-director letti da cm-quota): sotto soglia la voce resta in
 coda con il motivo nel log. Il lavoro gira in `claude -p` nella cartella, con `--permission-mode`
 e `--max-turns` da config, `CLAUDE_CODE_TOOL_MEMORY_LIMIT` contro le build impazzite, il retry watchdog sui 429/529
-(`night.retry_watchdog_max_wait_ms`, 0 = spento) e un tetto di
-tempo (`night.item_timeout_s`). L'esito va in `<cartella>/<night.out_subdir>/<data>-<id>.md`
+(`night.retry_watchdog_max_wait_ms`, 0 = spento; al limite d'uso aspetta il reset al massimo
+`night.retry_watchdog_max_usage_limit_wait_ms`) e un tetto di
+tempo (`night.item_timeout_s`). `claude -p` esce in stream-json: l'esito e' l'evento `result`, e dopo il risultato la
+voce si chiude se per `night.after_result_s` non succede altro (un comando lasciato in background, una sveglia).
+L'esito va in `<cartella>/<night.out_subdir>/<data>-<id>.md`
 (prompt, argomenti, durata, output) e la voce passa in `night-done.jsonl`. Con --send il riassunto
 del giro va su Telegram (stesso bot del plugin, sendMessage).
 
@@ -31,10 +34,13 @@ import fcntl
 import importlib.util
 import json
 import os
+import queue
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -253,6 +259,10 @@ def account_env(account):
     if N.get("retry_watchdog_max_wait_ms"):
         env["CLAUDE_CODE_RETRY_WATCHDOG"] = "1"
         env["CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS"] = str(int(N["retry_watchdog_max_wait_ms"]))
+        # 16/10/2026 (Claude Code 2.1.301): at a usage limit the watchdog waits for the reset only up to this, then ends
+        # the request; a weekly limit can reset days later, and the item would hold the night until item_timeout_s
+        if N.get("retry_watchdog_max_usage_limit_wait_ms"):
+            env["CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS"] = str(int(N["retry_watchdog_max_usage_limit_wait_ms"]))
     return env
 
 
@@ -262,16 +272,116 @@ def run_item(item, dry):
         cmd += ["--model", item["model"]]
     if item.get("effort"):
         cmd += ["--effort", item["effort"]]
+    # 16/10/2026: l'esito dall'evento `result` (con -p, stream-json vuole --verbose). Dalla 2.1.295 l'uscita testuale
+    # stampa la risposta di ogni turno, e la sua prima riga non e' piu' l'esito finale
+    cmd += ["--output-format", "stream-json", "--verbose"]
     if dry:
         return {"rc": None, "out": "", "seconds": 0, "cmd": cmd}
     t0 = time.time()
-    try:
-        p = subprocess.run(cmd, cwd=item["dir"], env=account_env(item["account"]), capture_output=True, text=True,
-                           timeout=int(N["item_timeout_s"]))
-        rc, out = p.returncode, p.stdout + ("\n[stderr]\n" + p.stderr if p.stderr.strip() else "")
-    except subprocess.TimeoutExpired as e:
-        rc, out = 124, (e.stdout or "") + "\n" + M("night.timeout", s=N["item_timeout_s"])
-    return {"rc": rc, "out": out, "seconds": round(time.time() - t0), "cmd": cmd}
+    res = stream_item(cmd, item["dir"], account_env(item["account"]))
+    res.update(seconds=round(time.time() - t0), cmd=cmd)
+    return res
+
+
+def stream_item(cmd, cwd, env):
+    """`claude -p` in stream-json, letto evento per evento. Dalla 2.1.292 `claude -p` aspetta i comandi lasciati in
+    background e le sveglie programmate prima di uscire: un server dimenticato o un ScheduleWakeup tenevano ferma la
+    coda fino a item_timeout_s. Dopo un evento `result`, se per night.after_result_s non arriva altro, la voce si chiude
+    (SIGTERM al suo gruppo di processi, figli compresi) e l'output lo dice; un turno che riparte (un comando in
+    background finito) rimanda la chiusura. rc: quello del processo; 124 allo scadere di item_timeout_s; per una voce
+    chiusa dopo il risultato 0, o 1 se il risultato era un errore. `out` = i testi dei `result`, uno per turno; senza
+    `result` i testi dell'assistente; senza eventi riconosciuti l'uscita com'e'."""
+    timeout_s, grace = int(N["item_timeout_s"]), int(N.get("after_result_s") or 0)
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, errors="replace", start_new_session=True)
+    lines = queue.Queue()
+
+    def pump(stream, tag):
+        for line in stream:
+            lines.put((tag, line))
+        lines.put((tag, None))
+
+    for stream, tag in ((p.stdout, "out"), (p.stderr, "err")):
+        threading.Thread(target=pump, args=(stream, tag), daemon=True).start()
+    raw, err, results, said = [], [], [], []
+    deadline, quiet_since, ended, open_streams = time.time() + timeout_s, None, None, 2
+
+    def take(tag, line):
+        nonlocal quiet_since
+        if tag == "err":
+            err.append(line)
+            return
+        raw.append(line)
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(ev, dict):
+            return
+        if ev.get("type") == "result":
+            results.append(ev)
+            quiet_since = time.time()
+            return
+        quiet_since = None   # un turno in corso: niente chiusura
+        if ev.get("type") == "assistant":
+            for b in (ev.get("message") or {}).get("content") or []:
+                if isinstance(b, dict) and b.get("type") == "text" and str(b.get("text") or "").strip():
+                    said.append(b["text"].strip())
+
+    while open_streams:
+        limit = min(deadline, quiet_since + grace) if quiet_since and grace else deadline
+        try:
+            tag, line = lines.get(timeout=max(0.05, limit - time.time()))
+        except queue.Empty:
+            if time.time() >= limit:
+                ended = "timeout" if time.time() >= deadline else "after_result"
+                break
+            continue
+        if line is None:
+            open_streams -= 1
+        else:
+            take(tag, line)
+    if not ended:
+        try:
+            p.wait(timeout=max(1.0, deadline - time.time()))
+        except subprocess.TimeoutExpired:
+            ended = "timeout"
+    if ended:
+        stop_group(p)
+        end = time.time() + 2   # quello che era gia' scritto prima della chiusura
+        while open_streams and time.time() < end:
+            try:
+                tag, line = lines.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if line is None:
+                open_streams -= 1
+            else:
+                take(tag, line)
+    texts = [str(r.get("result") or "").strip() for r in results if str(r.get("result") or "").strip()]
+    out = "\n\n".join(texts or said) or "".join(raw)
+    if "".join(err).strip():
+        out += "\n[stderr]\n" + "".join(err)
+    if ended == "timeout":
+        rc, out = 124, out + "\n" + M("night.timeout", s=N["item_timeout_s"])
+    elif ended == "after_result":
+        rc, out = (1 if results[-1].get("is_error") else 0), out + "\n" + M("night.closed_after_result", s=grace)
+    else:
+        rc = p.returncode
+    return {"rc": rc, "out": out, "final": texts[-1] if texts else "", "closed_after_result": ended == "after_result"}
+
+
+def stop_group(p):
+    """SIGTERM al gruppo della voce (claude e i comandi lasciati in background), poi SIGKILL a chi resta."""
+    for sig, wait in ((signal.SIGTERM, 5), (signal.SIGKILL, 5)):
+        try:
+            os.killpg(p.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            break
+        try:
+            p.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def write_report(item, res):
@@ -287,8 +397,14 @@ def write_report(item, res):
     return f
 
 
+ESITO_RE = re.compile(r"^\**(?:esito|outcome)\**\s*:\s*\**", re.I)   # come cm-night-report
+
+
 def summary_line(item, res, report):
-    first = next((l.strip() for l in res["out"].splitlines() if l.strip()), "")[:120]
+    # 16/10: dal risultato finale (stream-json), la sua riga «Esito:» se c'e'; senza risultato, la prima riga dell'output
+    src = [l.strip() for l in (res.get("final") or res["out"]).splitlines() if l.strip()]
+    esito = next((ESITO_RE.sub("", l) for l in reversed(src) if ESITO_RE.match(l)), None) if res.get("final") else None
+    first = (esito or (src[0] if src else ""))[:120]
     mark = "✓" if res["rc"] == 0 else "✗"
     return f"{mark} {os.path.basename(item['dir'])} ({item['account']}, {res['seconds']} s, rc={res['rc']}): {first}\n   {report}"
 
@@ -341,7 +457,8 @@ def run(argv):
         with offload().night_lease(f"night {item['id']}"):
             res = run_item(item, False)
         report = write_report(item, res)
-        log(f"{item['id']} done: rc={res['rc']} in {res['seconds']} s → {report}")
+        log(f"{item['id']} done: rc={res['rc']} in {res['seconds']} s → {report}"
+            + (" (closed after the result: the process stayed open)" if res.get("closed_after_result") else ""))
         with locked_queue() as (now_rows, save):
             save([r for r in now_rows if r["id"] != item["id"]])
         done_rows = read_jsonl(done_path())

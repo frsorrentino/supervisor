@@ -14,6 +14,8 @@ L7  schermo lento (T5): avvia lo stesso con nota; sessione morta subito → exit
 L8  finestra: backend fake attacca → «attaccata»; --no-window → nessuna apertura; T8 secondo tentativo
 L15 accounts.<nome>.remote_control prevale su session.remote_control (anche al contrario)
 L9  --bg: `--bg -n NOME`, niente --remote-control, niente tmux (T47)
+L9b (16/10/2026) un nome portato da una sessione VIVA del registro (una --bg, senza tmux) e' preso: la nuova prende -2,
+    anche in tmux; la voce di un processo morto non lo tiene, ne' quella di uno zombie (il rilancio di restart)
 L10 profilo: argomenti, modello, env nel processo (N8); profilo ignoto → exit 2
 L11 registro aggiornato al lancio (T52) e link dal registro peer (1.2)
 L12 PATH del cron (T81, 16:30 dell'11/09: «claude non trovato nel PATH» dal bot): con PATH=/usr/bin:/bin e senza
@@ -186,6 +188,29 @@ with T.PrivateTmux() as tm:
     r = run(str(home / "ws" / "personali" / "alfa"), "--bg")
     T.check("L9 --bg: argv has --bg and -n, no --remote-control, no tmux session", r.returncode == 0 and "--bg" in last_args() and "--remote-control" not in last_args()
             and "background" in r.stdout.lower(), last_args() + r.stdout)
+    # L9b (16/10/2026, dal vivo il 15/10 alle 23:40): una sessione --bg sta solo nel registro di Claude Code, non in tmux;
+    # un secondo `launch --bg` nella stessa cartella riprendeva il suo nome (due «pix-claude-plugins», l'app in crash)
+    vivo = subprocess.Popen(["sleep", "120"])
+    (home / ".claude-pixel" / "sessions" / f"{vivo.pid}.json").write_text(json.dumps(
+        {"pid": vivo.pid, "sessionId": "bg-1", "cwd": str(home / "ws" / "pro" / "delta"), "kind": "bg", "name": "pix-delta"}, separators=(",", ":")))
+    r = run(str(home / "ws" / "pro" / "delta"), "--bg", "--create")
+    T.check("L9b --bg while a live --bg session of the registry (no tmux) holds the name: the new one takes -2",
+            r.returncode == 0 and "-n pix-delta-2" in last_args() and "pix-delta-2" in r.stdout, last_args() + r.stdout + r.stderr)
+    r = run(str(home / "ws" / "pro" / "delta"), "--no-window")
+    T.check("L9b a tmux launch skips the live --bg session's name too", r.returncode == 0 and "-n pix-delta-2" in last_args(), last_args() + r.stdout + r.stderr)
+    vivo.kill(); vivo.wait()
+    r = run(str(home / "ws" / "pro" / "delta"), "--bg")
+    T.check("L9b the registry entry of a dead process does not hold the name", r.returncode == 0 and "-n pix-delta " in last_args() + " ", last_args() + r.stderr)
+    # uno zombie (uscito, non ancora raccolto dal padre) non e' vivo: restart rilancia proprio in quell'istante
+    zombie = subprocess.Popen(["true"])
+    time.sleep(0.5)
+    (home / ".claude-pixel" / "sessions" / f"{zombie.pid}.json").write_text(json.dumps(
+        {"pid": zombie.pid, "sessionId": "bg-2", "cwd": str(home / "ws" / "pro" / "zeta"), "kind": "interactive", "name": "pix-zeta"}, separators=(",", ":")))
+    was_zombie = "Z" in Path(f"/proc/{zombie.pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    r = run(str(home / "ws" / "pro" / "zeta"), "--bg", "--create")
+    zombie.wait()
+    T.check("L9b the registry entry of a zombie (exited, not yet reaped) does not hold the name", was_zombie and r.returncode == 0 and "-n pix-zeta " in last_args() + " ",
+            f"zombie={was_zombie} " + last_args() + r.stderr)
 
     # L15 (30/09): accounts.<nome>.remote_control prevale su session.remote_control, nei due sensi
     base15 = json.loads(cfg.read_text())

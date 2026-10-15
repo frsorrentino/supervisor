@@ -255,16 +255,16 @@ def _window_of(row, full_id, model_id, tokens):
     1.13.1 (17/09/2026, dall'app: master su Fable 5.1 risultava al 100 %, il terminale diceva 59 %). Il suffisso
     `[1m]` nell'id e' certo quando c'e', ma non tutti i modelli da 1M lo portano: la voce di sistema di Fable 5.1 e'
     «claude-fable-5-1» sia con la finestra da 1M sia con quella da 200k. In ordine di certezza:
-    1. `[1m]` nell'id;
+    1. `[1m]` nell'id, o un id di relay.window_1m (da 1M senza dirlo: Haiku 5.5, 16/10/2026);
     2. la finestra che Claude Code stesso dichiara alla statusline (`context_window_size`), se un programma di
        statusline la salva per sessione in relay.window_hint_dir (fable-director lo fa: <session_id>.json con
        `ctx_size` e `model`) e il modello di quella fotografia e' quello dell'ultimo turno;
     3. piu' token della finestra standard: e' da 1M per forza, nessuna sessione ne tiene piu' della sua finestra;
     4. un id di relay.window_unmarked (modelli che non dicono la finestra): non si sa → None;
     5. altrimenti la finestra standard."""
-    if "[1m]" in full_id:
-        return WINDOW_1M
     R = _cfg().get("relay") or {}
+    if "[1m]" in full_id or model_id in (R.get("window_1m") or []):
+        return WINDOW_1M
     hint_dir = R.get("window_hint_dir")
     sid = (row or {}).get("session_id") or ""
     if hint_dir and sid:
@@ -389,7 +389,13 @@ def _transcript_runtime(row, tail_bytes, head_bytes):
     porta l'id completo e il nome («claude-opus-5[1m]», «Opus 5 (1M context)»), da cui si sa se la finestra
     e' da 1M o standard. Il contesto e' la somma dei token dell'ultimo turno (input + cache letta + cache
     scritta) sulla finestra. Se i due modelli non coincidono — un cambio di modello a meta' sessione — la
-    finestra non e' certa e `context` resta ASSENTE invece di essere stimato: e' la regola chiesta dall'app."""
+    finestra non e' certa e `context` resta ASSENTE invece di essere stimato: e' la regola chiesta dall'app.
+
+    16/10/2026 (Claude Code 2.1.299, compattazione a sessione ferma): una conversazione oltre i 200k token lasciata
+    ferma circa 54 minuti viene riassunta senza un turno nuovo. Se dopo l'ultimo turno c'e' un compact_boundary, il
+    contesto e' il suo compactMetadata.postTokens, sulla finestra provata dai token di prima (preTokens): la master
+    restava al 92 % per ore con 15k token veri, e l'app proponeva handoff e /clear. Un confine senza postTokens
+    (CLI vecchie) lascia `context` null, mai il numero di prima."""
     out = {"model": None, "effort": None, "context": None}
     path = transcript_of(row)
     if not path:
@@ -404,13 +410,16 @@ def _transcript_runtime(row, tail_bytes, head_bytes):
     lines = data.split(b"\n")
     if size > tail_bytes and lines:
         lines = lines[1:]   # la prima riga della coda e' mozza
-    assistant = None
+    assistant, boundary = None, None
     for raw in reversed(lines):
         if not raw.strip():
             continue
         try:
             d = json.loads(raw)
         except ValueError:
+            continue
+        if boundary is None and d.get("type") == "system" and d.get("subtype") == "compact_boundary":
+            boundary = d.get("compactMetadata") if isinstance(d.get("compactMetadata"), dict) else {}
             continue
         if d.get("type") == "assistant" and isinstance(d.get("message"), dict):
             # «<synthetic>» e' un turno che Claude Code scrive da se' (un errore dell'API, un'interruzione): non ha
@@ -445,7 +454,11 @@ def _transcript_runtime(row, tail_bytes, head_bytes):
         out["model"] = {"id": full_id, "label": label or None}
         usage = assistant["message"].get("usage") or {}
         tokens = sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
-        window = _window_of(row, full_id, model_id, tokens)
+        if boundary is not None:   # compattata dopo l'ultimo turno
+            window = _window_of(row, full_id, model_id, max(tokens, int(boundary.get("preTokens") or 0)))
+            tokens = int(boundary.get("postTokens") or 0)
+        else:
+            window = _window_of(row, full_id, model_id, tokens)
         if tokens and window:
             out["context"] = max(0, min(100, round(tokens * 100 / window)))
     elif model_id:

@@ -10,12 +10,17 @@ NI5 install (riga cron alle 02:00), status, uninstall
 NI3b a fine giro (non --dry-run, almeno una voce eseguita) il rapporto della pagina «Notte» si rigenera
 NI6 (contratto 1.17 del relay) prompt vuoto e coda piena rifiutati; durante `run` la voce in corso porta `started`
     e `remove` la rifiuta, una voce tolta non parte, una voce aggiunta resta in coda
+NI3b/NI3c (16/10/2026) la variabile d'attesa al limite d'uso della 2.1.301; claude -p in stream-json con --verbose
+NI7 (16/10/2026) l'esito dall'evento `result`: due turni (il riassunto dalla riga «Esito:» del risultato finale), un
+    turno che riparte dopo un risultato, un processo che resta aperto dopo il risultato (chiuso dopo
+    night.after_result_s, figli compresi), un risultato d'errore (rc 1), nessun risultato entro item_timeout_s (rc 124)
 """
 import json
 import os
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -77,10 +82,11 @@ fake_report = tmp / "fake-night-report.py"
 fake_report.write_text(f"import sys\nopen({str(report_marker)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\nprint('/x/report.json')\n")
 
 
-def night(*args, free_mb="4000", claude=FAKE):
-    env = {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg),
+def night(*args, free_mb="4000", claude=FAKE, conf=None):
+    env = {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(conf or cfg),
            "CM_CRONTAB_CMD": str(fake_crontab), "CM_CLAUDE_BIN": str(claude), "FAKE_CLAUDE_ARGS_LOG": str(argslog),
-           "FAKE_CLAUDE_ECHO_ENV": "CLAUDE_CODE_RETRY_WATCHDOG,CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS,CLAUDE_CONFIG_DIR", "CM_NIGHT_FREE_MB": free_mb, "CM_NIGHT_REPORT_BIN": str(fake_report)}
+           "FAKE_CLAUDE_ECHO_ENV": "CLAUDE_CODE_RETRY_WATCHDOG,CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS,CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS,CLAUDE_CONFIG_DIR",
+           "CM_NIGHT_FREE_MB": free_mb, "CM_NIGHT_REPORT_BIN": str(fake_report)}
     return subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night.py"), *args], capture_output=True, text=True, env=env, timeout=120)
 
 
@@ -112,6 +118,10 @@ args = argslog.read_text().splitlines() if argslog.exists() else []
 T.check("NI3 run: claude -p with permission-mode and max-turns, twice", r.returncode == 0 and len(args) == 2 and "-p sistema i test rossi --permission-mode acceptEdits --max-turns 12" in args[0] and "--max-turns 5 --model sonnet --effort low" in args[1], r.stdout + r.stderr + str(args))
 T.check("NI3 CLAUDE_CONFIG_DIR only for the second account (T68)", "CLAUDE_CONFIG_DIR=" in args[0] and args[0].rstrip().endswith("CLAUDE_CONFIG_DIR=") and str(home / ".claude-pixel") in args[1], str(args))
 T.check("NI3b retry watchdog on for every item, capped at night.retry_watchdog_max_wait_ms (default 15 min)", len(args) == 2 and all("ENV CLAUDE_CODE_RETRY_WATCHDOG=1 " in a and "ENV CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS=900000 " in a for a in args), str(args))
+T.check("NI3b at a usage limit the watchdog waits at most night.retry_watchdog_max_usage_limit_wait_ms (2.1.301, default 15 min)",
+        len(args) == 2 and all("ENV CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS=900000 " in a for a in args), str(args))
+T.check("NI3c claude -p in stream-json with --verbose (the outcome from the `result` event)",
+        len(args) == 2 and all(" --output-format stream-json --verbose" in a for a in args), str(args))
 reports = sorted((ws / "personali" / "alfa" / "docs" / "notte").glob("*.md")) + sorted((ws / "agenzia" / "clienti" / "sito.com" / "docs" / "notte").glob("*.md"))
 T.check("NI3 a report per item in docs/notte with prompt and output", len(reports) == 2 and "sistema i test rossi" in reports[0].read_text() and "Sent to cloud session (fake)" in reports[0].read_text(), str(reports))
 T.check("NI3 queue emptied, done has both with rc", queue.read_text().strip() == "" and len((state / "night-done.jsonl").read_text().splitlines()) == 2 and '"rc": 0' in (state / "night-done.jsonl").read_text(), (state / "night-done.jsonl").read_text()[:300])
@@ -175,6 +185,70 @@ r = night("status")
 T.check("NI5 status: cron yes, queue 0, done 5", "yes" in r.stdout and "0" in r.stdout and "5" in r.stdout, r.stdout + r.stderr)
 r = night("uninstall")
 T.check("NI5 uninstall", r.returncode == 0 and "night" not in cron.read_text(), r.stdout + cron.read_text())
+
+# NI7 (16/10/2026, Claude Code 2.1.292-2.1.301): stream-json, l'esito dal `result`, la voce chiusa dopo il risultato
+# quando il processo resta aperto (un comando in background, una sveglia), un turno che riparte la rimanda. Un claude
+# finto per prompt: il prompt dice cosa fare.
+c7 = json.loads(cfg.read_text())
+c7["night"].update(max_queued=5, max_items_per_run=5, item_timeout_s=12, after_result_s=4)
+cfg7 = tmp / "config7.json"
+cfg7.write_text(json.dumps(c7))
+bgpid, fakepid = tmp / "bg.pid", tmp / "fake.pid"
+
+
+def ev(**d):
+    return "'" + json.dumps(d).replace("'", "") + "'"
+
+
+res_ok = lambda text: ev(type="result", subtype="success", is_error=False, result=text)   # noqa: E731
+said = lambda text: ev(type="assistant", message={"content": [{"type": "text", "text": text}]})   # noqa: E731
+stream = tmp / "stream-claude.sh"
+stream.write_text(f"""#!/bin/sh
+case "$2" in
+  two-turns) printf '%s\\n' {ev(type="system", subtype="init")} {res_ok("primo turno: build in background")} {said("build finito")} \\
+               {res_ok("build finito, test verdi" + chr(10) + "Esito: build e test verdi")} ;;
+  restart)   printf '%s\\n' {res_ok("turno uno")}; sleep 0.3; printf '%s\\n' {said("comando in background finito")}; sleep 6
+             printf '%s\\n' {res_ok("turno due" + chr(10) + "Esito: tutto fatto")} ;;
+  stays-open) sleep 300 & echo $! > "{bgpid}"; printf '%s\\n' {res_ok("server lasciato acceso" + chr(10) + "Esito: fatto")}; sleep 300 ;;
+  error)     printf '%s\\n' {ev(type="result", subtype="error_max_turns", is_error=True, result="max turns")}; sleep 300 ;;
+  timeout)   echo $$ > "{fakepid}"; printf '%s\\n' {said("sto lavorando")}; sleep 300 ;;
+esac
+""")
+stream.chmod(0o755)
+KINDS7 = ("two-turns", "restart", "stays-open", "error", "timeout")
+for w in KINDS7:
+    night("add", str(ws / "personali" / "alfa"), w, conf=cfg7)
+t0 = time.time()
+r = night("run", claude=stream, conf=cfg7)
+took = time.time() - t0
+done7 = {d["prompt"]: d for d in (json.loads(l) for l in (state / "night-done.jsonl").read_text().splitlines()) if d["prompt"] in KINDS7}
+out7 = {k: (Path(d["report"]).read_text() if Path(d["report"]).is_file() else "") for k, d in done7.items()}
+so = r.stdout.splitlines()
+lines7 = {k: l for i, l in enumerate(so[:-1]) if l.startswith(("✓", "✗")) for k, d in done7.items() if d["id"] in so[i + 1]}
+
+
+def alive(pidfile):
+    """Il processo del file e' vivo (uno zombie non conta)."""
+    try:
+        return pidfile.is_file() and Path(f"/proc/{pidfile.read_text().strip()}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
+T.check("NI7 five items ran", r.returncode == 0 and len(done7) == 5, r.stdout + r.stderr)
+T.check("NI7 two turns: the report has both results; the summary is the final result's «Esito:» line, not the first line",
+        done7.get("two-turns", {}).get("rc") == 0 and "primo turno: build in background" in out7.get("two-turns", "")
+        and "Esito: build e test verdi" in out7.get("two-turns", "") and lines7.get("two-turns", "").endswith(": build e test verdi"), str(lines7) + out7.get("two-turns", ""))
+T.check("NI7 a turn that starts again after a result postpones the closure: both turns, rc 0, not closed",
+        done7.get("restart", {}).get("rc") == 0 and "turno due" in out7.get("restart", "") and "dopo il risultato" not in out7.get("restart", ""), out7.get("restart", ""))
+T.check("NI7 a process left open after the result: closed after night.after_result_s, rc 0, the report says so, the background child stopped too",
+        done7.get("stays-open", {}).get("rc") == 0 and "chiusa 4 s dopo il risultato" in out7.get("stays-open", "")
+        and done7.get("stays-open", {}).get("seconds", 99) < 30 and bgpid.is_file() and not alive(bgpid), out7.get("stays-open", "") + str(done7.get("stays-open")))
+T.check("NI7 an error result left open: closed, rc 1", done7.get("error", {}).get("rc") == 1 and "chiusa 4 s" in out7.get("error", ""), out7.get("error", ""))
+T.check("NI7 no result within item_timeout_s: rc 124, the text said so far and «tempo scaduto», the process stopped",
+        done7.get("timeout", {}).get("rc") == 124 and "sto lavorando" in out7.get("timeout", "") and "tempo scaduto" in out7.get("timeout", "")
+        and fakepid.is_file() and not alive(fakepid), out7.get("timeout", ""))
+T.check("NI7 the whole run well under the 300 s the fakes would sleep", took < 90, f"{took:.0f} s")
 
 srv.shutdown()
 T.rm(tmp)

@@ -9,7 +9,9 @@ Per ogni sessione (le vive, e le chiuse con la trascrizione toccata nella finest
   make test, release.sh --check), verde o rosso dall'esito dello strumento;
 - commit: i commit della cartella nella finestra (`git log`, non la trascrizione: con `-q` l'hash non si vede);
 - esito: la riga «Esito:» (o «Outcome:») con cui la sessione chiude il turno;
-- task: gli esiti del registro dei compiti per quella cartella (fatto o rosso, dal controllo rieseguito).
+- task: gli esiti del registro dei compiti per quella cartella (fatto o rosso, dal controllo rieseguito);
+- compact: una compattazione a sessione ferma (Claude Code 2.1.299, 16/10/2026): un compact_boundary «auto» preceduto
+  da 50 minuti o piu' senza turni, con i token di prima e di dopo.
 Tutto dal codice, nessun modello. `task board --timeline` e il riepilogo del telefono la usano.
 """
 import importlib.util
@@ -91,6 +93,35 @@ def human_prompt(out, at, content):
                     **({"full": t} if FULL_PROMPTS else {})})
 
 
+IDLE_COMPACT_S = 50 * 60
+
+
+def idle_compaction(lines, i, d):
+    """Il testo dell'evento se il compact_boundary `d` (riga i) e' una compattazione a sessione ferma, altrimenti None.
+    La 2.1.299 compatta una conversazione oltre i 200k token ferma da circa 54 minuti e la scrive con trigger «auto»,
+    come quella a contesto pieno: la distingue solo la pausa fra l'ultimo messaggio e l'inizio del riassunto."""
+    meta = d.get("compactMetadata") or {}
+    if meta.get("trigger") != "auto":
+        return None
+    start = core._turn_epoch(d.get("timestamp")) - int(meta.get("durationMs") or 0) / 1000
+    for raw in reversed(lines[max(0, i - 400):i]):
+        if b'"type":"assistant"' not in raw and b'"type":"user"' not in raw:
+            continue
+        try:
+            p = json.loads(raw)
+        except ValueError:
+            continue
+        at = core._turn_epoch(p.get("timestamp")) if p.get("type") in ("user", "assistant") and not p.get("isSidechain") else 0
+        if not at:
+            continue
+        if start - at < IDLE_COMPACT_S:
+            return None
+        k = lambda n: f"{round(int(n) / 1000)}k"   # noqa: E731
+        sizes = f": {k(meta['preTokens'])} → {k(meta['postTokens'])} tokens" if meta.get("preTokens") and meta.get("postTokens") else ""
+        return f"compacted after {int((start - at) // 60)} min idle{sizes}"
+    return None
+
+
 def transcript_events(path, since):
     """Prompt, test ed esiti di una trascrizione da `since` (epoch s). Si legge dalla coda e si allarga la finestra
     solo se la prima riga letta e' ancora dentro l'intervallo."""
@@ -113,9 +144,9 @@ def transcript_events(path, since):
         if not start or (first and first < since):
             break
     out, tests, peers = [], {}, set()
-    for raw in lines:
+    for i, raw in enumerate(lines):
         if not raw.strip() or not (b'"Bash"' in raw or b"tool_result" in raw or b"Esito" in raw or b"Outcome" in raw or b'"type":"user"' in raw
-                                   or b'"peer"' in raw or b"queued_command" in raw):
+                                   or b'"peer"' in raw or b"queued_command" in raw or b'"compact_boundary"' in raw):
             continue
         try:
             d = json.loads(raw)
@@ -123,6 +154,11 @@ def transcript_events(path, since):
             continue
         at = int(core._turn_epoch(d.get("timestamp")) or 0)
         if at < since or d.get("isSidechain"):
+            continue
+        if d.get("type") == "system" and d.get("subtype") == "compact_boundary":
+            text = idle_compaction(lines, i, d)
+            if text:
+                out.append({"at": at, "kind": "compact", "text": text, "ok": None, "ref": None})
             continue
         content = (d.get("message") or {}).get("content")
         if d.get("type") == "assistant" and isinstance(content, list):

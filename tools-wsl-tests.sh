@@ -36,8 +36,24 @@ done
 echo "WSL-TESTS \$([ \$fail = 0 ] && echo GREEN || echo RED)"
 exit \$fail
 EOF
-ssh win 'New-Item -ItemType Directory -Force -Path C:\Users\Utente\ts-tests | Out-Null'
-scp -q "$TMP/tree.tgz" "win:C:/Users/Utente/ts-tests/$NAME.tgz"
-scp -q "$TMP/run.sh" "win:C:/Users/Utente/ts-tests/$NAME.sh"
-[ -f "$TMP/obs.tgz" ] && scp -q "$TMP/obs.tgz" "win:C:/Users/Utente/ts-tests/claude-observe.tgz"
-ssh win "wsl -d Ubuntu-24.04 -- bash /mnt/c/Users/Utente/ts-tests/$NAME.sh"
+# ssh and scp can be replaced (tests/wsl-tools-verify.py does, with fakes)
+SSH="${WSL_TESTS_SSH:-ssh}"; SCP="${WSL_TESTS_SCP:-scp}"
+$SSH win 'New-Item -ItemType Directory -Force -Path C:\Users\Utente\ts-tests | Out-Null'
+$SCP -q "$TMP/tree.tgz" "win:C:/Users/Utente/ts-tests/$NAME.tgz"
+$SCP -q "$TMP/run.sh" "win:C:/Users/Utente/ts-tests/$NAME.sh"
+[ -f "$TMP/obs.tgz" ] && $SCP -q "$TMP/obs.tgz" "win:C:/Users/Utente/ts-tests/claude-observe.tgz"
+# 15/10/2026: WSL that does not start (Wsl/Service/CreateInstance/CreateVm/ERROR_TIMEOUT) printed its error and the
+# script exited 0, with no suite run: a green without tests. The verdict now comes from the last line only: GREEN → 0,
+# RED → 1, anything else (WSL down, ssh cut, run.sh never reached) → 3 with the reason.
+set +e
+$SSH win "wsl -d Ubuntu-24.04 -- bash /mnt/c/Users/Utente/ts-tests/$NAME.sh" 2>&1 | tr -d '\000\r' | tee "$TMP/out.log"
+rc=${PIPESTATUS[0]}
+set -e
+last="$(grep '^WSL-TESTS ' "$TMP/out.log" | tail -1 || true)"
+case "$last" in
+  "WSL-TESTS GREEN") exit 0 ;;
+  "WSL-TESTS RED") exit 1 ;;
+esac
+why="$(grep -v '^[[:space:]]*$' "$TMP/out.log" | head -2 | tr '\n' ' ' || true)"
+echo "WSL-TESTS NO RESULT: no suite verdict from win (ssh exit $rc)${why:+: $why}" >&2
+exit 3
