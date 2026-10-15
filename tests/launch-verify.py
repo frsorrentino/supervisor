@@ -16,6 +16,7 @@ L15 accounts.<nome>.remote_control prevale su session.remote_control (anche al c
 L9  --bg: `--bg -n NOME`, niente --remote-control, niente tmux (T47)
 L9b (16/10/2026) un nome portato da una sessione VIVA del registro (una --bg, senza tmux) e' preso: la nuova prende -2,
     anche in tmux; la voce di un processo morto non lo tiene, ne' quella di uno zombie (il rilancio di restart)
+L16 (16/10/2026) il claude finto toglie le sue voci di registro quando esce (/exit, kill-session)
 L10 profilo: argomenti, modello, env nel processo (N8); profilo ignoto → exit 2
 L11 registro aggiornato al lancio (T52) e link dal registro peer (1.2)
 L12 PATH del cron (T81, 16:30 dell'11/09: «claude non trovato nel PATH» dal bot): con PATH=/usr/bin:/bin e senza
@@ -319,6 +320,24 @@ with T.PrivateTmux() as tm:
             r.returncode == 0 and trusted.is_file() and "Ask Codex to do anything" in (tm("capture-pane", "-p", "-t", "cxtrust").stdout or ""), r.stdout + r.stderr + (tm("capture-pane", "-p", "-t", "cxtrust").stdout or ""))
     r = run(str(home / "ws" / "personali" / "alfa"), "--agent", "gemini", "--no-window", extra={"CC_SUPERVISOR_CONFIG": str(cfg14)})
     T.check("L14 unknown agent → exit 2 naming it", r.returncode == 2 and "gemini" in r.stderr, r.stderr)
+
+    # L16 (16/10/2026): il claude finto toglie le sue voci di registro quando esce, con /exit e con kill-session (SIGHUP).
+    # Prima la trap non vedeva la `local dir` di register() e le voci restavano (193 .fakehash.key in ~/.claude/sessions)
+    regdir = tmp / "regtrap"
+    for how in ("exit", "kill"):
+        tm("new-session", "-d", "-s", "regtrap", "-x", "100", "-y", "30", "env", f"CLAUDE_CONFIG_DIR={regdir}", "FAKE_CLAUDE_SCENARIO_FILE=",
+           "FAKE_CLAUDE_SCENARIO=plain", "FAKE_CLAUDE_REGISTER=1", str(FAKE))
+        T.wait_until(lambda: len(list((regdir / "sessions").glob("*"))) == 2, 10)
+        born = sorted(p.name for p in (regdir / "sessions").glob("*"))
+        time.sleep(0.5)
+        if how == "exit":
+            tm("send-keys", "-t", "regtrap", "/exit", "Enter")
+        else:
+            tm("kill-session", "-t", "=regtrap")
+        gone = T.wait_until(lambda: not list((regdir / "sessions").glob("*")), 10)
+        T.check(f"L16 the fake claude removes its registry entry and its key when it ends ({how})",
+                len(born) == 2 and any(n.endswith(".fakehash.key") for n in born) and gone, str(born) + str(sorted(p.name for p in (regdir / "sessions").glob("*"))))
+        tm("kill-session", "-t", "=regtrap")
 
 
 

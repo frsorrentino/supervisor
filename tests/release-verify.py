@@ -17,7 +17,9 @@ import cm_test as T  # noqa: E402
 root = Path(__file__).resolve().parent.parent
 tmp = Path(tempfile.mkdtemp(prefix="cm-release-"))
 copy = tmp / "repo"
-shutil.copytree(root, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", "tests"))
+# .claude (16/10/2026): i worktree delle sessioni stanno in .claude/worktrees, con i loro docs/; nella copia entravano
+# nell'albero e il controllo privacy della release diventava rosso
+shutil.copytree(root, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", "tests", ".claude"))
 (copy / "tests").mkdir()
 marker = tmp / "marker"
 (copy / "tests" / "zz-fake-verify.py").write_text(f"open({str(marker)!r}, 'w').write('ran')\n")

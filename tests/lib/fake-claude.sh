@@ -74,7 +74,10 @@ register() {
     ( sleep "$DELAY"; sed -i "s/\"bridgeSessionId\":\"\"/\"bridgeSessionId\":\"session_01FAKE$$\"/" "$dir/$$.json" ) & ;;
   esac
   printf '{"peerToken":"faketoken%s","procStart":"%s"}\n' "$$" "$ps" > "$dir/$$.fakehash.key"
-  trap 'rm -f "$dir/$$.json" "$dir/$$.fakehash.key"; exit' EXIT INT TERM HUP   # anche su kill-server (SIGHUP)
+  # 16/10/2026: la trap gira quando register() e' gia' tornata, e una variabile `local` li' non c'e' piu': con "$dir"
+  # cancellava «/<pid>.json» e le voci restavano (193 .fakehash.key in ~/.claude/sessions). Una globale la vede.
+  FAKE_REG_DIR="$dir"
+  trap 'rm -f "$FAKE_REG_DIR/$$.json" "$FAKE_REG_DIR/$$.fakehash.key"; exit' EXIT INT TERM HUP   # anche su kill-server (SIGHUP)
 }
 
 dialog() {  # $1 = testo della domanda, $2 = voce si'
