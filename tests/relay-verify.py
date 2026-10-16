@@ -2,7 +2,7 @@
 """Verifica cm-relay.py (fase 1 dell'app polso, design docs/plans/2026-09-12-app-polso-design.md) con un
 Firebase finto (RTDB REST + SSE, token, FCM), il dispatcher finto e il claude finto.
 
-R0   le fixture in tests/fixtures/relay sono identiche al contratto v1 dell'app (claude-master-watch/contract);
+R0   le fixture in tests/fixtures/relay sono identiche al contratto v1 dell'app (claude-master-watch/contract, dal ramo remoto con l'ultimo commit su contract/);
      il RTDB finto: PUT/GET/PATCH/DELETE, print=silent, shallow, stream SSE (put iniziale, poi patch/put)
 R1   crypto: chiave 32 byte su file 0600, AES-256-GCM {"v":1,"enc"} con nonce diverso ogni volta, chiave
      sbagliata → ValueError; X25519 + HKDF simmetrico; check del codice; token del service account (JWT RS256
@@ -48,25 +48,41 @@ FIX = T.ROOT / "tests" / "fixtures" / "relay"
 import ast as _ast, re as _re0  # noqa: E401
 R_OPS = list(_ast.literal_eval(_re0.search(r"^OPS = (\(.*?\))$", (T.SCRIPTS / "cm-relay.py").read_text(), _re0.M).group(1)))
 
-# R0: fixture identiche al contratto, quello del branch master dell'app (30/09): il worktree puo' stare su un branch di
-# lavoro rimasto indietro, e i test del PC davano rosso per un contratto gia' pubblicato
+# R0: fixture identiche al contratto pubblicato dall'app (30/09: non il ramo del suo worktree, che puo' stare indietro;
+# 17/10: il ramo remoto con l'ultimo commit su contract/, non sempre master)
+
+
+_CONTRACT_REF = []
+
+
+def contract_ref():
+    """17/10/2026: il ramo da cui l'app pubblica il contratto non e' sempre master (la 1.72 e' uscita da
+    feature/tablet, e R0 confrontava con un origin/master rimasto alla 1.70). Il ramo remoto il cui ultimo commit
+    su contract/ e' il piu' recente; il master locale solo se non c'e' nessun remoto."""
+    if not _CONTRACT_REF:
+        refs = subprocess.run(["git", "-C", str(WATCH), "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
+                              capture_output=True, text=True).stdout.split()
+        best = (0, "master")
+        for ref in refs:
+            if ref.endswith("/HEAD") or "/" not in ref:   # origin/HEAD (in forma corta «origin»)
+                continue
+            ct = subprocess.run(["git", "-C", str(WATCH), "log", "-1", "--format=%ct", ref, "--", "contract"], capture_output=True, text=True).stdout.strip()
+            if ct.isdigit() and int(ct) > best[0]:
+                best = (int(ct), ref)
+        _CONTRACT_REF.append(best[1])
+    return _CONTRACT_REF[0]
 
 
 def app_contract(name):
     if not (WATCH / ".git").exists():
         return None
-    # origin/master e' il contratto pubblicato; il master locale del checkout dell'app puo' restare indietro (30/09:
-    # 41 commit dopo un merge fatto da un altro worktree). Il master locale solo se il remoto non c'e'
-    for ref in ("origin/master", "master"):
-        r = subprocess.run(["git", "-C", str(WATCH), "show", f"{ref}:contract/{name}"], capture_output=True)
-        if r.returncode == 0:
-            return r.stdout
-    return None
+    r = subprocess.run(["git", "-C", str(WATCH), "show", f"{contract_ref()}:contract/{name}"], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
 
 
 for f in ("state-1-question", "state-2-idle", "state-3-stale", "events-sample", "cmd-result-sample", "pair-qr", "pair-response", "pair-add", "pair-link", "file-parts", "share-parts", "local-api", "changes-sample"):
     a = FIX / f"{f}.json"; b = app_contract(f"{f}.json")
-    T.check(f"R0 fixture {f} identical to the app contract on its master (origin/master; skipped if the app repo is absent)", a.is_file() and (b is None or a.read_bytes() == b), f"{WATCH}@origin/master:contract/{f}.json")
+    T.check(f"R0 fixture {f} identical to the app contract on the branch it was last published from (skipped if the app repo is absent)", a.is_file() and (b is None or a.read_bytes() == b), f"{WATCH}@{contract_ref() if (WATCH / '.git').exists() else '-'}:contract/{f}.json")
 
 # R55 (contratto 1.72, 15/10): il diff dal telefono — le fixture nuove, coerenti fra loro e con le regole del contratto
 CH54 = json.loads((FIX / "changes-sample.json").read_text())
@@ -989,6 +1005,8 @@ res = send_cmd({"id": "6f1c2d3e-0011-4000-8000-000000000011", "op": "last", "ses
 T.check("R6 (1.4) a short message comes back whole, untouched", res and res["ok"] and res["text"] == "Corto e intero.", str(res))
 res = send_cmd({"id": "6f1c2d3e-0012-4000-8000-000000000012", "op": "last", "session": "field-notes", "arg": None, "issued": 1, "by": "watch-pixel5"})
 T.check("R6 (1.4) a session without a transcript → ok false with «nessun messaggio da leggere»", res and res["ok"] is False and "nessun messaggio" in res["text"], str(res))
+T.check("R6 (17/10) the reads (PASSIVE_OPS: last) leave no watch-cmd line in the ledger; the commands that change something do",
+        not any(x.get("event") == "watch-cmd" and x.get("op") == "last" for x in led_rows()) and any(x.get("event") == "watch-cmd" and x.get("op") == "answer" for x in led_rows()), "")
 res = send_cmd(CMDS[3])   # screen
 T.check("R6 screen → `screen atlas-shop --lines 30 --join` (tmux reunites wrapped lines: no words cut on the wrist), 30 lines in text", res and res["ok"] and len(res["text"].splitlines()) == 30 and "screen atlas-shop --lines 30 --join" in cm_calls(), str(res)[:200] + str([c for c in cm_calls() if c.startswith("screen ")]))
 res = send_cmd(CMDS[4])   # follow
@@ -3032,5 +3050,32 @@ T.check("R57 the failed turn closes at the next prompt: its event on /events and
         and again57b == again57, str((pub57, loc57, _puts57)))
 T.check("R57 attention.json empty (the item closed before this release) and an event still with continue_text → rewritten anyway",
         empty57 == [] and len(_puts57) == again57b + 1 and loc57b[f"{t57}_001"].get("continue_text") is None and loc57b[f"{t57}_001"].get("settled_at"), str((loc57b, _puts57)))
+
+# R58 (17/10): il comando del bus segnato in done-cmds PRIMA delle pulizie (la cancellazione di /share dopo un report):
+# un riavvio del demone in quel momento lo lasciava non segnato, e al ritorno la segnalazione partiva una seconda volta
+_save58 = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
+_ran58 = []
+
+
+def _run58(cmd, arrived=None):
+    _ran58.append(cmd["id"])
+    RL.mark_done_now()   # quello che fa share_report prima di cancellare /share
+    raise SystemExit(0)   # il SIGTERM del riavvio arriva qui
+
+
+try:
+    RL.run_cmd, RL.rtdb = _run58, (lambda *a, **kw: None)
+    (RL.rdir() / "done-cmds.json").unlink(missing_ok=True)
+    try:
+        RL.handle_cmd("c58", {"op": "report", "session": "x", "arg": "s58"}, [])
+    except SystemExit:
+        pass
+    done58 = json.loads((RL.rdir() / "done-cmds.json").read_text()) if (RL.rdir() / "done-cmds.json").exists() else []
+    again58 = RL.handle_cmd("c58", {"op": "report", "session": "x", "arg": "s58"}, list(done58))
+finally:
+    for n, v in _save58.items():
+        setattr(RL, n, v)
+T.check("R58 a restart during the report's cleanup: the command is already in done-cmds.json, and when /cmd comes back it is not run again",
+        done58 == ["c58"] and again58 is False and _ran58 == ["c58"] and RL._PENDING["cid"] is None, str((done58, again58, _ran58)))
 
 T.finish()

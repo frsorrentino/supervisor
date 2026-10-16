@@ -295,7 +295,10 @@ while IFS= read -r line; do
   case "$SCEN" in *,nopicker,*) ;; *)
     case "$line" in
       /model) model_picker; printf '❯ '; continue ;;
-      /effort) effort_picker; printf '❯ '; continue ;;
+      /effort) case "$SCEN" in *,slowpicker,*)
+                 # 17/10/2026: sotto carico il selettore arriva dopo tune.timeout_s, e i tasti premuti prima si perdono
+                 sleep "${FAKE_CLAUDE_PICKER_DELAY:-4}"; while IFS= read -rsn1 -t 0.05 _; do :; done ;; esac
+               effort_picker; printf '❯ '; continue ;;
     esac ;;
   esac
   printf '> %s\n❯ ' "$line"

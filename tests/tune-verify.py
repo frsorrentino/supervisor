@@ -121,6 +121,14 @@ with T.PrivateTmux() as tm:
     r = tune(tm, "model", "eta", "claude-sonnet-5")
     T.check("TU8 a picker that never opens → exit 4 after tune.timeout_s", r.returncode == 4 and "non si è aperto" in r.stdout and time.time() - t0 < 15, r.stdout + pane(tm, "eta"))
 
+    # TU8b (17/10, sotto carico): il selettore di /effort arriva dopo tune.timeout_s e l'Esc partito prima si perde;
+    # cm-tune guarda ancora lo schermo e lo chiude quando arriva, invece di lasciarlo aperto
+    start(tm, "lento", "slowpicker")
+    r = tune(tm, "effort", "lento", "low")
+    time.sleep(1)
+    T.check("TU8b a picker that opens after tune.timeout_s → exit 4, and the late picker is closed (Cancelled, no «to adjust» left)",
+            r.returncode == 4 and "Cancelled" in pane(tm, "lento") and "to adjust" not in pane(tm, "lento"), r.stdout + pane(tm, "lento"))
+
     T.check("TU9 Enter was never pressed in a picker: no default for new sessions was saved",
             not DEFAULT_LOG.exists() or not DEFAULT_LOG.read_text().strip(), DEFAULT_LOG.read_text() if DEFAULT_LOG.exists() else "")
     start(tm, "stretta", cols=34)

@@ -274,8 +274,23 @@ def open_picker(name, command, marker):
     return ""
 
 
-def cancel(name):
+def cancel(name, marker=None):
+    """Esc sul selettore. 17/10/2026 (sotto carico): il selettore di /effort arrivava DOPO l'attesa, l'Esc partiva prima
+    e il selettore restava aperto. Con `marker` si guarda lo schermo fino a WAIT_S: ogni volta che il selettore c'e'
+    ancora (o arriva solo ora) un altro Esc, e si smette dopo 2 s senza; mai un Esc a selettore chiuso (due Esc al
+    prompt aprono il riavvolgimento)."""
     keys(name, "Escape", pause=0.3)
+    if not marker:
+        return
+    end, quiet, sent = time.time() + WAIT_S, time.time(), 1
+    while time.time() < end and time.time() - quiet < 2:
+        if marker in below_prompt(screen(name)):
+            if sent >= 4:
+                return
+            keys(name, "Escape", pause=0.3)
+            sent += 1
+            quiet = time.time()
+        time.sleep(0.25)
 
 
 def _set_model(name, wanted):
@@ -289,7 +304,7 @@ def _set_model(name, wanted):
         return 3
     scr = open_picker(name, "/model", "to use this session only")
     if not scr:
-        cancel(name)
+        cancel(name, "to use this session only")
         print(M("tune.no_picker", name=name, what="/model"))
         return 4
     # verso la voce: di un salto quando e' a schermo, altrimenti una riga alla volta (la lista scorre e in fondo torna
@@ -308,7 +323,7 @@ def _set_model(name, wanted):
         keys(name, *((["Down" if target > cur[0] else "Up"] * abs(target - cur[0])) if target else ["Down"]))
         time.sleep(0.3)
     if not on:
-        cancel(name)
+        cancel(name, "to use this session only")
         print(M("tune.no_option", name=name, label=picks(choice)[0]))
         return 4
     pat = r"Set model to (.+?) for this session only"
@@ -322,7 +337,7 @@ def _set_model(name, wanted):
             print(M("tune.compacting", name=name))
             return 4
     if not line:
-        cancel(name)
+        cancel(name, "to use this session only")
         print(M("tune.no_confirm", name=name))
         return 4
     line = line.strip()
@@ -340,7 +355,7 @@ def _set_effort(name, level):
         print(M(f"tune.not_ready_{why}", name=name))
         return 3
     if not open_picker(name, "/effort", "for this session only"):
-        cancel(name)
+        cancel(name, "for this session only")
         print(M("tune.no_picker", name=name, what="/effort"))
         return 4
     # il cursore parte dal livello attuale: prima tutto a sinistra (low), poi avanti fino al livello voluto
@@ -350,7 +365,7 @@ def _set_effort(name, level):
     keys(name, "s", pause=0.3)
     got = wait_new(name, pat, before)
     if not got:
-        cancel(name)
+        cancel(name, "for this session only")
         print(M("tune.no_confirm", name=name))
         return 4
     if got != level:

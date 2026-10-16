@@ -1881,6 +1881,10 @@ def share_report(cmd, tm, session):
             return share_multi(cmd, tm, session, sids)
         return _share_report(cmd, tm, session, arg)
     finally:
+        try:
+            mark_done_now()   # 17/10: segnato prima di cancellare /share (dopo un riavvio, niente report doppio)
+        except OSError:
+            pass
         for sid in sids:
             if sid and cmd.get("_local"):
                 if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", sid):
@@ -2899,8 +2903,9 @@ def changes_op(session, tm, arg):
         v = DF.view(row["cwd"], want, now) if not row.get("host") or row.get("host") == "local" else None
         if v is None:
             path = core.transcript_of(row)
-            ents = core.transcript_entries(path, 0, diff_cap=(DF.FULL_LINES, DF.RESULT_BYTES)) if path else []
-            v = DF.view_from_passages([e["diff"] for e in ents if e.get("diff")], row["cwd"], want, now)
+            # 17/10/2026: solo le righe delle scritture e dei loro risultati, non tutta la chat
+            diffs = core.transcript_diffs(path, (DF.FULL_LINES, DF.RESULT_BYTES)) if path else []
+            v = DF.view_from_passages(diffs, row["cwd"], want, now)
     except DF.GitTimeout:
         return False, M("relay.cmd_changes_timeout")
     except DF.NotListed:
@@ -3502,6 +3507,21 @@ def ledger_write(event, **fields):
         pass
 
 
+_PENDING = {"cid": None, "done": None}   # il comando del bus in esecuzione, per mark_done_now
+
+
+def mark_done_now():
+    """17/10/2026: segna eseguito il comando del bus in corso, su disco, PRIMA delle pulizie (la cancellazione di
+    /share dopo un report): un riavvio del demone in quel momento lasciava /cmd e il comando non segnato, e al ritorno
+    la segnalazione partiva una seconda volta. Senza un comando del bus in corso (API locale) non fa nulla."""
+    cid, done = _PENDING["cid"], _PENDING["done"]
+    if not cid or done is None or cid in done:
+        return
+    done.append(cid)
+    del done[:-500]
+    write_json(rdir() / "done-cmds.json", done)
+
+
 def handle_cmd(cid, doc, done, arrived=None):
     if doc is None:
         return False
@@ -3525,7 +3545,11 @@ def handle_cmd(cid, doc, done, arrived=None):
         done.append(cid); return True
     cmd.pop("_local", None)   # solo l'API locale lo mette
     cmd.setdefault("id", cid)
-    result = run_cmd(cmd, arrived)
+    _PENDING.update(cid=cid, done=done)
+    try:
+        result = run_cmd(cmd, arrived)
+    finally:
+        _PENDING.update(cid=None, done=None)
     t_put = time.time()
     try:
         rtdb("PUT", f"result/{cid}", C.encrypt(result, k), {"print": "silent"})
@@ -3536,7 +3560,8 @@ def handle_cmd(cid, doc, done, arrived=None):
         if arrived and str(cmd.get("op") or "") not in PASSIVE_OPS:
             # fase 0 (07/10): l'attesa vera di un prompt o di una risposta, dall'arrivo sullo stream all'esito sul bus
             log(f"cmd {cid}: esito scritto · {cmd.get('op')} · dall'arrivo {_s(time.time() - arrived)} s · put {_s(time.time() - t_put)} s")
-    done.append(cid)
+    if cid not in done:
+        done.append(cid)
     del done[:-500]
     write_json(rdir() / "done-cmds.json", done)
     return True
@@ -3568,8 +3593,11 @@ def run_cmd(cmd, arrived=None):
     asked = (f" · domanda {cmd.get('question')}" if cmd.get("question") else " · senza id domanda") if cmd.get("op") in ("answer", "allow_all") else ""
     log(f"cmd {cid}: {cmd.get('op')} {cmd.get('session') or ''} da {by}{' (locale)' if cmd.get('_local') else ''}{asked} → {'ok' if ok else 'ERR'} {str(text)[:80]}{timing}")
     row = last_sessions().get(str(cmd.get("session") or "")) or {}
-    ledger_write("watch-cmd", op=str(cmd.get("op") or ""), name=str(cmd.get("session") or ""), by=by, ok=bool(ok),
-                 text=str(text)[:200], session_id=row.get("id") or "", account=row.get("account") or "")
+    # 17/10/2026: le letture (PASSIVE_OPS) non vanno nel registro: non cambiano niente, e ogni apertura della chat ne
+    # scriveva una riga; un errore resta nel log e nelle osservazioni
+    if str(cmd.get("op") or "") not in PASSIVE_OPS:
+        ledger_write("watch-cmd", op=str(cmd.get("op") or ""), name=str(cmd.get("session") or ""), by=by, ok=bool(ok),
+                     text=str(text)[:200], session_id=row.get("id") or "", account=row.get("account") or "")
     if not ok:   # osservazioni (23/09): un comando del polso fallito finisce nella casella di supervisor (claude-observe)
         try:
             spec = importlib.util.spec_from_file_location("cm_observe", HERE.parent / "observe" / "observe.py")

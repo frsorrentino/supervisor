@@ -897,6 +897,49 @@ def _entry(eid, role, text, at, tool=None, note=None, error=None, text_max=ENTRY
             "error": error, "cut": cut, "turn": None, "files": None, "origin": None, "queued": False, "diff": None}
 
 
+_WRITE_NAMES = tuple(f'"name":{sep}"{n}"'.encode() for n in WRITE_TOOLS for sep in ("", " "))   # compatto (Claude Code) o no
+
+
+def transcript_diffs(path, diff_cap):
+    """17/10/2026 (changes_op fuori da git): solo i diff delle scritture riuscite, come i `diff` di transcript_entries
+    con lo stesso diff_cap, senza costruire la chat: si decodificano solo le righe con una chiamata a Edit, MultiEdit,
+    Write o NotebookEdit e quelle col loro risultato (le altre, quasi tutti i byte, si saltano come testo)."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return []
+    writes, out = {}, []
+    for raw in data.split(b"\n"):
+        if b'"tool_use"' in raw and any(n in raw for n in _WRITE_NAMES):
+            try:
+                d = json.loads(raw)
+            except ValueError:
+                continue
+            content = (d.get("message") or {}).get("content")
+            if d.get("isSidechain") or d.get("type") != "assistant" or not isinstance(content, list):
+                continue
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") in WRITE_TOOLS and b.get("id"):
+                    writes[b["id"]] = (b["name"], b.get("input"), d.get("cwd"))
+        elif writes and b'"tool_result"' in raw and any(i.encode() in raw for i in writes):
+            try:
+                d = json.loads(raw)
+            except ValueError:
+                continue
+            content = (d.get("message") or {}).get("content")
+            if d.get("isSidechain") or d.get("type") != "user" or not isinstance(content, list):
+                continue
+            res = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"]
+            for b in res:
+                w = writes.pop(b.get("tool_use_id"), None)
+                if w and not b.get("is_error") and len(res) == 1:   # come transcript_entries: un risultato solo per riga
+                    df = _df().entry_diff(w[0], w[1], d.get("toolUseResult"), w[2] or d.get("cwd"), *diff_cap)
+                    if df:
+                        out.append(df)
+    return out
+
+
 def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat_only=False, diff_cap=None):
     """1.22 (30/09): la conversazione di una sessione come chat, dal transcript dopo `offset` byte. Voci in ordine:
     user (quello che la persona ha scritto), assistant (il testo di Claude), tool (una per chiamata: nome, dettaglio

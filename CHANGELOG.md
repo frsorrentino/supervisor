@@ -2,6 +2,14 @@
 
 ## 0.3.x
 
+- **0.8.35 — 2026-10-17: relay fixes of the night — no double report after a restart, lighter reads, /effort closed under load.**
+  - Queued by the master for the night of 17/10, with the maintainer's go-ahead at 00:17.
+  - A bus command is written to `done-cmds.json` before its cleanup (the deletion of `/share` after a report): a daemon restart in that moment left it unmarked, and when `/cmd` came back the report went out twice.
+  - The reads (`PASSIVE_OPS`: chat, screen, last, file, projects, search, timeline, night, agenda, changes, diff…) no longer write a `watch-cmd` line in the ledger; a failed read still goes to the log and the observations.
+  - `changes` outside git reads only the write passages of the transcript and their results (`transcript_diffs`), not the whole chat: same diffs, 13 s → 5 s on a 155 MB transcript.
+  - `supervisor effort` / `model`: under load the picker opened after `tune.timeout_s`, the Esc went out before it and the picker stayed open. Now the screen is watched for `tune.timeout_s` more and the late picker gets its Esc; never an Esc with the picker closed (two Esc at the prompt open the rewind).
+  - Test R0 compares the fixtures with the app branch that last committed to `contract/` (1.72 came out of `feature/tablet`; `origin/master` was still at 1.70).
+  - Tests: R6 (no watch-cmd for reads) and R58 in `tests/relay-verify.py`, CO14b in `tests/core-verify.py`, TU8b in `tests/tune-verify.py` (fake picker `slowpicker`).
 - **0.8.34 — 2026-10-17: an ok on someone's behalf only with their message, green tasks closed every hour, and the guard fixes of the night.**
   - Approved by the maintainer on 16/10 at 08:22 and 08:41 (from the phone), queued by the master for the night of 17/10.
   - `supervisor task approve ID --by NAME --inbox MSG [--text NOTE]`: from a Claude session an ok on someone's behalf is recorded only by the root session, citing a relay message in its inbox from the last hour; the text quotes the message with its id. `--text` alone from a Claude session is refused. The relay's «Approve» passes `CM_APPROVE_VIA=relay` (the daemon inherits `CLAUDECODE` from the session that started it).

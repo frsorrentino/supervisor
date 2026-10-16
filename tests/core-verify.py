@@ -335,6 +335,12 @@ T.check("CO14 (1.72) with diff_cap a Write of a new file gets diff (create, the 
                                 "hunks": [{"old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 2, "lines": ["+uno", "+due"]}]}
         and e14["w2.0"]["diff"] is None and e14["w2.1"]["diff"] is None and e14["w4.0"]["diff"] is None and e14["w4.0"]["error"] is True
         and all(e["diff"] is None for e in plain14) and list(plain14[0])[-1] == "diff", json.dumps(e14["w1.0"]["diff"]))
+# CO14b (17/10): changes_op fuori da git legge solo le scritture — transcript_diffs da' gli stessi diff delle voci
+d14 = core.transcript_diffs(str(t14), (200, 16000))
+real14 = sorted(Path.home().glob(".claude/projects/*/*.jsonl"), key=lambda p: p.stat().st_mtime)[-3:]
+same_real = all(core.transcript_diffs(str(p), (200, 16000)) == [e["diff"] for e in core.transcript_entries(str(p), 0, diff_cap=(200, 16000)) if e.get("diff")] for p in real14)
+T.check("CO14b transcript_diffs = the non-null diffs of transcript_entries with the same cap (the fixture, and the newest real transcripts if any)",
+        d14 == [e14["w1.0"]["diff"]] and same_real, json.dumps(d14)[:300])
 # CO15 (16/10, relay al 50% di CPU): il ledger si legge in modo incrementale — il demone teneva 50 MB e 132k righe
 # riparsate a ogni push. Solo i byte nuovi; le righe watch-cmd (il registro dei comandi del relay, nessuno stato le
 # legge) non si decodificano; una riga a meta' aspetta il suo «\n»; un file riscritto o sostituito si rilegge da capo.
