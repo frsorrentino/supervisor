@@ -135,6 +135,41 @@ Contract 1.42 serves the app's live mode: a prompt dictated by voice
 prefix, and an approval given from the wrist (`via: "live"`) counts only with a
 double confirmation (`confirmations` of 2 or more).
 
+Contract 1.72 shows from the phone what changed in the files (15/10/2026,
+additive, `v` stays 1). Every entry of `transcript` and of `/tail/<id>` carries
+`diff`: null, or for a Write, Edit, MultiEdit or NotebookEdit with a structured
+result `{path, kind, added, removed, hunks, cut}`. `path` is absolute; `kind`
+is `edit`, `create` (a Write of a new file: every line of its content added) or
+`overwrite`; `hunks` are `[{old_start, old_lines, new_start, new_lines,
+lines}]`, every line starting with `-`, `+` or a space (no «\ No newline at
+end of file», no trailing CR); `added` and `removed` count the whole passage;
+`cut` is true past 200 lines or 16,000 bytes. A NotebookEdit diffs the cell,
+numbered inside it. Op `diff` (`arg` = the entry's id) gives the passage whole,
+up to 5000 lines and 1,000,000 bytes. Op `changes` (`arg` null, or
+`file=<path>` with a `path` exactly as listed) answers `{source, repo, base,
+files, totals, cut, at}`: with git, everything in the session's repository
+against HEAD, new files not ignored included (`source` git, `repo` the root,
+`base` the short hash of HEAD, null without commits, when every file is new);
+outside git, or for a session on another host, the passages of the current
+conversation by file, in order (`source` transcript, `repo` and `base` null,
+`path` relative to the session's folder when inside it). `files` are `[{path,
+status, added, removed, size, hunks, cut}]`, `status` modified, added,
+deleted, renamed or binary, `size` null for a deleted file; at most 50 files
+and 2000 lines (5000 with `file=`), `cut` past them; an empty list means
+nothing changed. Binary files, files over 1 MB and sensitive names (`.env*`,
+`*.pem`, `*.key`, `id_*`, `*.p12`, `credentials*`) come with name, status and
+counts only, in the passages too; ignored files are never read; a link shows
+its target. Every line goes through the preview mask (1.56) with its sign
+kept. Each git call has 5 s: past it «git did not answer in 5 s». Other
+refusals: «no session <name>», «<path> is not among the changes», «changes
+<arg>: expected nothing or file=<path>», «no entry <id> in the transcript»,
+«no diff for <id>», «diff <arg>: expected the id of a transcript entry».
+`/state` carries `sessions[].changes`, `{files, added, removed, at}` or null
+(nothing changed, git silent, a session on another host); outside git it
+counts the passages of the current conversation, so the pill opens the
+`transcript` view there too. It is counted when a turn ends and at most once
+a minute per session; a closed session keeps its last value. `ops`
+lists `changes` and `diff`, both reads.
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

@@ -63,13 +63,14 @@ def _load(name):
 cm = _load("cm-config")
 S = _load("cm-relay-state")
 C = _load("cm-relay-crypto")
+DF = _load("cm-diff")   # 1.72: il diff dal telefono (voci, op diff e changes, pillola)
 core = _load("cm-core")   # il cuore condiviso (16/09): ledger, transcript, icona, reopen — niente Telegram
 CFG = cm.load(warn=False)
 M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -589,6 +590,81 @@ def tool_of(row):
         return None, ""
 
 
+PILL_MIN_S = 60   # 1.72: la pillola di una sessione si ricalcola al piu' una volta al minuto
+
+
+def pill_from_passages(row, prev=None):
+    """Decisione 3 dell'indice (16/10): la pillola di una cartella fuori da git, {files, added, removed} dei passaggi di
+    modifica della conversazione corrente (le righe non servono: tetto 0), o None se non ce ne sono. → (valore, ricordo).
+    Revisione finale: la trascrizione cresce solo in coda, quindi si riprende da `prev` = {path, end, paths, added,
+    removed} (end = il byte dopo l'ultima riga intera contata) e si leggono solo i byte nuovi; si conta a fine turno,
+    quando i risultati degli strumenti sono gia' scritti."""
+    path = core.transcript_of(row)
+    if not path:
+        return None, None
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None, None
+    p = prev if prev and prev.get("path") == path and 0 < int(prev.get("end") or 0) <= size else {"path": path, "end": 0, "paths": [], "added": 0, "removed": 0}
+    start = int(p["end"])
+    with open(path, "rb") as f:
+        f.seek(start)
+        cut = f.read(size - start).rfind(b"\n")
+    end = start + cut + 1 if cut >= 0 else start
+    paths, added, removed = set(p["paths"]), int(p["added"]), int(p["removed"])
+    if end > start:
+        # da start-1 (il «\n» che chiude l'ultima riga contata): transcript_entries salta il primo pezzo, qui vuoto
+        for e in core.transcript_entries(path, max(0, start - 1), limit=end, diff_cap=(0, 0)):
+            if e.get("diff"):
+                paths.add(e["diff"]["path"])
+                added += e["diff"]["added"]
+                removed += e["diff"]["removed"]
+    memo = {"path": path, "end": end, "paths": sorted(paths), "added": added, "removed": removed}
+    return ({"files": len(paths), "added": added, "removed": removed} if paths else None), memo
+
+
+def changes_pills(rows, ledger, now):
+    """1.72 (15/10): sessions[].changes, la pillola «3 file · +40 −12» della testata: {files, added, removed, at} o None
+    (nessuna modifica, git che non ha risposto). Solo i conteggi (cm-diff.counts: --numstat piu' i file nuovi; fuori da
+    git, decisione 3 dell'indice del 16/10, quelli dei passaggi di Claude nella conversazione corrente, come la vista
+    «transcript» che la pillola apre), per le sessioni vive di questa macchina: a fine turno (uno stop nel ledger dopo l'ultimo calcolo) e al piu'
+    una volta ogni PILL_MIN_S per sessione; una fine turno arrivata prima del minuto si vede alla raccolta completa dopo.
+    Una sessione chiusa tiene l'ultimo valore; una su un altro host e' None. Il ricordo e' in <relay.dir>/changes-pill.json,
+    {tmux: {cwd, stop, checked, value}}; due sessioni nella stessa cartella fanno un calcolo solo."""
+    path = rdir() / "changes-pill.json"
+    cache = read_json(path, {})
+    fresh, out, done = {}, {}, {}
+    for r in rows:
+        tm = r.get("tmux") or r.get("name") or ""
+        cwd = str(r.get("cwd") or "")
+        if not tm or not cwd or (r.get("host") and r.get("host") != "local"):
+            continue
+        c = cache.get(tm) or {}
+        if r.get("status") != "dead":
+            stop = max((S.epoch(x.get("ts")) for x in ledger if x.get("event") == "stop" and x.get("session_id") == r.get("session_id")), default=0)
+            due = c.get("cwd") != cwd or stop > int(c.get("stop") or 0)
+            if due and now - float(c.get("checked") or 0) >= PILL_MIN_S:
+                tx = None
+                try:
+                    git_ = DF.repo_of(cwd) is not None
+                    key = cwd if git_ else (cwd, tm)   # fuori da git ogni sessione ha la sua conversazione
+                    if key not in done:
+                        done[key], tx = (DF.counts(cwd), None) if git_ else pill_from_passages(r, c.get("tx"))
+                except Exception:   # noqa: BLE001 — git che non risponde o un'uscita strana: la pillola e' un extra
+                    key, tx = cwd, None
+                    done[key] = None
+                c = {"cwd": cwd, "stop": stop, "checked": int(now), "value": dict(done[key], at=int(now)) if done[key] else None}
+                if tx:
+                    c["tx"] = tx   # fuori da git: fin dove la trascrizione e' gia' contata
+        if c:
+            fresh[tm] = c
+            out[tm] = c.get("value")
+    if fresh != cache:
+        write_json(path, fresh)
+    return out
+
+
 def collect_sources(now=None):
     now = now or time.time()
     # senza nome ne' tmux e' un processo claude fuori registro (un `claude -p`, il recap): non e' una sessione da polso
@@ -713,6 +789,7 @@ def collect_sources(now=None):
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
         "attention": attention_open(rows, ledger), "needs_you": needs_you_of(rows),
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
+        "changes": changes_pills(rows, ledger, now),   # 1.72
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1048,8 +1125,9 @@ def tail_key(sid):
 def tail_body(name, sid, path, st, now):
     """Il corpo di /tail/<id> (1.59) e di GET /api/tail/<id> (1.70): {session, id, tx, at, entries, more}, le ultime
     TAIL_N voci della chat entro TAIL_MAX_BYTES. tx = dimensione e mtime della trascrizione."""
-    entries = core.transcript_entries(path, max(0, st.st_size - TAIL_WINDOW))
+    entries = core.transcript_entries(path, max(0, st.st_size - TAIL_WINDOW), diff_cap=(DF.ENTRY_LINES, DF.ENTRY_BYTES))
     page, more = entries[-TAIL_N:], len(entries) > TAIL_N or st.st_size > TAIL_WINDOW
+    page = [dict(e, diff=DF.redact_diff(e["diff"])) if e.get("diff") else e for e in page]   # 1.72: solo le voci che escono
     body = {"session": name, "id": sid, "tx": f"{st.st_size}-{st.st_mtime_ns}", "at": int(now), "entries": page, "more": bool(more)}
     while body["entries"] and len(json.dumps(body, ensure_ascii=False).encode()) > TAIL_MAX_BYTES:
         body["entries"] = body["entries"][1:]
@@ -2688,7 +2766,7 @@ def transcript_page(session, tm, arg):
     size = os.path.getsize(path)
     for window in TRANSCRIPT_WINDOWS:
         start = 0 if window is None or window >= size else size - window
-        entries = core.transcript_entries(path, start)
+        entries = core.transcript_entries(path, start, diff_cap=(DF.ENTRY_LINES, DF.ENTRY_BYTES))
         ids = [e["id"] for e in entries]
         if ref and ref not in ids and start:
             continue   # la voce e' piu' indietro: si allarga la finestra
@@ -2704,6 +2782,7 @@ def transcript_page(session, tm, arg):
         end = ids.index(ref) if mode == "before" else len(entries)
         page = entries[max(0, end - n):end]
         more = end - n > 0 or bool(start)
+    page = [dict(e, diff=DF.redact_diff(e["diff"])) if e.get("diff") else e for e in page]   # 1.72: solo le voci che escono
     while page and len(json.dumps({"entries": page, "more": True}, ensure_ascii=False).encode()) > TRANSCRIPT_MAX_BYTES:
         if mode == "after":
             page = page[:-1]
@@ -2711,6 +2790,69 @@ def transcript_page(session, tm, arg):
             page = page[1:]
         more = True
     return True, json.dumps({"entries": page, "more": bool(more)}, ensure_ascii=False)
+
+
+def session_row(tm):
+    """1.72: la riga di una sessione, viva da `sessions --json` o chiusa dal registro: la vista «Modifiche» funziona
+    anche a sessione chiusa, perche' la cartella c'e' ancora. None se non si trova."""
+    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    if row:
+        return row
+    s_ = next((x for x in (_json_cmd("registry", "--good", expect="{") or {}).get("sessioni", []) if x.get("nome") == tm), None)
+    if not s_:
+        return None
+    return {"tmux": tm, "name": tm, "status": "dead", "cwd": s_.get("cartella") or "", "account": s_.get("account") or "",
+            "session_id": s_.get("session_id") or ""}
+
+
+def diff_op(session, tm, arg):
+    """1.72 (15/10, il diff dal telefono): «Mostra tutto» sotto un passaggio. arg = l'id della voce di `transcript`;
+    text = il suo `diff` intero, fino a DF.FULL_LINES righe e DF.RESULT_BYTES byte, mascherato."""
+    ref = str(arg or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", ref):
+        return False, M("relay.cmd_diff_bad_arg", arg=ref)
+    row = session_row(tm)
+    if not row:
+        return False, M("relay.cmd_file_no_session", name=session or "?")
+    path = core.transcript_of(row)
+    if not path:
+        return False, M("relay.cmd_transcript_none", name=session)
+    size, hit = os.path.getsize(path), None
+    for window in TRANSCRIPT_WINDOWS:
+        start = 0 if window is None or window >= size else size - window
+        hit = next((e for e in core.transcript_entries(path, start, diff_cap=(DF.FULL_LINES, DF.RESULT_BYTES)) if e["id"] == ref), None)
+        if hit or not start:
+            break
+    if not hit:
+        return False, M("relay.cmd_transcript_unknown", id=ref)
+    if not hit.get("diff"):
+        return False, M("relay.cmd_diff_none", id=ref)
+    return True, json.dumps(DF.redact_diff(hit["diff"]), ensure_ascii=False)
+
+
+def changes_op(session, tm, arg):
+    """1.72: la vista «Modifiche» di una sessione. arg null = tutta la cartella (50 file, 2000 righe), «file=<path>» = un
+    file solo come lo elenca `files` (5000 righe). Con git tutto rispetto a HEAD (cm-diff.view); fuori da git, o per
+    una sessione su un altro host, i passaggi di modifica della conversazione (source «transcript»)."""
+    a = str(arg or "").strip()
+    want = a[5:].strip() if a.startswith("file=") else None
+    if a and not want:
+        return False, M("relay.cmd_changes_bad_arg", arg=a)
+    row = session_row(tm)
+    if not row or not row.get("cwd"):
+        return False, M("relay.cmd_file_no_session", name=session or "?")
+    now = time.time()
+    try:
+        v = DF.view(row["cwd"], want, now) if not row.get("host") or row.get("host") == "local" else None
+        if v is None:
+            path = core.transcript_of(row)
+            ents = core.transcript_entries(path, 0, diff_cap=(DF.FULL_LINES, DF.RESULT_BYTES)) if path else []
+            v = DF.view_from_passages([e["diff"] for e in ents if e.get("diff")], row["cwd"], want, now)
+    except DF.GitTimeout:
+        return False, M("relay.cmd_changes_timeout")
+    except DF.NotListed:
+        return False, M("relay.cmd_changes_not_listed", path=want)
+    return True, json.dumps(v, ensure_ascii=False)
 
 
 DECISION_TEXT_MAX = 2000
@@ -3095,6 +3237,10 @@ def execute(cmd):
             return share_report(cmd, tm, session)
         if op == "transcript":
             return transcript_page(session, tm, arg)
+        if op == "diff":
+            return diff_op(session, tm, arg)
+        if op == "changes":
+            return changes_op(session, tm, arg)
         if op == "file":
             return file_open(cmd, session, tm, arg)
         if op == "slash":
@@ -3238,7 +3384,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):
@@ -3610,7 +3756,7 @@ def serve():
     return 0
 
 
-CODE_FILES = ("cm-relay.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py")
+CODE_FILES = ("cm-relay.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py")
 STALE_S = 180
 
 

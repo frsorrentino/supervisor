@@ -32,6 +32,15 @@ def _load(name):
 
 cm = _load("cm-config")
 _CFG = None
+_DF = None
+
+
+def _df():
+    """1.72: cm-diff, caricato alla prima voce che chiede i diff (chi legge solo la chat non lo paga)."""
+    global _DF
+    if _DF is None:
+        _DF = _load("cm-diff")
+    return _DF
 
 
 def _cfg():
@@ -856,10 +865,10 @@ def cut_text(t, n):
 def _entry(eid, role, text, at, tool=None, note=None, error=None, text_max=ENTRY_TEXT_MAX):
     t, cut = cut_text(str(text or ""), text_max)
     return {"id": eid, "role": role, "text": t, "at": at, "tool": tool, "note": note or None,
-            "error": error, "cut": cut, "turn": None, "files": None, "origin": None, "queued": False}
+            "error": error, "cut": cut, "turn": None, "files": None, "origin": None, "queued": False, "diff": None}
 
 
-def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat_only=False):
+def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat_only=False, diff_cap=None):
     """1.22 (30/09): la conversazione di una sessione come chat, dal transcript dopo `offset` byte. Voci in ordine:
     user (quello che la persona ha scritto), assistant (il testo di Claude), tool (una per chiamata: nome, dettaglio
     corto, la description come note, error dal tool_result, files = [{path, mime, size}] dei media e documenti scritti
@@ -867,7 +876,10 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
     di un turno chiuso (system turn_duration; token sommati dagli usage dei messaggi del turno).
     1.27 (03/10, search): `limit` = si legge fino a quel byte; `text_max` = il testo intero invece dei 4000 caratteri;
     `chat_only` = solo voci user e assistant, e le righe dei soli strumenti si saltano senza decodificarle (sono quasi
-    tutti i byte di una trascrizione)."""
+    tutti i byte di una trascrizione).
+    1.72 (15/10): `diff_cap` = (righe, byte): le voci di Edit, MultiEdit, Write e NotebookEdit riuscite prendono `diff`
+    dal toolUseResult della riga del loro risultato (cm-diff.entry_diff), tagliato a quel tetto, righe NON mascherate:
+    chi pubblica le passa da cm-diff.redact_diff. Senza diff_cap `diff` resta None (ricerca, file, handoff)."""
     try:
         with open(path, "rb") as f:
             f.seek(offset)
@@ -879,6 +891,7 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
         lines = lines[1:]   # la prima riga puo' essere a meta'
     _entry = functools.partial(globals()["_entry"], text_max=text_max)
     out, by_tool, tokens, peer_seen, queued, taken, waiting_q, qkey = [], {}, [0, 0], set(), {}, [], [], {}
+    writes = {}   # 1.72: tool_use_id → (nome, input, cwd) delle scritture, finche' arriva il loro risultato
 
     def unqueue(e):
         """La voce non e' piu' in coda: resta con l'ora in cui e' stata scritta, e il suo testo non assorbe piu' una
@@ -930,10 +943,16 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
         content = (d.get("message") or {}).get("content")
         if kind == "user":
             if isinstance(content, list):
+                n_res = sum(1 for b in content if isinstance(b, dict) and b.get("type") == "tool_result")
                 for b in content:
                     if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("tool_use_id") in by_tool:
                         e = by_tool[b["tool_use_id"]]
                         e["error"] = bool(b.get("is_error"))
+                        w = writes.pop(b["tool_use_id"], None)
+                        if w and not e["error"] and n_res == 1:
+                            # il toolUseResult e' della riga: vale solo se la riga porta un risultato solo (come scrive
+                            # Claude Code); con piu' risultati non si sa di chi sia
+                            e["diff"] = _df().entry_diff(w[0], w[1], d.get("toolUseResult"), w[2] or d.get("cwd"), *diff_cap)
                         if e["error"]:
                             e["files"] = None   # la scrittura non e' riuscita: nessun file da mostrare
                         elif e["tool"] == "Bash" and ("supervisor report" in e["text"] or "supervisor render" in e["text"]):
@@ -986,6 +1005,8 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
                     out.append(e)
                     if b.get("id"):
                         by_tool[b["id"]] = e
+                        if diff_cap and name in WRITE_TOOLS:
+                            writes[b["id"]] = (name, b.get("input"), d.get("cwd"))
         elif kind == "queue-operation" and d.get("operation") == "enqueue" and isinstance(d.get("content"), str):
             # scritto nella chat (terminale o app Claude) mentre il turno gira: in coda da subito, entra nel turno dopo
             t, _ = _clean(d["content"])

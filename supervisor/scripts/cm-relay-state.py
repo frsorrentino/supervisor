@@ -431,6 +431,10 @@ def build_session(row, src):
         # argomenti: «/fable-director:handoff --here» se la sessione ha fable-director, «/supervisor:handoff --here»
         # altrimenti, null se nessuno dei due (o non si sa: sessione su un altro host). Assente = relay prima della 1.51
         "handoff": (src.get("handoffs") or {}).get(tmux) or None,
+        # 1.72 (15/10/2026): la pillola della testata, {files, added, removed, at} di cm-diff.counts (le modifiche della
+        # cartella rispetto all'ultimo commit; fuori da git quelli dei passaggi della conversazione, decisione 3 dell'indice),
+        # o null senza modifiche, con git che non ha risposto o per una sessione su un altro host
+        "changes": (src.get("changes") or {}).get(tmux) or None,
     }
     # 1.37 (05/10/2026), solo quando ci sono (lo stato sta in 8 KB: un campo vuoto per sessione pesa): `advice`, il
     # consiglio di modello ed effort di fable-director {model, effort, reason, switch_cost_tokens, at, source, when,

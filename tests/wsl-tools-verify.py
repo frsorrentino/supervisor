@@ -31,9 +31,18 @@ for f in (fake_ssh, fake_scp):
     f.chmod(0o755)
 
 
+# 16/10/2026: lo strumento impacchetta i file tracciati (git ls-files) — un repo minimo in tmp, perche' in WSL l'albero
+# arriva senza .git e il test, puntato alla radice, usciva 128 «not a git repository»
+repo = tmp / "repo"
+(repo / "tests").mkdir(parents=True)
+(repo / "tests" / "x-verify.py").write_text("print('1/1 OK')\n")
+subprocess.run(["git", "init", "-q", str(repo)], check=True)
+subprocess.run(["git", "-C", str(repo), "add", "tests/x-verify.py"], check=True)
+
+
 def run(mode):
     env = dict(os.environ, WSL_TESTS_SSH=str(fake_ssh), WSL_TESTS_SCP=str(fake_scp), FAKE_WSL=mode)
-    return subprocess.run(["bash", str(T.ROOT / "tools-wsl-tests.sh"), str(T.ROOT), "tests/x-verify.py"], capture_output=True, text=True, env=env, timeout=120)
+    return subprocess.run(["bash", str(T.ROOT / "tools-wsl-tests.sh"), str(repo), "tests/x-verify.py"], capture_output=True, text=True, env=env, timeout=120)
 
 
 r = run("down")

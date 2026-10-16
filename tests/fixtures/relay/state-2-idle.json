@@ -39,7 +39,8 @@
       "suggestion": null,
       "goal": null,
       "handoff": null,
-      "finished": true
+      "finished": true,
+      "changes": null
     }
   ],
   "quota": {
@@ -153,7 +154,9 @@
     "agenda_set",
     "quota_route",
     "project_new",
-    "permission_mode"
+    "permission_mode",
+    "changes",
+    "diff"
   ],
   "slash": [
     "compact",

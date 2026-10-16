@@ -64,10 +64,40 @@ def app_contract(name):
     return None
 
 
-for f in ("state-1-question", "state-2-idle", "state-3-stale", "events-sample", "cmd-result-sample", "pair-qr", "pair-response", "pair-add", "pair-link", "file-parts", "share-parts", "local-api"):
+for f in ("state-1-question", "state-2-idle", "state-3-stale", "events-sample", "cmd-result-sample", "pair-qr", "pair-response", "pair-add", "pair-link", "file-parts", "share-parts", "local-api", "changes-sample"):
     a = FIX / f"{f}.json"; b = app_contract(f"{f}.json")
     T.check(f"R0 fixture {f} identical to the app contract on its master (origin/master; skipped if the app repo is absent)", a.is_file() and (b is None or a.read_bytes() == b), f"{WATCH}@origin/master:contract/{f}.json")
 
+# R55 (contratto 1.72, 15/10): il diff dal telefono — le fixture nuove, coerenti fra loro e con le regole del contratto
+CH54 = json.loads((FIX / "changes-sample.json").read_text())
+_f54 = CH54["files"]
+_l54 = lambda f: [s for h in f["hunks"] for s in h["lines"]]  # noqa: E731
+T.check("R55 (1.72) changes-sample.json: {source, repo, base, files, totals, cut, at}; every file {path, status, added, removed, size, hunks, cut} with a status of the contract",
+        list(CH54) == ["source", "repo", "base", "files", "totals", "cut", "at"] and CH54["source"] in ("git", "transcript")
+        and all(list(f) == ["path", "status", "added", "removed", "size", "hunks", "cut"] for f in _f54)
+        and {f["status"] for f in _f54} <= {"modified", "added", "deleted", "renamed", "binary"}, json.dumps(CH54)[:300])
+T.check("R55 (1.72) changes-sample.json: a file's counts are its «+» and «-» lines, the sensitive name and the binary carry none, lines start with «-», «+» or a space, totals = the sums",
+        all((f["added"], f["removed"]) == (sum(1 for s in _l54(f) if s[0] == "+"), sum(1 for s in _l54(f) if s[0] == "-")) for f in _f54 if f["hunks"])
+        and [f["hunks"] for f in _f54 if f["path"] in (".env.local", "assets/logo.png")] == [[], []]
+        and all(s[:1] in ("-", "+", " ") for f in _f54 for s in _l54(f))
+        and CH54["totals"] == {"files": len(_f54), "added": sum(f["added"] for f in _f54), "removed": sum(f["removed"] for f in _f54)}, json.dumps(CH54["totals"]))
+_p54 = [json.loads(r["text"]) for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]
+        if r["id"] in ("6f1c2d3e-0130-4000-8000-000000000130", "6f1c2d3e-0131-4000-8000-000000000131")]
+_a8 = [e for p in _p54 for e in p["entries"] if e["id"] == "a8.0"]
+T.check("R55 (1.72) the transcript pages: every entry carries diff, null but on a8.0 (the Edit of totals.ts), whose diff is {path, kind, added, removed, hunks, cut} with the hunk of changes-sample.json",
+        len(_p54) == 2 and len(_a8) == 2 and all("diff" in e for p in _p54 for e in p["entries"])
+        and all(e["diff"] is None for p in _p54 for e in p["entries"] if e["id"] != "a8.0")
+        and _a8[0]["diff"] == {"path": "/home/dev/storefront/src/checkout/totals.ts", "kind": "edit", "added": 2, "removed": 1, "hunks": _f54[0]["hunks"], "cut": False},
+        json.dumps(_a8[:1])[:300])
+_s54 = [json.loads((FIX / f"{n}.json").read_text()) for n in ("state-1-question", "state-2-idle", "state-3-stale")]
+T.check("R55 (1.72) the states: ops end with changes and diff; every session carries changes — on atlas-shop of state-1 the totals of changes-sample with its at, null on the others",
+        all(s["ops"][-2:] == ["changes", "diff"] for s in _s54) and all("changes" in x for s in _s54 for x in s["sessions"])
+        and [x["changes"] for x in _s54[0]["sessions"]] == [None, dict(CH54["totals"], at=CH54["at"]), None, None]
+        and _s54[0]["sessions"][1]["name"] == "atlas-shop" and _s54[1]["sessions"][0]["changes"] is None, str([x.get("changes") for x in _s54[0]["sessions"]]))
+_la54 = json.loads((FIX / "local-api.json").read_text())
+T.check("R55 (1.72) local-api.json: the entries of /api/tail carry diff (null), and the rules say so",
+        "1.72" in _la54["rules"] and all(e.get("diff", "absent") is None for ex in _la54["exchanges"] if isinstance(ex["response"].get("body"), dict)
+                                         for e in ex["response"]["body"].get("entries") or []), "")
 # R0b: il RTDB finto
 URL, CALLS, STORE = T.fake_rtdb()
 
@@ -220,6 +250,8 @@ SRC1["rows"][1]["pc_activity"] = 1789210770
 SRC1["project_parents"] = [ROOT_WS + "/personal", ROOT_WS + "/work/clients", ROOT_WS + "/work/own"]
 # 1.51: il comando dell'handoff per sessione — fable-director, quello di supervisor, nessuno
 SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-shop": "/supervisor:handoff --here", "field-notes": None}
+# 1.72: la pillola della testata su atlas-shop (i totali di changes-sample.json); le altre sessioni non ce l'hanno
+SRC1["changes"] = {"atlas-shop": {"files": 4, "added": 8, "removed": 2, "at": 1792100000}}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
 SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Checkout refactor across many files: Fable 5.1 high; switch after the current task",
                                  "switch_cost_tokens": 36000, "at": 1789210700, "source": "fable-director", "when": "next_task", "differs": True}}
@@ -330,7 +362,9 @@ T.check("R2 over 8 KB → fit_state trims (old gone sessions, projects past 10, 
 # finite non scendono a tre anche con i nomi inglesi, piu' corti)
 # 14/09 dal vivo: tre sessioni al lavoro con un esito lungo + dieci finite → prima ogni full diventava short
 live = dict(SRC1, devices={}, seen={}, recurring=[], approvals=[], advice={}, project_parents=[])   # 1.32 (e 1.37): questi casi misurano i tagli delle sessioni, senza dispositivi ne approvazioni
-long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 9
+# 15/10 (1.72): * 6 invece di * 9 — `changes` e `diff` in ops e `changes` in ogni sessione allungano lo stato di 107 byte,
+# e il caso stava a 12 byte dal tetto; con sei ripetizioni il full resta ben oltre i 300 caratteri che il controllo vuole
+long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 6
 live["rows"] = [{"name": f"job-{i}", "tmux": f"job-{i}", "account": "personal", "cwd": ROOT_WS + f"/personal/job-{i}", "status": "idle", "waiting": False, "session_id": f"sid-job-{i}", "link": "https://claude.ai/code/session_" + "x" * 24, "attached": False, "started_at": 1789200000000} for i in range(3)] + \
     [{"name": f"old-{i:02d}", "tmux": f"old-{i:02d}", "account": "personal", "cwd": ROOT_WS + f"/personal/old-progetto-{i:02d}", "status": "dead", "session_id": f"0000000{i:02d}-aaaa-bbbb-cccc-dddddddddddd", "link": "https://claude.ai/code/session_" + "y" * 24, "visto_ts": 1789100000 + i, "started_at": 1789000000000} for i in range(10)]
 # 14/10: senza «on both suites» (la 1.58 allunga ops di 15 byte e lo stato stava a un byte dal tetto)
@@ -1240,7 +1274,7 @@ res2 = send_cmd(CMDS[20])
 T.check("R19 (1.22) transcript «20» → the fixture's JSON: user prompts only (no reminders, notifications, sidechain), assistant texts, one tool entry per call with note and error, the closed turn with start, end and tokens",
         res and res["ok"] is True and res["text"] == RES[19]["text"], (res or {}).get("text", "")[:300])
 T.check("R19 (1.22) transcript «20:after=a4.0» → only what came after that entry (the fixture's second page), more false",
-        res2 and res2["ok"] is True and res2["text"] == RES[20]["text"] and [e["id"] for e in json.loads(res2["text"])["entries"]] == ["u2.0", "q1.0", "a6.0", "a6.1", "a6.2", "a7.0", "a7.1", "p1.0", "w1.0", "q1789207361000", "img1.0", "q1789207365000", "a5.0"], (res2 or {}).get("text", "")[:200])
+        res2 and res2["ok"] is True and res2["text"] == RES[20]["text"] and [e["id"] for e in json.loads(res2["text"])["entries"]] == ["u2.0", "q1.0", "a6.0", "a6.1", "a6.2", "a7.0", "a7.1", "p1.0", "w1.0", "q1789207361000", "img1.0", "q1789207365000", "a5.0", "a8.0"], (res2 or {}).get("text", "")[:200])
 p19 = json.loads(send_cmd(dict(CMDS[19], id="6f1c2d3e-0130-4000-8000-000000000301", arg="2:before=a4.0"))["text"])
 bad = [send_cmd(dict(CMDS[19], id=f"6f1c2d3e-0130-4000-8000-00000000030{i}", arg=a)) for i, a in ((2, "x"), (3, "5:after=nope"))]
 none19 = send_cmd(dict(CMDS[19], id="6f1c2d3e-0130-4000-8000-000000000304", session="atlas-shop-none"))
@@ -1271,6 +1305,27 @@ T.check("R19 (1.22) typed while a turn runs: shown from the enqueue, with the ti
 T.check("R19 (1.22) «2:before=a4.0» → the two entries before it, more true; a bad arg, an unknown id and a session that is not running → ok false in plain words",
         [e["id"] for e in p19["entries"]] == ["a1.1", "a3.0"] and p19["more"] is True and bad[0]["ok"] is False and "expected n" in bad[0]["text"]
         and bad[1]["text"] == "no entry nope in the transcript" and none19["ok"] is False and none19["text"] == "atlas-shop-none is not running", str(p19) + str(bad) + str(none19))
+# R55 (contratto 1.72, 15/10): «Mostra tutto» sotto un passaggio — op diff con l'id della voce, sulla stessa trascrizione
+_a8_54 = next(e for e in json.loads(RES[19]["text"])["entries"] if e["id"] == "a8.0")
+d54 = [send_cmd({"id": f"6f1c2d3e-0710-4000-8000-00000000071{i}", "op": "diff", "session": "field-notes", "arg": a, "issued": 1789211000 + i, "by": "phone-pixel8"})
+       for i, a in enumerate(("a8.0", "a6.1", "nope", "a b"))]
+T.check("R55 (1.72) diff a8.0 → ok, text = that entry's diff whole (as in the fixture's page); an Edit without a structured result, an unknown id and a bad arg → ok false in plain words",
+        d54[0] and d54[0]["ok"] is True and json.loads(d54[0]["text"]) == _a8_54["diff"]
+        and [(x or {}).get("text") for x in d54[1:]] == ["no diff for a6.1", "no entry nope in the transcript", "diff a b: expected the id of a transcript entry"], str(d54))
+# R55 (1.72): la vista «Modifiche» di una cartella fuori da git (field-notes) e di una sessione chiusa (orbit-docs, dal registro)
+c54 = [send_cmd({"id": f"6f1c2d3e-0720-4000-8000-00000000072{i}", "op": "changes", "session": s_, "arg": a, "issued": 1789211100 + i, "by": "phone-pixel8"})
+       for i, (s_, a) in enumerate((("field-notes", None), ("field-notes", "file=/home/dev/storefront/src/checkout/totals.ts"),
+                                    ("field-notes", "file=../../.ssh/id_ed25519"), ("field-notes", "everything"), ("orbit-docs", None)))]
+v54 = json.loads(c54[0]["text"]) if c54[0] and c54[0]["ok"] else {}
+T.check("R55 (1.72) changes on a folder outside git → source transcript, repo and base null: one file per path from the conversation's passages (a8.0: totals.ts, outside the folder so absolute, size null), totals = the sum",
+        {k_: v54.get(k_) for k_ in ("source", "repo", "base", "cut")} == {"source": "transcript", "repo": None, "base": None, "cut": False}
+        and v54.get("files") == [{"path": "/home/dev/storefront/src/checkout/totals.ts", "status": "modified", "added": 2, "removed": 1, "size": None,
+                                  "hunks": _a8_54["diff"]["hunks"], "cut": False}]
+        and v54.get("totals") == {"files": 1, "added": 2, "removed": 1} and isinstance(v54.get("at"), int), str(c54[0])[:400])
+T.check("R55 (1.72) changes file=<path as listed> → that file alone; a path not among the changes and a bad arg → ok false in plain words; a closed session (from the registry) still answers",
+        c54[1] and c54[1]["ok"] is True and json.loads(c54[1]["text"])["totals"] == {"files": 1, "added": 2, "removed": 1}
+        and [(x or {}).get("text") for x in c54[2:4]] == ["../../.ssh/id_ed25519 is not among the changes", "changes everything: expected nothing or file=<path>"]
+        and c54[4] and c54[4]["ok"] is True and json.loads(c54[4]["text"])["source"] == "transcript", str(c54[1:]))
 # R22 (contratto 1.24, 02/10): op file — il telefono apre un file che compare nei `files` della trascrizione
 import base64 as _b64, os as _os22
 _fx = (FIX / "transcript-sample.jsonl").read_text().replace("/home/demo/workspaces", str(ws.resolve()))
@@ -2788,5 +2843,107 @@ u54 = S.unique_names([{"name": "x", "tmux": "x", "status": "idle", "started_at":
 T.check("R54 unique_names: the same folder on two accounts («x» and «pix-x», both in tmux) → the newer one is published as x-2 and keeps its tmux; two closed ones → the second is -2",
         [(r["name"], r["tmux"]) for r in u54] == [("x-2", "x"), ("pix-x", "pix-x"), ("pix-y", "pix-y"), ("y-2", "y")], str(u54))
 rows_alive("ledger-api", "atlas-shop", "field-notes")
+
+# R55 (contratto 1.72, 15/10): cm-diff.py e' codice del relay — `ensure` riavvia il demone quando cambia
+T.check("R55 (1.72) cm-diff.py is in the relay code that `ensure` watches (a change restarts the daemon)", "cm-diff.py" in RL.CODE_FILES, str(RL.CODE_FILES))
+# R55 (1.72): la vista con git e il timeout, in processo (la sessione finta punta a un repository vero)
+G54 = ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "init.defaultBranch=main"]
+g54 = tmp / "shop54"
+g54.mkdir()
+subprocess.run(G54 + ["init", "-q", str(g54)], check=True)
+(g54 / "a.txt").write_text("a\n")
+subprocess.run(G54 + ["-C", str(g54), "add", "a.txt"], check=True)
+subprocess.run(G54 + ["-C", str(g54), "commit", "-q", "-m", "c"], check=True)
+(g54 / "a.txt").write_text("b\n")
+(g54 / ".env").write_text("TOKEN=abcdef123456\n")
+_sr54 = RL.session_row
+RL.session_row = lambda tm: {"tmux": tm, "name": tm, "status": "idle", "cwd": str(g54), "account": "personal", "session_id": "S-54"}
+ok54, t54 = RL.changes_op("shop54", "shop54", None)
+v54g = json.loads(t54) if ok54 else {}
+slow54 = tmp / "slow-git"
+slow54.write_text("#!/bin/sh\nexec sleep 5\n")
+slow54.chmod(0o755)
+_gb54, _gt54 = RL.DF.GIT_BIN, RL.DF.GIT_TIMEOUT_S
+RL.DF.GIT_BIN, RL.DF.GIT_TIMEOUT_S = str(slow54), 0.5
+to54 = RL.changes_op("shop54", "shop54", None)
+RL.DF.GIT_BIN, RL.DF.GIT_TIMEOUT_S = _gb54, _gt54
+RL.session_row = _sr54
+head54 = subprocess.run(["git", "-C", str(g54), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+T.check("R55 (1.72) changes with git → source git, repo the root, base the short HEAD; the edited file with its lines, the new .env with counts only",
+        (v54g.get("source"), v54g.get("repo"), v54g.get("base")) == ("git", str(g54.resolve()), head54)
+        and [(f["path"], f["status"], f["added"], f["removed"], bool(f["hunks"])) for f in v54g.get("files", [])] == [(".env", "added", 1, 0, False), ("a.txt", "modified", 1, 1, True)], t54[:300])
+T.check("R55 (1.72) git that does not answer in time → ok false «git did not answer in 5 s» (the app shows it with Riprova)", to54 == (False, "git did not answer in 5 s"), str(to54))
+T.check("R55 (1.72) changes and diff are in state.ops and are passive reads (no push after them, superseded like the other reads)",
+        {"changes", "diff"} <= set(RL.PASSIVE_OPS) and RL.OPS[-2:] == ("changes", "diff"), str(RL.OPS[-3:]))
+# R55 (1.72): la pillola di /state — a fine turno, al piu' una volta al minuto; la sessione chiusa tiene l'ultimo valore
+r54p = tmp / "r54p"
+r54p.mkdir()
+plain54 = tmp / "plain54"
+plain54.mkdir()
+_rd54 = RL.rdir
+RL.rdir = lambda: r54p
+rows54 = [{"tmux": "shop54", "name": "shop54", "status": "idle", "cwd": str(g54), "session_id": "S-54"},
+          {"tmux": "notes54", "name": "notes54", "status": "idle", "cwd": str(plain54), "session_id": "S-55"},
+          {"tmux": "win54", "name": "win54", "status": "idle", "cwd": "D:\\w\\x", "host": "win", "session_id": "S-56"}]
+led54 = [{"event": "stop", "session_id": "S-54", "ts": iso(1789300000)}]
+pa54 = RL.changes_pills(rows54, led54, 1789300100)
+(g54 / "b.txt").write_text("1\n2\n3\n")
+led54b = led54 + [{"event": "stop", "session_id": "S-54", "ts": iso(1789300120)}]
+pb54, pc54 = RL.changes_pills(rows54, led54b, 1789300130), RL.changes_pills(rows54, led54b, 1789300170)
+(g54 / "c.txt").write_text("x\n")
+pd54 = RL.changes_pills(rows54, led54b, 1789300400)
+pe54 = RL.changes_pills([dict(rows54[0], status="dead")], led54b + [{"event": "stop", "session_id": "S-54", "ts": iso(1789300500)}], 1789300600)
+RL.rdir = _rd54
+T.check("R55 (1.72) the pill: {files, added, removed, at} with git, null outside git, none for a session on another host; a turn end 30 s after the last count waits, at 70 s it is counted again; no turn end, no count; a closed session keeps its last value",
+        pa54 == {"shop54": {"files": 2, "added": 2, "removed": 1, "at": 1789300100}, "notes54": None}
+        and pb54["shop54"] == pa54["shop54"] and pc54["shop54"] == {"files": 3, "added": 5, "removed": 1, "at": 1789300170}
+        and pd54["shop54"] == pc54["shop54"] and pe54 == {"shop54": pc54["shop54"]}, str([pa54, pb54, pc54, pd54, pe54]))
+st54 = S.build_session({"name": "x", "tmux": "x", "status": "idle"}, {"changes": {"x": {"files": 1, "added": 2, "removed": 0, "at": 5}}})
+T.check("R55 (1.72) build_session: changes from src, null for a session without a pill",
+        st54["changes"] == {"files": 1, "added": 2, "removed": 0, "at": 5} and S.build_session({"name": "y", "tmux": "y", "status": "idle"}, {})["changes"] is None,
+        str(st54.get("changes")))
+
+# R55 (decisione 3 dell'indice, 16/10): fuori da git la pillola porta i conteggi delle modifiche di Claude nella
+# conversazione corrente, ed e' null solo quando non ce ne sono: la pillola c'e' anche li' e apre la vista «transcript»
+t55 = tmp / "notes55.jsonl"
+_w55 = lambda u, ts, c, **k: json.dumps(dict(type=u[0] == "w" and "assistant" or "user", uuid=u, timestamp=ts, cwd=str(plain54), message={"content": c}, **k)) + "\n"  # noqa: E731
+with open(t55, "w") as f:
+    f.write(_w55("w1", "2026-10-16T08:00:00.000Z", [{"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": str(plain54 / "a.md"), "content": "uno\ndue\n"}}]))
+    f.write(_w55("r1", "2026-10-16T08:00:01.000Z", [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}],
+                 toolUseResult={"type": "create", "filePath": str(plain54 / "a.md"), "content": "uno\ndue\n", "structuredPatch": []}))
+    f.write(_w55("w2", "2026-10-16T08:00:02.000Z", [{"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": str(plain54 / "a.md")}}]))
+    f.write(_w55("r2", "2026-10-16T08:00:03.000Z", [{"type": "tool_result", "tool_use_id": "t2", "content": "ok"}],
+                 toolUseResult={"filePath": str(plain54 / "a.md"), "structuredPatch": [{"oldStart": 2, "oldLines": 1, "newStart": 2, "newLines": 1, "lines": ["-due", "+DUE"]}]}))
+    f.write(_w55("w3", "2026-10-16T08:00:04.000Z", [{"type": "tool_use", "id": "t3", "name": "Edit", "input": {"file_path": str(plain54 / ".env")}}]))
+    f.write(_w55("r3", "2026-10-16T08:00:05.000Z", [{"type": "tool_result", "tool_use_id": "t3", "content": "ok"}],
+                 toolUseResult={"filePath": str(plain54 / ".env"), "structuredPatch": [{"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "lines": ["-K=1", "+K=2"]}]}))
+r55p = tmp / "r55p"
+r55p.mkdir()
+_rd55, _to55 = RL.rdir, RL.core.transcript_of
+RL.rdir = lambda: r55p
+RL.core.transcript_of = lambda row: str(t55) if row.get("session_id") == "S-57" else ""
+row55 = {"tmux": "notes55", "name": "notes55", "status": "idle", "cwd": str(plain54), "session_id": "S-57"}
+led55 = [{"event": "stop", "session_id": "S-57", "ts": iso(1789400000)}]
+pa55 = RL.changes_pills([row55], led55, 1789400010)
+RL.rdir = lambda: tmp   # un ricordo a parte: changes_pills riscrive il suo con le sole righe che riceve
+pb55 = RL.changes_pills([dict(row55, tmux="empty55", session_id="S-58")], [{"event": "stop", "session_id": "S-58", "ts": iso(1789400000)}], 1789400010)
+RL.rdir, RL.core.transcript_of = _rd55, _to55
+T.check("R55 (1.72, decision 3) the pill outside git: the counts of Claude's changes in the conversation (a.md written then edited, .env edited: 2 files +4 −2), null only without changes",
+        pa55 == {"notes55": {"files": 2, "added": 4, "removed": 2, "at": 1789400010}} and pb55 == {"empty55": None}, str([pa55, pb55]))
+
+# R55 (revisione finale, 16/10): fuori da git la pillola non rilegge la trascrizione da capo a ogni fine turno — riprende
+# dai byte gia' contati (la trascrizione cresce solo in coda)
+with open(t55, "a") as f:
+    f.write(_w55("w4", "2026-10-16T08:01:00.000Z", [{"type": "tool_use", "id": "t4", "name": "Write", "input": {"file_path": str(plain54 / "b.md"), "content": "x\n"}}]))
+    f.write(_w55("r4", "2026-10-16T08:01:01.000Z", [{"type": "tool_result", "tool_use_id": "t4", "content": "ok"}],
+                 toolUseResult={"type": "create", "filePath": str(plain54 / "b.md"), "content": "x\n", "structuredPatch": []}))
+_te55, seen55 = RL.core.transcript_entries, []
+RL.core.transcript_entries = lambda path, offset=0, *a, **k: (seen55.append(offset), _te55(path, offset, *a, **k))[1]
+RL.rdir = lambda: r55p
+RL.core.transcript_of = lambda row: str(t55) if row.get("session_id") == "S-57" else ""
+pc55 = RL.changes_pills([row55], led55 + [{"event": "stop", "session_id": "S-57", "ts": iso(1789400100)}], 1789400110)
+RL.rdir, RL.core.transcript_of, RL.core.transcript_entries = _rd55, _to55, _te55
+T.check("R55 (1.72, decision 3) outside git the next pill reads only the new bytes of the transcript (offset > 0) and adds them: b.md written → 3 files +5 −2",
+        pc55 == {"notes55": {"files": 3, "added": 5, "removed": 2, "at": 1789400110}} and seen55 and min(seen55) > 0, str([pc55, seen55]))
 
 T.finish()

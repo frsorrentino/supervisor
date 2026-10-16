@@ -18,6 +18,8 @@
 #   6. install     — copies the plugin into the cache of every local account that has it
 #                    installed and updates installed_plugins.json (hooks run from the cache:
 #                    T53, live sessions keep their old version until they restart)
+#   7. marketplace — the supervisor entry of the fsorrentino marketplace to v<v> and the public sha,
+#                    committed alone and pushed in its repo (tools-marketplace-bump.py)
 set -euo pipefail
 
 VER="${1:?usage: bash release.sh <version> [--check]  (e.g. 0.3.0)}"
@@ -213,5 +215,6 @@ PY
 echo ""
 echo "DONE v$VER — verify: https://github.com/frsorrentino/supervisor/releases/tag/v$VER"
 echo "Local sessions pick up $VER on next restart (hooks run from the cache)."
-echo "Marketplace fsorrentino entry: {\"source\": \"git-subdir\", \"url\": \"https://github.com/frsorrentino/supervisor.git\", \"path\": \"supervisor\", \"ref\": \"v$VER\", \"sha\": \"$PUB\"}"
+# 16/10/2026 («Allinea a ogni release»): la voce del marketplace fsorrentino si aggiorna da se' (commit e push nel suo repo)
+python3 tools-marketplace-bump.py "$VER" "$PUB"
 echo "Public marketplace users: claude plugin marketplace update fsorrentino"

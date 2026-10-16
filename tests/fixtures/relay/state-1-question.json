@@ -55,7 +55,8 @@
       "suggestion": null,
       "goal": null,
       "handoff": "/fable-director:handoff --here",
-      "permission_mode": "plan"
+      "permission_mode": "plan",
+      "changes": null
     },
     {
       "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
@@ -118,7 +119,13 @@
       ],
       "permission_mode": "bypassPermissions",
       "permission_bypass": true,
-      "at_pc": true
+      "at_pc": true,
+      "changes": {
+        "files": 4,
+        "added": 8,
+        "removed": 2,
+        "at": 1792100000
+      }
     },
     {
       "id": "3d1b2c4e-0000-4000-8000-000000000003",
@@ -170,7 +177,8 @@
         "text": "Commit the README changes now?",
         "at": 1789210600,
         "by": "terminal"
-      }
+      },
+      "changes": null
     },
     {
       "id": "3d1b2c4e-0000-4000-8000-000000000004",
@@ -199,7 +207,8 @@
       "low_priority": null,
       "suggestion": null,
       "goal": null,
-      "handoff": null
+      "handoff": null,
+      "changes": null
     }
   ],
   "quota": {
@@ -344,7 +353,9 @@
     "agenda_set",
     "quota_route",
     "project_new",
-    "permission_mode"
+    "permission_mode",
+    "changes",
+    "diff"
   ],
   "slash": [
     "compact",

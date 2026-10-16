@@ -78,5 +78,45 @@ shutil.rmtree(stray.parent)
 r = run(ver)
 T.check("RL5 an untracked file OUTSIDE the plugin folder does not block (it never ships): CHECK OK",
         r.returncode == 0 and "CHECK OK" in r.stdout, r.stdout[-400:] + r.stderr[-200:])
+# RL6 (16/10/2026, il maintainer alle 08:01: «Allinea a ogni release»): la release aggiorna da se' la voce supervisor del
+# marketplace fsorrentino (ref vX, sha del commit pubblico), committa solo marketplace.json e fa push
+mk = tmp / "mkt"
+bare = tmp / "mkt-remote.git"
+subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+subprocess.run(["git", "clone", "-q", str(bare), str(mk)], check=True, capture_output=True)
+(mk / "fable-director-marketplace" / ".claude-plugin").mkdir(parents=True)
+mj = mk / "fable-director-marketplace" / ".claude-plugin" / "marketplace.json"
+other = {"name": "fable-director", "source": {"source": "git-subdir", "url": "https://example.invalid/fd.git", "path": "fd", "ref": "v1.0.0", "sha": "1" * 40}}
+sup = {"name": "supervisor", "source": {"source": "git-subdir", "url": "https://github.com/frsorrentino/supervisor.git", "path": "supervisor", "ref": "v0.8.26", "sha": "2" * 40},
+       "description": "Supervisor — più sessioni"}
+mj.write_text(json.dumps({"name": "fsorrentino", "plugins": [other, sup]}, indent=2, ensure_ascii=False) + "\n")
+(mk / "unrelated.txt").write_text("a\n")
+subprocess.run(GIT + ["add", "-A"], cwd=mk, check=True)
+subprocess.run(GIT + ["commit", "-q", "-m", "init"], cwd=mk, check=True)
+subprocess.run(["git", "push", "-q", "origin", "HEAD"], cwd=mk, check=True, capture_output=True)
+(mk / "unrelated.txt").write_text("someone else's work in progress\n")
+bump = lambda *a: subprocess.run(["python3", str(root / "tools-marketplace-bump.py"), *a], capture_output=True, text=True, timeout=60,  # noqa: E731
+                                 env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
+r6 = bump("0.8.27", "3" * 40, str(mk / "fable-director-marketplace"))
+d6 = json.loads(mj.read_text())
+remote6 = subprocess.run(["git", "--git-dir", str(bare), "log", "-1", "--format=%s", "--name-only"], capture_output=True, text=True).stdout.split()
+T.check("RL6 the marketplace entry: supervisor → ref v0.8.27 and the public sha, the other plugin and the description untouched, the file's format kept",
+        r6.returncode == 0 and d6["plugins"][1]["source"] == dict(sup["source"], ref="v0.8.27", sha="3" * 40) and d6["plugins"][0] == other
+        and d6["plugins"][1]["description"] == sup["description"] and mj.read_text() == json.dumps(d6, indent=2, ensure_ascii=False) + "\n", r6.stdout + r6.stderr)
+T.check("RL6 committed alone as «chore(marketplace): supervisor v0.8.27» and pushed; someone else's uncommitted file stays out and as it was",
+        remote6 == ["chore(marketplace):", "supervisor", "v0.8.27", "fable-director-marketplace/.claude-plugin/marketplace.json"]
+        and (mk / "unrelated.txt").read_text() == "someone else's work in progress\n", " ".join(remote6))
+r6b = bump("0.8.27", "3" * 40, str(mk / "fable-director-marketplace"))
+r6c = bump("0.8.28", "4" * 40, str(tmp / "no-such-marketplace"))
+T.check("RL6 already at that version → nothing to commit, exit 0; no marketplace folder (another machine) → it prints the entry to paste and exits 0",
+        r6b.returncode == 0 and "already" in r6b.stdout and r6c.returncode == 0 and '"ref": "v0.8.28"' in r6c.stdout and "4" * 40 in r6c.stdout, r6b.stdout + r6c.stdout + r6c.stderr)
+subprocess.run(["git", "checkout", "-q", "-b", "feature-x"], cwd=mk, check=True)
+r6d = bump("0.8.29", "5" * 40, str(mk / "fable-director-marketplace"))
+remote6d = subprocess.run(["git", "--git-dir", str(bare), "log", "--all", "-1", "--format=%s"], capture_output=True, text=True).stdout.strip()
+T.check("RL6 the marketplace checkout on another branch (not the published one) → FAIL naming it, nothing committed or pushed",
+        r6d.returncode != 0 and "feature-x" in r6d.stdout + r6d.stderr and json.loads(mj.read_text())["plugins"][1]["source"]["ref"] == "v0.8.27"
+        and remote6d == "chore(marketplace): supervisor v0.8.27", r6d.stdout + r6d.stderr + remote6d)
+subprocess.run(["git", "checkout", "-q", "-"], cwd=mk, check=True)
+T.check("RL6 release.sh calls the bump after the install, with the public sha", "tools-marketplace-bump.py \"$VER\" \"$PUB\"" in (root / "release.sh").read_text(), "")
 shutil.rmtree(tmp)
 T.finish()

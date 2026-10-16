@@ -308,4 +308,31 @@ qs = {e["text"]: e["queued"] for e in eq if e["role"] == "user"}
 T.check("CO13 a scheduled task (enqueue, dequeue, isMeta user line) stops being queued; one taken off the queue stops being queued when the turn ends; one still in the queue stays queued; no duplicate",
         qs == {"[Post su X] segui la ricetta": False, "altro messaggio": False, "ancora in coda": True}
         and sum(1 for e in eq if e["role"] == "user") == 3, str([(e["id"], e["role"], e["queued"], e["text"]) for e in eq]))
+
+# CO14 (contratto 1.72, 15/10): il diff dei passaggi di modifica nelle voci della chat, dal toolUseResult della riga del
+# risultato; una riga con due risultati non dice di chi e' il toolUseResult
+t14 = Path(tempfile.mkdtemp(prefix="cm-core-")) / "d.jsonl"
+SP14 = [{"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "lines": ["-a", "+b"]}]
+with open(t14, "w") as f:
+    f.write(qline(type="assistant", uuid="w1", timestamp="2026-10-15T10:00:00.000Z", cwd="/r", message={"content": [
+        {"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": "new.md", "content": "uno\ndue\n"}}]}))
+    f.write(qline(type="user", uuid="r1", timestamp="2026-10-15T10:00:01.000Z", message={"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+                  toolUseResult={"type": "create", "filePath": "/r/new.md", "content": "uno\ndue\n", "structuredPatch": []}))
+    f.write(qline(type="assistant", uuid="w2", timestamp="2026-10-15T10:00:02.000Z", cwd="/r", message={"content": [
+        {"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": "/r/a.txt", "old_string": "a", "new_string": "b"}},
+        {"type": "tool_use", "id": "t3", "name": "Edit", "input": {"file_path": "/r/c.txt", "old_string": "a", "new_string": "b"}}]}))
+    f.write(qline(type="user", uuid="r2", timestamp="2026-10-15T10:00:03.000Z", message={"content": [
+        {"type": "tool_result", "tool_use_id": "t2", "content": "ok"}, {"type": "tool_result", "tool_use_id": "t3", "content": "ok"}]},
+        toolUseResult={"filePath": "/r/a.txt", "structuredPatch": SP14}))
+    f.write(qline(type="assistant", uuid="w4", timestamp="2026-10-15T10:00:04.000Z", cwd="/r", message={"content": [
+        {"type": "tool_use", "id": "t4", "name": "Edit", "input": {"file_path": "/r/a.txt", "old_string": "zz", "new_string": "b"}}]}))
+    f.write(qline(type="user", uuid="r4", timestamp="2026-10-15T10:00:05.000Z", message={"content": [
+        {"type": "tool_result", "tool_use_id": "t4", "is_error": True, "content": "String to replace not found"}]}, toolUseResult="Error: String to replace not found"))
+e14 = {e["id"]: e for e in core.transcript_entries(str(t14), 0, diff_cap=(200, 16000))}
+plain14 = core.transcript_entries(str(t14), 0)
+T.check("CO14 (1.72) with diff_cap a Write of a new file gets diff (create, the path from the result); a line carrying two results gives none; a failed Edit none; without diff_cap every entry has diff null, as its last key",
+        e14["w1.0"]["diff"] == {"path": "/r/new.md", "kind": "create", "added": 2, "removed": 0, "cut": False,
+                                "hunks": [{"old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 2, "lines": ["+uno", "+due"]}]}
+        and e14["w2.0"]["diff"] is None and e14["w2.1"]["diff"] is None and e14["w4.0"]["diff"] is None and e14["w4.0"]["error"] is True
+        and all(e["diff"] is None for e in plain14) and list(plain14[0])[-1] == "diff", json.dumps(e14["w1.0"]["diff"]))
 T.finish()

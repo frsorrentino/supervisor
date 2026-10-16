@@ -99,7 +99,9 @@
     "agenda_set",
     "quota_route",
     "project_new",
-    "permission_mode"
+    "permission_mode",
+    "changes",
+    "diff"
   ],
   "slash": [
     "compact",

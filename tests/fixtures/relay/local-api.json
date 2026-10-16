@@ -2,7 +2,7 @@
  "contract": "1.35",
  "base": "http://127.0.0.1:8765",
  "token": "Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
- "rules": "Bearer token on every /api call (GET also ?t=); Host 127.0.0.1 or localhost on the relay's port; no CORS headers; `at` varies; JSON in clear, as in the other fixtures; 1.70: GET /api/tail/<id> = the body of /tail/<id> in clear (`at` varies), ?tx= equal to the current tx → 304 without a body, 404 {\"error\": \"no such session\"} for an id with no live transcript",
+ "rules": "Bearer token on every /api call (GET also ?t=); Host 127.0.0.1 or localhost on the relay's port; no CORS headers; `at` varies; JSON in clear, as in the other fixtures; 1.70: GET /api/tail/<id> = the body of /tail/<id> in clear (`at` varies), ?tx= equal to the current tx → 304 without a body, 404 {\"error\": \"no such session\"} for an id with no live transcript; 1.72: every entry of /api/tail carries `diff` (null when it is not a Write, Edit, MultiEdit or NotebookEdit with a structured result)",
  "exchanges": [
   {
    "name": "state",
@@ -283,7 +283,8 @@
        "turn": null,
        "files": null,
        "origin": "pc",
-       "queued": false
+       "queued": false,
+       "diff": null
       },
       {
        "id": "a70.0",
@@ -297,7 +298,8 @@
        "turn": null,
        "files": null,
        "origin": null,
-       "queued": false
+       "queued": false,
+       "diff": null
       }
      ],
      "more": false
