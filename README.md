@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.30-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.31-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -510,7 +510,8 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor interrupt <name>` | stops the turn that session is running: one Esc, sent only while «esc to interrupt» is on its screen (never a double Esc at an idle prompt, never on an open dialog) |
 | `supervisor report <project> <image\|-> "text" [--no-launch]` | screenshot into the project's `docs/segnalazioni/`, prompt delivered |
 | `supervisor queue <name> "prompt" [--expires M] \| --show \| --clear` | a prompt delivered when that session's next turn ends |
-| `supervisor next [--all] [--attach]` | the session that needs you most |
+| `supervisor next [--all] [--attach]` | the session that needs you most; a calendar deadline in its reminder window comes right under the sessions that are stopped |
+| `supervisor calendar [--json]` | deadlines from an `.ics` calendar: the address (it usually carries a token) goes in `~/.config/cc-supervisor/calendar.env` as `CALENDAR_ICS_URL=…`, mode 0600, never in config.json; an event is due within the days of its VALARM (`TRIGGER:-P3D`), or `calendar.remind_days` without one; `calendar.cases` maps the id in `X-STUDIO-CASE` (`calendar.case_property`) to the folder to open. The recap shows them under «Deadlines», with «calendar unreachable» when offline |
 | `supervisor park <name> \| --idle-over D \| --ram-below MB [--auto]` · `supervisor unpark <name>` | hibernate a session and bring it back |
 | `supervisor registry [--show\|--good\|--closed NAME]` | refresh the list of sessions to restore (also from cron); `--good` is the «last good set», which never shrinks on its own |
 | `supervisor restore [--dry-run\|--yes]` | relaunch the sessions registered before a reboot: the union of the registry and the last good set, each with its source and date |

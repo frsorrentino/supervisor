@@ -374,8 +374,10 @@ def between_sessions(events):
     return [M("recap.undelivered", n=len(lost), list=", ".join(f"{e.get('sender') or '?'} → {e.get('to') or '?'}" for e in lost[:5]))]
 
 
-def render_short(groups, label, as_html=False, between=None):
-    """Il recap delle 20:00: totali, poi ⏳ ferme, ● vive, ✓ chiuse (senza le chiuse a zero turni)."""
+def render_short(groups, label, as_html=False, between=None, deadlines=None):
+    """Il recap delle 20:00: totali, poi le scadenze in avviso, ⏳ ferme, ● vive, ✓ chiuse (senza le chiuse a zero turni).
+
+    `deadlines` = (scadenze, errore) di cm-calendar, o None col calendario spento o per un giorno passato."""
     esc = html.escape if as_html else (lambda x: x)
     mode = str(D.get("last", "short"))
     cap = int(D["max_last_chars"])
@@ -403,6 +405,16 @@ def render_short(groups, label, as_html=False, between=None):
             return f'<a href="{url}">{n}</a>' if url else n
         return shown(g["project"], bool(url)) + (f" ({url})" if url else "")
 
+    if deadlines and (deadlines[0] or deadlines[1]):
+        cal = _load("cm-calendar")
+        if lines[-1] != "":
+            lines.append("")
+        lines.append(esc(M("recap.h_deadlines")))
+        lines.append("")
+        lines += [f"📅 {esc(cal.line(e))}" for e in deadlines[0]]
+        if deadlines[1]:
+            lines.append(f"⚠ {esc(deadlines[1])}")
+        lines.append("")
     if ferme:
         if lines[-1] != "":
             lines.append("")
@@ -526,6 +538,15 @@ def write_project_log(groups, said, day):
     return n, rel
 
 
+def calendar_now():
+    """(scadenze in avviso, errore) dal calendario; mai un'eccezione: il recap esce comunque."""
+    try:
+        cal = _load("cm-calendar")
+        return cal.deadlines() if cal.url() else None
+    except Exception:   # noqa: BLE001
+        return None
+
+
 def to_app(text, day):
     """Il diario anche all'app, come evento `recap` del relay (contratto 1.18): lo stesso testo, senza l'HTML di
     Telegram; `ref` = il giorno, cosi' l'app tiene i diari dei giorni prima."""
@@ -634,7 +655,8 @@ def main(argv):
             to_app(text, day)
         return send(text, False) if a.send else 0
     between = between_sessions(getattr(a, "events", None))
-    plain = render_short(groups, label, as_html=False, between=between)
+    deadlines = calendar_now() if (not day or day >= _load("cm-calendar").today()) else None
+    plain = render_short(groups, label, as_html=False, between=between, deadlines=deadlines)
     print(plain)
     if day:
         n, rel = write_project_log(groups, summaries(groups, label), day)
@@ -643,7 +665,7 @@ def main(argv):
     if a.send:
         if day:
             to_app(plain, day)
-        return send(render_short(groups, label, as_html=True, between=between), True)
+        return send(render_short(groups, label, as_html=True, between=between, deadlines=deadlines), True)
     return 0
 
 

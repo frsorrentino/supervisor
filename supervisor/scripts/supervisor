@@ -64,6 +64,7 @@ case "$cmd" in
   restart|riavvia)        exec "$S/cm-restart.sh" "$@" ;;
   queue|coda)             exec python3 "$S/cm-queue.py" "$@" ;;
   next|prossima)          exec python3 "$S/cm-next.py" "$@" ;;
+  calendar|calendario)    exec python3 "$S/cm-calendar.py" "$@" ;;   # 16/10: scadenze da un calendario .ics
   park|parcheggia)        exec python3 "$S/cm-park.py" park "$@" ;;
   unpark|riprendi)        exec python3 "$S/cm-park.py" unpark "$@" ;;
   cloud|nuvola)           CM_SUBCOMMAND=cloud exec "$S/cm-cloud.sh" "$@" ;;

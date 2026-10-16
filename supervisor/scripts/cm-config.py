@@ -142,6 +142,11 @@ DEFAULTS = {
     "recap": {"cron_time": "20:00", "max_last_chars": 160, "last": "short", "hide_zero_turns": True, "closed_chars": 90,
               "summary": "model", "summary_model": "haiku", "summary_timeout_s": 120, "project_log": "docs/recap.md", "startup_lines": 5,
               "min_turns": 3},
+    # scadenze da un calendario .ics (16/10/2026): l'indirizzo col token sta in url_file (0600), mai qui; senza quel
+    # file e' tutto spento. remind_days vale per gli eventi senza VALARM; cases: id della pratica (case_property) →
+    # cartella, per aprire la sessione giusta
+    "calendar": {"url_file": "~/.config/cc-supervisor/calendar.env", "remind_days": 3, "cache_min": 30, "timeout_s": 10,
+                 "case_property": "X-STUDIO-CASE", "cases": {}},
     # guardia della quota: avviso sopra warn_pct (una volta per finestra), ripresa delle sessioni
     # fallite e della coda notturna quando la finestra si resetta
     "guard": {"warn_pct": 95, "cron_minutes": 5, "night_after_reset": True, "night_timeout_s": 3600,
@@ -379,7 +384,7 @@ def deep_merge(base, over, path="", unknown=None):
         here = f"{path}.{k}" if path else k
         if k not in out:
             if unknown is not None and path not in ("accounts", "shell.wrappers", "shell.aliases", "tile.monitor_names",
-                                                    "profiles", "session.env", "bot.links", "relay.colors", "hosts") \
+                                                    "profiles", "session.env", "bot.links", "relay.colors", "hosts", "calendar.cases") \
                     and not path.startswith(("profiles.", "hosts.")):
                 unknown.append(here)   # ignota: avvisata e scartata, mai propagata
                 continue

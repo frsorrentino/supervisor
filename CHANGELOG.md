@@ -2,6 +2,16 @@
 
 ## 0.3.x
 
+- **0.8.31 — 2026-10-16: deadlines from an .ics calendar, in the recap and in `next`.**
+  - Approved by the maintainer on 16/10 at 20:54 (batch 3 of the deadlines plan). A generic feature: any `.ics` feed.
+  - The address usually carries a token, so it lives in a secrets file next to the configuration (`calendar.url_file`, default `~/.config/cc-supervisor/calendar.env`, one line `CALENDAR_ICS_URL=…`, mode 0600), never in config.json or the session registry. Without that file the feature is off and nothing goes to the network.
+  - An event is in its reminder window from N days before its date: N from its VALARM (`TRIGGER:-P3D`, `-P1W`, `-PT12H` rounded up to a day; with several alarms the earliest), or `calendar.remind_days` (default 3) without one. Past events never count.
+  - Recap: a «Deadlines» section above the sessions, one line each with the date, the days left, the case and its folder. Offline the recap still goes out, with «calendar unreachable» (and the last copy of the feed, if there is one).
+  - `supervisor next`: a deadline in its window is an entry with priority 3, under the sessions that are stopped (a session stopped on a question, and now also one that said `supervisor needs-you`, priority 1). Stalled and recently finished sessions move to 4 and 5. `--attach` skips deadlines.
+  - `calendar.case_property` (default `X-STUDIO-CASE`) carries the case id; `calendar.cases` maps it to a folder, so the entry says `supervisor launch <folder>` and the master can open the session in the right place.
+  - The feed is cached in `<state_dir>/calendar.ics` (0600) for `calendar.cache_min` minutes (default 30); the address is never printed, logged or cached.
+  - `supervisor calendar [--json]`: the deadlines in their window, now.
+  - Tests: `tests/calendario-verify.py` (17 checks, an invented feed on a local server: parser, the 3-day deadline in the recap, the entry in `next` under an open needs-you, the offline line, the token kept out of output and cache, the feature off without the secrets file).
 - **0.8.30 — 2026-10-16: the turn_failed rewrite also with no open items.**
   - 0.8.29 rewrote a `turn_failed` event only when attention.json still held some item: with the file empty (the case of the master, whose item had closed at 15:00) the read stopped before it, and the event kept its `continue_text`. Now it runs with an empty file too; checked live on the master's event of 13:42, on /events and in events.json.
   - Tests: R57 with attention.json empty.
