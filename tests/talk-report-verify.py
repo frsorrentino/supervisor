@@ -202,7 +202,7 @@ print(repr(filt("❯ \\x1b[2msolo suggerimento fino a fine riga")))        # non
     T.check("R1b slug cut by characters: «…-un-po-più.png», a valid UTF-8 name", r.returncode == 0 and len(names) == 1 and names[0].endswith("-i-blocchi-che-contengono-testo-un-po-più.png"), r.stdout + r.stderr + str(names))
     want = f"Screenshot allegato, leggilo: {dest / names[0]}" if names else "?"
     for _ in range(50):
-        got = [x for x in peer.received if want in x or want in x.encode().decode("unicode_escape", "ignore").encode("latin-1", "ignore").decode("utf-8", "ignore")]
+        got = [l for x in peer.received for l in x.splitlines() if '"msgV"' in l and want in json.loads(l)["message"]["content"]]
         if got:
             break
         time.sleep(0.1)

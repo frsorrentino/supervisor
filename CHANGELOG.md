@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.33 — 2026-10-16: report screenshots named by characters, and the path line always sent.**
+  - Reported by the maintainer on 16/10 at 23:33: a screenshot sent from the app was saved as `…-un-po-pi<0xC3>.jpg`, and the message reached the session without «Screenshot allegato, leggilo: …».
+  - Cause: the slug was cut with `cut -c1-40`, which in GNU cut counts bytes and split the «ù» of «più»; then `cm-config.py --msg` failed on the non-UTF-8 path (`UnicodeEncodeError`), and the line came out empty with no warning.
+  - The slug is now built and cut by characters (letters and digits of any alphabet, the rest becomes `-`, 40 characters). `--msg` writes a non-UTF-8 argument back with its bytes. If the line still comes out empty, `report` sends the bare path and says so on stderr.
+  - The code went out already in the 0.8.32 zip (the release commit took it from the working tree); this release adds the CHANGELOG entry and the fixed test.
+  - Tests: R1b, R2b in `tests/talk-report-verify.py` («I blocchi che contengono testo un po' più esteso»).
 - **0.8.32 — 2026-10-16: no fork subagents in the night queue.**
   - Approved by the maintainer on 16/10 at 23:09. Claude Code 2.1.302 turns fork subagents on by default also in `claude -p`; a fork re-pays the whole parent context every turn, and night items run with nobody watching.
   - Night items now run with `CLAUDE_CODE_FORK_SUBAGENT=0`. `night.fork_subagent` (default `false`) set to `true` leaves the variable to the environment.
