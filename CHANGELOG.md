@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.32 — 2026-10-16: no fork subagents in the night queue.**
+  - Approved by the maintainer on 16/10 at 23:09. Claude Code 2.1.302 turns fork subagents on by default also in `claude -p`; a fork re-pays the whole parent context every turn, and night items run with nobody watching.
+  - Night items now run with `CLAUDE_CODE_FORK_SUBAGENT=0`. `night.fork_subagent` (default `false`) set to `true` leaves the variable to the environment.
+  - Tests: NI3d in `tests/night-verify.py`.
 - **0.8.31 — 2026-10-16: deadlines from an .ics calendar, in the recap and in `next`.**
   - Approved by the maintainer on 16/10 at 20:54 (batch 3 of the deadlines plan). A generic feature: any `.ics` feed.
   - The address usually carries a token, so it lives in a secrets file next to the configuration (`calendar.url_file`, default `~/.config/cc-supervisor/calendar.env`, one line `CALENDAR_ICS_URL=…`, mode 0600), never in config.json or the session registry. Without that file the feature is off and nothing goes to the network.

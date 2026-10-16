@@ -214,6 +214,7 @@
     "retry_watchdog_max_wait_ms": 900000,
     "retry_watchdog_max_usage_limit_wait_ms": 900000,
     "after_result_s": 300,
+    "fork_subagent": false,
     "out_subdir": "docs/notte",
     "max_items_per_run": 3,
     "max_queued": 8,

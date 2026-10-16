@@ -263,6 +263,10 @@ def account_env(account):
         # the request; a weekly limit can reset days later, and the item would hold the night until item_timeout_s
         if N.get("retry_watchdog_max_usage_limit_wait_ms"):
             env["CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS"] = str(int(N["retry_watchdog_max_usage_limit_wait_ms"]))
+    # 16/10/2026 (Claude Code 2.1.302): fork subagents are on by default also in `claude -p`; a fork re-pays the whole
+    # context every turn, and at night nobody watches the bill. Off unless night.fork_subagent is true
+    if not N.get("fork_subagent"):
+        env["CLAUDE_CODE_FORK_SUBAGENT"] = "0"
     return env
 
 

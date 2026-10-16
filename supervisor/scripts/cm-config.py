@@ -172,6 +172,9 @@ DEFAULTS = {
               # 16/10/2026 (Claude Code 2.1.292): `claude -p` aspetta i comandi in background e le sveglie dopo il
               # risultato; la voce si chiude dopo after_result_s senza attivita' dal risultato (0 = fino a item_timeout_s)
               "after_result_s": 300,
+              # 16/10/2026 (Claude Code 2.1.302): i subagenti fork ripagano tutto il contesto a ogni turno; spenti
+              # di notte (CLAUDE_CODE_FORK_SUBAGENT=0) salvo true
+              "fork_subagent": False,
               "out_subdir": "docs/notte", "max_items_per_run": 3, "max_queued": 8, "queue_file": "", "done_file": "", "log": ""},
     # relay per l'app Wear OS (0.4.0): Firebase RTDB + FCM dietro cm-relay.py; service account e chiave in relay.dir
     "relay": {"enabled": False, "firebase_url": "", "service_account": "~/.cc-supervisor/relay/service-account.json",
@@ -1451,6 +1454,8 @@ def main(argv):
         return 0
     if a == "--msg":
         kw = dict(x.split("=", 1) for x in argv[2:] if "=" in x)
+        # 16/10/2026: un argomento non UTF-8 (un percorso) torna fuori con i suoi byte invece di far fallire la riga
+        sys.stdout.reconfigure(errors="surrogateescape")
         print(msg(cfg, argv[1], **kw))
         return 0
     if a == "--account-for":

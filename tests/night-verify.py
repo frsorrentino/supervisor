@@ -85,7 +85,7 @@ fake_report.write_text(f"import sys\nopen({str(report_marker)!r}, 'a').write(' '
 def night(*args, free_mb="4000", claude=FAKE, conf=None):
     env = {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(conf or cfg),
            "CM_CRONTAB_CMD": str(fake_crontab), "CM_CLAUDE_BIN": str(claude), "FAKE_CLAUDE_ARGS_LOG": str(argslog),
-           "FAKE_CLAUDE_ECHO_ENV": "CLAUDE_CODE_RETRY_WATCHDOG,CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS,CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS,CLAUDE_CONFIG_DIR",
+           "FAKE_CLAUDE_ECHO_ENV": "CLAUDE_CODE_RETRY_WATCHDOG,CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS,CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS,CLAUDE_CODE_FORK_SUBAGENT,CLAUDE_CONFIG_DIR",
            "CM_NIGHT_FREE_MB": free_mb, "CM_NIGHT_REPORT_BIN": str(fake_report)}
     return subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night.py"), *args], capture_output=True, text=True, env=env, timeout=120)
 
@@ -120,6 +120,8 @@ T.check("NI3 CLAUDE_CONFIG_DIR only for the second account (T68)", "CLAUDE_CONFI
 T.check("NI3b retry watchdog on for every item, capped at night.retry_watchdog_max_wait_ms (default 15 min)", len(args) == 2 and all("ENV CLAUDE_CODE_RETRY_WATCHDOG=1 " in a and "ENV CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS=900000 " in a for a in args), str(args))
 T.check("NI3b at a usage limit the watchdog waits at most night.retry_watchdog_max_usage_limit_wait_ms (2.1.301, default 15 min)",
         len(args) == 2 and all("ENV CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS=900000 " in a for a in args), str(args))
+T.check("NI3d fork subagents off for every item (CLAUDE_CODE_FORK_SUBAGENT=0, 2.1.302), night.fork_subagent false by default",
+        len(args) == 2 and all("ENV CLAUDE_CODE_FORK_SUBAGENT=0 " in a for a in args), str(args))
 T.check("NI3c claude -p in stream-json with --verbose (the outcome from the `result` event)",
         len(args) == 2 and all(" --output-format stream-json --verbose" in a for a in args), str(args))
 reports = sorted((ws / "personali" / "alfa" / "docs" / "notte").glob("*.md")) + sorted((ws / "agenzia" / "clienti" / "sito.com" / "docs" / "notte").glob("*.md"))

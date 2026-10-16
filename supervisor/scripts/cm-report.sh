@@ -53,7 +53,9 @@ if [ "$IMG" != "-" ]; then
   [ -f "$IMG" ] || { cm_msg report.no_image "path=$IMG" >&2; exit 4; }
   EXT="${IMG##*.}"; EXT="${EXT,,}"
   case " $CM_REPORT_IMAGE_EXTS " in *" $EXT "*) ;; *) EXT=png ;; esac
-  SLUG=$(printf '%s' "$TESTO" | tr -cs 'A-Za-z0-9àèéìòù' '-' | tr 'A-Z' 'a-z' | cut -c1-40 | sed 's/^-//; s/-$//')
+  # 16/10/2026: per caratteri, non per byte (cut -c e tr di GNU contano i byte: «più» spezzata a meta' dava un nome
+  # non UTF-8, e la riga col percorso spariva dal messaggio)
+  SLUG=$(python3 -c 'import re, sys; print(re.sub(r"\W+|_", "-", sys.argv[1].lower())[:40].strip("-"))' "$TESTO")
   [ -n "$SLUG" ] || SLUG=report
   DEST_DIR="$CARTELLA/$CM_REPORT_SUBDIR"
   mkdir -p "$DEST_DIR"
@@ -85,8 +87,13 @@ fi
 
 # --- consegna, senza aspettare la risposta ---------------------------------------
 PROMPT="$(cm_msg report.prompt "date=$(date +%d/%m/%Y)" "text=$TESTO")"
-[ -n "$PERCORSO_IMG" ] && PROMPT="$PROMPT
-$(cm_msg report.prompt_image "path=$PERCORSO_IMG")"
+if [ -n "$PERCORSO_IMG" ]; then
+  RIGA_IMG="$(cm_msg report.prompt_image "path=$PERCORSO_IMG")"
+  # la riga col percorso non sparisce mai in silenzio: se il messaggio non esce, il percorso nudo e un avviso
+  [ -n "$RIGA_IMG" ] || { RIGA_IMG="$PERCORSO_IMG"; echo "report: prompt_image line failed, path sent bare" >&2; }
+  PROMPT="$PROMPT
+$RIGA_IMG"
+fi
 NATIVO=no python3 "$CM_SCRIPTS/cm-talk.py" talk "$NOME" "$PROMPT" --no-wait --no-native-hint 2>"$CM_STATE_DIR/report-talk.err" || {
   cat "$CM_STATE_DIR/report-talk.err" >&2; exit 5; }
 VIA=$(grep -o 'via [a-z]*' "$CM_STATE_DIR/report-talk.err" | head -1)

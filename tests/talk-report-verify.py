@@ -196,6 +196,19 @@ print(repr(filt("❯ \\x1b[2msolo suggerimento fino a fine riga")))        # non
     T.check("R1 image archived as <date>-<slug>.png with 644", r.returncode == 0 and len(files) == 1 and files[0].name.endswith("-il-bottone-compra-non-funziona.png")
             and oct(files[0].stat().st_mode)[-3:] == "644", r.stdout + r.stderr + str(files))
     T.check("R2 delivered to the project session via socket with the image path", "consegnata" in r.stdout and any(str(files[0]) in x for x in peer.received[-1:]) if files else False, r.stdout + (peer.received[-1] if peer.received else ""))
+    # 16/10/2026: «più» at the 40th character — the slug is cut by characters, the name stays UTF-8, the line goes out
+    r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), "blog", str(img), "I blocchi che contengono testo un po' più esteso"], capture_output=True, text=True, env=env(), timeout=120)
+    names = [f.name for f in dest.glob("*-i-blocchi-*")]
+    T.check("R1b slug cut by characters: «…-un-po-più.png», a valid UTF-8 name", r.returncode == 0 and len(names) == 1 and names[0].endswith("-i-blocchi-che-contengono-testo-un-po-più.png"), r.stdout + r.stderr + str(names))
+    want = f"Screenshot allegato, leggilo: {dest / names[0]}" if names else "?"
+    for _ in range(50):
+        got = [x for x in peer.received if want in x or want in x.encode().decode("unicode_escape", "ignore").encode("latin-1", "ignore").decode("utf-8", "ignore")]
+        if got:
+            break
+        time.sleep(0.1)
+    T.check("R2b the delivered message carries «Screenshot allegato, leggilo: <path>»", bool(got), str(peer.received[-2:]))
+    m = subprocess.run(["python3", str(T.SCRIPTS / "cm-config.py"), "--msg", "report.prompt_image", b"path=/x/pi\xc3.jpg"], capture_output=True, env=env(), timeout=30)
+    T.check("R2b --msg with a non-UTF-8 path: exit 0, the bytes kept", m.returncode == 0 and m.stdout.strip().endswith(b"/x/pi\xc3.jpg"), repr(m.stdout) + repr(m.stderr))
     r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), "shopf", "-", "solo testo", "--no-launch"], capture_output=True, text=True, env=env(), timeout=60)
     T.check("R1 prefix match shopf → shopfront; --no-launch with no session → archived only", r.returncode == 0 and "shopfront" in r.stdout and "non" in r.stdout.lower(), r.stdout + r.stderr)
     r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), "nessuno", "-", "x"], capture_output=True, text=True, env=env(), timeout=60)
