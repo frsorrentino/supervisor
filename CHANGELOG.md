@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.30 — 2026-10-16: the turn_failed rewrite also with no open items.**
+  - 0.8.29 rewrote a `turn_failed` event only when attention.json still held some item: with the file empty (the case of the master, whose item had closed at 15:00) the read stopped before it, and the event kept its `continue_text`. Now it runs with an empty file too; checked live on the master's event of 13:42, on /events and in events.json.
+  - Tests: R57 with attention.json empty.
 - **0.8.29 — 2026-10-16: a failed turn that stays closed, and Stop right after a send.**
   - Asked by the master on 16/10 at 16:03 with the maintainer's ok, from the phone: «master: turn failed — server_error» with Continue kept coming back under a successful answer, also after three Continue.
   - Cause: the apps keep a `turn_failed` event open while `turn_started` is not later than the event, but `turn_started` is set only while a turn runs (contract note in cm-relay-state): at the end of the next turn it is null again and the banner returns. The relay had closed its «Needs you» item at the next prompt and had emitted the event once.

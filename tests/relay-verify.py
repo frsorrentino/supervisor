@@ -3016,6 +3016,11 @@ try:
     pub57 = {kk: C.decrypt(v, k) for m, pth, b in _puts57[n57:] for kk, v in (b or {}).items()}
     again57 = len(_puts57)
     RL.attention_open(rows57, [{"event": "prompt", "session_id": "S-A", "ts": iso(t57 + 50)}])
+    again57b = len(_puts57)
+    # la voce di field-notes gia' chiusa prima della correzione: attention.json vuoto, l'evento ancora con il testo
+    RL.write_json(_d57 / "attention.json", [])
+    empty57 = RL.attention_open(rows57, [])
+    loc57b = RL.read_json(RL.local_dir() / "events.json", {})
 finally:
     for n, v in _save57.items():
         setattr(RL, n, v)
@@ -3024,6 +3029,8 @@ T.check("R57 a failed turn still open: its event keeps continue_text, nothing re
 T.check("R57 the failed turn closes at the next prompt: its event on /events and in events.json loses continue_text and gets settled_at; the other session's open one and the other kinds stay as they were; a second pass rewrites nothing",
         list(pub57) == [f"{t57}_000"] and pub57[f"{t57}_000"].get("continue_text") is None and pub57[f"{t57}_000"].get("settled_at")
         and loc57[f"{t57}_000"].get("continue_text") is None and loc57[f"{t57}_001"]["continue_text"] == "go on" and "settled_at" not in loc57[f"{t57 + 1}_009"]
-        and len(_puts57) == again57, str((pub57, loc57, _puts57)))
+        and again57b == again57, str((pub57, loc57, _puts57)))
+T.check("R57 attention.json empty (the item closed before this release) and an event still with continue_text → rewritten anyway",
+        empty57 == [] and len(_puts57) == again57b + 1 and loc57b[f"{t57}_001"].get("continue_text") is None and loc57b[f"{t57}_001"].get("settled_at"), str((loc57b, _puts57)))
 
 T.finish()

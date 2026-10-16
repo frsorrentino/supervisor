@@ -4149,6 +4149,7 @@ def attention_open(rows, ledger):
     p = rdir() / "attention.json"
     items = [x for x in read_json(p, []) if isinstance(x, dict)]
     if not items:
+        failures_settle(set())   # anche senza voci: un evento rimasto aperto da prima (16/10, la master)
         return []
     sid_of = {S.short_name(r.get("name") or r.get("tmux") or "", prefixes()): r.get("session_id") or "" for r in rows if r.get("status") != "dead"}
     keep = []
