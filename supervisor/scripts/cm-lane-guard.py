@@ -26,8 +26,12 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# release.sh (16/10/2026) solo dove e' il comando: in testa al segmento, dopo assegnazioni, nice/nohup/time e bash/sh;
+# come argomento (`grep -n x release.sh`, `cat release.sh`) e' una lettura, e veniva negata
 CLOSED = re.compile(r"(?:^|[;&|(\s])(?:git\s+(?:-C\s+\S+\s+)?push\b(?!.*--dry-run)|gh\s+release\s+(?:create|upload|edit|delete)\b"
-                    r"|npm\s+publish\b(?!.*--dry-run)|claude\s+plugin\s+publish\b|(?:\S*/)?release\.sh\b(?!.*--check))")
+                    r"|npm\s+publish\b(?!.*--dry-run)|claude\s+plugin\s+publish\b)"
+                    r"|(?:^|[;&|(\n])\s*(?:\w+=\S*\s+)*(?:(?:nice(?:\s+-n\s*-?\d+|\s+-\d+)?|nohup|time)\s+)*"
+                    r"(?:(?:ba)?sh\s+(?:-\w+\s+)*)?(?:\S*/)?release\.sh\b(?!.*--check)")
 
 
 def _load(name):

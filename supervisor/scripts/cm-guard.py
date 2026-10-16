@@ -325,6 +325,25 @@ def run():
             s["resume_names"] = []
             s["resumed_at"] = t
             changed = True
+    # 16/10/2026: una volta l'ora i compiti aperti da piu' di 6 ore col controllo verde si chiudono (`task auto-close`)
+    stamp = state_path().with_name("auto-close.stamp")
+    try:
+        last = stamp.stat().st_mtime
+    except OSError:
+        last = 0
+    if t - last >= 3600:
+        try:
+            stamp.parent.mkdir(parents=True, exist_ok=True)
+            stamp.touch()
+            os.utime(stamp, (t, t))
+        except OSError:
+            pass
+        try:
+            r = subprocess.run([CM_BIN, "task", "auto-close"], capture_output=True, text=True, timeout=900)
+            if r.stdout.strip():
+                log("auto-close: " + "; ".join(r.stdout.strip().splitlines()))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     if changed:
         save_state(st)
     return 0

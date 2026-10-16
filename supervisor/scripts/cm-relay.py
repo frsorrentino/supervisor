@@ -288,21 +288,33 @@ def write_json(p, obj, mode=0o600):
     os.replace(tmp, p)
 
 
+def _claim(to, text):
+    """88c86e (16/10): il segno d'origine lasciato prima di `talk`/`report` (cm-inbox.claim_origin); None se non riesce."""
+    try:
+        return _load("cm-inbox").claim_origin(to, text, "relay")
+    except Exception:   # noqa: BLE001 — senza segno resta il ripiego di mark_origin
+        return None
+
+
 def relay_talk(name, text, *opts):
     """`supervisor talk` per un messaggio del relay, poi origin «relay» sul suo record nella casella di chi riceve
     (0319ab, 14/10): `talk` firma col nome della sessione che ha avviato il demone, e la master non distingueva un ok
     dal telefono da un messaggio di quella sessione. La CLI scrive sempre «session»."""
     t0 = time.time()
+    claim = _claim(name, text)
     rc, out = run_cm("talk", name, text, *opts)
-    try:
+    if claim:
+        claim.unlink(missing_ok=True)   # non consumato (talk non ha scritto nulla): non vale per il prossimo
+    try:   # resta come ripiego: un record scritto senza il segno (talk vecchio) diventa «relay» qui
         _load("cm-inbox").mark_origin(name, text, t0, "relay")
     except Exception:   # noqa: BLE001 — il messaggio e' partito: l'origine e' un'informazione in piu'
         pass
     return rc, out
 
 
-def run_cm(*args, timeout=None):
-    p = subprocess.run([CM_BIN, *args], capture_output=True, text=True, timeout=int(timeout or R.get("command_timeout_s") or 120))
+def run_cm(*args, timeout=None, env=None):
+    p = subprocess.run([CM_BIN, *args], capture_output=True, text=True, timeout=int(timeout or R.get("command_timeout_s") or 120),
+                       env=dict(os.environ, **env) if env else None)
     out = (p.stdout + ("\n" + p.stderr if p.stderr.strip() else "")).strip()
     return p.returncode, out
 
@@ -1949,11 +1961,14 @@ def _share_report(cmd, tm, session, sid):
         img = tmpd / f"{sid}.{ext}"
         img.write_bytes(data)
     t0 = time.time()
+    claim = _claim(tm, None)
     try:
         rc, out = run_cm("report", row["cwd"], str(img) if img else "-", text or M("relay.report_image_only"), "--session", tm)
     finally:
         if img:
             img.unlink(missing_ok=True)
+        if claim:
+            claim.unlink(missing_ok=True)
     if rc != 0:
         return False, (out.splitlines() or ["report failed"])[0]
     try:   # 0319ab (21:43): anche la segnalazione e' un messaggio del relay; il testo lo scrive cm-report.sh
@@ -2916,7 +2931,10 @@ def approve_task(cmd, arg):
         return False, M("relay.cmd_approve_not_waiting", task=tid or "?")
     text = S.one_line(str(cmd.get("text") or "").strip())[:500] or "ok"
     where = from_device(cmd) + (", " + M("relay.approve_live") if live else "")
-    rc, out = run_cm("task", "approve", tid, "--by", str(cmd.get("by") or "app"), "--text", f"{text} ({where})")
+    # 16/10/2026: il demone eredita CLAUDECODE dalla sessione che l'ha avviato; `task approve` lo prenderebbe per una
+    # sessione Claude e vorrebbe --inbox. L'ok che arriva qui viene dal dispositivo
+    rc, out = run_cm("task", "approve", tid, "--by", str(cmd.get("by") or "app"), "--text", f"{text} ({where})",
+                     env={"CM_APPROVE_VIA": "relay"})
     if rc != 0:
         return False, (out.splitlines() or ["task approve failed"])[0]
     return True, M("relay.cmd_approved", task=tid)

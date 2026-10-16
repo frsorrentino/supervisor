@@ -19,7 +19,19 @@ leave behind are attached to the next tasks of the same project.
 
 The closed-lane guard (`tasks.guard`, off by default) is a PreToolUse hook on
 Bash: `git push`, `gh release`, `npm publish` and `release.sh` pass only inside
-a running task of an approved plan, or after a recorded ok.
+a running task of an approved plan, or after a recorded ok. `release.sh` counts
+only as the command (`bash release.sh 1.0`, `./release.sh`), not as an argument
+(`grep … release.sh`). The hooks that block a push when the guard fails wait 30
+seconds, so a loaded machine does not block it by timeout.
+
+An ok on someone's behalf comes from their device. From a Claude session,
+`supervisor task approve ID --by NAME --inbox MSG [--text NOTE]` is the only
+way: only the root session can run it, `MSG` must be a relay message (phone,
+watch, web app) in its inbox from the last hour, and the ok quotes that message.
+The relay's own oks («Approve» on the phone) are recorded as before. Once an
+hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
+check is green (`supervisor task auto-close`); a red check there leaves the task
+as it is and counts no attempt.
 
 fable-director is optional. When it is installed and enabled in the session's
 account, the unit's brief asks it to open its budget with the unit's check as

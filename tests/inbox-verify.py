@@ -119,6 +119,26 @@ by_text = {r["text"]: r.get("origin") for r in recs("chiusa")}
 T.check("IB10 mark_origin with text None (the report composes its own text) marks the newest record from `since`, not the older ones",
         mid2 not in ("", "None") and by_text.get("testo composto da cm-report") == "relay" and by_text.get("altro testo") == "session", str(by_text))
 
+# IB10b (88c86e, 16/10): il segno del relay prima di talk → origin «relay» gia' alla creazione, mai una lettura «session»
+py("C = I.claim_origin('segni', 'ok dal telefono, segno prima')")
+py("I.put('segni','ok dal telefono, segno prima','supervisor')")
+py("I.put('segni','ok dal telefono, segno prima','supervisor')")
+first = [r.get("origin") for r in recs("segni") if r["text"] == "ok dal telefono, segno prima"]
+py("I.claim_origin('segni', None)")
+py("I.put('segni','segnalazione composta','supervisor')")
+rep = [r.get("origin") for r in recs("segni") if r["text"] == "segnalazione composta"]
+T.check("IB10b a claim before talk: the record is written with origin relay at once; the claim is used once (the second put stays session)",
+        sorted(first) == ["relay", "session"], str(first))
+T.check("IB10b a claim with text None (report) marks the next message to that session at its creation", rep == ["relay"], str(rep))
+py("I.claim_origin('altra', 'per altra')")
+py("I.put('segni','per altra','supervisor')")
+T.check("IB10b a claim for another session does not mark this one", [r.get("origin") for r in recs("segni") if r["text"] == "per altra"] == ["session"], "")
+
+# IB12 (17/10): `needs-you --list` era diventato il motivo «--list»; un'opzione sconosciuta e' rifiutata, nulla scritto
+ny = subprocess.run([str(T.SCRIPTS / "supervisor"), "needs-you", "--list"], capture_output=True, text=True, env=env(), timeout=30)
+T.check("IB12 needs-you with an unknown option → exit 2, «opzione sconosciuta --list», nothing saved",
+        ny.returncode == 2 and "opzione sconosciuta --list" in ny.stderr and not (state / "needs-you").exists(), ny.stdout + ny.stderr)
+
 # IB11 (14/10): talk --reopen verso una sessione chiusa la rilancia (per session_id se la trascrizione c'e') e consegna;
 # se il rilancio non riesce il messaggio resta in casella come senza --reopen
 fake_cm = tmp / "fake-cm.sh"

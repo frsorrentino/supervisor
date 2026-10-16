@@ -12,6 +12,10 @@
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
   supervisor task wait-ok ID --what W --where D   attende ok (corsia chiusa fuori da un piano approvato)
   supervisor task approve ID --by B --text T [--what W] [--where D]
+  supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D]
+                                                da una sessione Claude l'ok a nome di una persona passa solo cosi':
+                                                dalla master, citando un suo messaggio del relay dell'ultima ora
+  supervisor task auto-close [--hours 6] [--json]   chiude i compiti aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
   supervisor task constraint add (--project P | --topic T) TESTO
@@ -243,6 +247,71 @@ def approve(con, tid, by, text, what=None, where=None):
     con.commit()
 
 
+INBOX_MAX_AGE_S = 3600
+AUTO_CLOSE_H = 6
+
+
+def _caller_session():
+    """Il nome tmux della sessione che chiama (TMUX_PANE), o ''."""
+    pane = os.environ.get("TMUX_PANE")
+    if not pane:
+        return ""
+    try:
+        r = subprocess.run(["tmux"] + os.environ.get("CM_TMUX_ARGS", "").split() + ["display-message", "-p", "-t", pane, "#{session_name}"],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), HERE / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def inbox_approval_text(by, rec_id, note=None):
+    """16/10/2026 (the maintainer from the phone, «Sì, tutte e due»): l'ok a nome di una persona registrato da una sessione vale solo se lo
+    registra la master e cita un messaggio del relay (telefono, orologio, web) arrivato nella sua casella nell'ultima
+    ora; il testo dell'ok e' copiato da li', non riscritto. Torna il testo o esce con il motivo."""
+    cm = _load("cm-config")
+    cfg = cm.load(warn=False)
+    master = str((cfg.get("workspace") or {}).get("root_session_name") or "master")
+    caller = _caller_session()
+    if caller != master:
+        sys.exit(f"task approve --inbox: only the master session ({master}) records an ok on someone's behalf; this is {caller or 'not a tmux session'}")
+    rec = _load("cm-inbox").load(rec_id)
+    if not rec:
+        sys.exit(f"task approve --inbox: no message {rec_id} in the inbox")
+    if rec.get("to") != master:
+        sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {master}")
+    if rec.get("origin") != "relay":
+        sys.exit(f"task approve --inbox: message {rec_id} did not come from the relay (origin {rec.get('origin') or '?'}): an ok on someone's behalf comes from their device")
+    age = time.time() - float(rec.get("created") or 0)
+    if age > INBOX_MAX_AGE_S:
+        sys.exit(f"task approve --inbox: message {rec_id} is {int(age // 60)} minutes old (at most {INBOX_MAX_AGE_S // 60})")
+    quote = " ".join(str(rec.get("text") or "").split())[:400]
+    when = time.strftime("%d/%m %H:%M", time.localtime(float(rec["created"])))
+    return f"{by}, {when}: «{quote}» (inbox {rec_id}, origin relay)" + (f" — {note}" if note else "")
+
+
+def auto_close(con, hours=AUTO_CLOSE_H):
+    """16/10/2026: i compiti aperti da piu' di `hours` ore col controllo verde si chiudono da soli (lo stesso `done`:
+    il controllo rieseguito, mai un giudizio). Un controllo rosso qui non conta come tentativo: resta com'era.
+    Torna [(id, verde)] dei compiti controllati."""
+    cutoff = now() - int(hours * 3600)
+    out = []
+    for r in con.execute("SELECT id, contract FROM tasks WHERE state IN (%s) AND created_at <= ? ORDER BY created_at"
+                         % ",".join("?" * len(OPEN_STATES)), (*OPEN_STATES, cutoff)).fetchall():
+        task = json.loads(r["contract"])["task"]
+        rc, _ = run_check(task)
+        if rc == 0:
+            done(con, r["id"])
+        out.append((r["id"], rc == 0))
+    return out
+
+
 def board(con):
     rows = [dict(r) for r in con.execute("SELECT id, plan, project, session, title, lane, state, updated_at FROM tasks ORDER BY updated_at DESC")]
     counts = {s: 0 for s in STATES}
@@ -371,10 +440,22 @@ def main(argv):
         con.commit()
         return 0
     if verb == "approve":
-        by, text = _opt(args, "--by"), _opt(args, "--text")
-        if not by or not text:
-            sys.exit("usage: task approve ID --by B --text T [--what W] [--where D]")
+        by, text, rec_id = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox")
+        if not by or not (text or rec_id) or not args:
+            sys.exit("usage: task approve ID --by B (--text T | --inbox MSG [--text NOTE]) [--what W] [--where D]")
+        get_task(con, args[0])
+        if rec_id:
+            text = inbox_approval_text(by, rec_id, text)
+        elif os.environ.get("CLAUDECODE") and os.environ.get("CM_APPROVE_VIA") != "relay":
+            # una sessione Claude (anche la master) non scrive un ok a nome d'altri senza il messaggio che lo prova;
+            # il relay eredita CLAUDECODE da chi l'ha avviato, e si dichiara con CM_APPROVE_VIA
+            sys.exit("task approve: from a Claude session an ok needs --inbox MSG (a relay message to the master from the last hour)")
         approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"))
+        return 0
+    if verb == "auto-close":
+        hours = float(_opt(args, "--hours", AUTO_CLOSE_H))
+        res = auto_close(con, hours)
+        print(json.dumps([{"task": t, "green": g} for t, g in res]) if as_json else "\n".join(f"{t}: {'done' if g else 'red, left open'}" for t, g in res))
         return 0
     if verb == "cancel":
         get_task(con, args[0])

@@ -53,7 +53,10 @@ srv = HTTPServer(("127.0.0.1", 0), Handler)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 argslog = tmp / "cm-args.log"
 fake_cm = tmp / "supervisor"
-fake_cm.write_text(f'#!/bin/sh\nprintf \'%s\\n\' "$*" >> "{argslog}"\n')
+autoclose_log = tmp / "auto-close.log"
+# 16/10/2026: `task auto-close` (una volta l'ora) in un registro a parte: le altre prove contano le riprese
+fake_cm.write_text(f'#!/bin/sh\nif [ "$1 $2" = "task auto-close" ]; then echo "$*" >> "{autoclose_log}"; exit 0; fi\n'
+                   f'printf \'%s\\n\' "$*" >> "{argslog}"\n')
 fake_cm.chmod(0o755)
 cron = tmp / "crontab"
 cron.write_text("")
@@ -174,6 +177,17 @@ r = guard("status")
 T.check("GU4 status: cron yes, one line per account with % and reset", "yes" in r.stdout and "personale" in r.stdout and "professionale" in r.stdout, r.stdout + r.stderr)
 r = guard("uninstall")
 T.check("GU4 uninstall", r.returncode == 0 and "guard" not in cron.read_text(), r.stdout + cron.read_text())
+
+# GU-AC (16/10/2026) once an hour `task auto-close`: compiti verdi aperti da piu' di 6 ore
+n0 = len(autoclose_log.read_text().splitlines()) if autoclose_log.exists() else 0
+(state / "auto-close.stamp").unlink(missing_ok=True)
+guard("run", now=NOW + 7200)
+guard("run", now=NOW + 7200 + 1800)
+n1 = len(autoclose_log.read_text().splitlines()) if autoclose_log.exists() else 0
+guard("run", now=NOW + 7200 + 3601)
+n2 = len(autoclose_log.read_text().splitlines()) if autoclose_log.exists() else 0
+T.check("GU-AC guard run calls `task auto-close` once an hour: the first pass, not 30 minutes later, again after an hour",
+        n1 - n0 == 1 and n2 - n1 == 1, f"{n0} {n1} {n2}")
 
 srv.shutdown()
 T.rm(tmp)

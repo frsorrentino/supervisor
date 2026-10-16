@@ -18,6 +18,7 @@ Identita' della destinataria: il nome tmux (resta uguale nei riavvii) e, se nota
 lo stesso nome in un'altra cartella non riceve la posta della vecchia.
 """
 import datetime
+import hashlib
 import importlib.util
 import json
 import os
@@ -60,7 +61,58 @@ def first_line(text, n=200):
     return (str(text or "").strip().splitlines() or [""])[0][:n]
 
 
+CLAIM_TTL_S = 120
+
+
+def claims_dir():
+    return STATE / "inbox-claims"
+
+
+def _text_key(text):
+    return hashlib.sha256(str(text).encode("utf-8", "surrogateescape")).hexdigest()[:16] if text is not None else "*"
+
+
+def claim_origin(to, text, origin="relay"):
+    """88c86e (16/10): il relay segnava «relay» DOPO il suo `talk` (mark_origin), e chi leggeva il record nel frattempo
+    (la master, appena consegnato) vedeva «session». Ora il relay lascia un segno PRIMA di `talk`: put() lo consuma e
+    scrive l'origine giusta gia' alla creazione. `text` None = il prossimo messaggio per `to` (la segnalazione, il cui
+    testo lo compone cm-report.sh). La CLI non ha un'opzione per farlo: lo fa solo il processo del relay."""
+    d = claims_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{secrets.token_hex(6)}.json"
+    with open(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+        json.dump({"to": to, "key": _text_key(text), "origin": origin, "at": time.time()}, f)
+    return p
+
+
+def _take_claim(to, text):
+    """L'origine del segno che corrisponde a questo messaggio (il piu' vecchio, ancora valido), consumato; o None."""
+    now, key, best = time.time(), _text_key(text), None
+    for p in sorted(claims_dir().glob("*.json")) if claims_dir().is_dir() else []:
+        try:
+            c = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if now - float(c.get("at") or 0) > CLAIM_TTL_S:
+            p.unlink(missing_ok=True)
+            continue
+        if c.get("to") == to and c.get("key") in (key, "*") and (best is None or c["at"] < best[1]["at"]):
+            best = (p, c)
+    if best is None:
+        return None
+    try:
+        best[0].unlink()   # consumato una volta sola: due put concorrenti non lo prendono entrambi
+    except OSError:
+        return None
+    return best[1].get("origin")
+
+
 def put(to, text, sender, to_cwd="", origin="session"):
+    if origin == "session":
+        try:
+            origin = _take_claim(to, text) or origin
+        except OSError:
+            pass
     d = box(to)
     d.mkdir(parents=True, exist_ok=True)
     now = time.time()

@@ -2,6 +2,15 @@
 
 ## 0.3.x
 
+- **0.8.34 — 2026-10-17: an ok on someone's behalf only with their message, green tasks closed every hour, and the guard fixes of the night.**
+  - Approved by the maintainer on 16/10 at 08:22 and 08:41 (from the phone), queued by the master for the night of 17/10.
+  - `supervisor task approve ID --by NAME --inbox MSG [--text NOTE]`: from a Claude session an ok on someone's behalf is recorded only by the root session, citing a relay message in its inbox from the last hour; the text quotes the message with its id. `--text` alone from a Claude session is refused. The relay's «Approve» passes `CM_APPROVE_VIA=relay` (the daemon inherits `CLAUDECODE` from the session that started it).
+  - `supervisor task auto-close [--hours 6]`, run once an hour by `supervisor guard run`: tasks open for more than 6 hours with a green check are done; a red check leaves them as they are, with no attempt counted.
+  - The closed-lane guard read `grep … release.sh` and `cat release.sh` as a release, and blocked them: `release.sh` now counts only as the command (after assignments, `nice`, `nohup`, `time`, `bash`/`sh`).
+  - The strict guard hooks wait 30 s instead of 10: on 17/10 at load 27 the guard ran past 10 s and the timeout blocked a release three times. It stays fail-closed.
+  - Inbox origin (message 88c86e, read first as «session», then «relay»): the relay marked its messages after `talk` had delivered them. It now leaves a claim before `talk` and `report`; the record is written with origin «relay» at once. The mark after `talk` stays as a fallback.
+  - `supervisor needs-you --list` saved «--list» as the reason: an unknown option is refused (exit 2).
+  - Tests: T10 in `tests/tasks-verify.py`, G2b and G9b in `tests/guard-lane-verify.py`, GU-AC in `tests/guard-verify.py`, IB10b and IB12 in `tests/inbox-verify.py`.
 - **0.8.33 — 2026-10-16: report screenshots named by characters, and the path line always sent.**
   - Reported by the maintainer on 16/10 at 23:33: a screenshot sent from the app was saved as `…-un-po-pi<0xC3>.jpg`, and the message reached the session without «Screenshot allegato, leggilo: …».
   - Cause: the slug was cut with `cut -c1-40`, which in GNU cut counts bytes and split the «ù» of «più»; then `cm-config.py --msg` failed on the non-UTF-8 path (`UnicodeEncodeError`), and the line came out empty with no warning.

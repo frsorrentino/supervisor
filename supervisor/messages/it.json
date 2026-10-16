@@ -175,6 +175,7 @@
   "hook.waiting_more": " e altre {n}",
   "needs_you.saved": "{name} ora è ferma per te: {reason}",
   "needs_you.cleared": "non è più ferma per te",
+  "needs_you.unknown_option": "supervisor needs-you: opzione sconosciuta {opt}",
   "needs_you.usage": "uso: supervisor needs-you \"<cosa serve dall'utente>\" | --clear",
   "needs_you.no_session": "supervisor needs-you: va lanciato da una sessione in tmux",
   "needs_you.to_master": "{name} aspetta l'utente: {reason}",

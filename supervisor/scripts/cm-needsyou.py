@@ -42,6 +42,11 @@ def own_row():
 
 
 def main(argv):
+    # 17/10/2026: `needs-you --list` era diventato il motivo «--list»; un'opzione che non conosce la rifiuta
+    if argv and argv[0].startswith("-") and argv[0] != "--clear":
+        print(M("needs_you.unknown_option", opt=argv[0]), file=sys.stderr)
+        print(M("needs_you.usage"), file=sys.stderr)
+        return 2
     row = own_row()
     if not row:
         print(M("needs_you.no_session"), file=sys.stderr)

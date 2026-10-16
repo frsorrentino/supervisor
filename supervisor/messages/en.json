@@ -175,6 +175,7 @@
   "hook.waiting_more": " and {n} more",
   "needs_you.saved": "{name} is now waiting for you: {reason}",
   "needs_you.cleared": "no longer waiting for you",
+  "needs_you.unknown_option": "supervisor needs-you: unknown option {opt}",
   "needs_you.usage": "usage: supervisor needs-you \"<what you need from the user>\" | --clear",
   "needs_you.no_session": "supervisor needs-you: run it from a session in tmux",
   "needs_you.to_master": "{name} is waiting for the user: {reason}",

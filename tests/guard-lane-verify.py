@@ -21,7 +21,9 @@ other = tmp / "other"
 other.mkdir()
 cfg = tmp / "config.json"
 DB = tmp / "tasks.db"
-ENV = dict(os.environ, CM_TASKS_DB=str(DB), CC_SUPERVISOR_CONFIG=str(cfg))
+# da un terminale (17/10): `task approve` da una sessione Claude vuole --inbox, e queste prove registrano ok a mano
+ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "TMUX_PANE", "CM_APPROVE_VIA")}
+ENV.update(CM_TASKS_DB=str(DB), CC_SUPERVISOR_CONFIG=str(cfg))
 
 
 def config(guard):
@@ -66,6 +68,9 @@ allowed = {c: hook(c) for c in ("git status", "git push --dry-run", "bash releas
                                 "git commit -F - <<'EOF'\nnotes: run git push later\nEOF", "gh release view v1")}
 T.check("G2 not publishing: status, --dry-run, release --check, «git push» inside a quoted message or a heredoc, gh release view → allow",
         all(v == "allow" for v in allowed.values()), str(allowed))
+reads = {c: hook(c) for c in ("grep -n release.sh docs/notes.md", "cat release.sh", "sed -n 1,40p release.sh | grep VER", "git log -- release.sh")}
+T.check("G2b release.sh named as an argument (grep, cat, sed, git log) is a read → allow; as the command it stays closed",
+        all(v == "allow" for v in reads.values()) and hook("RELEASE_TESTS=wsl nice -n 19 bash release.sh 0.8.33").startswith("deny"), str(reads))
 
 # G3 piano approvato: il compito in corso apre la corsia nella sua cartella (e sotto), non altrove
 plan = {"schema_version": 1, "id": "rel", "title": "release", "nodes": [node("pub", "rel"), node("held", "rel", project=other, hold=True)]}
@@ -136,6 +141,8 @@ pats = [h["if"][5:-1] for h in strict]
 pushes = ["git push origin main", "cd proj && git push", "git -C ../other push", "FOO=1 git push", "nice -n 19 bash release.sh 0.8.12",
           "./release.sh 1.0", "gh release create v1", "gh release upload v1 x.zip", "npm publish", "claude plugin publish ."]
 others = ["git status", "echo hello", "ls -la", "git pull --ff-only", "python3 tests/guard-lane-verify.py", "gh pr list"]
+T.check("G9b the strict entries wait 30 s (17/10: at load 27 the guard took more than 10 s and the timeout blocked the release)",
+        all(h.get("timeout") == 30 for h in strict), str([h.get("timeout") for h in strict]))
 T.check("G9 the `if` filters take every form the guard closes and none of the ordinary commands",
         all(any(fnmatch.fnmatchcase(c, p) for p in pats) for c in pushes) and not any(fnmatch.fnmatchcase(c, p) for c in others for p in pats),
         str([c for c in pushes if not any(fnmatch.fnmatchcase(c, p) for p in pats)]) + str([c for c in others if any(fnmatch.fnmatchcase(c, p) for p in pats)]))

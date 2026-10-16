@@ -125,42 +125,42 @@
             "type": "command",
             "if": "Bash(*git push*)",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py\" --strict",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(*git -C * push*)",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py\" --strict",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(*gh release *)",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py\" --strict",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(*npm publish*)",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py\" --strict",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(*claude plugin publish*)",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py\" --strict",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(*release.sh*)",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py\" --strict",
-            "timeout": 10,
+            "timeout": 30,
             "onFailure": "block"
           }
         ]

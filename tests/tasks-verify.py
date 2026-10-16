@@ -15,12 +15,14 @@ import cm_test as T  # noqa: E402
 tmp = Path(tempfile.mkdtemp(prefix="cm-tasks-"))
 proj = tmp / "proj"
 proj.mkdir()
-ENV = dict(os.environ, CM_TASKS_DB=str(tmp / "tasks.db"))
+# da un terminale: fuori da una sessione Claude (CLAUDECODE) e da tmux; le prove T9 li rimettono apposta
+ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "TMUX_PANE", "CM_APPROVE_VIA")}
+ENV["CM_TASKS_DB"] = str(tmp / "tasks.db")
 CLI = str(T.SCRIPTS / "supervisor")
 
 
-def cm(*args, stdin=None):
-    p = subprocess.run([CLI, "task", *args], input=stdin, capture_output=True, text=True, env=ENV, timeout=60)
+def cm(*args, stdin=None, env=None):
+    p = subprocess.run([CLI, "task", *args], input=stdin, capture_output=True, text=True, env=dict(ENV, **(env or {})), timeout=60)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -150,5 +152,71 @@ if fd.exists():
     T.check("T9 schemas/task-contract.v1.json identical to fable-director's copy", fd.read_bytes() == (T.PLUGIN / "schemas" / "task-contract.v1.json").read_bytes(), str(fd))
 else:
     print("  skip T9 (fable-director's copy of the schema not found)")
+
+# T10 (16/10/2026, the maintainer, «Sì, tutte e due»): l'ok a nome di una persona da una sessione Claude solo dalla master,
+# citando un messaggio del relay dell'ultima ora; e la chiusura dei compiti verdi aperti da piu' di 6 ore
+import sqlite3  # noqa: E402
+import time  # noqa: E402
+state9 = tmp / "state"
+cfg9 = tmp / "config.json"
+cfg9.write_text(json.dumps({"language": "en", "state_dir": str(state9), "workspace": {"root_session_name": "master"}}))
+add(contract("ok9"))
+cm("wait-ok", "ok9", "--what", "release", "--where", "github")
+CC = {"CLAUDECODE": "1", "CC_SUPERVISOR_CONFIG": str(cfg9)}
+rc, out, err = cm("approve", "ok9", "--by", "maintainer", "--text", "ok", env=CC)
+T.check("T10 from a Claude session, --text alone → refused, it asks for --inbox; nothing recorded",
+        rc != 0 and "--inbox" in err and show("ok9")["state"] == "awaiting_ok" and all(a["by_"] is None for a in show("ok9")["approvals"]), err)
+rc, out, err = cm("approve", "ok9", "--by", "app", "--text", "ok (from the phone)", env=dict(CC, CM_APPROVE_VIA="relay"))
+T.check("T10 the relay (CM_APPROVE_VIA=relay, it inherits CLAUDECODE) still records the device's ok", rc == 0 and show("ok9")["state"] == "approved", err)
+
+
+def inbox_put(to, text, origin, age_s=0):
+    code = ("import importlib.util,sys,json,os;s=importlib.util.spec_from_file_location('i',sys.argv[1]);I=importlib.util.module_from_spec(s);"
+            "s.loader.exec_module(I);r=I.put(sys.argv[2],sys.argv[3],'supervisor',origin=sys.argv[4]);"
+            "p=I._path_of(r['id']);d=json.loads(p.read_text());d['created']-=float(sys.argv[5]);p.write_text(json.dumps(d));print(r['id'])")
+    return subprocess.run([sys.executable, "-c", code, str(T.SCRIPTS / "cm-inbox.py"), to, text, origin, str(age_s)],
+                          capture_output=True, text=True, env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg9)), timeout=30).stdout.strip()
+
+
+with T.PrivateTmux() as tm:
+    tm("new-session", "-d", "-s", "master", "sleep 300")
+    tm("new-session", "-d", "-s", "altra", "sleep 300")
+    pane_m = tm("display-message", "-p", "-t", "master", "#{pane_id}").stdout.strip()
+    pane_a = tm("display-message", "-p", "-t", "altra", "#{pane_id}").stdout.strip()
+    M9 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_m)
+    good = inbox_put("master", "Dall'utente via telefono. Sì, tutte e due", "relay")
+    for tid in ("i1", "i2", "i3", "i4", "i5"):
+        add(contract(tid))
+        cm("wait-ok", tid, "--what", "release", "--where", "github")
+    rc, out, err = cm("approve", "i1", "--by", "maintainer", "--inbox", good, "--text", "release after the diff", env=M9)
+    a = show("i1")["approvals"][-1]
+    T.check("T10 --inbox from the master, a relay message of now → approved; the text quotes the message, with its id and the note",
+            rc == 0 and show("i1")["state"] == "approved" and a["by_"] == "maintainer" and "«Dall'utente via telefono. Sì, tutte e due»" in a["text"]
+            and f"inbox {good}" in a["text"] and a["text"].endswith("— release after the diff"), err + json.dumps(a))
+    rc, out, err = cm("approve", "i2", "--by", "maintainer", "--inbox", good, env=dict(M9, TMUX_PANE=pane_a))
+    T.check("T10 --inbox from another session → refused (only the master)", rc != 0 and "only the master" in err and show("i2")["state"] == "awaiting_ok", err)
+    sess = inbox_put("master", "ok scritto da una sessione", "session")
+    rc, out, err = cm("approve", "i3", "--by", "maintainer", "--inbox", sess, env=M9)
+    T.check("T10 --inbox of a message with origin session → refused", rc != 0 and "did not come from the relay" in err and show("i3")["state"] == "awaiting_ok", err)
+    old = inbox_put("master", "Dall'utente via telefono. ok di ieri", "relay", age_s=2 * 3600)
+    rc, out, err = cm("approve", "i4", "--by", "maintainer", "--inbox", old, env=M9)
+    T.check("T10 --inbox of a relay message older than an hour → refused", rc != 0 and "minutes old" in err and show("i4")["state"] == "awaiting_ok", err)
+    rc, out, err = cm("approve", "i5", "--by", "maintainer", "--inbox", "ffffff", env=M9)
+    T.check("T10 --inbox of a message that does not exist → refused", rc != 0 and "no message ffffff" in err, err)
+
+(proj / "ok.txt").write_text("x")
+add(contract("ac_green"))
+add(contract("ac_red", cmd="false"))
+add(contract("ac_new"))
+cm("start", "ac_green")
+con9 = sqlite3.connect(str(tmp / "tasks.db"))
+con9.execute("UPDATE tasks SET created_at=? WHERE id IN ('ac_green', 'ac_red')", (int(time.time()) - 7 * 3600,))
+con9.commit()
+con9.close()
+rc, out, err = cm("auto-close", "--json")
+res = {r["task"]: r["green"] for r in json.loads(out or "[]")}
+T.check("T10 auto-close: open for more than 6 hours with a green check → done; a red one stays open with no attempt counted; a new one is not checked",
+        rc == 0 and show("ac_green")["state"] == "done" and show("ac_red")["state"] == "proposed" and not show("ac_red")["results"]
+        and "ac_new" not in res and show("ac_new")["state"] == "proposed" and res.get("ac_green") is True and res.get("ac_red") is False, out + err)
 
 T.finish()
