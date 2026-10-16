@@ -3311,7 +3311,9 @@ def execute(cmd):
             # 1.21 (30/09): il tasto Stop — `supervisor interrupt` manda un solo Esc, e solo a turno in corso
             if info.get("state") == "gone" or not is_live(tm):
                 return False, M("relay.cmd_interrupt_gone", name=session)
-            rc, out = run_cm("interrupt", tm)
+            # 16/10: Stop subito dopo un invio dal telefono → il turno non e' ancora partito: si aspetta che parta
+            sent = float(read_json(rdir() / "awaiting.json", {}).get(tm) or 0)
+            rc, out = run_cm("interrupt", tm, *(("--wait", str(INTERRUPT_WAIT_S)) if time.time() - sent < 60 else ()))
             if rc == 0:
                 aw = read_json(rdir() / "awaiting.json", {})
                 if aw.pop(tm, None) is not None:
@@ -4158,9 +4160,47 @@ def attention_open(rows, ledger):
         keep.append(x)
     if keep != items:
         write_json(p, keep)
+    failures_settle({x.get("ref") for x in keep if x.get("kind") == "turn_failed"})
     return keep
 
 
+def failures_settle(open_refs, now=None):
+    """16/10 (dal telefono, «master: turno fallito» con Continua sotto una risposta riuscita, tornato dopo tre
+    Continua): l'app tiene aperto il turno fallito finche' turn_started non supera il ts dell'evento, ma turn_started
+    e' valorizzato solo a turno in corso (contratto in cm-relay-state): a turno finito torna null e la voce riappare.
+    Quando la voce di attention.json si chiude, l'evento turn_failed su /events viene riscritto senza continue_text
+    (l'app ignora un turn_failed senza testo) e con `settled_at`. `open_refs` = le sessioni con un turno fallito
+    ancora aperto. Si guarda events.json solo quando cambia lui o l'insieme delle voci aperte."""
+    p = local_dir() / "events.json"
+    try:
+        stamp = f"{p.stat().st_mtime_ns}|{','.join(sorted(r for r in open_refs if r))}"
+    except OSError:
+        return 0
+    sp = rdir() / "failures-settled"
+    try:
+        if sp.read_text() == stamp:
+            return 0
+    except OSError:
+        pass
+    now = int(now or time.time())
+    done = [dict(e, continue_text=None, settled_at=now) for e in read_json(p, {}).values()
+            if e.get("kind") == "turn_failed" and (e.get("continue_text") or "").strip() and e.get("ref") not in open_refs]
+    if done:
+        k = None if local_only() else key()
+        if k:
+            try:
+                rtdb("PATCH", "events", {e["key"]: C.encrypt(e, k) for e in done}, {"print": "silent"})
+            except (urllib.error.URLError, OSError, ValueError) as ex:
+                log(f"turn_failed chiusi: PATCH FAILED: {ex}")
+                return 0   # si riprova al prossimo stato
+        local_events_add(done, now)
+        log(f"turn_failed chiusi: {', '.join(sorted({str(e.get('ref')) for e in done}))}")
+        stamp = f"{p.stat().st_mtime_ns}|{stamp.split('|', 1)[1]}"
+    sp.write_text(stamp)
+    return len(done)
+
+
+INTERRUPT_WAIT_S = 8   # 16/10: quanto lo Stop aspetta che parta il turno di un prompt consegnato da meno di un minuto
 TURN_FAILED_GAP_S = 60   # 1.61: un evento per sessione al minuto, anche se Claude Code riprova e fallisce di fila
 
 

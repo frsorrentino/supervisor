@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.29 — 2026-10-16: a failed turn that stays closed, and Stop right after a send.**
+  - Asked by the master on 16/10 at 16:03 with the maintainer's ok, from the phone: «master: turn failed — server_error» with Continue kept coming back under a successful answer, also after three Continue.
+  - Cause: the apps keep a `turn_failed` event open while `turn_started` is not later than the event, but `turn_started` is set only while a turn runs (contract note in cm-relay-state): at the end of the next turn it is null again and the banner returns. The relay had closed its «Needs you» item at the next prompt and had emitted the event once.
+  - When the `turn_failed` item of attention.json closes, the relay rewrites its events on /events and in the local events.json without `continue_text` (the apps ignore a `turn_failed` without it) and with `settled_at`. events.json is read again only when it or the set of open items changes. An app that already holds the event in memory drops it at its next full load of /events.
+  - Stop right after a send answered «nothing to stop»: the prompt was delivered but the turn had not started yet. `supervisor interrupt NAME --wait S` waits up to S seconds for the turn's status line, then sends one Esc as before (never a blind Esc: at an idle prompt a second one opens the rewind). The relay passes `--wait 8` when the session got a prompt from the phone less than a minute before.
+  - Tests: R57 in relay-verify, I1c in talk-report-verify, R18 updated.
 - **0.8.28 — 2026-10-16: the relay back to a fraction of a core.**
   - Asked by the master on 16/10 at 12:02 with the maintainer's ok: after the restart with 0.8.27 the relay daemon sat between 50 and 63 % of a core (about 7 % before). Measured in the process (cProfile on a collect with the live sessions, py-spy on the daemon): each push re-read and decoded the whole ledger (50 MB, 132k lines, 3 to 10 s of CPU), every `transcript` read from the phone and the web app (every few seconds per open chat) started `sessions --json --no-screen`, and every HTTPS call built a new SSL context (about 100 ms of CPU each).
   - The ledger is read incrementally in the daemon: only the new bytes are decoded; the `watch-cmd` lines (the relay's own command log, 80 % of the file, read by no state) are skipped; a file rewritten, shortened or replaced is read again from the start.

@@ -413,7 +413,18 @@ def turn_running(tm):
 def cmd_interrupt(argv):
     """`supervisor interrupt NOME` (30/09, il tasto Stop del telefono): UN Esc, e solo a turno in corso. Due Esc al
     prompt fermo aprono il rewind; un Esc su un dialogo lo annulla: per questo prima si guarda lo schermo.
-    Exit 0 fermato, 1 niente da fermare, 3 sessione non viva o senza tmux, 4 ancora in corso dopo l'attesa."""
+    Exit 0 fermato, 1 niente da fermare, 3 sessione non viva o senza tmux, 4 ancora in corso dopo l'attesa.
+    `--wait S` (16/10, dal telefono: Stop subito dopo un invio → «nothing to stop»): il prompt e' consegnato ma il
+    turno non e' ancora partito, e lo schermo non mostra la riga di stato; si aspetta fino a S secondi che compaia,
+    poi UN Esc come sempre. L'Esc alla cieca no: al prompt fermo il secondo apre il rewind."""
+    wait = 0.0
+    if "--wait" in argv:
+        i = argv.index("--wait")
+        try:
+            wait = max(0.0, min(30.0, float(argv[i + 1])))
+        except (IndexError, ValueError):
+            die("interrupt.usage", 2)
+        argv = argv[:i] + argv[i + 2:]
     name = argv[0] if argv else ""
     if not name:
         die("interrupt.usage", 2)
@@ -423,8 +434,11 @@ def cmd_interrupt(argv):
         tm = name   # basta la sessione tmux: l'Esc va al suo pannello
     if not tm:
         die("interrupt.not_running", 3, name=name)
-    if not turn_running(tm):
-        die("interrupt.nothing", 1, name=name)
+    end = time.time() + wait
+    while not turn_running(tm):
+        if time.time() >= end:
+            die("interrupt.nothing", 1, name=name)
+        time.sleep(0.25)
     tmux("send-keys", "-t", tm, "Escape")
     for _ in range(20):
         time.sleep(0.25)

@@ -158,7 +158,7 @@
   "close.none_abandoned": "nessuna sessione staccata e ferma su una domanda",
   "talk.enter_again": "talk: il prompt era ancora sulla riga di {name}: Invio premuto un'altra volta",
   "talk.usage": "uso: supervisor talk <nome> \"prompt\" [--wait S] [--quiet S] [--no-wait] [--force] [--reopen] [--via auto|socket|tmux]",
-  "interrupt.usage": "uso: supervisor interrupt <nome>   (un Esc, solo a turno in corso)",
+  "interrupt.usage": "uso: supervisor interrupt <nome> [--wait S]   (un Esc, solo a turno in corso; --wait: aspetta fino a S secondi che il turno parta)",
   "interrupt.not_running": "supervisor interrupt: «{name}» non è viva",
   "interrupt.nothing": "{name}: niente da fermare",
   "interrupt.stopped": "{name}: fermata",

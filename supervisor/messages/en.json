@@ -158,7 +158,7 @@
   "close.none_abandoned": "no detached session stuck on a question",
   "talk.enter_again": "talk: the prompt was still on {name}'s input line: Enter pressed once more",
   "talk.usage": "usage: supervisor talk <name> \"prompt\" [--wait S] [--quiet S] [--no-wait] [--force] [--reopen] [--via auto|socket|tmux]",
-  "interrupt.usage": "usage: supervisor interrupt <name>   (one Esc, only while a turn is running)",
+  "interrupt.usage": "usage: supervisor interrupt <name> [--wait S]   (one Esc, only while a turn is running; --wait: wait up to S seconds for the turn to start)",
   "interrupt.not_running": "supervisor interrupt: «{name}» is not running",
   "interrupt.nothing": "{name}: nothing to stop",
   "interrupt.stopped": "{name}: stopped",

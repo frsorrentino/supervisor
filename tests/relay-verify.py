@@ -1256,8 +1256,8 @@ n_calls = len(cm_calls())
 res = send_cmd(CMDS[17])
 res2 = send_cmd(CMDS[18])
 T.check("R18 (1.21) interrupt → `interrupt <tmux>`: ok «atlas-shop: stopped» and the session leaves awaiting; nothing running → ok false «field-notes: nothing to stop» (as in the fixture)",
-        res and res["ok"] is True and res["text"] == RES[17]["text"] and "interrupt atlas-shop" in cm_calls()[n_calls:]
-        and "atlas-shop" not in json.loads((rdir2 / "awaiting.json").read_text()) and res2 and res2["ok"] is False and res2["text"] == RES[18]["text"], str(res) + str(res2))
+        res and res["ok"] is True and res["text"] == RES[17]["text"] and "interrupt atlas-shop --wait 8" in cm_calls()[n_calls:]
+        and "interrupt field-notes" in cm_calls()[n_calls:] and "atlas-shop" not in json.loads((rdir2 / "awaiting.json").read_text()) and res2 and res2["ok"] is False and res2["text"] == RES[18]["text"], str(res) + str(res2))
 n_calls = len(cm_calls())
 res = send_cmd(dict(CMDS[17], id="6f1c2d3e-0128-4000-8000-000000000301", session="orbit-docs"))
 T.check("R18 (1.21) interrupt on a gone session → ok false «orbit-docs is not running», no interrupt run",
@@ -2992,5 +2992,38 @@ try:
 finally:
     RL.urllib.request.urlopen, RL.token, RL.base_url = _uo56, _tk56, _bu56
 T.check("R56 rtdb: the same SSLContext for every call", len(_ctx56) == 2 and isinstance(_ctx56[0], _ssl56.SSLContext) and _ctx56[0] is _ctx56[1], str(_ctx56))
+
+# R57 (16/10, dal telefono: «master: turno fallito» con Continua sotto una risposta riuscita, tornato dopo tre Continua):
+# l'app chiude il turno fallito solo con turn_started > ts, ma a turno finito turn_started e' null. Chiusa la voce di
+# attention.json, l'evento su /events torna senza continue_text (l'app lo ignora) e con settled_at
+_save57 = {n: getattr(RL, n) for n in ("rdir", "rtdb", "key", "prefixes", "local_only")}
+_d57 = tmp / "relay57"; _d57.mkdir(exist_ok=True)
+_puts57 = []
+t57 = int(time.time()) - 100   # recenti: local_events_add toglie quelli oltre relay.events_days
+try:
+    RL.rdir, RL.prefixes, RL.key, RL.local_only = (lambda: _d57), (lambda: ()), (lambda: k), (lambda: False)
+    RL.rtdb = lambda method, path, body=None, params=None: _puts57.append((method, path, body))
+    RL.attention_mark("turn_failed", "atlas-shop", "atlas-shop", "⚠ atlas-shop: turn failed — 500", now=t57)
+    RL.attention_mark("turn_failed", "field-notes", "field-notes", "⚠ field-notes: turn failed — 529", now=t57)
+    ev57 = {e["ref"]: dict(key=f"{t57}_00{i}", kind="turn_failed", ref=e["ref"], session=e["ref"], ts=t57, title="⚠", continue_text="go on")
+            for i, e in enumerate([{"ref": "atlas-shop"}, {"ref": "field-notes"}])}
+    RL.local_events_add(list(ev57.values()) + [dict(key=f"{t57 + 1}_009", kind="recap", ref=None, ts=t57 + 1, title="r")], t57 + 100)
+    rows57 = [{"name": "atlas-shop", "status": "idle", "session_id": "S-A"}, {"name": "field-notes", "status": "idle", "session_id": "S-F"}]
+    open57 = RL.attention_open(rows57, [])
+    n57 = len(_puts57)
+    RL.attention_open(rows57, [{"event": "prompt", "session_id": "S-A", "ts": iso(t57 + 50)}])
+    loc57 = RL.read_json(RL.local_dir() / "events.json", {})
+    pub57 = {kk: C.decrypt(v, k) for m, pth, b in _puts57[n57:] for kk, v in (b or {}).items()}
+    again57 = len(_puts57)
+    RL.attention_open(rows57, [{"event": "prompt", "session_id": "S-A", "ts": iso(t57 + 50)}])
+finally:
+    for n, v in _save57.items():
+        setattr(RL, n, v)
+T.check("R57 a failed turn still open: its event keeps continue_text, nothing rewritten",
+        len(open57) == 2 and n57 == 0, str((open57, _puts57)))
+T.check("R57 the failed turn closes at the next prompt: its event on /events and in events.json loses continue_text and gets settled_at; the other session's open one and the other kinds stay as they were; a second pass rewrites nothing",
+        list(pub57) == [f"{t57}_000"] and pub57[f"{t57}_000"].get("continue_text") is None and pub57[f"{t57}_000"].get("settled_at")
+        and loc57[f"{t57}_000"].get("continue_text") is None and loc57[f"{t57}_001"]["continue_text"] == "go on" and "settled_at" not in loc57[f"{t57 + 1}_009"]
+        and len(_puts57) == again57, str((pub57, loc57, _puts57)))
 
 T.finish()

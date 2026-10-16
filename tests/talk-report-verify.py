@@ -233,6 +233,16 @@ print(repr(filt("❯ \\x1b[2msolo suggerimento fino a fine riga")))        # non
     T.check("I1b the 2.1.294 status line («● Slithering… (1m 9s · ↓ 2.7k tokens)», no «esc to interrupt») is a turn running → one Esc, exit 0",
             ri.returncode == 0 and "fermata" in ri.stdout and "idle" in tm("capture-pane", "-p", "-t", "busynew").stdout, ri.stdout + ri.stderr)
     tm("kill-session", "-t", "=busynew")
+    # I1c (16/10, dal telefono: Stop subito dopo un invio → «nothing to stop»): il turno parte un attimo dopo
+    tm("new-session", "-d", "-s", "lateone", "-x", "120", "-y", "20",
+       "bash -c 'echo idle; sleep 1.5; clear; printf \"* Working… (1s · ↓ 10 tokens)\\n\"; read -rsn1; clear; echo stopped; sleep 300'")
+    time.sleep(0.5)
+    rn = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-talk.py"), "interrupt", "lateone"], capture_output=True, text=True, env=env(), timeout=60)
+    ri = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-talk.py"), "interrupt", "lateone", "--wait", "6"], capture_output=True, text=True, env=env(), timeout=60)
+    time.sleep(0.8)
+    T.check("I1c a turn not started yet: without --wait → exit 1 and no Esc; with --wait 6 it waits for the status line, then one Esc, exit 0",
+            rn.returncode == 1 and ri.returncode == 0 and "fermata" in ri.stdout and "stopped" in tm("capture-pane", "-p", "-t", "lateone").stdout, rn.stderr + ri.stdout + ri.stderr)
+    tm("kill-session", "-t", "=lateone")
     # R4 (contratto 1.19 del relay, «Condividi» dal telefono): la cartella come percorso assoluto e la sessione per nome
     shop = home / "ws" / "personali" / "shopfront"
     r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), str(shop), "-", "nessuna sessione", "--session", "inesistente"], capture_output=True, text=True, env=env(), timeout=60)
