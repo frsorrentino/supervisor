@@ -335,4 +335,37 @@ T.check("CO14 (1.72) with diff_cap a Write of a new file gets diff (create, the 
                                 "hunks": [{"old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 2, "lines": ["+uno", "+due"]}]}
         and e14["w2.0"]["diff"] is None and e14["w2.1"]["diff"] is None and e14["w4.0"]["diff"] is None and e14["w4.0"]["error"] is True
         and all(e["diff"] is None for e in plain14) and list(plain14[0])[-1] == "diff", json.dumps(e14["w1.0"]["diff"]))
+# CO15 (16/10, relay al 50% di CPU): il ledger si legge in modo incrementale — il demone teneva 50 MB e 132k righe
+# riparsate a ogni push. Solo i byte nuovi; le righe watch-cmd (il registro dei comandi del relay, nessuno stato le
+# legge) non si decodificano; una riga a meta' aspetta il suo «\n»; un file riscritto o sostituito si rilegge da capo.
+_ld = Path(tempfile.mkdtemp(prefix="cm-core-ledger-"))
+_cfg15 = core._CFG
+core._CFG = dict(_cfg15 or {}, state_dir=str(_ld))
+_lp = _ld / "ledger.jsonl"
+_lp.write_text(json.dumps({"event": "start", "session_id": "A"}) + "\n" + json.dumps({"event": "watch-cmd", "op": "transcript"}) + "\n"
+               + "rotta\n" + json.dumps({"event": "stop", "session_id": "A"}) + "\n" + '{"event": "prompt", "sess')
+r1 = [(x["event"], x["session_id"]) for x in core.ledger_rows()]
+_loads, _n15 = core.json.loads, []
+with open(_lp, "a") as f:
+    f.write('ion_id": "A"}\n' + json.dumps({"event": "watch-cmd", "op": "agenda"}) + "\n" + json.dumps({"event": "stop", "session_id": "B"}) + "\n")
+core.json.loads = lambda raw, *a, **k: (_n15.append(raw), _loads(raw, *a, **k))[1]
+try:
+    r2 = [(x["event"], x["session_id"]) for x in core.ledger_rows()]
+finally:
+    core.json.loads = _loads
+T.check("CO15 ledger_rows: watch-cmd and broken lines left out, a half-written last line waits; the next call decodes only the new lines (2) and returns all",
+        r1 == [("start", "A"), ("stop", "A")] and r2 == r1 + [("prompt", "A"), ("stop", "B")] and len(_n15) == 2, str([r1, r2, len(_n15)]))
+_lp.write_text(json.dumps({"event": "stop", "session_id": "Z"}) + "\n" + json.dumps({"event": "prompt", "session_id": "Z", "pad": "x" * 400}) + "\n")
+r3 = [(x["event"], x["session_id"]) for x in core.ledger_rows()]
+_lp2 = _ld / "new.jsonl"
+_lp2.write_text(json.dumps({"event": "start", "session_id": "N"}) + "\n")
+os.replace(_lp2, _lp)
+r4 = [(x["event"], x["session_id"]) for x in core.ledger_rows()]
+_l4 = core.ledger_rows()
+_l4.append({"event": "x"})
+r5 = len(core.ledger_rows())
+core._CFG = _cfg15
+T.check("CO15 a ledger rewritten in place (longer) or replaced by another file is read from the start; the list returned is a copy",
+        r3 == [("stop", "Z"), ("prompt", "Z")] and r4 == [("start", "N")] and r5 == 1, str([r3, r4, r5]))
+
 T.finish()

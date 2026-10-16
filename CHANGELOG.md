@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.28 — 2026-10-16: the relay back to a fraction of a core.**
+  - Asked by the master on 16/10 at 12:02 with the maintainer's ok: after the restart with 0.8.27 the relay daemon sat between 50 and 63 % of a core (about 7 % before). Measured in the process (cProfile on a collect with the live sessions, py-spy on the daemon): each push re-read and decoded the whole ledger (50 MB, 132k lines, 3 to 10 s of CPU), every `transcript` read from the phone and the web app (every few seconds per open chat) started `sessions --json --no-screen`, and every HTTPS call built a new SSL context (about 100 ms of CPU each).
+  - The ledger is read incrementally in the daemon: only the new bytes are decoded; the `watch-cmd` lines (the relay's own command log, 80 % of the file, read by no state) are skipped; a file rewritten, shortened or replaced is read again from the start.
+  - `transcript`, `diff`, `changes` and `file` share the session rows for 10 s; a name not found (a session just launched) reads them again at once.
+  - One SSL context for the whole process; the pill's last turn end per session is computed in one pass over the ledger.
+  - On this machine: CPU of a warm collect from about 10 s to 0.7 s, daemon memory from 439 MB to 139 MB.
+  - Tests: CO15 in core-verify, R56 in relay-verify.
 - **0.8.27 — 2026-10-16: what changed in the files, from the phone.**
   - Approved by the maintainer on 15/10 between 22:43 and 23:11, after the comparison with competing tools of 14/10.
   - Contract 1.72 (additive, `v` stays 1). Every entry of `transcript` and of `/tail/<id>` carries `diff`: null, or for a successful Write, Edit, MultiEdit or NotebookEdit `{path, kind, added, removed, hunks, cut}` from the transcript's structured result — `kind` edit, create (a new file: every line of its content added) or overwrite; at most 200 lines and 16,000 bytes, `cut` past them, `added` and `removed` always whole. Op `diff` with the entry's id gives the passage whole, up to 5000 lines.

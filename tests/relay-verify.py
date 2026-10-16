@@ -2946,4 +2946,51 @@ RL.rdir, RL.core.transcript_of, RL.core.transcript_entries = _rd55, _to55, _te55
 T.check("R55 (1.72, decision 3) outside git the next pill reads only the new bytes of the transcript (offset > 0) and adds them: b.md written → 3 files +5 −2",
         pc55 == {"notes55": {"files": 3, "added": 5, "removed": 2, "at": 1789400110}} and seen55 and min(seen55) > 0, str([pc55, seen55]))
 
+# R56 (16/10, relay al 50% di CPU): la chat aperta sul telefono e nella web app chiede `transcript` ogni pochi secondi,
+# e ogni richiesta lanciava `sessions --json --no-screen` (2,9 s sotto carico). Le righe restano in processo per
+# LIVE_ROWS_TTL_S; una sessione che non c'e' (appena lanciata) le rilegge subito.
+_jc56, _calls56 = RL._json_cmd, []
+RL._json_cmd = lambda *a, **kw: (_calls56.append(a), [{"tmux": "alfa56", "name": "alfa56", "cwd": "/x", "session_id": "S56"}])[1] if a[:1] == ("sessions",) else _jc56(*a, **kw)
+RL._LIVE.update(at=0.0, rows=None)
+a56 = RL.live_row("alfa56")
+a56["transcript"] = "/changed"
+b56 = RL.live_row("alfa56")
+n56 = len(_calls56)
+c56 = RL.live_row("beta56")
+n56b = len(_calls56)
+ok56, txt56 = RL.transcript_page("alfa56", "alfa56", "5")
+n56c = len(_calls56)
+RL._LIVE["at"] -= RL.LIVE_ROWS_TTL_S + 1
+RL.live_row("alfa56")
+n56d = len(_calls56)
+RL._json_cmd = _jc56
+RL._LIVE.update(at=0.0, rows=None)
+T.check("R56 live_row: one `sessions --json --no-screen` for repeated reads within the TTL (transcript included), a copy each time; an unknown name and an expired cache read again",
+        b56.get("session_id") == "S56" and "transcript" not in b56 and n56 == 1 and c56 is None and n56b == 2 and n56c == 2 and n56d == 3
+        and set(_calls56) == {("sessions", "--json", "--no-screen")}, str([b56, n56, n56b, n56c, n56d, ok56, txt56]))
+
+# R56: ogni chiamata HTTPS creava un contesto SSL nuovo (i certificati riletti: ~100 ms di CPU su questo PC): uno solo
+import ssl as _ssl56
+_uo56, _tk56, _bu56, _ctx56 = RL.urllib.request.urlopen, RL.token, RL.base_url, []
+
+
+class _Resp56:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return b"null"
+
+
+RL.urllib.request.urlopen = lambda req, timeout=None, context=None: (_ctx56.append(context), _Resp56())[1]
+RL.token, RL.base_url = (lambda: "t"), (lambda: "https://rtdb.example")
+try:
+    RL.rtdb("GET", "state"); RL.rtdb("PUT", "state", {"a": 1})
+finally:
+    RL.urllib.request.urlopen, RL.token, RL.base_url = _uo56, _tk56, _bu56
+T.check("R56 rtdb: the same SSLContext for every call", len(_ctx56) == 2 and isinstance(_ctx56[0], _ssl56.SSLContext) and _ctx56[0] is _ctx56[1], str(_ctx56))
+
 T.finish()

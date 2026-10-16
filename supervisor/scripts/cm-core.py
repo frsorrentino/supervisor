@@ -17,6 +17,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -91,18 +92,46 @@ def _epoch(ts):
         return 0.0
 
 
+_LEDGER = {"key": None, "end": 0, "tail": b"", "rows": []}
+_LEDGER_LOCK = threading.Lock()
+_LEDGER_SKIP = b'"event": "watch-cmd"'
+
+
 def ledger_rows():
+    """Le righe del ledger, senza le watch-cmd (il registro dei comandi del relay: nessuno stato le legge, e sono quasi
+    tutte le righe). 16/10 (relay al 50% di CPU): il demone riparsava 50 MB a ogni push; ora tiene le righe gia' lette e
+    decodifica solo i byte nuovi. Un file sostituito, accorciato o riscritto (gli ultimi byte gia' letti non tornano) si
+    rilegge da capo; una riga a meta' aspetta il suo «\\n». Torna una copia della lista."""
     p = Path(cm.expand(_cfg()["state_dir"])) / "ledger.jsonl"
-    out = []
-    try:
-        for line_ in p.read_text().splitlines():
-            try:
-                out.append(json.loads(line_))
-            except ValueError:
-                continue
-    except OSError:
-        pass
-    return out
+    with _LEDGER_LOCK:
+        c = _LEDGER
+        try:
+            st = p.stat()
+            with open(p, "rb") as f:
+                key = (str(p), st.st_dev, st.st_ino)
+                if c["key"] == key and c["end"] <= st.st_size and c["tail"]:
+                    f.seek(c["end"] - len(c["tail"]))
+                    if f.read(len(c["tail"])) != c["tail"]:
+                        c["key"] = None
+                if c["key"] != key or c["end"] > st.st_size:
+                    c.update(key=key, end=0, tail=b"", rows=[])
+                f.seek(c["end"])
+                data = f.read(st.st_size - c["end"])
+        except OSError:
+            c.update(key=None, end=0, tail=b"", rows=[])
+            return []
+        cut = data.rfind(b"\n")
+        if cut >= 0:
+            for raw in data[:cut].split(b"\n"):
+                if not raw.strip() or _LEDGER_SKIP in raw:
+                    continue
+                try:
+                    c["rows"].append(json.loads(raw))
+                except ValueError:
+                    continue
+            c["end"] += cut + 1
+            c["tail"] = data[max(0, cut + 1 - 64):cut + 1]
+        return list(c["rows"])
 
 
 def transcript_of(row):

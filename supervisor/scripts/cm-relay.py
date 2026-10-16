@@ -39,6 +39,7 @@ import re
 import resource
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -335,6 +336,17 @@ def local_only():
     return not str(R.get("firebase_url") or "").strip()
 
 
+_SSL_CTX = []
+
+
+def ssl_ctx():
+    """16/10 (relay al 50% di CPU): un contesto SSL per tutto il processo. urlopen senza contesto ne crea uno a ogni
+    chiamata e rilegge i certificati di sistema: ~100 ms di CPU per chiamata su questo PC."""
+    if not _SSL_CTX:
+        _SSL_CTX.append(ssl.create_default_context())
+    return _SSL_CTX[0]
+
+
 def rtdb(method, path, obj=None, query=None, timeout=20):
     """Una chiamata REST a RTDB: GET/PUT/PATCH/DELETE su /<path>.json?access_token=… Torna il JSON (o None)."""
     q = {"access_token": token()}
@@ -342,7 +354,7 @@ def rtdb(method, path, obj=None, query=None, timeout=20):
     url = f"{base_url()}/{path.strip('/')}.json?{urllib.parse.urlencode(q)}"
     data = json.dumps(obj, ensure_ascii=False).encode() if obj is not None or method in ("PUT", "PATCH") else None
     req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx()) as r:
         raw = r.read().decode()
         return json.loads(raw) if raw else None
 
@@ -368,7 +380,7 @@ def fcm_send(data):
                         "android": {"priority": "high"}}}
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {token()}"})
-    with urllib.request.urlopen(req, timeout=20) as r:
+    with urllib.request.urlopen(req, timeout=20, context=ssl_ctx()) as r:
         r.read()
     return True
 
@@ -635,6 +647,11 @@ def changes_pills(rows, ledger, now):
     path = rdir() / "changes-pill.json"
     cache = read_json(path, {})
     fresh, out, done = {}, {}, {}
+    last_stop = {}   # 16/10: l'ultimo stop di ogni sessione in un giro solo (era un giro del ledger per riga)
+    for x in ledger:
+        if x.get("event") == "stop":
+            sid = x.get("session_id")
+            last_stop[sid] = max(last_stop.get(sid, 0), S.epoch(x.get("ts")))
     for r in rows:
         tm = r.get("tmux") or r.get("name") or ""
         cwd = str(r.get("cwd") or "")
@@ -642,7 +659,7 @@ def changes_pills(rows, ledger, now):
             continue
         c = cache.get(tm) or {}
         if r.get("status") != "dead":
-            stop = max((S.epoch(x.get("ts")) for x in ledger if x.get("event") == "stop" and x.get("session_id") == r.get("session_id")), default=0)
+            stop = last_stop.get(r.get("session_id"), 0)
             due = c.get("cwd") != cwd or stop > int(c.get("stop") or 0)
             if due and now - float(c.get("checked") or 0) >= PILL_MIN_S:
                 tx = None
@@ -2741,6 +2758,27 @@ TRANSCRIPT_MAX_BYTES = 60000   # 1.22: il JSON di una pagina in /result; oltre s
 TRANSCRIPT_WINDOWS = (2 * 1024 * 1024, 16 * 1024 * 1024, None)   # si legge dalla coda, e si allarga solo se serve
 
 
+LIVE_ROWS_TTL_S = 10
+_LIVE = {"at": 0.0, "rows": None}
+_LIVE_LOCK = threading.Lock()
+
+
+def live_row(tm):
+    """16/10 (relay al 50% di CPU): la riga viva di una sessione per le letture che il telefono e la web app ripetono
+    (transcript, diff, changes, file). Le righe di `sessions --json --no-screen` restano in processo LIVE_ROWS_TTL_S;
+    un nome che non c'e' (sessione appena lanciata) le rilegge subito. Una copia, o None."""
+    with _LIVE_LOCK:
+        rows = _LIVE["rows"] if _LIVE["rows"] is not None and time.time() - _LIVE["at"] < LIVE_ROWS_TTL_S else None
+    hit = next((r for r in rows or [] if (r.get("tmux") or r.get("name")) == tm), None)
+    if hit is None:
+        rows = _json_cmd("sessions", "--json", "--no-screen")
+        if rows is not None:
+            with _LIVE_LOCK:
+                _LIVE.update(at=time.time(), rows=rows)
+        hit = next((r for r in rows or [] if (r.get("tmux") or r.get("name")) == tm), None)
+    return dict(hit) if hit else None
+
+
 def transcript_page(session, tm, arg):
     """1.22 (30/09): la chat di una sessione per il telefono. arg «n» = le ultime n voci; «n:before=<id>» = le n
     prima di quella voce; «n:after=<id>» = le prime n dopo (il telefono lo ripete a scheda aperta, e costa poco:
@@ -2749,7 +2787,7 @@ def transcript_page(session, tm, arg):
     if not m or not int(m.group(1)):
         return False, M("relay.cmd_transcript_bad_arg", arg=str(arg or ""))
     n, mode, ref = min(int(m.group(1)), TRANSCRIPT_MAX_N), m.group(2), m.group(3)
-    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    row = live_row(tm)
     if not row:
         return False, M("relay.cmd_interrupt_gone", name=session)
     if row.get("host") and row.get("host") != "local":
@@ -2795,7 +2833,7 @@ def transcript_page(session, tm, arg):
 def session_row(tm):
     """1.72: la riga di una sessione, viva da `sessions --json` o chiusa dal registro: la vista «Modifiche» funziona
     anche a sessione chiusa, perche' la cartella c'e' ancora. None se non si trova."""
-    row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    row = live_row(tm)
     if row:
         return row
     s_ = next((x for x in (_json_cmd("registry", "--good", expect="{") or {}).get("sessioni", []) if x.get("nome") == tm), None)
