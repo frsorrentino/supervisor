@@ -119,6 +119,13 @@ def term_for(name):
     return None
 
 
+def background(name):
+    """17/10/2026: una sessione viva del registro senza tmux (lanciata con --bg) non ha uno schermo da leggere ne'
+    tasti da mandare; la sua console e' solo `claude attach`, che prende il terminale. Si dice questo, non «nessuna
+    sessione»."""
+    return any((r["name"] == name or r["tmux"] == name) and not r["tmux"] for r in sessions.collect(read_screen=False))
+
+
 def parse(text):
     """(header, domanda, [(n, label, corrente, descrizione)], footer presente). Le opzioni sono le righe
     «n. label»; la descrizione sotto (indentata, senza numero) si raccoglie (12/09: sul polso e' il testo che
@@ -393,7 +400,7 @@ def main(argv):
     name = argv[0]
     t = term_for(name)
     if t is None:
-        print(M("answer.no_session", name=name), file=sys.stderr)
+        print(M("answer.background" if background(name) else "answer.no_session", name=name), file=sys.stderr)
         return 1
     if isinstance(t, Remote):
         TERMS[name] = t

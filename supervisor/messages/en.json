@@ -602,6 +602,7 @@
   "answer.usage": "usage: supervisor answer <name> --show | <name> <n> [<n> ...] | <name> --text \"...\" | <name> --chat",
   "answer.no_foot": "this question has no “{label}” entry",
   "answer.no_session": "supervisor answer: no tmux session “{name}”",
+  "answer.background": "supervisor answer: “{name}” runs in the background (--bg) and has no screen: the question can only be seen and answered with `claude attach`",
   "answer.no_question": "“{name}”: no open question on screen (no “Enter to select”)",
   "answer.question": "“{name}” asks — {header}: {question}",
   "answer.no_option": "option {n} does not exist: there are {options}",

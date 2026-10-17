@@ -4,6 +4,7 @@
 A1  --show: domanda e opzioni numerate, cursore sulla 1
 A2  answer 3: Giù x2 + Invio → «→ verde», compare la seconda domanda; answer 2 sulla seconda → «→ M»
 A3  senza domanda aperta: --show e answer rifiutano senza toccare tasti; opzione inesistente rifiutata
+A3b sessione --bg (viva nel registro, niente tmux): rifiutata dicendo che e' in background e non ha schermo
 A4  --notify (payload PermissionRequest su stdin, TMUX_PANE della sessione): messaggio Telegram alle chat
     autorizzate con domanda, opzioni numerate dallo schermo e «rispondi N a NOME»; riga nel ledger
 A5  --notify senza tmux (TMUX_PANE assente): domanda e opzioni dal tool_input del payload, nome dalla cartella,
@@ -77,6 +78,18 @@ with T.PrivateTmux() as tm:
     T.check("A3 no open question: answer refuses, no keys sent", r.returncode == 1 and "nessuna domanda" in r.stdout, r.stdout + r.stderr)
     r = answer(tm, "nessuna", "1")
     T.check("A3 unknown session refused", r.returncode == 1 and "nessuna sessione" in r.stderr, r.stdout + r.stderr)
+    # A3b (17/10/2026): una sessione lanciata con --bg e' viva nel registro ma non sta in tmux: niente schermo ne' tasti
+    bgp = subprocess.Popen(["sleep", "600"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.2)
+    st = Path(f"/proc/{bgp.pid}/stat").read_text()
+    (home / ".claude" / "sessions").mkdir(exist_ok=True)
+    (home / ".claude" / "sessions" / f"{bgp.pid}.json").write_text(json.dumps({"pid": bgp.pid, "name": "sfondo", "cwd": str(tmp), "status": "waiting",
+        "startedAt": int(time.time() * 1000), "procStart": st[st.rindex(")") + 2:].split()[19], "sessionId": "sid-sfondo"}))
+    r = answer(tm, "sfondo", "1")
+    T.check("A3b --bg session (registry, no tmux) → exit 1, «in background … non ha uno schermo», not «nessuna sessione»",
+            r.returncode == 1 and "in background" in r.stderr and "schermo" in r.stderr and "nessuna sessione" not in r.stderr, r.stdout + r.stderr)
+    bgp.kill()
+    (home / ".claude" / "sessions" / f"{bgp.pid}.json").unlink()
     # A10 (15/09, dal polso): le voci fisse in coda si scelgono per nome. «Type something.» e' un campo in riga: il
     # testo si scrive col cursore sopra e Invio lo conferma (dal vivo; prima Invio e poi testo non arrivava mai)
     for s_, scen in (("gamma", "question"), ("delta", "question2")):

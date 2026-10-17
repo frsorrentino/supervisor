@@ -515,6 +515,10 @@ if __name__ == "__main__":
         sys.exit(cmd_interrupt(args[1:]))
     if args and args[0] == "panel":
         sys.exit(cmd_panel(args[1:]))
+    if args and args[0] == "find":
+        # 17/10/2026 (per report): la sessione esiste in qualche forma che talk raggiunge? tmux, solo socket (--bg,
+        # niente tmux) o su un altro host. Stessa fonte di cmd_talk: exit 0 se si', 1 se no
+        sys.exit(0 if len(args) > 1 and (_load("cm-rsession").resolve(args[1]) or find(args[1])) else 1)
     if args and args[0] in ("talk", "wait"):
         sub, args = args[0], args[1:]
     else:

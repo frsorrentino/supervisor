@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.36 — 2026-10-17: reports reach --bg sessions, no duplicate launch.**
+  - Approved by the maintainer on 17/10 at 18:10 (task sup-report-bg-20261017).
+  - Seen live at 15:34: two reports with photos to a project session launched by the master with `--bg` came back «supervisor report: nessuna sessione «NAME»».
+  - `supervisor report` finds the session with the same source as `talk` (`cm-talk.py find`: the Claude Code registry by name or tmux name, and sessions on other hosts), not with `tmux has-session` only. `--session` with a `--bg` session now delivers via socket instead of exit 6; without `--session`, a project with a live `--bg` session no longer gets a duplicate launched (on 15/10 a duplicate crashed the app). A name that exists nowhere still gives exit 6.
+  - `supervisor answer` to a `--bg` session says it runs in the background and has no screen (only `claude attach` shows the question), instead of «no tmux session».
+  - Tests: R5 in `tests/talk-report-verify.py`, A3b in `tests/answer-verify.py`.
 - **0.8.35 — 2026-10-17: relay fixes of the night — no double report after a restart, lighter reads, /effort closed under load.**
   - Queued by the master for the night of 17/10, with the maintainer's go-ahead at 00:17.
   - A bus command is written to `done-cmds.json` before its cleanup (the deletion of `/share` after a report): a daemon restart in that moment left it unmarked, and when `/cmd` came back the report went out twice.

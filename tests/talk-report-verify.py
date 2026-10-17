@@ -13,6 +13,8 @@ R2  report: consegna alla sessione via talk --no-wait; --no-launch archivia e ba
 R3  report: sessione assente → la lancia (claude finto) e consegna
 I1  interrupt: un solo Esc e solo a turno in corso («esc to interrupt»); niente turno → exit 1; sessione assente → 3
 R4  report: cartella come percorso assoluto; --session consegna a quella sessione, exit 6 se non c'e'
+R5  report verso una sessione --bg (registro col solo socket, niente tmux): con --session consegna via socket; senza
+    --session trova la sessione del progetto, non lancia niente e consegna
 """
 import json
 import os
@@ -28,7 +30,7 @@ import cm_test as T  # noqa: E402
 
 tmp = Path(T.tmpdir())
 home = tmp / "home"
-for d in (".claude/sessions", "ws/personali/shopacme", "ws/personali/shopfront", "ws/personali/blog"):
+for d in (".claude/sessions", "ws/personali/shopacme", "ws/personali/shopfront", "ws/personali/blog", "ws/personali/orto"):
     (home / d).mkdir(parents=True)
 cfg = tmp / "config.json"
 cfg.write_text(json.dumps({
@@ -63,7 +65,7 @@ def talk(*args, **extra):
 
 # --- finto destinatario su socket: registra le righe, scrive una risposta nel transcript, cambia stato
 class FakePeer:
-    def __init__(self, name, cwd):
+    def __init__(self, name, cwd, tmux="blog:@0.%0"):
         self.name, self.cwd = name, cwd
         # un processo vivo che NON sia un antenato del test (altrimenti il canale sarebbe «(questa)»)
         self.proc = subprocess.Popen(["sleep", "600"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -73,9 +75,12 @@ class FakePeer:
         self.sid = f"sid-{name}"
         reg = home / ".claude" / "sessions"
         self.reg_json = reg / f"{self.pid}.json"
-        self.reg_json.write_text(json.dumps({"pid": self.pid, "name": name, "cwd": cwd, "status": "idle", "tmux": "blog:@0.%0",
-                                             "startedAt": int(time.time() * 1000), "procStart": proc_start(self.pid),
-                                             "sessionId": self.sid, "messagingSocketPath": self.sock_path}))
+        reg_d = {"pid": self.pid, "name": name, "cwd": cwd, "status": "idle", "tmux": tmux,
+                 "startedAt": int(time.time() * 1000), "procStart": proc_start(self.pid),
+                 "sessionId": self.sid, "messagingSocketPath": self.sock_path}
+        if not tmux:
+            del reg_d["tmux"]   # una sessione --bg: il registro non porta il campo
+        self.reg_json.write_text(json.dumps(reg_d))
         (reg / f"{self.pid}.abc.key").write_text(json.dumps({"peerToken": "tok-" + name, "procStart": proc_start(self.pid)}))
         import re
         slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(cwd))
@@ -263,6 +268,23 @@ print(repr(filt("❯ \\x1b[2msolo suggerimento fino a fine riga")))        # non
     r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), str(shop), "-", "per percorso e nome", "--session", "shopfront"], capture_output=True, text=True, env=env(), timeout=120)
     time.sleep(1)
     T.check("R4 absolute folder + --session → delivered to that session", r.returncode == 0 and "consegnata" in r.stdout and "per percorso e nome" in tm("capture-pane", "-p", "-t", "shopfront").stdout, r.stdout + r.stderr)
+    # R5 (17/10/2026, dal vivo alle 15:34: «supervisor report: nessuna sessione «NOME»», lanciata dalla master con --bg)
+    bg = FakePeer("orto", str(home / "ws" / "personali" / "orto"), tmux="")
+
+    def bg_got(text):
+        for _ in range(50):
+            if any(text in json.loads(l)["message"]["content"] for x in bg.received for l in x.splitlines() if '"msgV"' in l):
+                return True
+            time.sleep(0.1)
+        return False
+    r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), str(shop), "-", "foto dal telefono", "--session", "orto"], capture_output=True, text=True, env=env(), timeout=120)
+    T.check("R5 --session of a --bg session (socket only, no tmux) → delivered via socket, exit 0",
+            r.returncode == 0 and "consegnata" in r.stdout and "socket" in r.stdout and bg_got("foto dal telefono"), r.stdout + r.stderr)
+    r = subprocess.run([str(T.SCRIPTS / "cm-report.sh"), "orto", "-", "seconda foto"], capture_output=True, text=True, env=env(FAKE_CLAUDE_SCENARIO_FILE=str(scen), WAYLAND_DISPLAY=""), timeout=180)
+    T.check("R5 no --session, the project has a --bg session → nothing launched (no tmux «orto»), delivered via socket",
+            r.returncode == 0 and "consegnata" in r.stdout and "lanci" not in r.stderr.lower() and tm("has-session", "-t", "=orto").returncode != 0
+            and tm("has-session", "-t", "=orto-2").returncode != 0 and bg_got("seconda foto"), r.stdout + r.stderr)
+    bg.proc.kill()
 
 peer.proc.kill()
 T.rm(str(tmp))

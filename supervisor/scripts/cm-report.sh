@@ -9,13 +9,13 @@
 #   <progetto>   nome o pezzo del nome della cartella (sito, cliente-a): si cerca in
 #                `workspace.project_dirs` sotto la radice, prima esatto, poi prefisso, poi sottostringa;
 #                un percorso assoluto di una cartella esistente si prende cosi' com'e' (il relay, contratto 1.19)
-#   --session    consegna a quella sessione tmux invece che a quella col nome di launch (field-notes-2 accanto a
-#                field-notes): deve esistere, non si lancia
+#   --session    consegna a quella sessione (tmux, --bg col solo socket o remota) invece che a quella col nome di
+#                launch (field-notes-2 accanto a field-notes): deve esistere, non si lancia
 #   <immagine>   percorso del file (png/jpg/webp/gif); "-" per nessuna immagine
 #   --no-launch  se la sessione non c'e', non la lancia: archivia e basta
 #
 # Copia l'immagine in `<progetto>/<report.subdir>/<data>-<slug>.<ext>` (chmod 644,
-# cosi' la sessione la legge), trova la sessione tmux con lo stesso nome che
+# cosi' la sessione la legge), trova la sessione (tmux o --bg) con lo stesso nome che
 # darebbe `launch` (o la lancia, account dedotto dal percorso) e le consegna il
 # testo con il percorso dell'immagine via `talk --no-wait` (socket se c'e', tmux
 # altrimenti). Non aspetta la risposta.
@@ -71,11 +71,15 @@ while IFS=$'\t' read -r p a; do
   case "$CARTELLA/" in "$p"/*) [ "${#p}" -gt "$bestlen" ] && { ACC="$a"; bestlen="${#p}"; } ;; esac
 done <<<"$CM_FOLDER_MAP"
 NOME="$(cm_get "$ACC" TMUX_PREFIX)$(printf '%s' "$NOME_CARTELLA" | sed 's/[^A-Za-z0-9]/-/g')"
+# 17/10/2026 (dal vivo alle 15:34: due segnalazioni a una sessione lanciata con --bg, rifiutate): la sessione si cerca con
+# la stessa fonte di talk (registro peer, per nome o per nome tmux, e host remoti), non solo in tmux. Una --bg non sta
+# in tmux: con has-session --session dava exit 6 e senza --session report lanciava un doppione (il 15/10 l'app in crash)
+esiste() { python3 "$CM_SCRIPTS/cm-talk.py" find "$1" 2>/dev/null; }
 if [ -n "$SESSIONE" ]; then
-  cm_tmux has-session -t "=$SESSIONE" 2>/dev/null || { cm_msg report.no_session "name=$SESSIONE" >&2; exit 6; }
+  esiste "$SESSIONE" || { cm_msg report.no_session "name=$SESSIONE" >&2; exit 6; }
   NOME="$SESSIONE"
 fi
-if ! cm_tmux has-session -t "=$NOME" 2>/dev/null; then
+if ! esiste "$NOME"; then
   if [ "$LANCIO" = no ]; then
     cm_msg report.archived "path=${PERCORSO_IMG:-(-)}"
     cm_msg report.not_delivered "name=$NOME"
