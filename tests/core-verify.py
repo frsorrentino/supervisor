@@ -374,4 +374,17 @@ core._CFG = _cfg15
 T.check("CO15 a ledger rewritten in place (longer) or replaced by another file is read from the start; the list returned is a copy",
         r3 == [("stop", "Z"), ("prompt", "Z")] and r4 == [("start", "N")] and r5 == 1, str([r3, r4, r5]))
 
+
+# CO16 (contratto 1.73, 18/10): un prompt con scope «studio» porta dopo il prefisso il blocco [studio]…[/studio] del
+# relay; la voce della chat e la timeline lo tolgono, come le istruzioni vocali: resta il testo mandato
+_pre16, _org16 = core._prompt_prefixes()[0]
+_blk16 = "[studio]\nPratiche:\n- Harbor lease dispute → ~/ws/personal/harbor-lease\n[/studio]"
+_v16 = core._voice_texts()[0]
+T.check("CO16 (1.73) prefix + [studio] block + blank line + text → the text and the origin; with the voice instructions before the block too; "
+        "an unclosed block and a block typed on the PC stay as they are",
+        core._origin_of(f"{_pre16} {_blk16}\n\nwhat is due this week?") == ("what is due this week?", _org16)
+        and core._origin_of(f"{_pre16} {_v16} {_blk16}\n\nwhat is due?") == ("what is due?", _org16)
+        and core._origin_of(f"{_pre16} [studio]\nno end") == ("[studio]\nno end", _org16)
+        and core._origin_of(f"{_blk16}\n\nhi") == (f"{_blk16}\n\nhi", "pc"), str(core._origin_of(f"{_pre16} {_blk16}\n\nwhat is due this week?")))
+
 T.finish()

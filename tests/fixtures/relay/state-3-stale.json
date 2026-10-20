@@ -101,7 +101,8 @@
     "project_new",
     "permission_mode",
     "changes",
-    "diff"
+    "diff",
+    "studio"
   ],
   "slash": [
     "compact",

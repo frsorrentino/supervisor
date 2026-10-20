@@ -611,6 +611,34 @@
       "device": "phone",
       "issued": 1789211540,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0740-4000-8000-0000000000740",
+      "op": "studio",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789211560,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0741-4000-8000-0000000000741",
+      "op": "studio",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789211570,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0742-4000-8000-0000000000742",
+      "op": "prompt",
+      "session": "master",
+      "arg": "what is due this week?",
+      "scope": "studio",
+      "device": "web",
+      "issued": 1789211580,
+      "by": "web"
     }
   ],
   "result": [
@@ -1026,6 +1054,24 @@
       "ok": false,
       "text": "work-ledger-api: bypassPermissions is not in this session's Shift+Tab cycle, left on plan",
       "at": 1789211548
+    },
+    {
+      "id": "6f1c2d3e-0740-4000-8000-0000000000740",
+      "ok": true,
+      "text": "{\"cases\": [{\"id\": \"c_7a1e0c5b9d21\", \"name\": \"Harbor lease dispute\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_7a1e0c5b9d22\", \"name\": \"Harbor lease: appeal\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_4b8f2a6e1c30\", \"name\": \"tax-2026\", \"project\": \"personal/tax-2026\"}], \"deadlines\": [{\"uid\": \"e6\", \"summary\": \"Call the client about the appeal\", \"date\": \"2026-09-12\", \"days_left\": 0, \"due\": true, \"case\": \"c_7a1e0c5b9d22\"}, {\"uid\": \"e1\", \"summary\": \"File the defence brief\", \"date\": \"2026-09-14\", \"days_left\": 2, \"due\": true, \"case\": \"c_7a1e0c5b9d21\"}, {\"uid\": \"e2\", \"summary\": \"Tax return: second instalment\", \"date\": \"2026-10-02\", \"days_left\": 20, \"due\": false, \"case\": \"c_4b8f2a6e1c30\"}, {\"uid\": \"e3\", \"summary\": \"Renew the office insurance\", \"date\": \"2026-11-05\", \"days_left\": 54, \"due\": false, \"case\": \"\"}], \"outcomes\": [{\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789207240, \"short\": \"Brief outline ready\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789203640, \"short\": \"Exhibits indexed\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor-lease\", \"at\": 1789124440, \"short\": \"Hearing date confirmed\"}, {\"project\": \"personal/tax-2026\", \"session\": \"tax-2026\", \"at\": 1788710840, \"short\": \"Receipts sorted by month\"}], \"error\": \"\"}",
+      "at": 1789211561
+    },
+    {
+      "id": "6f1c2d3e-0741-4000-8000-0000000000741",
+      "ok": true,
+      "text": "{\"cases\": [{\"id\": \"c_7a1e0c5b9d21\", \"name\": \"Harbor lease dispute\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_7a1e0c5b9d22\", \"name\": \"Harbor lease: appeal\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_4b8f2a6e1c30\", \"name\": \"tax-2026\", \"project\": \"personal/tax-2026\"}], \"deadlines\": [], \"outcomes\": [{\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789207240, \"short\": \"Brief outline ready\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789203640, \"short\": \"Exhibits indexed\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor-lease\", \"at\": 1789124440, \"short\": \"Hearing date confirmed\"}, {\"project\": \"personal/tax-2026\", \"session\": \"tax-2026\", \"at\": 1788710840, \"short\": \"Receipts sorted by month\"}], \"error\": \"calendar off\"}",
+      "at": 1789211571
+    },
+    {
+      "id": "6f1c2d3e-0742-4000-8000-0000000000742",
+      "ok": true,
+      "text": "delivered",
+      "at": 1789211581
     }
   ]
 }

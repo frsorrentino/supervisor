@@ -137,6 +137,10 @@
     "max_sessions": 5,
     "idle_hours": 2
   },
+  "resume_quota": {
+    "windowless": "new",
+    "watch_s": 10
+  },
   "quota": {
     "source": "~/.claude/fable-director",
     "warn_pct": 85
@@ -180,7 +184,8 @@
     "cache_min": 30,
     "timeout_s": 10,
     "case_property": "X-STUDIO-CASE",
-    "cases": {}
+    "cases": {},
+    "studio_rule": ""
   },
   "guard": {
     "warn_pct": 95,
@@ -213,6 +218,7 @@
     "tool_memory_limit": "2g",
     "retry_watchdog_max_wait_ms": 900000,
     "retry_watchdog_max_usage_limit_wait_ms": 900000,
+    "retry_watchdog_usage_limit_recheck_ms": 300000,
     "after_result_s": 300,
     "fork_subagent": false,
     "out_subdir": "docs/notte",

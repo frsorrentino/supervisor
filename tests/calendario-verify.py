@@ -134,6 +134,20 @@ T.check("CA1 TRIGGER: -P3D 3, -P1W 7, -PT12H 1, -P1DT6H 2, after-start and absol
         [cal.trigger_days(x) for x in ("-P3D", "-P1W", "-PT12H", "-P1DT6H", "PT15M", "P1D")] == [3, 7, 1, 2, None, None]
         and evs["ev5@prova"]["remind"] == 7 and evs["ev6@prova"]["remind"] == 1)
 
+# CA1b (18/10, pagina Studio): un valore di calendar.cases puo' essere {dir, name}; la stringa resta valida
+_c1b = cal.C.get("cases")
+cal.C["cases"] = {"P-001": {"dir": "~/ws/pratiche/p001", "name": "Pratica di prova"}}
+_due1b = {e["uid"]: e["dir"] for e in cal.due(list(evs.values()))}
+cal.C["cases"] = _c1b
+T.check("CA1b case value {dir, name}: due() takes dir; case_name is name, or the folder's last piece for a string",
+        _due1b.get("ev1@prova") == cal.cm.expand("~/ws/pratiche/p001") and cal.case_name({"dir": "/a/b", "name": "X"}) == "X"
+        and cal.case_name("/a/p001/") == "p001" and cal.case_name({"dir": "/a/b"}) == "b" and cal.case_dir({"name": "X"}) == "", str(_due1b))
+_up1b = cal.upcoming(list(evs.values()), 60)
+T.check("CA1b upcoming: from today to 60 days, nearest first, due inside the reminder window, past ones out",
+        [e["days_left"] for e in _up1b] == sorted(e["days_left"] for e in _up1b) and all(0 <= e["days_left"] <= 60 for e in _up1b)
+        and "ev1@prova" in {e["uid"] for e in _up1b} and all(e["due"] == (e["days_left"] <= (evs[e["uid"]]["remind"] if evs[e["uid"]]["remind"] is not None else int(cal.C["remind_days"]))) for e in _up1b)
+        and set(_up1b[0]) == {"uid", "summary", "date", "days_left", "due", "case"}, str(_up1b)[:400])
+
 # CA2 + CA3: recap con il calendario raggiungibile
 r = run("cm-recap.py", ok_cfg)
 out = r.stdout

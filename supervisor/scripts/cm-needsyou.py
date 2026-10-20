@@ -51,16 +51,22 @@ def main(argv):
     if not row:
         print(M("needs_you.no_session"), file=sys.stderr)
         return 3
-    d = Path(cm.expand(CFG["state_dir"])) / "needs-you"
-    f = d / f"{row['session_id']}.json"
     if argv and argv[0] == "--clear":
-        f.unlink(missing_ok=True)
+        (Path(cm.expand(CFG["state_dir"])) / "needs-you" / f"{row['session_id']}.json").unlink(missing_ok=True)
         print(M("needs_you.cleared"))
         return 0
     reason = " ".join(" ".join(argv).split())[:200]
     if not reason:
         print(M("needs_you.usage"), file=sys.stderr)
         return 2
+    return mark(row, reason)
+
+
+def mark(row, reason):
+    """La sessione della riga e' ferma per la persona: il file, la casella della master e la push. Anche da fuori
+    (21/10/2026: cm-resume-quota.py, per una sessione senza finestra ferma sull'avviso di ripresa)."""
+    d = Path(cm.expand(CFG["state_dir"])) / "needs-you"
+    f = d / f"{row['session_id']}.json"
     d.mkdir(parents=True, exist_ok=True)
     name = row.get("tmux") or row.get("name")
     f.write_text(json.dumps({"reason": reason, "at": int(time.time()), "name": name}, ensure_ascii=False))

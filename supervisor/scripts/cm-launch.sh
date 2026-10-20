@@ -376,6 +376,14 @@ if [ "$FINESTRA" = true ] && [ "$FINESTRA_IMPOSSIBILE" = no ]; then
   fi
 fi
 
+# 21/10/2026 (Claude Code 2.1.304): riprendere una conversazione ferma puo' aprire l'avviso «Resume this conversation?»
+# sul costo in quota; senza finestra nessuno risponderebbe. cm-resume-quota.py sceglie o chiede (resume_quota.*)
+NOTA_RIPRESA=""
+if [ "$AGENT" = claude ] && { [ -n "$RIPRENDI" ] || [ "$CONTINUA" = si ]; } && [ "$ASPETTA_PERSONA" = no ]; then
+  NOTA_RIPRESA=$(python3 "$CM_SCRIPTS/cm-resume-quota.py" check "$NOME" ${FINESTRA_APERTA:+--window --wait 2} \
+    --resume-id "$RIPRENDI" --folder "$CARTELLA" --account "$ACCOUNT" 2>/dev/null || true)
+fi
+
 "$CM_SCRIPTS/cm-registry.sh" >/dev/null 2>&1   # T52: per il ripristino dopo un riavvio
 
 cm_msg launch.started
@@ -391,6 +399,7 @@ else
 fi
 [ "$ILLEGGIBILE" = si ] && echo "  nota:      $(cm_msg launch.slow_screen)"
 [ "$ASPETTA_PERSONA" = si ] && echo "  nota:      $(cm_msg launch.needs_person "name=$NOME")"
+[ -n "$NOTA_RIPRESA" ] && echo "  $NOTA_RIPRESA"
 # Il link Remote Control: dal registro (1.2), altrimenti dallo schermo (ripiego T55).
 # Il registro nasce PRIMA che il bridge sia connesso: bridgeSessionId arriva qualche secondo
 # dopo (con --continue la master ha letto «non ancora nel registro» il 09/09, poi il link c'era):

@@ -304,6 +304,10 @@ def screen_of(tmux_name, lines=20):
 def waits_on_screen(tmux_name, screen=None):
     """T13: due indizi insieme."""
     tail = screen_of(tmux_name) if screen is None else screen
+    # 21/10/2026 (Claude Code 2.1.304): l'avviso sul costo della ripresa; al ritorno su una sessione ferma le opzioni
+    # non hanno numero, e il pie' di pagina («Enter to confirm») non e' quello delle domande
+    if tail and "Resume this conversation?" in tail and "5-hour usage" in tail:
+        return True
     return bool(tail and WAIT_LIST.search(tail) and WAIT_HINT.search(tail))
 
 

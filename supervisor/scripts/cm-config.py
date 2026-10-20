@@ -120,6 +120,10 @@ DEFAULTS = {
              "from_name": "supervisor", "from_mode": "bypass"},
     "report": {"subdir": "docs/reports", "image_exts": ["png", "jpg", "jpeg", "webp", "gif"]},
     "sessions": {"stall_min": 20, "recent_min": 5, "max_sessions": 5, "idle_hours": 2},
+    # 21/10/2026 (Claude Code 2.1.304): l'avviso «Resume this conversation?» sul costo della ripresa, in una sessione
+    # lanciata con --resume/--continue senza finestra o su un altro host: "new" sceglie una conversazione nuova con un
+    # rimando alla vecchia, "needs_you" chiede alla persona, "off" non fa niente; watch_s = attesa del dialogo
+    "resume_quota": {"windowless": "new", "watch_s": 10},
     "quota": {"source": "~/.claude/fable-director", "warn_pct": 85},
     # spento di default (l'utente, 10/09/2026): la master resta l'unico ingresso dal telefono; lo
     # sportello apre sessioni senza progetto, con nome casuale e cartella fissa, e costa un
@@ -144,9 +148,11 @@ DEFAULTS = {
               "min_turns": 3},
     # scadenze da un calendario .ics (16/10/2026): l'indirizzo col token sta in url_file (0600), mai qui; senza quel
     # file e' tutto spento. remind_days vale per gli eventi senza VALARM; cases: id della pratica (case_property) →
-    # cartella, per aprire la sessione giusta
+    # cartella, per aprire la sessione giusta; il valore puo' essere anche {"dir": …, "name": …} (18/10, la pagina Studio
+    # del relay: name e' il nome della pratica). studio_rule: la riga «Regola:» del blocco [studio] di un prompt con
+    # scope studio, vuota = nessuna riga
     "calendar": {"url_file": "~/.config/cc-supervisor/calendar.env", "remind_days": 3, "cache_min": 30, "timeout_s": 10,
-                 "case_property": "X-STUDIO-CASE", "cases": {}},
+                 "case_property": "X-STUDIO-CASE", "cases": {}, "studio_rule": ""},
     # guardia della quota: avviso sopra warn_pct (una volta per finestra), ripresa delle sessioni
     # fallite e della coda notturna quando la finestra si resetta
     "guard": {"warn_pct": 95, "cron_minutes": 5, "night_after_reset": True, "night_timeout_s": 3600,
@@ -169,6 +175,9 @@ DEFAULTS = {
               # 16/10/2026 (Claude Code 2.1.301): al limite d'uso il watchdog aspetta il reset solo fino a qui, poi
               # chiude la richiesta (un limite settimanale puo' azzerarsi fra giorni); 0 = non impostata
               "retry_watchdog_max_usage_limit_wait_ms": 900000,
+              # 21/10/2026 (Claude Code 2.1.305): ogni quanto il watchdog ricontrolla un limite d'uso, per accorgersi
+              # di uno tolto prima del reset; 0 = non impostata
+              "retry_watchdog_usage_limit_recheck_ms": 300000,
               # 16/10/2026 (Claude Code 2.1.292): `claude -p` aspetta i comandi in background e le sveglie dopo il
               # risultato; la voce si chiude dopo after_result_s senza attivita' dal risultato (0 = fino a item_timeout_s)
               "after_result_s": 300,

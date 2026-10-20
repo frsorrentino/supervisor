@@ -860,6 +860,8 @@ def _origin_of(text):
                 if rest.startswith(v):
                     rest = rest[len(v):].strip()
                     break
+            if rest.startswith("[studio]\n") and "\n[/studio]" in rest:
+                rest = rest.split("\n[/studio]", 1)[1].strip()   # 1.73: il contesto dello scope «studio», messo dal relay
             return rest, origin
     return text, "pc"
 

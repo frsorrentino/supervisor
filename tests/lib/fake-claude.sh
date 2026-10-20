@@ -12,6 +12,9 @@
 #   question      dopo il prompt mostra un menu numerato con «Enter to select» (T13)
 #   bridge-late   si registra SUBITO ma il bridgeSessionId (link) arriva dopo FAKE_CLAUDE_DELAY secondi,
 #                 e niente link sullo schermo: nota (a) della master, 09/09/2026
+#   resume-quota  dopo l'avvio l'avviso «Resume this conversation?» di Claude Code 2.1.304 (testo dal binario 2.1.305),
+#                 opzioni numerate, cursore su «Resume»; resume-quota-new: cursore su «Start a new conversation»;
+#                 resume-quota-idle: opzioni senza numero (trigger idle). La scelta va in FAKE_CLAUDE_KEYS_LOG
 #   plain         prompt subito
 # Scrive il registro peer come Claude Code: $CLAUDE_CONFIG_DIR/sessions/<pid>.json
 # (FAKE_CLAUDE_REGISTER=0 per non farlo). Stampa il link Remote Control se
@@ -110,6 +113,32 @@ clear 2>/dev/null || true
 echo " ▐▛███▛█   Claude Code v2.1.265 (fake)"
 case "$SCEN" in *,bridge-late,*) ;; *) [ -n "$RC" ] && echo "▎ Keep working from anywhere: https://claude.ai/code/session_01FAKE$$";; esac
 echo "──────────────────────────── ${NAME:-$(basename "$PWD")} ─"
+resume_quota() {  # 21/10/2026: l'avviso sul costo della ripresa; Invio su «Resume» o su «Start a new conversation»
+  local sel=0 k k2 num=1 labs=("Resume" "Start a new conversation")
+  case "$SCEN" in *,resume-quota-new,*) sel=1;; esac
+  case "$SCEN" in *,resume-quota-idle,*) num=0;; esac
+  rqdraw() {
+    printf '\033[2J\033[H\n Resume this conversation?\n\n This conversation has been inactive for 3h 12m and is 412k tokens long. Resuming it will use about\n 38%% of your 5-hour usage limit.\n\n'
+    local i p
+    for i in 0 1; do
+      p="  "; [ "$i" = "$sel" ] && p="❯ "
+      if [ "$num" = 1 ]; then printf ' %s%d. %s\n' "$p" $((i+1)) "${labs[$i]}"; else printf ' %s%s\n' "$p" "${labs[$i]}"; fi
+    done
+    printf '      Claude can look this one up if you refer to it later\n\n Enter to confirm · Esc to resume\n'
+  }
+  rqdraw
+  while IFS= read -rsn1 k; do
+    case "$k" in
+      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+               case "${k2:-}" in '[B') sel=1 ;; '[A') sel=0 ;; *) [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "resume-quota: dismiss" >> "$FAKE_CLAUDE_KEYS_LOG"; break ;; esac
+               rqdraw ;;
+      "") [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "resume-quota: ${labs[$sel]}" >> "$FAKE_CLAUDE_KEYS_LOG"; break ;;
+    esac
+  done
+  printf '\033[2J\033[H ▐▛███▛█   Claude Code v2.1.305 (fake)\n'
+}
+case "$SCEN" in *,resume-quota,*|*,resume-quota-new,*|*,resume-quota-idle,*) sleep "${FAKE_CLAUDE_RQ_DELAY:-1}"; resume_quota ;; esac
+
 menu3() {  # come menu, ma SENZA le righe di descrizione sotto le opzioni
   local q="$1"; shift; local opts=("$@") i
   printf '\033[2J\033[H\n ☐ Via\n%s\n' "$q"

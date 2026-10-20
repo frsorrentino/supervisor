@@ -11,7 +11,7 @@ Una scadenza e' un VEVENT. Entra nel periodo di avviso quando mancano al massimo
 suo VALARM (TRIGGER:-P3D, -P1W, -PT12H arrotondato al giorno pieno; con piu' allarmi vale il piu' lontano), e
 senza VALARM da `calendar.remind_days`. Le passate non contano. La proprieta' `calendar.case_property` (default
 X-STUDIO-CASE) porta l'id della pratica; `calendar.cases` la collega a una cartella, cosi' la master sa dove
-aprire la sessione.
+aprire la sessione. Il valore e' la cartella, o {"dir": cartella, "name": nome della pratica} (18/10).
 
 Il feed scaricato si tiene in <state_dir>/calendar.ics per `calendar.cache_min` minuti: `next` si chiama spesso e
 non deve aspettare la rete ogni volta. Senza rete si usa la copia vecchia, se c'e', e l'errore si dice comunque.
@@ -169,6 +169,35 @@ def today():
     return dt.date.fromisoformat(t) if t else dt.date.today()
 
 
+def case_dir(v):
+    """La cartella di una voce di `calendar.cases`: la stringa, o `dir` del valore oggetto {"dir", "name"} (18/10)."""
+    return str((v.get("dir") if isinstance(v, dict) else v) or "")
+
+
+def case_name(v):
+    """Il nome di una pratica: `name` del valore oggetto, altrimenti l'ultimo pezzo della cartella."""
+    name = str(v.get("name") or "").strip() if isinstance(v, dict) else ""
+    return name or case_dir(v).rstrip("/").rsplit("/", 1)[-1]
+
+
+def remind_of(e):
+    return e["remind"] if e["remind"] is not None else int(C["remind_days"])
+
+
+def upcoming(events, days, day=None):
+    """Le scadenze dei prossimi `days` giorni (oggi compreso), la piu' vicina per prima; `due` = nel periodo di avviso.
+    La pagina Studio del relay (18/10): anche quelle non ancora in avviso e quelle senza pratica."""
+    day = day or today()
+    out = []
+    for e in events:
+        left = (e["date"] - day).days
+        if 0 <= left <= days:
+            out.append({"uid": e["uid"], "summary": e["summary"], "date": e["date"].isoformat(), "days_left": left,
+                        "due": left <= remind_of(e), "case": e["case"]})
+    out.sort(key=lambda e: (e["days_left"], e["summary"]))
+    return out
+
+
 def due(events, day=None):
     """Le scadenze nel loro periodo di avviso, la piu' vicina per prima, con giorni mancanti e cartella."""
     day = day or today()
@@ -176,9 +205,9 @@ def due(events, day=None):
     out = []
     for e in events:
         left = (e["date"] - day).days
-        remind = e["remind"] if e["remind"] is not None else int(C["remind_days"])
+        remind = remind_of(e)
         if 0 <= left <= remind:
-            folder = cases.get(e["case"]) if e["case"] else None
+            folder = case_dir(cases.get(e["case"])) if e["case"] else None
             out.append({**e, "date": e["date"].isoformat(), "days_left": left, "remind": remind,
                         "dir": cm.expand(folder) if folder else ""})
     out.sort(key=lambda e: (e["days_left"], e["summary"]))

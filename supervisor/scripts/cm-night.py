@@ -14,7 +14,8 @@ stato del relay, che sta in 8 KB). `run` le prende in ordine, al massimo
 coda con il motivo nel log. Il lavoro gira in `claude -p` nella cartella, con `--permission-mode`
 e `--max-turns` da config, `CLAUDE_CODE_TOOL_MEMORY_LIMIT` contro le build impazzite, il retry watchdog sui 429/529
 (`night.retry_watchdog_max_wait_ms`, 0 = spento; al limite d'uso aspetta il reset al massimo
-`night.retry_watchdog_max_usage_limit_wait_ms`) e un tetto di
+`night.retry_watchdog_max_usage_limit_wait_ms`, ricontrollando il limite ogni
+`night.retry_watchdog_usage_limit_recheck_ms`) e un tetto di
 tempo (`night.item_timeout_s`). `claude -p` esce in stream-json: l'esito e' l'evento `result`, e dopo il risultato la
 voce si chiude se per `night.after_result_s` non succede altro (un comando lasciato in background, una sveglia).
 L'esito va in `<cartella>/<night.out_subdir>/<data>-<id>.md`
@@ -263,6 +264,10 @@ def account_env(account):
         # the request; a weekly limit can reset days later, and the item would hold the night until item_timeout_s
         if N.get("retry_watchdog_max_usage_limit_wait_ms"):
             env["CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS"] = str(int(N["retry_watchdog_max_usage_limit_wait_ms"]))
+        # 21/10/2026 (Claude Code 2.1.305): while waiting at a usage limit the watchdog re-checks it this often, so a
+        # limit lifted before its reset (extra usage, a plan change) frees the item without waiting for the reset
+        if N.get("retry_watchdog_usage_limit_recheck_ms"):
+            env["CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS"] = str(int(N["retry_watchdog_usage_limit_recheck_ms"]))
     # 16/10/2026 (Claude Code 2.1.302): fork subagents are on by default also in `claude -p`; a fork re-pays the whole
     # context every turn, and at night nobody watches the bill. Off unless night.fork_subagent is true
     if not N.get("fork_subagent"):

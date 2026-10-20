@@ -106,8 +106,8 @@ T.check("R55 (1.72) the transcript pages: every entry carries diff, null but on 
         and _a8[0]["diff"] == {"path": "/home/dev/storefront/src/checkout/totals.ts", "kind": "edit", "added": 2, "removed": 1, "hunks": _f54[0]["hunks"], "cut": False},
         json.dumps(_a8[:1])[:300])
 _s54 = [json.loads((FIX / f"{n}.json").read_text()) for n in ("state-1-question", "state-2-idle", "state-3-stale")]
-T.check("R55 (1.72) the states: ops end with changes and diff; every session carries changes — on atlas-shop of state-1 the totals of changes-sample with its at, null on the others",
-        all(s["ops"][-2:] == ["changes", "diff"] for s in _s54) and all("changes" in x for s in _s54 for x in s["sessions"])
+T.check("R55 (1.72) the states: ops carry changes and diff, one after the other; every session carries changes — on atlas-shop of state-1 the totals of changes-sample with its at, null on the others",
+        all(s["ops"][s["ops"].index("changes"):][:2] == ["changes", "diff"] for s in _s54) and all("changes" in x for s in _s54 for x in s["sessions"])
         and [x["changes"] for x in _s54[0]["sessions"]] == [None, dict(CH54["totals"], at=CH54["at"]), None, None]
         and _s54[0]["sessions"][1]["name"] == "atlas-shop" and _s54[1]["sessions"][0]["changes"] is None, str([x.get("changes") for x in _s54[0]["sessions"]]))
 _la54 = json.loads((FIX / "local-api.json").read_text())
@@ -1108,12 +1108,14 @@ r = relay("push", "--dry-run"); dry10 = json.loads(r.stdout)
 T.check("R10 (1.12) /state carries choices: full model ids (as in session.model.id) with labels, and the five efforts",
         dry10.get("choices") == json.loads((FIX / "state-1-question.json").read_text())["choices"], str(dry10.get("choices")))
 # R53 (15/10, contratto 1.69): il cambio dei permessi passa da `supervisor permissions`, come model ed effort
-res = send_cmd(CMDS[-2])
+_RS53 = {r["id"]: r for r in RES}
+_C53 = [c for c in CMDS if c["op"] == "permission_mode"]
+res = send_cmd(_C53[0])
 T.check("R53 (1.69) permission_mode → `permissions field-notes acceptEdits`, /result ok with the command's line (as in the fixture)",
-        res and res["ok"] is True and res["text"] == RES[-2]["text"] and "permissions field-notes acceptEdits" in cm_calls(), str(res) + str(cm_calls()[-3:]))
-res = send_cmd(CMDS[-1])
+        res and res["ok"] is True and res["text"] == _RS53[_C53[0]["id"]]["text"] and "permissions field-notes acceptEdits" in cm_calls(), str(res) + str(cm_calls()[-3:]))
+res = send_cmd(_C53[1])
 T.check("R53 (1.69) a mode outside the session's Shift+Tab cycle → /result ok=false with the command's line",
-        res and res["ok"] is False and res["text"] == RES[-1]["text"], str(res))
+        res and res["ok"] is False and res["text"] == _RS53[_C53[1]["id"]]["text"], str(res))
 # R11 (contratto 1.13, 16/09): «Nuova sessione» dal polso col primo messaggio — launch, poi talk sulla sessione NATA
 # (che puo' chiamarsi diversamente dal progetto), e nel /result il suo nome come in sessions[].name
 fn = ws / "personal" / "field-notes"
@@ -2892,7 +2894,7 @@ T.check("R55 (1.72) changes with git → source git, repo the root, base the sho
         and [(f["path"], f["status"], f["added"], f["removed"], bool(f["hunks"])) for f in v54g.get("files", [])] == [(".env", "added", 1, 0, False), ("a.txt", "modified", 1, 1, True)], t54[:300])
 T.check("R55 (1.72) git that does not answer in time → ok false «git did not answer in 5 s» (the app shows it with Riprova)", to54 == (False, "git did not answer in 5 s"), str(to54))
 T.check("R55 (1.72) changes and diff are in state.ops and are passive reads (no push after them, superseded like the other reads)",
-        {"changes", "diff"} <= set(RL.PASSIVE_OPS) and RL.OPS[-2:] == ("changes", "diff"), str(RL.OPS[-3:]))
+        {"changes", "diff"} <= set(RL.PASSIVE_OPS) and RL.OPS[RL.OPS.index("changes"):][:2] == ("changes", "diff"), str(RL.OPS[-3:]))
 # R55 (1.72): la pillola di /state — a fine turno, al piu' una volta al minuto; la sessione chiusa tiene l'ultimo valore
 r54p = tmp / "r54p"
 r54p.mkdir()
@@ -3077,5 +3079,95 @@ finally:
         setattr(RL, n, v)
 T.check("R58 a restart during the report's cleanup: the command is already in done-cmds.json, and when /cmd comes back it is not run again",
         done58 == ["c58"] and again58 is False and _ran58 == ["c58"] and RL._PENDING["cid"] is None, str((done58, again58, _ran58)))
+
+
+# R59 (contratto 1.73, 18/10, pagina Studio dell'app): op studio a richiesta, mai in /state — le pratiche di
+# calendar.cases (valore stringa o {dir, name}), le scadenze dei prossimi 60 giorni con due, gli ultimi 3 esiti per
+# cartella (una volta sola anche con due pratiche sulla stessa); prompt con scope «studio» → il blocco [studio] prima del testo
+import datetime as _dt59
+_ws59 = ws / "personal"
+for _d in ("harbor-lease", "tax-2026"):
+    (_ws59 / _d).mkdir(parents=True, exist_ok=True)
+_ics59 = tmp / "studio59.ics"
+_ev59 = [("e1", "20260914", "File the defence brief", "c_7a1e0c5b9d21", ""), ("e2", "20261002", "Tax return: second instalment", "c_4b8f2a6e1c30", "-P1W"),
+         ("e3", "20261105", "Renew the office insurance", "", ""), ("e4", "20260901", "Past hearing", "c_7a1e0c5b9d21", ""),
+         ("e5", "20261120", "Too far ahead", "", ""), ("e6", "20260912", "Call the client about the appeal", "c_7a1e0c5b9d22", "")]
+_ics59.write_text("BEGIN:VCALENDAR\r\n" + "".join(
+    f"BEGIN:VEVENT\r\nUID:{u}\r\nDTSTART;VALUE=DATE:{d}\r\nSUMMARY:{t}\r\n" + (f"X-STUDIO-CASE:{c}\r\n" if c else "")
+    + (f"BEGIN:VALARM\r\nTRIGGER:{a}\r\nEND:VALARM\r\n" if a else "") + "END:VEVENT\r\n" for u, d, t, c, a in _ev59) + "END:VCALENDAR\r\n")
+(tmp / "studio59.env").write_text(f"CALENDAR_ICS_URL=file://{_ics59}\n")
+_now59 = 1789210840
+
+
+def _tx59(path, cwd, outs):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        f.write(json.dumps({"type": "user", "cwd": cwd, "timestamp": _dt59.datetime.fromtimestamp(outs[0][0] - 60, _dt59.timezone.utc).isoformat(), "message": {"role": "user", "content": "go on"}}) + "\n")
+        for at, text in outs:
+            f.write(json.dumps({"type": "assistant", "cwd": cwd, "timestamp": _dt59.datetime.fromtimestamp(at, _dt59.timezone.utc).isoformat(),
+                                "message": {"content": [{"type": "text", "text": f"Done.\n\nEsito: {text}"}]}}) + "\n")
+
+
+_slug59 = lambda d: re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(str(d)))  # noqa: E731
+_tx59(home / ".claude-pixel" / "projects" / _slug59(_ws59 / "harbor-lease") / "H1.jsonl", str(_ws59 / "harbor-lease"),
+      [(_now59 - 7200, "Exhibits indexed"), (_now59 - 3600, "Brief outline ready")])
+_tx59(home / ".claude" / "projects" / _slug59(_ws59 / "harbor-lease") / "H0.jsonl", str(_ws59 / "harbor-lease"),
+      [(_now59 - 70 * 86400, "Older than the window"), (_now59 - 90000, "Client documents received"), (_now59 - 86400, "Hearing date confirmed")])
+_tx59(home / ".claude" / "projects" / _slug59(_ws59 / "tax-2026") / "T0.jsonl", str(_ws59 / "tax-2026"), [(_now59 - 500000, "Receipts sorted by month")])
+_cal59 = RL.CFG.get("calendar")
+_save59 = {n: getattr(RL, n) for n in ("_json_cmd", "relay_talk", "is_live", "tmux_of")}
+_env59 = {k: os.environ.get(k) for k in ("CM_TODAY", "CM_RELAY_NOW")}
+_talk59 = []
+try:
+    os.environ.update(CM_TODAY="2026-09-12", CM_RELAY_NOW=str(_now59))
+    RL.CFG["calendar"] = dict(_cal59 or {}, url_file=str(tmp / "studio59.env"), cache_min=0, remind_days=3,
+                              studio_rule="at each step done, write it in the case log",
+                              cases={"c_7a1e0c5b9d21": {"dir": str(_ws59 / "harbor-lease"), "name": "Harbor lease dispute"},
+                                     "c_7a1e0c5b9d22": {"dir": str(_ws59 / "harbor-lease"), "name": "Harbor lease: appeal"},
+                                     "c_4b8f2a6e1c30": str(_ws59 / "tax-2026")})
+    RL._json_cmd = lambda *a, **kw: [{"name": "work-harbor", "tmux": "work-harbor", "account": "work", "cwd": str(_ws59 / "harbor-lease"), "session_id": "H1"}] if a[:1] == ("sessions",) else []
+    _ok59 = RL.studio_page()
+    _block59 = RL.studio_block()
+    RL.relay_talk, RL.is_live, RL.tmux_of = (lambda tm, text, *a: (_talk59.append(text), (0, "sent"))[1]), (lambda tm: True), (lambda s: s)
+    _r59 = [RL.execute({"op": "prompt", "session": "master", "arg": f"what is due this week? {n}", "device": "web", **sc})
+            for n, sc in ((1, {"scope": "studio"}), (2, {"scope": "nope"}), (3, {}))]
+    (tmp / "studio59.env").write_text(f"CALENDAR_ICS_URL=file://{tmp / 'missing59.ics'}\n")
+    _down59 = RL.studio_page()
+    RL.CFG["calendar"] = dict(RL.CFG["calendar"], url_file=str(tmp / "no-such59.env"))
+    _off59 = RL.studio_page()
+    _offblock59 = RL.studio_block()
+finally:
+    RL.CFG["calendar"] = _cal59
+    for n, v in _save59.items():
+        setattr(RL, n, v)
+    for k, v in _env59.items():
+        os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+_res59 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_cmd59 = {c["id"]: c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"]}
+_p59 = json.loads(_ok59[1]) if _ok59[0] else {}
+T.check("R59 (1.73) studio → {cases, deadlines, outcomes, error}: cases in the file's order with name from {dir, name} or the folder's last piece; "
+        "deadlines from today to 60 days, the nearest first, due inside the reminder window, also without a case; the fixture's …0740",
+        _ok59[0] is True and _p59 == json.loads(_res59["6f1c2d3e-0740-4000-8000-0000000000740"]["text"])
+        and _cmd59["6f1c2d3e-0740-4000-8000-0000000000740"]["op"] == "studio", str(_ok59)[:600])
+T.check("R59 (1.73) studio outcomes: the last 3 of a folder over both accounts, newest first, once for two cases on the same folder; a live session by its name, a closed one by the folder's; none older than 60 days",
+        [(o["project"], o["session"], o["short"]) for o in _p59.get("outcomes", [])] == [
+            ("personal/harbor-lease", "harbor", "Brief outline ready"), ("personal/harbor-lease", "harbor", "Exhibits indexed"),
+            ("personal/harbor-lease", "harbor-lease", "Hearing date confirmed"), ("personal/tax-2026", "tax-2026", "Receipts sorted by month")], str(_p59.get("outcomes")))
+T.check("R59 (1.73) calendar unreachable → ok true, the deadlines of the cached copy and error = cm-calendar's text; no calendar → ok true, the cases and outcomes, no deadlines, error «calendar off», as the fixture's …0741",
+        _down59[0] is True and json.loads(_down59[1])["deadlines"] == _p59.get("deadlines") and json.loads(_down59[1])["error"] == RL.M("calendar.unreachable")
+        and _off59[0] is True and json.loads(_off59[1]) == json.loads(_res59["6f1c2d3e-0741-4000-8000-0000000000741"]["text"]) == dict(_p59, deadlines=[], error="calendar off"), str((_down59[1][-200:], _off59)))
+T.check("R59 (1.73) studio is a passive read in ops, and /state does not carry it", "studio" in RL.PASSIVE_OPS and RL.OPS[-1] == "studio"
+        and "studio" not in json.loads(relay("push", "--dry-run").stdout), "")
+_want59 = ("[studio]\n" + RL.M("relay.studio_cases") + "\n"
+           f"- Harbor lease dispute → {RL.cm.contract(str(_ws59 / 'harbor-lease'))}\n- Harbor lease: appeal → {RL.cm.contract(str(_ws59 / 'harbor-lease'))}\n"
+           f"- tax-2026 → {RL.cm.contract(str(_ws59 / 'tax-2026'))}\n" + RL.M("relay.studio_deadlines", n=60) + "\n"
+           "- 12/09 Call the client about the appeal · Harbor lease: appeal\n- 14/09 File the defence brief · Harbor lease dispute\n"
+           "- 02/10 Tax return: second instalment · tax-2026\n- 05/11 Renew the office insurance\n"
+           + RL.M("relay.studio_rule", rule="at each step done, write it in the case log") + "\n[/studio]")
+T.check("R59 (1.73) prompt with scope studio: the sessions get prefix, the [studio] block, a blank line, then the text; an unknown scope or none: the text as today; all delivered",
+        _block59 == _want59 and len(_talk59) == 3 and _talk59[0] == RL.prefix_for({"device": "web"}) + " " + _want59 + "\n\nwhat is due this week? 1"
+        and _talk59[1:] == [RL.prefix_for({"device": "web"}) + f" what is due this week? {n}" for n in (2, 3)] and all(r[0] for r in _r59), str((_talk59, _r59))[:900])
+T.check("R59 (1.73) the block with the calendar off says so and still lists the cases",
+        _offblock59.startswith(_want59.split(RL.M("relay.studio_deadlines", n=60))[0]) and RL.M("relay.studio_deadlines_off") in _offblock59 and _offblock59.endswith("[/studio]"), _offblock59)
 
 T.finish()

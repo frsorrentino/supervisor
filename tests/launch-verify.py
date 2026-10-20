@@ -60,6 +60,7 @@ cfg.write_text(json.dumps({
     "profiles": {"scan": {"args": ["--permission-prompts", "none"], "model": "sonnet", "effort": "low",
                           "env": {"CLAUDE_CODE_TOOL_MEMORY_LIMIT": "2g"}, "window": False}},
     "tabs": {"color_registry": str(tmp / "colors")},
+    "resume_quota": {"watch_s": 4},
     "sessions": {"max_sessions": 50},   # il tetto si prova a parte (L14) con config-cap.json: qui le sessioni finte si accumulano
 }))
 cfg_cap = tmp / "config-cap.json"
@@ -164,6 +165,22 @@ with T.PrivateTmux() as tm:
     T.check("L5 --resume with existing id → --resume abc123", r.returncode == 0 and "--resume abc123" in last_args(), last_args() + r.stderr)
     r = run(str(home / "ws" / "personali" / "alfa"), "--continue", "--resume", "abc123", "--no-window")
     T.check("L5 --continue and --resume together → exit 2", r.returncode == 2, r.stderr)
+    # 21/10/2026 (Claude Code 2.1.304): l'avviso sul costo della ripresa in una sessione senza finestra
+    # (il tmux privato ha l'ambiente del primo lancio: si guarda lo schermo, non un log dei tasti)
+    r = run(str(home / "ws" / "personali" / "alfa"), "--resume", "abc123", "--no-window", scenario="resume-quota")
+    nm = next((l.split(":", 1)[1].strip() for l in r.stdout.splitlines() if "nome tmux:" in l), "")
+    time.sleep(1.5)
+    scr = tm("capture-pane", "-p", "-t", nm).stdout if nm else ""
+    T.check("L5b resume cost warning, no window: «Start a new conversation» chosen, the note says so",
+            r.returncode == 0 and "conversazione nuova" in r.stdout and "Resume this conversation?" not in scr and "v2.1.305 (fake)" in scr,
+            r.stdout + r.stderr + scr)
+    T.check("L5b the new conversation gets a pointer to the previous one (id, folder, transcript)",
+            "Rimando di supervisor" in scr and "abc123" in " ".join(scr.split()), scr)
+    r = run(str(home / "ws" / "personali" / "alfa"), "--resume", "abc123", scenario="resume-quota")
+    nm = next((l.split(":", 1)[1].strip() for l in r.stdout.splitlines() if "nome tmux:" in l), "")
+    scr = tm("capture-pane", "-p", "-t", nm).stdout if nm else ""
+    T.check("L5c resume cost warning with a window attached: untouched, the note says it is left to whoever watches",
+            r.returncode == 0 and "Resume this conversation?" in scr and "❯ 1. Resume" in scr and "lasciato" in r.stdout, r.stdout + r.stderr + scr)
 
     r = run(str(home / "ws" / "personali" / "alfa"), "--no-window", scenario="trust")
     T.check("L6 trust dialog answered (session alive, registered)", r.returncode == 0 and "link:" in r.stdout, r.stdout + r.stderr)

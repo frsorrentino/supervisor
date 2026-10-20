@@ -170,6 +170,28 @@ counts the passages of the current conversation, so the pill opens the
 `transcript` view there too. It is counted when a turn ends and at most once
 a minute per session; a closed session keeps its last value. `ops`
 lists `changes` and `diff`, both reads.
+Contract 1.73 serves the app's Studio page (18/10/2026, additive, `v` stays
+1). Op `studio` (`session` and `arg` null) is a read on request, never in
+`/state`; `ops` lists it. It answers `{cases, deadlines, outcomes, error}`:
+`cases` are the entries of `calendar.cases` in the file's order, `{id, name,
+project}`, `project` as in `sessions[].project`; a value can be the folder or
+`{"dir": folder, "name": name}`, and without a name it is the folder's last
+piece. `deadlines` are the calendar's events from today to 60 days ahead,
+the nearest first, `{uid, summary, date, days_left, due, case}`: `due` is true
+inside the event's reminder window, `case` is the event's case id or empty.
+`outcomes` are, for each folder of the cases (once, even when several cases
+share it), the last 3 «Esito:» lines of its sessions, live or closed, from
+the last 60 days, newest first, `{project, session, at, short}`; `session`
+is the live session's name, otherwise the folder's. `error` is
+cm-calendar's text when the feed does not answer (the deadlines then come
+from the cached copy, or none). With the calendar off the answer is still
+ok, with the cases and outcomes, no deadlines and `error` «calendar off».
+A `uid` can repeat (recurring events): `uid` with `date` is the key.
+A `prompt` with `scope: "studio"` gets, after the device's prefix, a
+`[studio]` … `[/studio]` block — the cases with their folders, the deadlines
+of the next 60 days, the line of `calendar.studio_rule` when it is set — a
+blank line, then the text. An unknown scope is ignored. `transcript` and the
+timeline drop the block, so the entry ends with the text sent.
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

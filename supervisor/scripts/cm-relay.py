@@ -71,7 +71,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -2542,6 +2542,129 @@ def agenda_set(cmd, arg):
             lock.close()
 
 
+STUDIO_DAYS = 60       # 1.73: le scadenze della pagina Studio e del blocco [studio], da oggi
+STUDIO_OUTCOMES = 3    # 1.73: gli esiti per cartella di pratica
+
+
+def studio_calendar():
+    """cm-calendar con la sezione `calendar` di questa config (i test la cambiano su CFG)."""
+    cal = _load("cm-calendar")
+    cal.C = CFG.get("calendar") or cal.C
+    return cal
+
+
+def studio_cases(cal):
+    """Le pratiche di calendar.cases nell'ordine del file: [{id, name, project, dir}] (dir espansa)."""
+    root = cm.expand(CFG["workspace"]["root"])
+    out = []
+    for cid, v in (cal.C.get("cases") or {}).items():
+        d = cm.expand(cal.case_dir(v)) if cal.case_dir(v) else ""
+        out.append({"id": str(cid), "name": cal.case_name(v), "project": S.project_of(d, root), "dir": d})
+    return out
+
+
+def studio_outcomes(dirs, now):
+    """Gli ultimi STUDIO_OUTCOMES esiti («Esito:» a fine turno, come la timeline) delle sessioni di ogni cartella, vive o
+    chiuse, degli ultimi STUDIO_DAYS giorni: [{project, session, at, short}], cartella per cartella, il piu' nuovo prima.
+    Si leggono solo le trascrizioni della cartella (projects/<cartella con «-»>), dalla piu' recente: una trascrizione
+    toccata prima del terzo esito trovato non ne ha di piu' nuovi, e li' ci si ferma."""
+    tl = _load("cm-timeline")
+    since = int(now - STUDIO_DAYS * 86400)
+    live = {}
+    for r in _json_cmd("sessions", "--json", "--no-screen") or []:
+        t = core.transcript_of(r)
+        if t:
+            live[os.path.realpath(t)] = S.short_name(r.get("name") or r.get("tmux") or "", prefixes())
+    root = cm.expand(CFG["workspace"]["root"])
+    out = []
+    for d in dirs:
+        here = os.path.realpath(d)
+        files = []
+        for acc in (CFG.get("accounts") or {}).values():
+            for enc in {re.sub(r"[^A-Za-z0-9]", "-", x) for x in (d.rstrip("/"), here)}:   # Claude Code: ogni altro segno → «-»
+                for f in (Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "projects" / enc).glob("*.jsonl"):
+                    try:
+                        files.append((f.stat().st_mtime, os.path.realpath(str(f))))
+                    except OSError:
+                        continue
+        found = []
+        for mtime, f in sorted(set(files), reverse=True):
+            if mtime < since or (len(found) >= STUDIO_OUTCOMES and mtime < found[STUDIO_OUTCOMES - 1]["at"]):
+                break
+            try:
+                with open(f, "rb") as h:
+                    m = re.search(rb'"cwd":\s*("(?:[^"\\]|\\.)*")', h.read(65536))
+                cwd = json.loads(m.group(1)) if m else ""
+                if os.path.realpath(cwd) != here:
+                    continue   # un'altra cartella con lo stesso nome codificato («a/b» e «a-b»)
+                ev = tl.transcript_events(f, since)
+            except (OSError, ValueError):
+                continue
+            name = live.get(f) or os.path.basename(here)
+            found += [{"project": S.project_of(here, root), "session": name, "at": e["at"], "short": e["text"]}
+                      for e in ev if e["kind"] == "outcome"]
+            found.sort(key=lambda e: -e["at"])
+        out += found[:STUDIO_OUTCOMES]
+    return out
+
+
+def studio_page():
+    """1.73 (18/10, pagina Studio dell'app, piano approvato dal maintainer): a richiesta come `agenda`, mai in /state.
+    text = JSON {cases, deadlines, outcomes, error}: cases = calendar.cases nell'ordine del file {id, name, project};
+    deadlines = le scadenze dei prossimi STUDIO_DAYS giorni {uid, summary, date, days_left, due, case}, la piu'
+    vicina prima, anche senza pratica (case «»); outcomes = gli ultimi esiti di ogni cartella delle pratiche, una
+    volta per cartella; error = il testo di cm-calendar se il feed non risponde (scadenze dalla copia in cache o
+    nessuna). Calendario spento: ok lo stesso, pratiche ed esiti, nessuna scadenza, error «calendar off» (addendum
+    dell'app del 18/10: la pagina mostra le pratiche anche senza calendario). Gli uid si possono ripetere (eventi
+    ricorrenti): la chiave e' uid + date, mai si toglie un doppione per uid."""
+    cal = studio_calendar()
+    text, err = cal.fetch() if cal.url() else ("", "calendar off")
+    cases = studio_cases(cal)
+    deadlines = cal.upcoming(cal.parse(text), STUDIO_DAYS) if text else []
+    dirs = list(dict.fromkeys(c["dir"] for c in cases if c["dir"]))
+    now = float(os.environ.get("CM_RELAY_NOW") or time.time())
+    page = {"cases": [{k: c[k] for k in ("id", "name", "project")} for c in cases], "deadlines": deadlines,
+            "outcomes": studio_outcomes(dirs, now), "error": err}
+    return True, json.dumps(page, ensure_ascii=False)
+
+
+def studio_block():
+    """1.73: il contesto di un prompt con scope «studio», messo prima del testo: le pratiche con la cartella, le
+    scadenze dei prossimi STUDIO_DAYS giorni e la regola di calendar.studio_rule, fra [studio] e [/studio]."""
+    cal = studio_calendar()
+    cases = studio_cases(cal)
+    names = {c["id"]: c["name"] for c in cases}
+    lines = ["[studio]", M("relay.studio_cases")]
+    lines += [f"- {c['name']} → {cm.contract(c['dir']) if c['dir'] else '?'}" for c in cases]
+    if not cal.url():
+        lines.append(M("relay.studio_deadlines_off"))
+    else:
+        text, err = cal.fetch()
+        items = cal.upcoming(cal.parse(text), STUDIO_DAYS) if text else []
+        lines.append(M("relay.studio_deadlines", n=STUDIO_DAYS) + (f" ({err})" if err else ""))
+        for e in items:
+            who = names.get(e["case"]) or e["case"]
+            lines.append(f"- {e['date'][8:10]}/{e['date'][5:7]} {e['summary'] or '?'}" + (f" · {who}" if who else ""))
+        if not items:
+            lines.append("- " + M("relay.studio_none"))
+    rule = " ".join(str(cal.C.get("studio_rule") or "").split())
+    if rule:
+        lines.append(M("relay.studio_rule", rule=rule))
+    return "\n".join(lines + ["[/studio]"])
+
+
+def with_scope(cmd, text):
+    """1.73: `scope` del prompt: «studio» → il blocco [studio]…[/studio], una riga vuota, il testo. Uno scope
+    sconosciuto, o assente, lascia il testo com'e'; il blocco non deve mai far perdere il prompt."""
+    if cmd.get("scope") != "studio":
+        return text
+    try:
+        return studio_block() + "\n\n" + text
+    except Exception as e:   # noqa: BLE001 — config o calendario rotti: il prompt parte senza contesto
+        log(f"studio: blocco non costruito ({type(e).__name__}): prompt senza scope")
+        return text
+
+
 def projects_list():
     """1.26 (02/10, chiesto dalla sessione dell'app, approvato dal maintainer alle 17:15): l'elenco completo dei progetti
     per «Lancia». /state li taglia a 10 e poi a 5 per stare negli 8 KB; qui ci sono tutti, di tutti gli account, con i
@@ -3149,7 +3272,7 @@ def execute(cmd):
             if not is_live(tm) and cmd.get("reopen") is True:
                 # 1.65 (14/10, dall'analisi dei concorrenti): una sessione chiusa si riapre per session_id e riceve subito il
                 # prompt (`talk --reopen`); se il rilancio non riesce il messaggio resta nella sua casella
-                rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + text, "--no-wait", "--reopen")
+                rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + with_scope(cmd, text), "--no-wait", "--reopen")
                 if rc != 0:
                     return False, (out.splitlines() or ["talk failed"])[0]
                 if saved_in_inbox(out):
@@ -3166,7 +3289,7 @@ def execute(cmd):
                 if not time.time() - 60 <= at <= time.time() + 7 * 86400:
                     return False, M("relay.cmd_prompt_bad_at")
                 voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
-                full_text = prefix_for(cmd, tm) + voice + " " + text
+                full_text = prefix_for(cmd, tm) + voice + " " + with_scope(cmd, text)
                 rc, out = run_cm("queue", tm, full_text, "--at-epoch", str(at))
                 if rc != 0:
                     return False, (out.splitlines() or ["queue failed"])[0]
@@ -3178,7 +3301,7 @@ def execute(cmd):
             row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
             # 1.42: un prompt dettato in modalita' live porta le istruzioni vocali dopo il prefisso (timeline e transcript le tolgono)
             voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
-            rc, out = relay_talk(tm, prefix_for(cmd, tm) + voice + " " + text, "--no-wait")
+            rc, out = relay_talk(tm, prefix_for(cmd, tm) + voice + " " + with_scope(cmd, text), "--no-wait")
             if rc != 0:
                 return False, out.splitlines()[0] if out else "talk failed"
             if saved_in_inbox(out):
@@ -3318,6 +3441,8 @@ def execute(cmd):
             return agenda_list()
         if op == "agenda_set":
             return agenda_set(cmd, arg)
+        if op == "studio":
+            return studio_page()
         if op == "quota_route":
             return quota_route(cmd, session, tm, arg)
         if op == "project_new":
@@ -3447,7 +3572,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):

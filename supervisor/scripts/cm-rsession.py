@@ -323,12 +323,24 @@ def cmd_launch(argv):
     if not entry:
         print(M("rsession.no_registry", host=hname, name=name, s=int(sess.get("start_timeout_s") or 90)), file=sys.stderr)
         return 5
+    # 21/10/2026 (Claude Code 2.1.304): una ripresa su un altro host puo' fermarsi sull'avviso del costo in quota, e
+    # sull'host nessuno guarda: cm-resume-quota.py sceglie una conversazione nuova o chiede alla persona
+    note = ""
+    if any(x in args for x in ("--resume", "--continue", "-c", "-r")) and hasattr(a, "session_console"):
+        try:
+            rq = _load("cm-resume-quota")
+            sid = args[args.index("--resume") + 1] if "--resume" in args and args.index("--resume") + 1 < len(args) else ""
+            _, note = rq.check(name, False, float(rq.settings()["watch_s"]), sid, folder, account, term=_load("cm-answer").Remote(hname, name))
+        except Exception as e:   # noqa: BLE001 — il lancio e' riuscito: la nota non lo fa fallire
+            note = f"nota:      resume_quota: {e}"
     print(M("rsession.started", host=hname))
     print(f"  nome:      {name}")
     print(f"  account:   {account}")
     print(f"  cartella:  {folder}")
     print(f"  su {hname}:    {rdir} (base {base_sha[:10]})")
     print(f"  link:      {rec['link'] or M('rsession.link_later')}")
+    if note:
+        print("  " + note)
     print(M("rsession.howto", host=hname, name=name))
     return 0
 

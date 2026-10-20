@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.37 — 2026-10-21: Claude Code 2.1.304-2.1.305 — the resume cost warning on unwatched sessions, and the watchdog's usage-limit recheck.**
+  - Approved by the maintainer on 21/10 at 00:58 (from the phone, via the master: plan plugin-notte-2026-10-21).
+  - Claude Code 2.1.304 can open «Resume this conversation?» when a resumed conversation would use a noticeable share of the 5-hour limit (text read in the 2.1.305 binary: «This conversation has been inactive for … Resuming it will use about N% of your 5-hour usage limit», options «Resume» and «Start a new conversation»). A session launched with `--resume`/`--continue` and no window, or on another host, stayed stopped on it. Now `launch` (and the remote launch) watches the screen for `resume_quota.watch_s` (10 s): without a window it picks «Start a new conversation» and sends the new conversation a pointer to the previous one (id, folder, transcript); with a window it leaves the choice to whoever watches and says so. `resume_quota.windowless`: `new` (default), `needs_you` (asks the person with `needs-you`), `off`. The variant shown on an idle session, with no numbers and the unsent message kept, is never answered automatically: `needs-you`. `sessions` counts the warning as waiting for an answer.
+  - Night queue: `night.retry_watchdog_usage_limit_recheck_ms` (300000, 0 = unset) sets `CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS` (2.1.305) when the retry watchdog is on, so an item waiting at a usage limit notices within 5 minutes a limit lifted before its reset.
+  - Tests: `tests/resume-quota-verify.py` (RQ1-RQ7), L5b/L5c in `tests/launch-verify.py` (fake scenarios `resume-quota`, `resume-quota-new`, `resume-quota-idle`), NI3b in `tests/night-verify.py`.
 - **0.8.36 — 2026-10-17: reports reach --bg sessions, no duplicate launch.**
   - Approved by the maintainer on 17/10 at 18:10 (task sup-report-bg-20261017).
   - Seen live at 15:34: two reports with photos to a project session launched by the master with `--bg` came back «supervisor report: nessuna sessione «NAME»».
