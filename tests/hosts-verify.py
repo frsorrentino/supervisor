@@ -106,6 +106,13 @@ ok, have = a.helper_ok()
 T.check("V3 helper installed, sha256 match", ok, str(have))
 st = a.status()
 T.check("V4 status snapshot", all(k in st for k in ("load_pct", "ram_free_gb", "disk_free_gb", "jobs", "sessions", "quota")), str(st)[:300])
+# 1.75 (21/10): RAM in byte e il disco della radice delle sessioni (D: su win), che l'adattatore passa a status
+(remote_home / "sessioni").mkdir(exist_ok=True)
+st75 = ad.adapter_for("fakebox", dict(h, sessions={"root": str(remote_home / "sessioni")}), C).status()
+T.check("V4b (1.75) status with the sessions root: ram_total_b ≥ ram_free_b > 0 in bytes, disk {path, free_b, total_b} of that folder's filesystem",
+        st75.get("ram_total_b", 0) >= st75.get("ram_free_b", -1) > 0 and abs(st75["ram_total_b"] / 1024 ** 3 - st75["ram_gb"]) < 0.1
+        and set(st75.get("disk") or {}) == {"path", "free_b", "total_b"} and 0 < st75["disk"]["free_b"] <= st75["disk"]["total_b"]
+        and "disk" in st and (st.get("disk") or {}).get("total_b") == st75["disk"]["total_b"], str({k: st75.get(k) for k in ("ram_total_b", "ram_free_b", "ram_gb", "disk")}))
 p = a.probe()
 T.check("V5 probe basics", p.get("threads", 0) >= 1 and p.get("ram_gb", 0) > 0 and p.get("accounts") == [".claude"], str(p)[:300])
 rc, out, _ = a.exec("echo ciao")

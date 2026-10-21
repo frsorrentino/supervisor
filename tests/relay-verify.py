@@ -288,6 +288,8 @@ DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on 
                         {"id": "release-changelog", "label": "Changelog of a release", "prompt": "Write the changelog of release", "param": True},
                         {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Check what the competing plugins shipped this week and sum it up", "param": False}]
 SRC1.update(DEV_SRC)
+# 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
+SRC1["hosts_status"], SRC1["published_today"] = F1["hosts_status"], F1["published_today"]
 st1 = S.build_state(SRC1, 1789210800)
 
 
@@ -357,6 +359,8 @@ SRC2 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"],
         "runtime": {"atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18}}}
 SRC2["account_kinds"] = KINDS
 SRC2.update(DEV_SRC)
+# 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
+SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["published_today"]
 st2 = S.build_state(SRC2, 1789214400)
 T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
 SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "ledger": [], "questions": {},
@@ -364,6 +368,8 @@ SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "l
         "projects": [], "night": {"queued": 0, "running": None, "master": True}, "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": []}, "follow": set(), "awaiting": set(), "next": {}, "tools": {}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]}}
 SRC3["account_kinds"] = KINDS
 SRC3.update(DEV_SRC)
+# 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
+SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
 st3 = S.build_state(SRC3, 1789200000)
 T.check("R2 build_state(src) == state-3-stale.json", st3 == _np(F3), diff(st3, _np(F3)) or "equal")
 T.check("R2 (1.33) no recurring list → no `recurring` field (the app shows no box)", "recurring" not in S.build_state(dict(SRC3, recurring=[]), 1789200000), "")
@@ -3192,5 +3198,114 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
 T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-1] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
+
+# R61 (contratto 1.75, 21/10, home a tre colonne della web): hosts_status e published_today in /state
+import datetime as _dt  # noqa: E402
+import types as _types  # noqa: E402
+_now61 = time.time()
+_snaps61 = {"win": {"name": "win", "read_at": _now61 - 40, "last_ok_at": _now61 - 40,
+                    "status": {"load_pct": 83, "ram_gb": 15.9, "ram_free_gb": 3.9, "ram_total_b": 17063350272, "ram_free_b": 4298240000,
+                               "disk_free_gb": 15, "disk": {"path": "D:", "free_b": 94820073472, "total_b": 290911678464}}},
+            "old": {"name": "old", "read_at": _now61 - 40, "status": {"load_pct": 140, "ram_gb": 16.0, "ram_free_gb": 4.0, "disk_free_gb": 15}},
+            "down": {"name": "down", "read_at": _now61 - 30, "error": "unreachable", "detail": "timeout 60s", "status": {"load_pct": 5}},
+            "late": {"name": "late", "read_at": _now61 - 3600, "status": {"load_pct": 5}},
+            "never": {}}
+_hm61 = _types.SimpleNamespace(
+    S={"poll_idle_s": 600}, confirmed=lambda h, name="": h.get("ok", True), snap_path=lambda n: n, read_json=lambda n, d=None: _snaps61.get(n) or d,
+    hosts=lambda: {"local": {}, "win": {"kind": "windows-native"}, "old": {}, "down": {}, "late": {}, "never": {}, "pending": {"ok": False}, "cl": {"kind": "cloud"}})
+_old61 = list(RL._HM)
+RL._HM[:] = [_hm61]
+try:
+    _rows61 = [{"name": "win:bluey", "host": "win", "status": "idle"}, {"name": "win:gone", "host": "win", "status": "dead"},
+               {"name": "atlas", "status": "busy"}, {"name": "down:x", "host": "down", "status": "idle"}]
+    _hs61 = {h["name"]: h for h in RL.hosts_status(_rows61, _now61)}
+finally:
+    RL._HM[:] = _old61
+_keys61 = ["name", "up", "at", "error", "cpu", "ram_used", "ram_total", "disk_free", "disk_total", "sessions"]
+T.check("R61 (1.75) hosts_status: one entry per confirmed host of cm-hosts, local, unconfirmed and cloud left out, every key of the contract in order",
+        sorted(_hs61) == ["down", "late", "never", "old", "win"] and all(list(h) == _keys61 for h in _hs61.values()), str(_hs61)[:300])
+T.check("R61 (1.75) a host up: cpu = load_pct/100, RAM used = total - free and the disk of the sessions root, in bytes; at = the snapshot's read time; sessions = the live ones on that host",
+        _hs61["win"] == {"name": "win", "up": True, "at": int(_now61 - 40), "error": None, "cpu": 0.83, "ram_used": 17063350272 - 4298240000, "ram_total": 17063350272,
+                         "disk_free": 94820073472, "disk_total": 290911678464, "sessions": ["win:bluey"]}, str(_hs61["win"]))
+T.check("R61 (1.75) a helper from before 1.75: RAM from the GB, the disk null (its free space is the job root's, not the sessions'); cpu never above 1",
+        _hs61["old"]["cpu"] == 1.0 and _hs61["old"]["ram_total"] == 16 * 1024 ** 3 and _hs61["old"]["ram_used"] == 12 * 1024 ** 3
+        and (_hs61["old"]["disk_free"], _hs61["old"]["disk_total"]) == (None, None), str(_hs61["old"]))
+T.check("R61 (1.75) a host down: up false, error in plain words («ssh: timeout»), every number null; the stale reading (poller stopped) and no reading at all are down too",
+        _hs61["down"]["up"] is False and _hs61["down"]["error"] == "ssh: timeout" and all(_hs61["down"][k] is None for k in _keys61[4:9])
+        and _hs61["down"]["sessions"] == ["down:x"] and _hs61["late"]["error"] == "no reading for 60 min" and _hs61["late"]["up"] is False
+        and _hs61["never"] == {"name": "never", "up": False, "at": None, "error": "no reading yet", "cpu": None, "ram_used": None, "ram_total": None,
+                               "disk_free": None, "disk_total": None, "sessions": []}, str((_hs61["down"], _hs61["late"]["error"])))
+# git: un repository con un remoto nudo; un push e un tag oggi, un tag mai spinto, uno di ieri
+_g61 = tmp / "git61"; _bare61 = tmp / "git61.git"
+_genv = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
+for _c in (["git", "init", "-q", "--bare", str(_bare61)], ["git", "init", "-q", "-b", "main", str(_g61)],
+           ["git", "-C", str(_g61), "remote", "add", "origin", str(_bare61)], ["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "a"],
+           ["git", "-C", str(_g61), "tag", "v1.0.0"], ["git", "-C", str(_g61), "push", "-q", "origin", "main", "v1.0.0"],
+           ["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "b"], ["git", "-C", str(_g61), "tag", "v1.1.0"],
+           ["git", "-C", str(_g61), "checkout", "-q", "-b", "notte/x"], ["git", "-C", str(_g61), "push", "-q", "-u", "origin", "notte/x"]):
+    subprocess.run(_c, capture_output=True, env=_genv)
+subprocess.run(["git", "-C", str(_g61), "checkout", "-q", "main"], capture_output=True)
+subprocess.run(["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "c"], capture_output=True, env=_genv)
+subprocess.run(["git", "-C", str(_g61), "tag", "v1.2.0"], capture_output=True, env=_genv)   # mai spinto: il suo commit non sta su un ramo remoto
+_gp61 = RL.git_published(str(_g61), "personal/g61", RL._midnight(time.time()), time.time() + 5)
+_gp61b = RL.git_published(str(_g61), "personal/g61", time.time() + 60, time.time() + 120)
+T.check("R61 (1.75) git_published: the pushed branch (origin/<branch>, once even if pushed again) and the tags of the day whose commit is on a remote branch (text without the «v»); a tag never pushed is not published; nothing outside the window",
+        sorted((x["kind"], x["text"]) for x in _gp61) == [("push", "origin/main"), ("push", "origin/notte/x"), ("release", "1.0.0"), ("release", "1.1.0")]
+        and all(x["project"] == "personal/g61" and x["url"] is None for x in _gp61) and _gp61b == [], str(_gp61))
+T.check("R61 (1.75) the link only for a GitHub remote (ssh or https, with or without .git), never guessed",
+        RL._web_of("git@github.com:frsorrentino/supervisor.git") == RL._web_of("https://github.com/frsorrentino/supervisor") == "https://github.com/frsorrentino/supervisor"
+        and RL._web_of("https://gitlab.com/a/b.git") is None and RL._web_of("/tmp/x.git") is None, "")
+# deploy: solo un `firebase deploy` finito con «Deploy complete!»
+_tx61 = tmp / "deploy61.jsonl"
+_ts61 = lambda s: _dt.datetime.fromtimestamp(time.time() - s, _dt.timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
+def _tu61(i, cmd, s):
+    return json.dumps({"type": "assistant", "timestamp": _ts61(s), "cwd": ROOT_WS + "/work/own/orbit-docs", "message": {"content": [{"type": "tool_use", "id": i, "name": "Bash", "input": {"command": cmd}}]}})
+def _tr61(i, text, s, err=False):
+    return json.dumps({"type": "user", "timestamp": _ts61(s), "message": {"content": [{"type": "tool_result", "tool_use_id": i, "is_error": err, "content": text}]}})
+_ok61 = "=== Deploying to 'orbit-docs'...\n✔  Deploy complete!\n\nProject Console: https://console.firebase.google.com/project/orbit-docs/overview\nHosting URL: https://orbit-docs.web.app"
+_tx61.write_text("\n".join([_tu61("a", "cd site && npx firebase deploy --only hosting", 50), _tr61("a", _ok61, 40),
+                            _tu61("b", "firebase deploy --only functions", 30), _tr61("b", "Error: deploy failed", 29, True),
+                            _tu61("c", "echo 'firebase deploy' >> notes.txt", 20), _tr61("c", "Deploy complete!", 19),
+                            _tu61("d", "firebase deploy", 10)]) + "\n")
+_scan61 = {}
+_d61 = list(RL.transcript_deploys(str(_tx61), RL._midnight(time.time()), _scan61))
+with open(_tx61, "a") as _f:
+    _f.write(_tr61("d", "✔  Deploy complete!\nProject Console: https://console.firebase.google.com/project/orbit-docs/overview", 5) + "\n")
+_d61b = RL.transcript_deploys(str(_tx61), RL._midnight(time.time()), _scan61)
+T.check("R61 (1.75) transcript_deploys: a `firebase deploy` whose result says «Deploy complete!» is a deploy (text from --only, url the Hosting URL); a failed one and one inside quotes are not",
+        [(x["kind"], x["text"], x["url"], x["cwd"]) for x in _d61] == [("deploy", "hosting orbit-docs", "https://orbit-docs.web.app", ROOT_WS + "/work/own/orbit-docs")], str(_d61))
+T.check("R61 (1.75) the transcript is read once: the next call reads only what was appended and pairs the result with the command it left pending",
+        len(_d61b) == 2 and _d61b[1]["text"] == "firebase orbit-docs" and _d61b[1]["url"] is None and _scan61["offset"] == _tx61.stat().st_size, str(_d61b))
+# la copia su disco: di ieri non vale; vecchia di un minuto → un ricalcolo staccato, uno alla volta
+_rd61 = tmp / "relay61"; _rd61.mkdir(exist_ok=True)
+_rdir61, _popen61, _spawn61 = RL.rdir, RL.subprocess.Popen, []
+RL.rdir = lambda: _rd61
+RL.subprocess.Popen = lambda *a, **k: _spawn61.append(a[0])
+try:
+    _today61 = _dt.datetime.fromtimestamp(_now61).strftime("%Y-%m-%d")
+    _it61 = [{"at": int(_now61) - 10, "kind": "push", "project": "p", "text": "origin/main", "url": None}]
+    RL.write_json(RL.published_path(), {"day": _today61, "at": _now61 - 5, "items": _it61})
+    _c1 = RL.published_cached(_now61)
+    _n1 = len(_spawn61)
+    RL.write_json(RL.published_path(), {"day": "2000-01-01", "at": _now61 - 120, "items": _it61})
+    _c2 = RL.published_cached(_now61)
+    _c3 = RL.published_cached(_now61)
+finally:
+    RL.rdir, RL.subprocess.Popen = _rdir61, _popen61
+T.check("R61 (1.75) published_cached: a fresh copy of today is served as is with no recount; one from another day gives [] and one detached `published-refresh`, not two at once",
+        _c1 == _it61 and _n1 == 0 and _c2 == [] and _c3 == [] and len(_spawn61) == 1 and _spawn61[0][-1] == "published-refresh", str((_c1, _c2, _spawn61)))
+_pub61 = F2["published_today"]
+_big61 = S.build_state(dict(SRC2, published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
+T.check("R61 (1.75) /state carries at most 30 published items, and fit_state cuts them to the 10 most recent before touching projects or sessions",
+        len(S.build_state(dict(SRC2, published_today=[_pub61[0]] * 40), 1789214400, fit=False)["published_today"]) == 30
+        and [x["at"] for x in _big61["published_today"]] == [1789214000 - i for i in range(10)] and _big61["sessions"] == st2["sessions"]
+        and _big61["projects"] == st2["projects"] and S.size_of(_big61) <= 8192, str(S.size_of(_big61)))
+T.check("R61 (1.75) the fixtures: state-2-idle with win up and one publication of each kind, newest first; state-1-question with both lists empty; state-3-stale with win down («ssh: timeout», numbers null)",
+        [x["kind"] for x in _pub61] == ["deploy", "release", "push"] and [x["at"] for x in _pub61] == sorted((x["at"] for x in _pub61), reverse=True)
+        and F2["hosts_status"][0]["up"] is True and F1["hosts_status"] == [] and F1["published_today"] == []
+        and F3["hosts_status"][0]["up"] is False and F3["hosts_status"][0]["error"] == "ssh: timeout" and F3["published_today"] == [], "")
+T.check("R61 (1.75) a src without the two keys (an old caller) gives a /state without them; collect_sources passes both",
+        "hosts_status" not in S.build_state({}, 1) and "published_today" not in S.build_state({}, 1)
+        and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now)' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
 
 T.finish()

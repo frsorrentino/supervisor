@@ -30,6 +30,7 @@ import base64
 import binascii
 import fcntl
 import copy
+import datetime as dt
 import hashlib
 import importlib.util
 import json
@@ -694,6 +695,274 @@ def changes_pills(rows, ledger, now):
     return out
 
 
+# ------------------------------------------------------------------ 1.75: stato dei PC remoti e pubblicazioni di oggi
+_HM = []
+
+
+def _hosts_mod():
+    if not _HM:
+        _HM.append(_load("cm-hosts"))
+    return _HM[0]
+
+
+GIB = 1024 ** 3
+
+
+def _host_error(snap, now, stale_s):
+    """Il testo in chiaro di un host giu', o "" se la lettura e' buona e fresca. Il sondatore (cron) rilegge ogni
+    poll_idle_s a riposo: una lettura piu' vecchia di due giri vuol dire sondatore fermo, e l'host non si sa."""
+    if not snap or not snap.get("read_at"):
+        return "no reading yet"
+    if snap.get("error"):
+        code, detail = str(snap.get("error")), str(snap.get("detail") or "")
+        if code == "unreachable":
+            return "ssh: timeout" if "timeout" in detail else S.one_line(f"ssh: {detail or 'unreachable'}")[:80]
+        if code == "hostkey":
+            return "ssh: host key changed"
+        return S.one_line(f"{code}: {detail}" if detail else code)[:80]
+    age = now - float(snap["read_at"])
+    if age > stale_s:
+        return f"no reading for {int(age // 60)} min"
+    return ""
+
+
+def hosts_status(rows, now):
+    """1.75 (21/10, home a tre colonne della web): una voce per host di cm-hosts diverso da local, dallo snapshot che
+    il sondatore (`hosts poll`, cron) scrive al piu' ogni minuto: nessun ssh qui. {name, up, at, error, cpu, ram_used,
+    ram_total, disk_free, disk_total, sessions}. cpu = load_pct/100 (su Windows il carico istantaneo dei processori,
+    su POSIX il loadavg di un minuto sui thread), fra 0 e 1; ram e disco in byte; il disco e' quello della radice
+    delle sessioni (D: su win), null con un aiutante di prima della 1.75. Host giu': error in chiaro, numeri null."""
+    hm = _hosts_mod()
+    stale = 2 * int(hm.S.get("poll_idle_s") or 600)
+    out = []
+    for name, h in hm.hosts().items():
+        if name == "local" or not hm.confirmed(h) or h.get("kind") == "cloud":
+            continue
+        snap = hm.read_json(hm.snap_path(name), {}) or {}
+        st = snap.get("status") or {}
+        err = _host_error(snap, now, stale)
+        sess = sorted({S.short_name(r.get("name") or "", prefixes()) for r in rows
+                       if r.get("host") == name and r.get("status") != "dead" and r.get("name")})
+        e = {"name": name, "up": not err, "at": int(snap["read_at"]) if snap.get("read_at") else None, "error": err or None,
+             "cpu": None, "ram_used": None, "ram_total": None, "disk_free": None, "disk_total": None, "sessions": sess}
+        if not err:
+            if isinstance(st.get("load_pct"), (int, float)):
+                e["cpu"] = round(min(1.0, max(0.0, st["load_pct"] / 100)), 2)
+            tot = st.get("ram_total_b") or (round(st["ram_gb"] * GIB) if isinstance(st.get("ram_gb"), (int, float)) else None)
+            free = st.get("ram_free_b") if st.get("ram_free_b") is not None else (round(st["ram_free_gb"] * GIB) if isinstance(st.get("ram_free_gb"), (int, float)) else None)
+            if tot:
+                e["ram_total"] = int(tot)
+                e["ram_used"] = int(max(0, tot - free)) if free is not None else None
+            d = st.get("disk") if isinstance(st.get("disk"), dict) else {}
+            if d.get("total_b"):
+                e["disk_free"], e["disk_total"] = int(d.get("free_b") or 0), int(d["total_b"])
+        out.append(e)
+    return out
+
+
+PUBLISHED_MAX = 30
+PUBLISHED_EVERY_S = 60   # le pubblicazioni si ricontano al piu' una volta al minuto, fuori dal percorso della push
+DEPLOY_CMD = re.compile(r"\bfirebase\b[^;&|\n]*\bdeploy\b")
+DEPLOY_DONE = "Deploy complete!"
+
+
+def _midnight(now):
+    return dt.datetime.combine(dt.datetime.fromtimestamp(now).date(), dt.time()).timestamp()
+
+
+def published_path():
+    return rdir() / "published-today.json"
+
+
+def published_cached(now):
+    """1.75: published_today per /state, dalla copia su disco; se e' vecchia di un minuto (o di ieri) la ricalcola un
+    processo staccato (`published-refresh`), uno alla volta. Una copia di ieri non vale: oggi, finche' il primo
+    conteggio non c'e', la lista e' vuota."""
+    c = read_json(published_path(), {}) or {}
+    if c.get("day") != dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d"):
+        items = []
+    else:
+        items = c.get("items") or []
+    if now - float(c.get("at") or 0) >= PUBLISHED_EVERY_S:
+        lock = rdir() / "published-refresh.lock"
+        try:
+            fresh = lock.exists() and now - lock.stat().st_mtime < 300
+            if not fresh:
+                lock.touch()
+                subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "published-refresh"], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
+    return [dict(x) for x in items][:PUBLISHED_MAX]
+
+
+def _git(repo, *args):
+    try:
+        p = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return p.stdout if p.returncode == 0 else None
+
+
+def _web_of(remote_url):
+    """La pagina del repository per un remoto GitHub (ssh o https), altrimenti None: nessun link indovinato."""
+    m = re.match(r"^(?:git@github\.com:|ssh://git@github\.com/|https://(?:[^@/]+@)?github\.com/)([\w.-]+/[\w.-]+?)(?:\.git)?/?$", str(remote_url or "").strip())
+    return f"https://github.com/{m.group(1)}" if m else None
+
+
+def git_published(repo, project, start, end):
+    """I push (il reflog dei rami remoti: «update by push») e i tag della finestra (come i traguardi del rapporto della
+    notte), un tag solo se il suo commit sta gia' su un ramo remoto. Un ramo spinto piu' volte conta una volta, l'ultima."""
+    out = []
+    webs = {}
+    refs = _git(repo, "for-each-ref", "--format=%(refname)%09%(creatordate:unix)", "refs/remotes", "refs/tags") or ""
+    for line in refs.splitlines():
+        ref, _, t = line.partition("\t")
+        if ref.startswith("refs/tags/"):
+            tag = ref[len("refs/tags/"):]
+            if t.isdigit() and start <= int(t) <= end and (_git(repo, "branch", "-r", "--contains", ref) or "").strip():
+                remote = (_git(repo, "remote") or "origin").split()[:1] or ["origin"]
+                web = webs.setdefault(remote[0], _web_of((_git(repo, "remote", "get-url", remote[0]) or "").strip()))
+                out.append({"at": int(t), "kind": "release", "project": project, "text": re.sub(r"^v(?=\d)", "", tag),
+                            "url": f"{web}/releases/tag/{tag}" if web else None})
+            continue
+        if ref.endswith("/HEAD") or not t.isdigit() or int(t) < start - 86400:
+            continue
+        last = 0
+        for ln in (_git(repo, "reflog", "show", "--date=unix", "--format=%gd%x09%gs", ref) or "").splitlines():
+            sel, _, subj = ln.partition("\t")
+            m = re.search(r"\{(\d+)\}", sel)
+            if m and start <= int(m.group(1)) <= end and "push" in subj:
+                last = max(last, int(m.group(1)))
+        if last:
+            remote, _, branch = ref[len("refs/remotes/"):].partition("/")
+            web = webs.setdefault(remote, _web_of((_git(repo, "remote", "get-url", remote) or "").strip()))
+            out.append({"at": last, "kind": "push", "project": project, "text": f"{remote}/{branch}",
+                        "url": f"{web}/tree/{branch}" if web else None})
+    return out
+
+
+def _deploy_text(cmd, result):
+    m = re.search(r"--only[ =](\S+)", cmd)
+    what = m.group(1).strip("'\"").replace(":", " ").replace(",", ", ") if m else "firebase"
+    p = re.search(r"console\.firebase\.google\.com/project/([\w-]+)", result)
+    if p and p.group(1) not in what:
+        what = f"{what} {p.group(1)}"
+    return what[:60]
+
+
+def transcript_deploys(path, start, scan):
+    """I `firebase deploy` lanciati da una sessione con Bash e finiti con «Deploy complete!» nel risultato: solo
+    quelli, niente da indovinare (un deploy fallito, uno dentro uno script o un `npm run` non contano). `scan` e' il
+    ricordo di questa trascrizione ({offset, pending, items}): si legge solo la parte nuova, fino all'ultimo a capo."""
+    size = os.path.getsize(path)
+    if size < int(scan.get("offset") or 0):
+        scan.clear()
+    off = int(scan.get("offset") or 0)
+    pending, items = scan.setdefault("pending", {}), scan.setdefault("items", [])
+    with open(path, "rb") as f:
+        f.seek(off)
+        data = f.read()
+    end = data.rfind(b"\n")
+    if end < 0:
+        return items
+    for raw in data[:end].split(b"\n"):
+        if not (b"deploy" in raw or (pending and b"tool_result" in raw)):
+            continue
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            continue
+        at = int(core._turn_epoch(d.get("timestamp")) or 0)
+        content = (d.get("message") or {}).get("content")
+        if at < start or d.get("isSidechain") or not isinstance(content, list):
+            continue
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if d.get("type") == "assistant" and b.get("type") == "tool_use" and b.get("name") == "Bash":
+                cmd = str((b.get("input") or {}).get("command") or "")
+                if DEPLOY_CMD.search(_load_tl().bare(cmd)):
+                    pending[str(b.get("id"))] = [cmd, d.get("cwd") or ""]
+            elif d.get("type") == "user" and b.get("type") == "tool_result" and str(b.get("tool_use_id")) in pending:
+                cmd, cwd = pending.pop(str(b["tool_use_id"]))
+                res = _load_tl()._result_text(b)
+                if not b.get("is_error") and DEPLOY_DONE in res:
+                    u = re.search(r"Hosting URL:\s*(https?://\S+)", res)
+                    items.append({"at": at, "kind": "deploy", "cwd": cwd, "text": _deploy_text(cmd, res), "url": u.group(1) if u else None})
+    scan["offset"] = off + end + 1
+    return items
+
+
+_TL = []
+
+
+def _load_tl():
+    if not _TL:
+        _TL.append(_load("cm-timeline"))
+    return _TL[0]
+
+
+def published_today(now=None):
+    """1.75: [{at, kind: release|push|deploy, project, text, url}] dalla mezzanotte locale, la piu' recente per prima, al
+    piu' PUBLISHED_MAX. Fonti, tutte con l'ora: i push e i tag di git nei repository delle sessioni vive di questa
+    macchina e delle cartelle usate oggi; i deploy Firebase visti nelle trascrizioni toccate oggi (transcript_deploys).
+    Le sessioni su un altro host restano fuori: i loro repository stanno la'. Il ricordo delle trascrizioni gia' lette
+    e' in <relay.dir>/published-scan.json, ricominciato ogni giorno."""
+    now = now or time.time()
+    start = _midnight(now)
+    day = dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d")
+    root = cm.expand(CFG["workspace"]["root"])
+    live = [r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if not r.get("host") or r.get("host") == "local"]
+    dirs = [str(r.get("cwd") or "") for r in live] + [p["path"] for p in inventory() if (p.get("last_used") or 0) >= start]
+    repos = {}
+    for d in dirs:
+        if not d or d in repos.values() or not os.path.isdir(d):
+            continue
+        common = (_git(d, "rev-parse", "--path-format=absolute", "--git-common-dir") or "").strip()
+        if common:
+            top = str(Path(common).parent) if Path(common).name == ".git" else (_git(d, "rev-parse", "--show-toplevel") or d).strip()
+            repos.setdefault(common, top)
+    items = []
+    for top in repos.values():
+        items += git_published(top, S.project_of(top, root), start, now)
+    scan_p = rdir() / "published-scan.json"
+    scan = read_json(scan_p, {}) or {}
+    if scan.get("day") != day:
+        scan = {"day": day, "files": {}}
+    files = scan.setdefault("files", {})
+    for _, _, cwd, path in _load_tl().sessions_in(start, live=live):
+        try:
+            for x in transcript_deploys(path, start, files.setdefault(path, {})):
+                items.append({"at": x["at"], "kind": "deploy", "project": S.project_of(x.get("cwd") or cwd, root), "text": x["text"], "url": x["url"]})
+        except OSError:
+            continue
+    write_json(scan_p, scan)
+    best = {}
+    for x in items:
+        k = (x["kind"], x["project"], x["text"])
+        if x["at"] >= start and (k not in best or x["at"] > best[k]["at"]):
+            best[k] = x
+    out = sorted(best.values(), key=lambda x: (-x["at"], x["kind"], x["project"], x["text"]))[:PUBLISHED_MAX]
+    return [{"at": x["at"], "kind": x["kind"], "project": x["project"], "text": x["text"], "url": x["url"]} for x in out]
+
+
+def published_refresh():
+    """Il processo staccato di published_cached: ricalcola e scrive la copia, poi toglie il lucchetto."""
+    now = time.time()
+    try:
+        items = published_today(now)
+        write_json(published_path(), {"day": dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d"), "at": now, "items": items})
+        return 0
+    except Exception as e:   # noqa: BLE001 — un extra della home: mai un errore rumoroso
+        log(f"published-refresh: {e}")
+        old = read_json(published_path(), {}) or {}   # l'ora del tentativo: niente ricalcolo a ogni push dopo un errore
+        write_json(published_path(), dict(old, at=now))
+        return 1
+    finally:
+        (rdir() / "published-refresh.lock").unlink(missing_ok=True)
+
+
 def collect_sources(now=None):
     now = now or time.time()
     # senza nome ne' tmux e' un processo claude fuori registro (un `claude -p`, il recap): non e' una sessione da polso
@@ -819,6 +1088,7 @@ def collect_sources(now=None):
         "attention": attention_open(rows, ledger), "needs_you": needs_you_of(rows),
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         "changes": changes_pills(rows, ledger, now),   # 1.72
+        "hosts_status": hosts_status(rows, now), "published_today": published_cached(now),   # 1.75
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -4582,6 +4852,8 @@ def main(argv):
         return 0
     if cmd == "stats":
         return stats(rest)
+    if cmd == "published-refresh":   # 1.75: lanciato da published_cached, staccato
+        return published_refresh()
     if cmd == "turn-failed":   # 1.61: lanciato dall'hook di StopFailure, in background
         return turn_failed(rest[0], rest[1] if len(rest) > 1 else "") if rest and R.get("enabled") else 0
     if cmd == "quota-limit":   # 1.58: lanciato dall'hook di StopFailure, in background

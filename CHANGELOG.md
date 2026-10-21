@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.39 — 2026-10-21: the desktop home's third column gets its data — the state of the remote hosts and today's publications (contract 1.75).**
+  - Approved by the maintainer on 21/10 at 13:02 (web app: «Ok 3 colonne così», the three-column home with the «PC Windows» and «Published today» boxes; plan home-tre-colonne-dati-2026-10-21).
+  - `/state` carries `hosts_status` (one entry per host: up, error, cpu, RAM and disk in bytes, the live sessions; read at most once a minute, never on the hot path) and `published_today` (pushes from the remote branches' reflog, releases from today's tags already on a remote branch, deploys from a `firebase deploy` that ended with «Deploy complete!»; newest first, at most 30, 5 on Firebase where /state is cut at 8 KB). Both absent with an older relay.
+  - `cm-remote.ps1` sends RAM in bytes and the disk of the sessions' root drive: run `supervisor hosts update win` after the release.
+  - Tests: `tests/hosts-verify.py` V4b, `tests/relay-verify.py` with the fixtures of contract 1.75 (R0 with the app's copies).
 - **0.8.38 — 2026-10-21: the «Night» page shows the night that just ended, with each project's goals and where it got; replies to `talk` reach the session that wrote.**
   - Approved by the maintainer on 21/10 at 10:29 («ok gantt progetto e obiettivo, switchabili», the Night page plan) and 12:00 (web app, via the master).
   - Reported at 08:47 from the phone: the «Night» page still showed the night of 6-7 October. The report was written only at the end of a night-queue run, and since 07/10 the night work ran in parallel sessions with the queue empty.

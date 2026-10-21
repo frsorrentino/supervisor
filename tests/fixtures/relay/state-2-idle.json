@@ -225,5 +225,42 @@
       "prompt": "Check what the competing plugins shipped this week and sum it up",
       "param": false
     }
+  ],
+  "hosts_status": [
+    {
+      "name": "win",
+      "up": true,
+      "at": 1789214370,
+      "error": null,
+      "cpu": 0.42,
+      "ram_used": 9775611904,
+      "ram_total": 17063350272,
+      "disk_free": 94820073472,
+      "disk_total": 290911678464,
+      "sessions": []
+    }
+  ],
+  "published_today": [
+    {
+      "at": 1789210500,
+      "kind": "deploy",
+      "project": "work/own/orbit-docs",
+      "text": "hosting orbit-docs",
+      "url": "https://orbit-docs.web.app"
+    },
+    {
+      "at": 1789209600,
+      "kind": "release",
+      "project": "personal/atlas-shop",
+      "text": "2.3.1",
+      "url": "https://github.com/example/atlas-shop/releases/tag/v2.3.1"
+    },
+    {
+      "at": 1789207800,
+      "kind": "push",
+      "project": "personal/atlas-shop",
+      "text": "origin/feature/checkout",
+      "url": "https://github.com/example/atlas-shop/tree/feature/checkout"
+    }
   ]
 }

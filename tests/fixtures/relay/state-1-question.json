@@ -447,5 +447,7 @@
     "/home/demo/workspaces/personal",
     "/home/demo/workspaces/work/clients",
     "/home/demo/workspaces/work/own"
-  ]
+  ],
+  "hosts_status": [],
+  "published_today": []
 }

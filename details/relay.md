@@ -217,6 +217,38 @@ esito, stopped, decisions, host}`), `milestones` (`{at, kind: commit|push|
 release|fine, text, ok, ref}`) and `where`, `{state: done|partial|stopped|
 running|unknown, text, missing, needs_you}`. A goal's points carry its state
 and time: the report does not say which point was done when.
+Contract 1.75 serves the web's three-column home (21/10/2026, additive, `v`
+stays 1). `/state` carries two new lists, absent with an older relay.
+`hosts_status` has one entry per confirmed host of `supervisor hosts` (local
+and cloud left out), `{name, up, at, error, cpu, ram_used, ram_total,
+disk_free, disk_total, sessions}`, read from the snapshot the poller (`hosts
+poll`, cron) writes at most once a minute while something runs there and every
+10 minutes otherwise: `/state` never opens an ssh. `at` is the reading's epoch;
+`cpu` is `load_pct` / 100 between 0 and 1 (on Windows the processors' current
+load, on POSIX the one-minute load average over the threads); RAM and disk are
+in bytes, the disk being the one holding the host's sessions root (`D:` on
+win). The helper reports `ram_total_b`, `ram_free_b` and `disk` since 1.75; a
+helper from before gives RAM from its GB figures and the disk null. `up` false
+when the last reading failed («ssh: timeout»), when there is none («no reading
+yet») or when it is older than two idle rounds («no reading for N min», the
+poller stopped): `error` says which, every number is null. `sessions` are the
+names of the live sessions on that host as in `sessions[].name`.
+`published_today` is `[{at, kind, project, text, url}]` since local midnight,
+newest first, at most 30 (`fit_state` cuts it to 10, then 5, before projects
+and sessions). `kind` release: a tag of the day whose commit is on a remote
+branch, `text` the tag without a leading «v», `url` the GitHub release page.
+`kind` push: a remote branch updated by a push today (its reflog), once per
+branch at its last push, `text` «origin/branch», `url` the branch on GitHub.
+`kind` deploy: a `firebase deploy` run by a session with Bash whose result says
+«Deploy complete!», `text` the `--only` targets (or «firebase») with the
+Firebase project, `url` the Hosting URL; a failed deploy, one wrapped in a
+script or `npm run`, and the Firebase MCP tool do not count. `url` is null for
+a non-GitHub remote. The repositories are those of this machine's live
+sessions and of the folders used today; sessions on another host stay out.
+The list is counted by a detached `cm-relay.py published-refresh` at most once
+a minute and kept in `<relay.dir>/published-today.json`; a copy from another
+day is not served, so the first `/state` of the day may carry an empty list.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

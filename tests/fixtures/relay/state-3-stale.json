@@ -170,5 +170,20 @@
       "prompt": "Check what the competing plugins shipped this week and sum it up",
       "param": false
     }
-  ]
+  ],
+  "hosts_status": [
+    {
+      "name": "win",
+      "up": false,
+      "at": 1789198800,
+      "error": "ssh: timeout",
+      "cpu": null,
+      "ram_used": null,
+      "ram_total": null,
+      "disk_free": null,
+      "disk_total": null,
+      "sessions": []
+    }
+  ],
+  "published_today": []
 }

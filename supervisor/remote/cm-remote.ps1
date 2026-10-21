@@ -34,6 +34,13 @@ function FreeGb($path) {
     $q = (Resolve-Path $p).Path.Substring(0, 1)
     try { Gb (Get-PSDrive -Name $q).Free } catch { $null }
 }
+function DiskOf($path) {
+    # 1.75: free and total bytes of the drive holding $path (the sessions root, D: on win)
+    $p = $path; while ($p -and -not (Test-Path $p)) { $p = Split-Path -Parent $p }
+    if (-not $p) { $p = $env:USERPROFILE }
+    $q = (Resolve-Path $p).Path.Substring(0, 1)
+    try { $d = Get-PSDrive -Name $q; @{ path = "${q}:"; free_b = [int64]$d.Free; total_b = [int64]($d.Free + $d.Used) } } catch { $null }
+}
 function LoadPct { try { [int]((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average) } catch { $null } }
 function ReadJson($f) {
     try { $t = [IO.File]::ReadAllText($f); if ($t.Trim().StartsWith('{') -and $t.Trim().EndsWith('}')) { return ($t | ConvertFrom-Json) } } catch {}
@@ -178,7 +185,9 @@ function Cmd-Status {
     Out-J @{ ok = $true; at = [int][double]::Parse(((Get-Date).ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds.ToString([Globalization.CultureInfo]::InvariantCulture), [Globalization.CultureInfo]::InvariantCulture)
         load_pct = LoadPct; threads = $threads
         ram_gb = Gb ([double]$os.TotalVisibleMemorySize * 1KB); ram_free_gb = Gb ([double]$os.FreePhysicalMemory * 1KB)
-        disk_free_gb = FreeGb $Root; jobs = $jobs; sessions = @($sess); quota = @($quota) }
+        disk_free_gb = FreeGb $Root; jobs = $jobs; sessions = @($sess); quota = @($quota)
+        ram_total_b = [int64]([double]$os.TotalVisibleMemorySize * 1KB); ram_free_b = [int64]([double]$os.FreePhysicalMemory * 1KB)
+        disk = DiskOf $(if ($Rest.Count -gt 0 -and $Rest[0]) { $Rest[0] -replace '/', '\' } else { $Root }) }
 }
 
 function Cmd-Prepare {

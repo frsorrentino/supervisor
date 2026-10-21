@@ -213,7 +213,9 @@ class Adapter:
         return self.call("probe", *args, timeout=240 if (bench or webgl) else 90)
 
     def status(self):
-        return self.call("status", timeout=60)
+        # 1.75: the disk reported is the one of the sessions root (D: on win), not of the job root
+        sroot = (self.host.get("sessions") or {}).get("root")
+        return self.call("status", *([str(sroot)] if sroot else []), timeout=60)
 
     def sync(self, job, build_bundle):
         """3.2: cartella del lavoro, manifesto degli asset, solo gli sha che mancano, un bundle, estrazione.

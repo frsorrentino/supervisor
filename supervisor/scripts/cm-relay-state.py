@@ -32,6 +32,8 @@ V = 1
 ORDER = {"waiting": 0, "busy": 1, "awaiting": 1, "idle": 2, "gone": 3}
 SHORT_MAX = 200   # 1.6: la riga «Watch:»/«Esito:» intera (a 60 il polso mostrava mezza frase; chiesto dall'app il 14/09)
 KEEP_GONE = 3     # fit_state: le sessioni finite piu' recenti che restano quando lo stato non entra
+PUBLISHED_MAX = 30   # 1.75: le pubblicazioni di oggi in /state; fit_state le scende a PUBLISHED_FIT, poi a 5
+PUBLISHED_FIT = 10
 RECAP_CUT = 80    # 1.7 fit_state: `done` e `next` del recap accorciati a fine parola invece di sparire per primi
 HIGH_WORDS = ["rm -rf", "git push", "deploy", "DROP", "ssh", "sudo", "--force", "git reset --hard"]
 LOW_TOOLS = {"Read", "Grep", "Glob", "WebFetch", "WebSearch", "LS", "TodoWrite"}
@@ -613,6 +615,12 @@ def build_state(src, now, fit=True):
     # 1.64: le cartelle madri ammesse per un progetto nuovo dal telefono (op project_new); assente = relay precedente
     if src.get("project_parents"):
         state["project_parents"] = list(src["project_parents"])
+    # 1.75 (21/10, home a tre colonne della web): lo stato dei PC remoti, uno per host di cm-hosts, e le pubblicazioni
+    # di oggi (release, push, deploy) dalla piu' recente; liste vuote quando non c'e' niente, assenti con un relay vecchio
+    if "hosts_status" in src:
+        state["hosts_status"] = [dict(h, sessions=list(h.get("sessions") or [])) for h in (src.get("hosts_status") or [])]
+    if "published_today" in src:
+        state["published_today"] = [dict(x) for x in (src.get("published_today") or [])][:PUBLISHED_MAX]
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state
@@ -661,6 +669,10 @@ def fit_state(state, max_kb=8):
         state["sessions"].remove(s)
         if fits():
             return state
+    if len(state.get("published_today") or []) > PUBLISHED_FIT:   # 1.75: le piu' recenti restano
+        state["published_today"] = state["published_today"][:PUBLISHED_FIT]
+        if fits():
+            return state
     state["projects"] = most_recent(state["projects"], 10)
     if fits():
         return state
@@ -688,6 +700,10 @@ def fit_state(state, max_kb=8):
     state["projects"] = most_recent(state["projects"], 5)
     if fits():
         return state
+    if state.get("published_today"):
+        state["published_today"] = state["published_today"][:5]
+        if fits():
+            return state
     while not fits() and len(items) > 1:
         items.pop()
     if fits():

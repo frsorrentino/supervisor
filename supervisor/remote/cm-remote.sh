@@ -49,6 +49,10 @@ free_gb() {  # spazio libero sulla cartella (o sul primo antenato che esiste)
   d="$1"; while [ ! -d "$d" ] && [ "$d" != / ]; do d="$(dirname "$d")"; done
   df -Pk "$d" 2>/dev/null | awk 'NR==2{printf "%.1f", $4/1048576}'
 }
+disk_of() {  # 1.75: {path, free_b, total_b} of the filesystem holding the folder (or its first existing ancestor)
+  d="$1"; while [ ! -d "$d" ] && [ "$d" != / ]; do d="$(dirname "$d")"; done
+  df -Pk "$d" 2>/dev/null | awk 'NR==2{p=$6; gsub(/["\\]/, "", p); printf "{\"path\":\"%s\",\"free_b\":%.0f,\"total_b\":%.0f}", p, $4*1024, $2*1024}' | grep . || printf null
+}
 load_pct() {
   [ -n "${CM_FAKE_LOAD_PCT:-}" ] && { printf '%s' "$CM_FAKE_LOAD_PCT"; return; }   # solo prove
   l=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
@@ -153,6 +157,7 @@ job_json() {  # stato del lavoro: status.json del lavoro + coda del log
 }
 
 cmd_status() {
+  dk="${1:-$ROOT}"   # 1.75: the folder whose disk the status reports (the sessions root), before set -- below
   set -- $(ram_kb); rt=$1; ra=$2
   jobs=""
   if [ -d "$ROOT/jobs" ]; then
@@ -175,7 +180,8 @@ cmd_status() {
     quota="$quota${quota:+,}{\"file\":$(js "$(basename "$f")"),\"mtime\":$(num "$m"),\"data\":$(cat "$f")}"
   done
   out "{\"ok\":true,\"at\":$(date +%s),\"load_pct\":$(load_pct),\"threads\":$(threads),\"ram_gb\":$(gb "$rt"),\"ram_free_gb\":$(gb "$ra"),\
-\"disk_free_gb\":$(num "$(free_gb "$ROOT")"),\"jobs\":{${jobs}},\"sessions\":[${sess}],\"quota\":[${quota}]}"
+\"disk_free_gb\":$(num "$(free_gb "$ROOT")"),\"jobs\":{${jobs}},\"sessions\":[${sess}],\"quota\":[${quota}],\
+\"ram_total_b\":$(( rt * 1024 )),\"ram_free_b\":$(( ra * 1024 )),\"disk\":$(disk_of "$dk")}"
 }
 
 cmd_prepare() {
