@@ -210,6 +210,7 @@
   },
   "night": {
     "cron_time": "02:00",
+    "report_time": "06:30",
     "min_free_mb": 1500,
     "max_quota_pct": 80,
     "item_timeout_s": 3600,

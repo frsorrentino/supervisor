@@ -1,19 +1,23 @@
 {
   "schema": "team-supervisor/night-report",
-  "v": 1,
+  "v": 2,
   "generated_at": 1791333420,
   "date": "2026-10-07",
+  "title": "3 progetti: 1 in parte, 2 fermi",
   "window": {
     "start": 1791325980,
     "end": 1791333360,
     "start_source": "last_message",
+    "end_source": "now",
     "floor": 1791309600,
+    "morning": 1791348000,
     "last_message": {
       "at": 1791325980,
       "session": "master",
       "origin": "phone",
       "text": "vado a dormire, prosegui tu e segui le sessioni"
-    }
+    },
+    "morning_message": null
   },
   "attention": {
     "questions": [
@@ -61,12 +65,22 @@
       "id": "master",
       "title": "master",
       "project": "/w",
+      "dir": "/w",
+      "host": "local",
+      "role": "master",
       "start": 1791325980,
       "end": null,
+      "spans": [
+        [
+          1791325980,
+          1791333360
+        ]
+      ],
       "outcome": "running",
       "detail": "vado a dormire, prosegui tu e segui le sessioni",
       "report": null,
       "live": true,
+      "assigned": null,
       "prompt": "vado a dormire, prosegui tu e segui le sessioni",
       "counts": {
         "prompts": 1,
@@ -76,15 +90,57 @@
     },
     {
       "kind": "session",
+      "id": "atlas-shop",
+      "title": "atlas-shop",
+      "project": "/w/atlas-shop",
+      "dir": "/w/atlas-shop",
+      "host": "local",
+      "role": null,
+      "start": 1791326160,
+      "end": 1791330000,
+      "spans": [
+        [
+          1791326160,
+          1791330000
+        ]
+      ],
+      "outcome": "ok",
+      "detail": "Checkout rifatto, test verdi",
+      "report": null,
+      "live": false,
+      "assigned": null,
+      "prompt": null,
+      "counts": {
+        "prompts": 0,
+        "tests": 2,
+        "commits": 3
+      }
+    },
+    {
+      "kind": "session",
       "id": "ledger-api",
       "title": "ledger-api",
       "project": "/w/ledger-api",
+      "dir": "/w/ledger-api",
+      "host": "local",
+      "role": null,
       "start": 1791326160,
       "end": 1791327360,
+      "spans": [
+        [
+          1791326160,
+          1791326700
+        ],
+        [
+          1791327000,
+          1791327360
+        ]
+      ],
       "outcome": "ok",
       "detail": "Migrazione del registro committata in locale, nessuna release",
       "report": null,
       "live": true,
+      "assigned": "Dalla master: porta a termine la migrazione del registro e non fare release.",
       "prompt": "Porta a termine la migrazione del registro: committala in locale e non fare release finché non torno.",
       "counts": {
         "prompts": 0,
@@ -94,20 +150,34 @@
     },
     {
       "kind": "session",
-      "id": "atlas-shop",
-      "title": "atlas-shop",
-      "project": "/w/atlas-shop",
-      "start": 1791326160,
-      "end": 1791330000,
-      "outcome": "ok",
-      "detail": "Checkout rifatto, test verdi",
+      "id": "win-orbit-docs",
+      "title": "win-orbit-docs",
+      "project": "/w/orbit-docs",
+      "dir": "/w/orbit-docs",
+      "host": "win",
+      "role": null,
+      "start": 1791327600,
+      "end": 1791331800,
+      "spans": [
+        [
+          1791327600,
+          1791329400
+        ],
+        [
+          1791330600,
+          1791331800
+        ]
+      ],
+      "outcome": "unknown",
+      "detail": "Dalla master: sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.",
       "report": null,
       "live": false,
-      "prompt": null,
+      "assigned": "Dalla master: sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.",
+      "prompt": "Dalla master: sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.",
       "counts": {
         "prompts": 0,
-        "tests": 2,
-        "commits": 3
+        "tests": 0,
+        "commits": 2
       }
     },
     {
@@ -155,6 +225,12 @@
     {
       "name": "ledger-api",
       "path": "/w/ledger-api",
+      "worktrees": [
+        "/w/ledger-api-notte"
+      ],
+      "hosts": [
+        "local"
+      ],
       "parts_source": "plan",
       "parts_file": "/w/ledger-api/docs/plans/registro.md",
       "parts": [
@@ -203,11 +279,99 @@
           "ok": null,
           "ref": null
         }
-      ]
+      ],
+      "spans": [
+        {
+          "session": "ledger-api",
+          "host": "local",
+          "start": 1791326160,
+          "end": 1791326700
+        },
+        {
+          "session": "ledger-api",
+          "host": "local",
+          "start": 1791327000,
+          "end": 1791327360
+        }
+      ],
+      "goals": [
+        {
+          "title": "Registro dei pagamenti: migrazione e pagina mensile",
+          "file": "/w/ledger-api/docs/proposte/2026-10-07-registro.md",
+          "at": 1791325800,
+          "points": [
+            {
+              "title": "Migrazione del registro",
+              "state": "done",
+              "done_at": 1791332820
+            },
+            {
+              "title": "Pagina mensile",
+              "state": "done",
+              "done_at": 1791332820
+            },
+            {
+              "title": "Release 1.4",
+              "state": "done",
+              "done_at": 1791332820
+            }
+          ],
+          "host": "local",
+          "source": "proposta",
+          "reports": [
+            {
+              "file": "/w/ledger-api/docs/notte/2026-10-07-registro.md",
+              "title": "ledger-api, registro",
+              "at": 1791332820,
+              "fine": true,
+              "fine_at": 1791332820,
+              "esito": "Migrazione e pagina mensile fatte, 6 commit in locale; la release aspetta l'ok.",
+              "stopped": false,
+              "decisions": [
+                "Release 1.4 adesso o lunedì?"
+              ],
+              "host": "local"
+            }
+          ],
+          "state": "done",
+          "done_at": 1791332820
+        }
+      ],
+      "reports": [],
+      "milestones": [
+        {
+          "at": 1791326400,
+          "kind": "commit",
+          "text": "feat(ledger): monthly page",
+          "ok": null,
+          "ref": "a1b2c3d"
+        },
+        {
+          "at": 1791332820,
+          "kind": "fine",
+          "text": "ledger-api, registro",
+          "ok": true,
+          "ref": "/w/ledger-api/docs/notte/2026-10-07-registro.md"
+        }
+      ],
+      "where": {
+        "state": "stopped",
+        "text": "domanda: Pubblico la release 1.4 adesso?",
+        "missing": [],
+        "needs_you": [
+          "domanda: Pubblico la release 1.4 adesso?",
+          "ok: Release 1.4 di ledger-api",
+          "Release 1.4 adesso o lunedì?"
+        ]
+      }
     },
     {
       "name": "field-notes",
       "path": "/w/field-notes",
+      "worktrees": [
+        "/w/field-notes-notte"
+      ],
+      "hosts": [],
       "parts_source": null,
       "parts_file": null,
       "parts": [],
@@ -216,13 +380,116 @@
         "!: /clear"
       ],
       "next": "Indice delle note per data",
-      "events": []
+      "events": [],
+      "spans": [],
+      "goals": [],
+      "reports": [],
+      "milestones": [],
+      "where": {
+        "state": "stopped",
+        "text": "!: /clear",
+        "missing": [],
+        "needs_you": [
+          "!: /clear"
+        ]
+      }
+    },
+    {
+      "name": "orbit-docs",
+      "path": "/w/orbit-docs",
+      "worktrees": [],
+      "hosts": [
+        "win"
+      ],
+      "parts_source": null,
+      "parts_file": null,
+      "parts": [],
+      "parts_total": 0,
+      "waiting_on": [],
+      "next": null,
+      "events": [
+        {
+          "at": 1791328800,
+          "kind": "commit",
+          "text": "deploy: nuovo host della documentazione",
+          "ok": null,
+          "ref": "d4e5f6a"
+        },
+        {
+          "at": 1791331500,
+          "kind": "commit",
+          "text": "docs: redirect dei vecchi indirizzi",
+          "ok": null,
+          "ref": "b7c8d9e"
+        }
+      ],
+      "spans": [
+        {
+          "session": "win-orbit-docs",
+          "host": "win",
+          "start": 1791327600,
+          "end": 1791329400
+        },
+        {
+          "session": "win-orbit-docs",
+          "host": "win",
+          "start": 1791330600,
+          "end": 1791331800
+        }
+      ],
+      "goals": [
+        {
+          "title": "sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.",
+          "file": null,
+          "at": 1791327600,
+          "points": [],
+          "host": "win",
+          "source": "assigned",
+          "session": "win-orbit-docs",
+          "reports": [],
+          "state": "partial",
+          "done_at": null
+        }
+      ],
+      "reports": [],
+      "milestones": [
+        {
+          "at": 1791328800,
+          "kind": "commit",
+          "text": "deploy: nuovo host della documentazione",
+          "ok": null,
+          "ref": "d4e5f6a"
+        },
+        {
+          "at": 1791329100,
+          "kind": "push",
+          "text": "origin/notte/host",
+          "ok": null,
+          "ref": "refs/remotes/origin/notte/host"
+        },
+        {
+          "at": 1791331500,
+          "kind": "commit",
+          "text": "docs: redirect dei vecchi indirizzi",
+          "ok": null,
+          "ref": "b7c8d9e"
+        }
+      ],
+      "where": {
+        "state": "partial",
+        "text": "docs: redirect dei vecchi indirizzi",
+        "missing": [
+          "sposta il sito della documentazione sul nuovo host, senza cambiare il dominio."
+        ],
+        "needs_you": []
+      }
     }
   ],
   "sources": {
     "transcripts": "ok",
     "night_done": "ok",
     "night_queue": "ok",
+    "host:win": "ok",
     "timeline": "ok",
     "registry": "ok",
     "relay_state": "ok"

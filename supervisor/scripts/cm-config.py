@@ -168,7 +168,8 @@ DEFAULTS = {
     # l'utente non elenca gli account
     "auto_switch": {"accounts": [], "at_pct": 90, "back_pct": 75, "min_s": 1800, "night_hours": [0, 7]},
     # turno di notte (N5): coda di lavori `claude -p` non presidiati, con guardie su RAM e quota
-    "night": {"cron_time": "02:00", "min_free_mb": 1500, "max_quota_pct": 80, "item_timeout_s": 3600,
+    # report_time (21/10/2026): il rapporto della pagina «Notte» ogni mattina, anche con la coda vuota
+    "night": {"cron_time": "02:00", "report_time": "06:30", "min_free_mb": 1500, "max_quota_pct": 80, "item_timeout_s": 3600,
               # 06/10/2026: "default" (nessun permesso allargato); per i lavori che scrivono file serve "acceptEdits",
               # scelto dall'utente nella sua config
               "max_turns": 40, "permission_mode": "default", "tool_memory_limit": "2g", "retry_watchdog_max_wait_ms": 900000,

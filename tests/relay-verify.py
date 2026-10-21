@@ -3156,7 +3156,7 @@ T.check("R59 (1.73) studio outcomes: the last 3 of a folder over both accounts, 
 T.check("R59 (1.73) calendar unreachable → ok true, the deadlines of the cached copy and error = cm-calendar's text; no calendar → ok true, the cases and outcomes, no deadlines, error «calendar off», as the fixture's …0741",
         _down59[0] is True and json.loads(_down59[1])["deadlines"] == _p59.get("deadlines") and json.loads(_down59[1])["error"] == RL.M("calendar.unreachable")
         and _off59[0] is True and json.loads(_off59[1]) == json.loads(_res59["6f1c2d3e-0741-4000-8000-0000000000741"]["text"]) == dict(_p59, deadlines=[], error="calendar off"), str((_down59[1][-200:], _off59)))
-T.check("R59 (1.73) studio is a passive read in ops, and /state does not carry it", "studio" in RL.PASSIVE_OPS and RL.OPS[-1] == "studio"
+T.check("R59 (1.73) studio is a passive read in ops, and /state does not carry it", "studio" in RL.PASSIVE_OPS and "studio" in RL.OPS
         and "studio" not in json.loads(relay("push", "--dry-run").stdout), "")
 _want59 = ("[studio]\n" + RL.M("relay.studio_cases") + "\n"
            f"- Harbor lease dispute → {RL.cm.contract(str(_ws59 / 'harbor-lease'))}\n- Harbor lease: appeal → {RL.cm.contract(str(_ws59 / 'harbor-lease'))}\n"
@@ -3169,5 +3169,28 @@ T.check("R59 (1.73) prompt with scope studio: the sessions get prefix, the [stud
         and _talk59[1:] == [RL.prefix_for({"device": "web"}) + f" what is due this week? {n}" for n in (2, 3)] and all(r[0] for r in _r59), str((_talk59, _r59))[:900])
 T.check("R59 (1.73) the block with the calendar off says so and still lists the cases",
         _offblock59.startswith(_want59.split(RL.M("relay.studio_deadlines", n=60))[0]) and RL.M("relay.studio_deadlines_off") in _offblock59 and _offblock59.endswith("[/studio]"), _offblock59)
+
+# R60 (contratto 1.74, 21/10, pagina «Notte»: prima l'ultima notte, sotto le precedenti): op nights, l'elenco dei rapporti
+_nr60 = tmp / "night60"; _nr60.mkdir(exist_ok=True)
+_dir60 = RL.night_report_dir
+RL.night_report_dir = lambda: _nr60
+try:
+    _empty60 = RL.nights_list()
+    _v2 = json.loads((FIX / "night-report-sample.json").read_text())
+    (_nr60 / "2026-10-07.json").write_text(json.dumps({"schema": "team-supervisor/night-report", "v": 1, "generated_at": 1791333420, "date": "2026-10-07"}))
+    (_nr60 / "2026-10-08.json").write_text(json.dumps(dict(_v2, date="2026-10-08", generated_at=1791419820)))
+    (_nr60 / "2026-10-09.json").write_text("{rotto")
+    (_nr60 / "note.json").write_text("{}")
+    _two60 = RL.nights_list()
+finally:
+    RL.night_report_dir = _dir60
+_crs60 = json.loads((FIX / "cmd-result-sample.json").read_text())
+_res60 = {r["id"]: r for r in _crs60["result"] if isinstance(r, dict)}
+T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest first; a v1 report has title null; an unreadable file and a name that is not a date are skipped; the same JSON as the fixture's …0750",
+        _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
+        and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
+T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
+T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-1] == "nights"
+        and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 T.finish()

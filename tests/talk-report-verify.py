@@ -135,6 +135,14 @@ with T.PrivateTmux() as tm:
     T.check("T1 auth line carries the recipient's peerToken", auth == {"type": "auth", "token": "tok-blog"}, str(auth))
     T.check("T1 message line in the captured format", msg.get("msgV") == 1 and msg.get("type") == "user" and msg.get("priority") == "next"
             and msg.get("from") == "uds:/tmp/me.sock" and 'from-mode="bypass"' in msg["message"]["content"] and "ping E6" in msg["message"]["content"], str(msg)[:300])
+    T.check("T1 without a tmux pane the signature is talk.from_name", 'from-name="supervisor"' in msg["message"]["content"], msg["message"]["content"][:200])
+    # T1b (21/10): la firma e' la sessione che scrive: con from-name «supervisor» la risposta di win-bluey alla master
+    # finiva alla sessione che si chiama supervisor
+    subprocess.run(["tmux", "-L", tm.socket, "new-session", "-d", "-s", "master", "bash", "--norc"], env=env(), check=True)
+    _pane = tm("display-message", "-p", "-t", "master", "#{pane_id}").stdout.strip()
+    rb = talk("blog", "dalla master", "--no-wait", CLAUDE_CODE_MESSAGING_SOCKET="/tmp/me.sock", TMUX_PANE=_pane)
+    _c1b = json.loads(peer.received[-1].split("\n")[1])["message"]["content"] if peer.received else ""
+    T.check("T1b talk from the tmux session «master» → signed from-name=\"master\", not talk.from_name", rb.returncode == 0 and 'from-name="master"' in _c1b and "dalla master" in _c1b, rb.stderr + _c1b[:200])
     T.check("T2 reply read from the transcript (text blocks only)", "pong dal peer finto" in r.stdout and "hmm" not in r.stdout and "vecchia" not in r.stdout, r.stdout)
     # T3
     r = talk("blog", "fire and forget", "--no-wait")

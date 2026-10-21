@@ -545,7 +545,7 @@
   "recap.cron_removed": "recap line removed from the crontab",
   "recap.status_cron": "cron: {state}   ({line})",
   "recap.status_ledger": "ledger: {path} ({n} rows)",
-  "night.usage": "usage: supervisor night add <dir> \"prompt\" [--account N] [--model M] [--effort E] [--max-turns N] | list | remove <id> | clear | run [--dry-run] [--one] [--send] | install | uninstall | status",
+  "night.usage": "usage: supervisor night add <dir> \"prompt\" [--account N] [--model M] [--effort E] [--max-turns N] | list | remove <id> | clear | run [--dry-run] [--one] [--send] | report | install | uninstall | status",
   "night.add_usage": "usage: supervisor night add <dir> \"prompt\" [--account N] [--model M] [--effort E] [--max-turns N]",
   "night.remove_usage": "usage: supervisor night remove <id>",
   "night.no_dir": "no such folder: {dir}",

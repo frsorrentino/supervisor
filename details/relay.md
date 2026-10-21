@@ -192,6 +192,31 @@ A `prompt` with `scope: "studio"` gets, after the device's prefix, a
 of the next 60 days, the line of `calendar.studio_rule` when it is set — a
 blank line, then the text. An unknown scope is ignored. `transcript` and the
 timeline drop the block, so the entry ends with the text sent.
+Contract 1.74 serves the app's Night page (21/10/2026, additive, `v` stays
+1). Op `nights` (`session` and `arg` null) is a read on request, never in
+`/state`; `ops` lists it last. It answers `{nights: [{date, title,
+generated_at, v}]}`, the reports on disk newest first, at most 60; `title` is
+the report's short line («9 progetti: 7 fatti, 2 in parte»), null for a v1
+report; with no report `nights` is empty and the answer is still ok. `night`
+with a date opens one of them. The report itself is now `v` 2 (fixture
+`night-report-sample.json`), a superset of v1: `title`; `window.end_source`
+(`now` or `morning_message`, the person's first message after 06:00 from a
+device or to the master), `window.morning`, `window.morning_message`, and
+`start_source` `night_plan` when the night starts at its first plan
+(`docs/proposte` with the night's date); session items carry `dir`, `host`
+(`local` or the host's name), `role` (`master` or null), `spans` (`[[start,
+end], …]`, work split by pauses over 20 minutes) and `assigned` (the message
+another session gave it the work with, or null), and a session counts even
+without a prompt from the person, sessions in a scratchpad never; `project`
+is the repo, a worktree named `<repo>-…` included. Each project adds
+`worktrees`, `hosts`, `spans` (`{session, host, start, end}`), `goals`
+(`{title, file, at, points: [{title, state, done_at}], host, source:
+proposta|assigned, reports, state, done_at}`), `reports` (the night's
+`docs/notte` reports matched to no goal: `{file, title, at, fine, fine_at,
+esito, stopped, decisions, host}`), `milestones` (`{at, kind: commit|push|
+release|fine, text, ok, ref}`) and `where`, `{state: done|partial|stopped|
+running|unknown, text, missing, needs_you}`. A goal's points carry its state
+and time: the report does not say which point was done when.
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

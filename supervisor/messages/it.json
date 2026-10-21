@@ -545,7 +545,7 @@
   "recap.cron_removed": "riga del recap tolta dal crontab",
   "recap.status_cron": "cron: {state}   ({line})",
   "recap.status_ledger": "ledger: {path} ({n} righe)",
-  "night.usage": "uso: supervisor night add <cartella> \"prompt\" [--account N] [--model M] [--effort E] [--max-turns N] | list | remove <id> | clear | run [--dry-run] [--one] [--send] | install | uninstall | status",
+  "night.usage": "uso: supervisor night add <cartella> \"prompt\" [--account N] [--model M] [--effort E] [--max-turns N] | list | remove <id> | clear | run [--dry-run] [--one] [--send] | report | install | uninstall | status",
   "night.add_usage": "uso: supervisor night add <cartella> \"prompt\" [--account N] [--model M] [--effort E] [--max-turns N]",
   "night.remove_usage": "uso: supervisor night remove <id>",
   "night.no_dir": "cartella inesistente: {dir}",

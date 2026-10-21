@@ -469,10 +469,11 @@ def cmd_talk(argv):
     max_wait = _opt(rest, "--wait", int(CFG["talk"]["max_wait_s"]))
     quiet = _opt(rest, "--quiet", int(CFG["talk"]["quiet_s"]))
     inbox = _load("cm-inbox")
-    rec = inbox.put(name, text, os.environ.get("CM_TALK_SENDER") or CFG["talk"]["from_name"], "")
+    who = os.environ.get("CM_TALK_SENDER") or CFG["talk"]["from_name"]   # 21/10: la firma e' chi scrive (cm-talk la mette)
+    rec = inbox.put(name, text, who, "")
     a = adapter_for(hname, hosts().get(hname))
     try:
-        d = a.session_post(name, text, CFG["talk"]["from_name"], "uds:" + os.environ.get("CLAUDE_CODE_MESSAGING_SOCKET", ""))
+        d = a.session_post(name, text, who, "uds:" + os.environ.get("CLAUDE_CODE_MESSAGING_SOCKET", ""))
     except Exception as e:   # noqa: BLE001 — l'adattatore vero solleva HostError, il finto altro: il messaggio resta in casella
         print(M("rsession.post_failed", host=hname, name=name, error=str(e)[-300:], id=rec["id"]), file=sys.stderr)
         return 5

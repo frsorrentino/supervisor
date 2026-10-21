@@ -312,6 +312,7 @@ def cmd_talk(argv):
     # fase 2.2 del piano multi-PC: `HOST:nome` (o un nome lanciato con launch --host) va per la named pipe dell'host
     rs = _load("cm-rsession")
     if rs.resolve(name):
+        os.environ.setdefault("CM_TALK_SENDER", sender_name())   # 21/10: la firma e' chi scrive, anche verso un host
         return rs.cmd_talk(argv)
     row = find(name)
     if not row:
@@ -335,13 +336,16 @@ def cmd_talk(argv):
         print(M("talk.native_hint", name=name), file=sys.stderr)
 
     # la casella prima della consegna: se la sessione si chiude o il socket rifiuta, il messaggio non si perde
-    rec = inbox().put(name, text, sender_name(), row.get("cwd") or "")
+    who = sender_name()
+    rec = inbox().put(name, text, who, row.get("cwd") or "")
     use_socket = via == "socket" or (via == "auto" and row.get("socket") and os.path.exists(row["socket"]) and row.get("session_id"))
     if use_socket:
         row["_transcript"] = transcript_path(row)
         offset = row["_transcript"].stat().st_size if row["_transcript"].exists() else 0
         try:
-            post_socket(row, text, CFG["talk"]["from_name"], CFG["talk"]["from_mode"])
+            # 21/10: from-name e' la sessione che scrive (master), non talk.from_name («supervisor»): chi risponde col
+            # nome della firma finiva alla sessione che si chiama supervisor (win-bluey alla master, oggi alle 10:02)
+            post_socket(row, text, who, CFG["talk"]["from_mode"])
         except OSError as e:
             if via == "socket":
                 die("talk.socket_failed", 5, name=name, error=str(e))

@@ -429,6 +429,17 @@ def refresh_report():
         log(f"night report: {e.__class__.__name__}")
 
 
+def report():
+    """21/10: il rapporto della notte a mano o dal cron di night.report_time, anche con la coda vuota (dal 07/10 il
+    lavoro notturno gira in sessioni parallele e `run` usciva prima, con night.empty, senza scriverlo)."""
+    cmd = [sys.executable, os.environ.get("CM_NIGHT_REPORT_BIN") or str(HERE / "cm-night-report.py")]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    log(f"night report: rc={p.returncode} " + " ".join((p.stdout or p.stderr).split())[:300])
+    sys.stdout.write(p.stdout)
+    sys.stderr.write(p.stderr)
+    return p.returncode
+
+
 def run(argv):
     dry = "--dry-run" in argv or "--prova" in argv
     one = "--one" in argv
@@ -499,6 +510,12 @@ def cron_line():
     return f"{int(mm or 0)} {int(hh or 2)} * * * {shim} night run --send >/dev/null 2>&1"
 
 
+def report_cron_line():
+    hh, _, mm = str(N.get("report_time") or "06:30").partition(":")
+    shim = cm.home() / ".local" / "bin" / "supervisor"
+    return f"{int(mm or 0)} {int(hh or 6)} * * * nice -n 19 {shim} night report >/dev/null 2>&1"
+
+
 def crontab_read():
     return subprocess.run([os.environ.get("CM_CRONTAB_CMD", "crontab"), "-l"], capture_output=True, text=True).stdout
 
@@ -508,12 +525,19 @@ def crontab_write(text):
 
 
 def install():
+    """Le due righe: il turno di notte (night.cron_time) e il rapporto del mattino (night.report_time, 21/10); chi ha
+    gia' la prima riceve solo la seconda."""
     cur = crontab_read()
-    if "supervisor night run" in cur:
+    add = [(k, line) for k, line in (("supervisor night run", cron_line()), ("supervisor night report", report_cron_line())) if k not in cur]
+    if not add:
         print(M("night.cron_present"))
         return 0
-    crontab_write(cur.rstrip("\n") + ("\n" if cur.strip() else "") + "# supervisor night: turno di notte (coda di lavori non presidiati)\n" + cron_line() + "\n")
-    print(M("night.cron_installed", line=cron_line()))
+    text = cur.rstrip("\n") + ("\n" if cur.strip() else "")
+    for k, line in add:
+        text += ("# supervisor night: turno di notte (coda di lavori non presidiati)\n" if k.endswith("run") else
+                 "# supervisor night: rapporto della notte per la pagina «Notte»\n") + line + "\n"
+        print(M("night.cron_installed", line=line))
+    crontab_write(text)
     return 0
 
 
@@ -529,7 +553,9 @@ def uninstall():
 
 
 def status():
-    print(M("night.status_cron", state="yes" if "supervisor night run" in crontab_read() else "no", line=cron_line()))
+    cur = crontab_read()
+    print(M("night.status_cron", state="yes" if "supervisor night run" in cur else "no", line=cron_line()))
+    print(M("night.status_cron", state="yes" if "supervisor night report" in cur else "no", line=report_cron_line()))
     print(M("night.status_queue", n=len(read_jsonl(queue_path())), done=len(read_jsonl(done_path())), path=queue_path()))
     print(M("night.status_guards", mb=free_mb(), min=N["min_free_mb"], max=N["max_quota_pct"]))
     return 0
@@ -548,6 +574,8 @@ def main(argv):
         return clear()
     if verb == "run":
         return run(rest)
+    if verb == "report":
+        return report()
     if verb == "install":
         return install()
     if verb == "uninstall":

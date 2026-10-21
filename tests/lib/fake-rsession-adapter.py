@@ -74,6 +74,21 @@ class FakeWin:
         (d / ".cm-session.json").write_text(json.dumps({"base": sha, "root": root}))
         return {"ok": True, "root": root}
 
+    def night_list(self, prefix, dirs, since):
+        """21/10: i transcript di FAKE_WIN_ROOT/projects/<prefix>*/ e i .md di docs/notte e docs/proposte di `dirs`,
+        con i percorsi in forma W:…, come quelli di la'."""
+        note("night_list", prefix=prefix, dirs=list(dirs), since=since)
+        w = lambda p: "W:" + str(p)[len(str(ROOT)):]   # noqa: E731
+        row = lambda f: {"path": w(f), "size": f.stat().st_size, "mtime": int(f.stat().st_mtime)}   # noqa: E731
+        t = [row(f) for f in sorted((ROOT / "projects").glob(f"{prefix}*/*.jsonl")) if f.stat().st_mtime >= since] if prefix else []
+        d = [row(f) for x in dirs for s in ("notte", "proposte") for f in sorted((local(x) / "docs" / s).glob("*.md")) if f.stat().st_mtime >= since]
+        return {"transcripts": t, "docs": d}
+
+    def file_get(self, path, dest):
+        note("file_get", path=path)
+        import shutil
+        shutil.copyfile(local(path), dest)
+
     def session_trust(self, rdir):
         note("trust", rdir=rdir)
         return {"ok": True}

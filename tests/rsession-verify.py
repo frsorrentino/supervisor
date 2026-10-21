@@ -242,6 +242,11 @@ inbox_recs = [json.loads(p.read_text()) for p in (tmp / "state" / "inbox" / "win
 T.check("RS8 talk win:win-alfa: the text arrives whole (quotes, backtick, $, newline, accents), the reply comes from the transcript there",
         r.returncode == 0 and posts and posts[-1]["text"] == tricky and ("RISPOSTA: " + tricky) in r.stdout, r.stdout + r.stderr)
 T.check("RS8 the local inbox has it, delivered via pipe:win", any(x["text"] == tricky and x["status"] == "delivered" and x.get("via") == "pipe:win" for x in inbox_recs), json.dumps(inbox_recs)[:400])
+T.check("RS8 without a sender the signature is talk.from_name", posts and posts[-1]["from_name"] == "supervisor", str(posts[-1:]))
+r = subprocess.run(TALK + ["win:win-alfa", "firmato", "--no-wait"], capture_output=True, text=True, env=env(CM_TALK_SENDER="master"), timeout=60)
+_p8 = [c for c in calls() if c["verb"] == "post"]
+T.check("RS8b (21/10) the sender's name signs the message there too (CM_TALK_SENDER, set by cm-talk from the tmux session)",
+        r.returncode == 0 and _p8 and _p8[-1]["text"] == "firmato" and _p8[-1]["from_name"] == "master", str(_p8[-1:]) + r.stderr)
 r = subprocess.run(TALK + ["win-alfa", "secondo", "--no-wait"], capture_output=True, text=True, env=env(), timeout=60)
 T.check("RS8 the bare registered name works too; --no-wait returns without the reply", r.returncode == 0 and "RISPOSTA" not in r.stdout and calls()[-1]["verb"] == "post", r.stdout + r.stderr)
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-talk.py"), "wait", "win:win-alfa", "--timeout", "30"], capture_output=True, text=True, env=env(), timeout=90)

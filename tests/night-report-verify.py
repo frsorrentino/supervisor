@@ -181,7 +181,7 @@ T.check("NR4 opened at 21:30 the same evening: the floor is today's 20:00, the 2
 # ------------------------------------------------------------------ il rapporto intero
 rc, out, err = run("--now", str(NOW), "--print")
 r = json.loads(out) if rc == 0 else {}
-T.check("NR5 --print: schema and version, the date of now, every source read", rc == 0 and r.get("schema") == "team-supervisor/night-report" and r.get("v") == 1
+T.check("NR5 --print: schema and version (2 since 21/10), the date of now, every source read", rc == 0 and r.get("schema") == "team-supervisor/night-report" and r.get("v") == 2
         and r.get("date") == dt.date.fromtimestamp(NOW).isoformat()
         and r.get("sources") == {"transcripts": "ok", "timeline": "ok", "night_done": "ok", "night_queue": "ok", "registry": "ok", "relay_state": "ok"},
         out[:300] + err[-800:])
@@ -239,10 +239,10 @@ page = (out_dir / f"{day}.html").read_text() if (out_dir / f"{day}.html").is_fil
 saved = json.loads((out_dir / f"{day}.json").read_text()) if (out_dir / f"{day}.json").is_file() else {}
 T.check("NR18 --out-dir writes <date>.json and <date>.html; the JSON on disk is the same report", rc == 0 and saved.get("window") == r.get("window")
         and [x["id"] for x in saved.get("timeline", [])] == [x["id"] for x in tl], out + err[-500:])
-T.check("NR19 the HTML: one file, no script, no external resource, text escaped, the sections and a bar per item",
+T.check("NR19 the HTML: one file, no script, no external resource, text escaped, the sections and a lane per item",
         page.startswith("<!doctype html>") and "<script" not in page and not re.search(r"(?:src|href)=\"(?:https?:)?//", page)
         and "&lt;b&gt;bold&lt;/b&gt;" in page and "<b>bold</b>" not in page and "Serve a te" in page and "Pubblico adesso?" in page
-        and page.count("class=\"bar\"") == len(tl) and "da TASKS.md" in page and "solo eventi" in page, page[:300])
+        and page.count("class=\"lane\"") == len(tl) and page.count("class=\"bar\"") >= len(tl) and "da TASKS.md" in page and "solo eventi" in page, page[:300])
 rc, out, err = run("--now", str(NOW), "--out-dir", str(tmp / "out2"), "--json-only")
 T.check("NR20 --json-only: no HTML", rc == 0 and (tmp / "out2" / f"{day}.json").is_file() and not (tmp / "out2" / f"{day}.html").exists(), out + err)
 
@@ -311,11 +311,135 @@ T.check("NR23 a night job that exits 0 but whose «Esito:» says it stopped is `
         and (b3.get("s2", {}).get("outcome"), b3.get("s2", {}).get("detail")) == ("ok", "nucleo fatto e verificato, 5 commit; push alla master."),
         json.dumps([b3.get("s1"), b3.get("s2")]) + p.stderr[-600:])
 c3 = {c["name"]: [e["text"] for e in c["events"] if e["kind"] == "commit"] for c in r3j.get("projects", [])}
-T.check("NR24 worktrees of one repo: each commit once, in the card of the worktree that made it (not `git log --all` twice)",
-        c3.get("helio") == ["fix: made in main"] and c3.get("helio-wt") == ["feat: made in the worktree"], json.dumps(c3))
+T.check("NR24 (v2) worktrees of one repo: each commit once (not `git log --all` twice); a worktree named «<repo>-…» is in the repo's card",
+        sorted(c3.get("helio") or []) == ["feat: made in the worktree", "fix: made in main"] and "helio-wt" not in c3
+        and [c["worktrees"] for c in r3j.get("projects", []) if c["name"] == "helio"] == [[os.path.realpath(helio_wt)]], json.dumps(c3))
 sess = [x for x in r3j.get("timeline", []) if x["kind"] == "session"]
 T.check("NR25 no duplicates: the two closed conversations of helio are one row, the transcript read by two live rows is one row, the queue's `claude -p` is its job",
         len(sess) == 2 and sorted(x["id"] for x in sess) in (["helio", "sole"], ["helio", "luna"]) and "helio-wt" not in b3,
         json.dumps([(x["id"], x["start"], x["end"]) for x in r3j.get("timeline", [])]))
+
+# ------------------------------------------------------------------ v2 (21/10, segnalazione del maintainer sulla notte 20-21/10)
+# la notte: alle 00:00 la master scrive il piano di deneb e assegna il lavoro con un messaggio (deneb non ha un prompt
+# della persona: prima spariva); la persona scrive alla master fino all'01:00; rigel lavora su win; mira si ferma; sirio
+# chiude due resoconti con uno finale; una prova in uno scratchpad; alle 06:30 una sessione prova (pc) un'altra; alle
+# 07:30 la persona scrive alla master: la notte finisce li'. «Adesso» sono le 08:00.
+NOW4 = NOW + 5 * H
+DAY4 = dt.date.fromtimestamp(NOW4).isoformat()
+conf4, ws4, st4, fk4, win4 = tmp / "c4", tmp / "ws4", tmp / "st4", tmp / "fk4", tmp / "win4"
+deneb, rigel, mira, sirio, vela, kappa = (ws4 / n for n in ("deneb", "rigel", "mira", "sirio", "vela", "kappa"))
+for d in (conf4, st4, fk4, win4, deneb, rigel, mira, sirio, vela):
+    d.mkdir(parents=True)
+cfg4 = tmp / "config4.json"
+cfg4.write_text(json.dumps({"language": "it", "default_account": "personal", "state_dir": str(st4), "workspace": {"root": str(ws4)},
+                            "relay": {"dir": str(tmp / "norelay4")}, "accounts": {"personal": {"config_dir": str(conf4), "tmux_prefix": "w-"}},
+                            "hosts": {"win": {"kind": "windows-native", "confirmed_at": "2026-10-01T00:00:00", "sessions": {"root": "W:/s"}}}}))
+ENV4 = dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg4), FAKE_CM_DIR=str(fk4), CM_TASKS_DB=str(tmp / "none4.db"),
+            CM_RSESSION_ADAPTER=str(Path(__file__).resolve().parent / "lib" / "fake-rsession-adapter.py"), FAKE_WIN_ROOT=str(win4))
+g4 = lambda d, *a, t=None: subprocess.run(["git", "-C", str(d), *a], capture_output=True, text=True, env=dict(ENV4, **({"GIT_COMMITTER_DATE": f"@{t}", "GIT_AUTHOR_DATE": f"@{t}"} if t else {})))  # noqa: E731
+
+
+def tr4(root, proj, sid, lines, last, sub=None):
+    d = (root / "projects" / (sub or slug(proj)))
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{sid}.jsonl").write_text("\n".join(lines) + "\n")
+    os.utime(d / f"{sid}.jsonl", (last, last))
+
+
+def md(path, text, t):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    os.utime(path, (t, t))
+
+
+T0 = EVE + 4 * H   # 00:00
+peer = {"kind": "peer", "name": "supervisor", "msg_id": "m1", "body": "Dalla master, su richiesta di Ada: leggi docs/proposte e lavora. Ramo notte/play."}
+tr4(conf4, ws4, "M1", [line("user", T0 - 600, "prepara il piano di deneb", ws4), line("user", T0 + H, "vado a dormire", ws4),
+                       line("user", NOW4 - 1800, "com'e' andata stanotte?", ws4)], NOW4 - 1800)
+tr4(conf4, deneb, "D1", [json.dumps({"type": "agent-name", "agentName": "deneb", "sessionId": "D1"}),
+                         line("user", T0 + 1800, "Another Claude session sent a message", deneb, origin=peer),
+                         line("assistant", T0 + 2400, [{"type": "text", "text": "leggo la proposta"}], deneb),
+                         line("assistant", T0 + 5400, [{"type": "text", "text": "Esito: pubblicazione preparata"}], deneb)], T0 + 5400)
+tr4(conf4, mira, "MI1", [line("user", T0 + 600, "lavora su mira", mira), line("assistant", T0 + 3000, [{"type": "text", "text": "provo"}], mira)], T0 + 3000)
+tr4(conf4, sirio, "SI1", [line("user", T0 + 600, "lavora su sirio", sirio), line("assistant", T0 + 4000, [{"type": "text", "text": "fatto"}], sirio)], T0 + 4000)
+tr4(conf4, Path("/tmp/claude-1000/x/scratchpad/live/work"), "X1", [line("user", T0 + 600, "prova", "/tmp/claude-1000/x/scratchpad/live/work"),
+                                                                  line("assistant", T0 + 3000, [{"type": "text", "text": "ok"}], "/tmp/claude-1000/x/scratchpad/live/work")], T0 + 3000)
+tr4(conf4, vela, "V1", [line("user", NOW4 - 5400, "Rispondi solo: ok", vela), line("assistant", NOW4 - 5370, [{"type": "text", "text": "ok"}], vela)], NOW4 - 5370)
+# rigel su win: la trascrizione e il resoconto stanno la', con i percorsi W:\s\rigel
+tr4(win4, None, "R1", [json.dumps({"type": "agent-name", "agentName": "win-rigel", "sessionId": "R1"}),
+                       line("user", T0 + 1200, "Another Claude session sent a message", "W:\\s\\rigel", origin=dict(peer, msg_id="m2", body="Dalla master: Rigel ad oltranza. Poi il resto.")),
+                       line("assistant", T0 + 4800, [{"type": "text", "text": "stanze fatte"}], "W:\\s\\rigel")], T0 + 4800, sub="W--s-rigel")
+md(win4 / "s" / "rigel" / "docs" / "notte" / f"{DAY4}-rigel.md", "# Notte — rigel\n\n## Esito\n\nTre stanze su cinque.\n\n## Decisioni aperte per Ada\n\n1. **Il nome della quarta stanza**: Mercato o Piazza?\n", T0 + 4900)
+# il piano di deneb, scritto alle 00:00: tre punti; il resoconto con «FINE»
+md(deneb / "docs" / "proposte" / f"{DAY4}-play.md", "# Pubblicazione su Play (richiesta di Ada, 21/10)\n\nTesto.\n\n## Cosa produrre\n\n1. **Build firmata**: AAB.\n2. **Scheda dello store** in due lingue.\n3. Lista per Ada.\n\n## Vincoli\n\n- niente segreti\n", T0)
+md(deneb / "docs" / "proposte" / "2026-10-01-vecchia.md", "# Vecchia proposta\n", T0 + 60)
+md(deneb / "docs" / "notte" / f"{DAY4}-play.md", "# Notte 21/10/2026 — deneb\n\nEsito: AAB firmato e scheda pronta\n\nFINE\n", T0 + 5500)
+md(mira / "docs" / "notte" / f"{DAY4}-mira.md", "# mira\n\nEsito: fermo, manca la chiave di firma\n", T0 + 3100)
+md(sirio / "docs" / "notte" / f"{DAY4}-parte.md", "# sirio, parte\n\n## Esito\n\nprima parte fatta\n", T0 + 3500)
+md(sirio / "docs" / "notte" / f"{DAY4}-resoconto-finale.md", "# sirio, finale\n\nTutto verde.\n\nFINE\n", T0 + 4100)
+# deneb: un commit all'01:10, il push e il tag all'01:20
+bare = tmp / "deneb.git"
+subprocess.run(["git", "init", "-q", "--bare", str(bare)], capture_output=True)
+g4(deneb, "init", "-q", "-b", "main")
+(deneb / "a.txt").write_text("1"); g4(deneb, "add", "a.txt"); g4(deneb, "commit", "-qm", "build: AAB firmato", t=T0 + 4200)
+g4(deneb, "remote", "add", "origin", str(bare))
+g4(deneb, "push", "-q", "origin", "main", t=T0 + 4800)
+g4(deneb, "tag", "-a", "v1.0", "-m", "release", t=T0 + 4800)
+# vela con un worktree che non si chiama «vela-…»: e' un progetto suo
+g4(vela, "init", "-q", "-b", "main"); (vela / "v.txt").write_text("1"); g4(vela, "add", "v.txt"); g4(vela, "commit", "-qm", "base", t=EVE - 30 * H)
+g4(vela, "worktree", "add", "-q", "-b", "k", str(kappa))
+(fk4 / "sessions.json").write_text("[]")
+
+p = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night-report.py"), "--now", str(NOW4), "--print"], capture_output=True, text=True, env=ENV4, timeout=120)
+r4 = json.loads(p.stdout) if p.returncode == 0 else {}
+w4 = r4.get("window", {})
+T.check("NR27 (v2) the night starts at the first plan (00:00), not at the person's last evening message (01:00), and ends at the first morning message to the master (07:30); the 06:30 probe of one session to another («pc») does not end it",
+        (w4.get("start"), w4.get("start_source"), w4.get("end"), w4.get("end_source")) == (T0, "night_plan", NOW4 - 1800, "morning_message")
+        and (w4.get("last_message") or {}).get("text") == "vado a dormire", json.dumps(w4) + p.stderr[-800:])
+b4 = {x["id"]: x for x in r4.get("timeline", [])}
+dn = b4.get("deneb", {})
+T.check("NR28 (v2) a session started by another session's message, with no prompt of the person, is there: its spans, the message as `assigned` and `prompt`, local host",
+        dn.get("spans") == [[T0 + 1800, T0 + 2400], [T0 + 5400, T0 + 5400]] and dn.get("assigned", "").startswith("Dalla master, su richiesta di Ada")
+        and (dn.get("prompt") or "").startswith("Dalla master") and dn.get("host") == "local" and dn.get("start") == T0 + 1800 and dn.get("end") == T0 + 5400,
+        json.dumps(dn))
+T.check("NR29 (v2) a session in a scratchpad (/tmp/claude-*/…/scratchpad) is not part of the night; the master's own session is there with role master",
+        not any("scratchpad" in (x.get("dir") or "") for x in r4.get("timeline", [])) and [x["role"] for x in r4.get("timeline", []) if x.get("dir") == os.path.realpath(ws4)] == ["master"],
+        str(sorted(b4)))
+rg = b4.get("win-rigel", {})
+mirror = st4 / "hosts" / "transcripts" / "win" / "R1.jsonl"
+T.check("NR30 (v2) a session on win: its transcript copied into the local mirror, named by its agent-name, on the local folder of the same project, host win",
+        rg.get("host") == "win" and rg.get("dir") == os.path.realpath(rigel) and mirror.is_file() and rg.get("spans") == [[T0 + 1200, T0 + 1200], [T0 + 4800, T0 + 4800]]
+        and r4.get("sources", {}).get("host:win") == "ok", json.dumps(rg) + json.dumps(r4.get("sources")))
+cards4 = {c["name"]: c for c in r4.get("projects", [])}
+cd, cr, cm_, cs = (cards4.get(k, {}) for k in ("deneb", "rigel", "mira", "sirio"))
+gd = (cd.get("goals") or [{}])[0]
+T.check("NR31 (v2) the goal from docs/proposte with the night's date (an old proposal is not), its numbered points under «Cosa produrre», done at its report's FINE; where = done with the report's Esito",
+        len(cd.get("goals", [])) == 1 and gd.get("title") == "Pubblicazione su Play" and [x["title"] for x in gd.get("points", [])] == ["Build firmata", "Scheda dello store", "Lista per Ada."]
+        and gd.get("state") == "done" and gd.get("done_at") == T0 + 5500 and all(x["state"] == "done" and x["done_at"] == T0 + 5500 for x in gd["points"])
+        and cd.get("where", {}).get("state") == "done" and cd["where"].get("text") == "AAB firmato e scheda pronta", json.dumps(cd.get("goals")) + json.dumps(cd.get("where")))
+T.check("NR32 (v2) milestones: the commit, the push (reflog of the remote branch), the tag as release, the FINE, in time order",
+        [(m["kind"], m["at"]) for m in cd.get("milestones", [])] == [("commit", T0 + 4200), ("push", T0 + 4800), ("release", T0 + 4800), ("fine", T0 + 5500)],
+        json.dumps(cd.get("milestones")))
+T.check("NR33 (v2) a project with no proposal: the goal is the assigning message; a report from win without FINE → partial, what is missing, the decision for Ada in needs_you",
+        [x["source"] for x in cr.get("goals", [])] == ["assigned"] and cr["goals"][0]["title"] == "Rigel ad oltranza." and cr.get("hosts") == ["win"]
+        and cr.get("where", {}).get("state") == "partial" and cr["where"].get("text") == "Tre stanze su cinque." and cr["where"].get("missing") == ["Rigel ad oltranza."]
+        and cr["where"].get("needs_you") == ["Il nome della quarta stanza"], json.dumps(cr.get("goals")) + json.dumps(cr.get("where")))
+T.check("NR34 (v2) a report that says it stopped → stopped with its reason; a final report with FINE closes the earlier one without it → done",
+        cm_.get("where", {}).get("state") == "stopped" and cm_["where"].get("text") == "fermo, manca la chiave di firma"
+        and cs.get("where", {}).get("state") == "done" and cs["where"].get("text") == "Tutto verde.", json.dumps([cm_.get("where"), cs.get("where")]))
+T.check("NR35 (v2) the night's title counts the projects by where they got; date = the morning's",
+        r4.get("title") == "4 progetti: 2 fatti, 1 in parte, 1 fermi" and r4.get("date") == DAY4, str(r4.get("title")) + " " + str(sorted(cards4)))
+_spec4 = importlib.util.spec_from_file_location("cm_night_report4", T.SCRIPTS / "cm-night-report.py")
+_old_cfg = os.environ.get("CC_SUPERVISOR_CONFIG")
+os.environ["CC_SUPERVISOR_CONFIG"] = str(cfg4)
+NR4 = importlib.util.module_from_spec(_spec4)
+_spec4.loader.exec_module(NR4)
+os.environ["CC_SUPERVISOR_CONFIG"] = _old_cfg
+T.check("NR36 (v2) a worktree not named «<repo>-…» is a project of its own; a plain folder is itself",
+        NR4.repo_of(str(kappa)) == os.path.realpath(kappa) and NR4.repo_of(str(vela)) == os.path.realpath(vela)
+        and NR4.rel_under("W:\\s\\rigel\\docs\\notte\\x.md", "W:/s/rigel") == "docs/notte/x.md" and NR4.rel_under("W:/t/x", "W:/s") is None, "")
+p = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night-report.py"), "--now", str(NOW4), "--print", "--no-remote"], capture_output=True, text=True, env=ENV4, timeout=120)
+r5 = json.loads(p.stdout) if p.returncode == 0 else {}
+T.check("NR37 (v2) --no-remote: no host read, no win session", "host:win" not in r5.get("sources", {}) and not any(x.get("host") == "win" for x in r5.get("timeline", [])), json.dumps(r5.get("sources")))
 
 T.finish()

@@ -184,7 +184,13 @@ night("clear")
 
 # NI5
 r = night("install")
-T.check("NI5 install: cron at 02:00 with run --send", r.returncode == 0 and "0 2 * * *" in cron.read_text() and "night run --send" in cron.read_text(), r.stdout + cron.read_text())
+T.check("NI5 install: cron at 02:00 with run --send, and (21/10) the night's report at 06:30 even with an empty queue", r.returncode == 0 and "0 2 * * *" in cron.read_text() and "night run --send" in cron.read_text()
+        and "30 6 * * * nice -n 19 " in cron.read_text() and "night report >/dev/null" in cron.read_text(), r.stdout + cron.read_text())
+_c5 = cron.read_text()
+cron.write_text("\n".join(l for l in _c5.splitlines() if "night report" not in l and "rapporto della notte" not in l) + "\n")
+r = night("install")
+T.check("NI5 install where only the 02:00 line is there: adds the report line once, keeps the other", r.returncode == 0 and cron.read_text().count("night report") == 1
+        and cron.read_text().count("night run --send") == 1, r.stdout + cron.read_text())
 r = night("status")
 T.check("NI5 status: cron yes, queue 0, done 5", "yes" in r.stdout and "0" in r.stdout and "5" in r.stdout, r.stdout + r.stderr)
 r = night("uninstall")

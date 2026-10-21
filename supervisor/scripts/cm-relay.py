@@ -71,7 +71,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -2390,6 +2390,25 @@ def night_report(arg):
         return False, f"no night report for {day or p.stem}"
 
 
+NIGHTS_MAX = 60
+
+
+def nights_list():
+    """1.74 (21/10, pagina «Notte» dell'app: prima l'ultima notte, sotto le precedenti): {nights: [{date, title,
+    generated_at, v}]} dei rapporti su disco, il piu' recente per primo, al piu' NIGHTS_MAX. title e' quello del
+    rapporto (v2, «9 progetti: 7 fatti, 2 in parte»), null per i v1. Nessun rapporto: nights vuoto, ok."""
+    try:
+        files = sorted(night_report_dir().glob("????-??-??.json"), reverse=True)
+    except OSError:
+        files = []
+    out = []
+    for p in files[:NIGHTS_MAX]:
+        rep_ = read_json(p, None)
+        if isinstance(rep_, dict) and rep_.get("date"):
+            out.append({"date": str(rep_["date"]), "title": rep_.get("title"), "generated_at": rep_.get("generated_at"), "v": rep_.get("v")})
+    return True, json.dumps({"nights": out}, ensure_ascii=False)
+
+
 AGENDA_FIELDS = ("state", "scope", "blocks", "title", "ref", "detail", "until")
 AGENDA_CLOSED = ("fatto", "scartato")
 AGENDA_ACTIONS = {"done": "fatto", "snooze": "sospeso", "remove": "scartato", "pass": None}
@@ -3437,6 +3456,8 @@ def execute(cmd):
             return projects_list()
         if op == "night":
             return night_report(arg)
+        if op == "nights":
+            return nights_list()
         if op == "agenda":
             return agenda_list()
         if op == "agenda_set":
@@ -3572,7 +3593,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):

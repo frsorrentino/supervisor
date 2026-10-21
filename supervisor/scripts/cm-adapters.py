@@ -535,6 +535,29 @@ node $js {argv}""", timeout=timeout)
         """09/10: {sid, cwd, status, alive, size, offset, data} — i byte del transcript dall'offset, in base64."""
         return self.node_session("tail", name, str(int(offset)), str(int(max_bytes)), timeout=180)
 
+    def night_list(self, prefix, dirs, since):
+        """21/10 (pagina «Notte»: le sessioni di win mancavano): {transcripts, docs}, ognuno [{path, size, mtime}],
+        dei file scritti da `since` (epoch). transcripts: i .jsonl di %USERPROFILE%\\.claude\\projects nelle cartelle
+        che cominciano con `prefix` (la radice delle sessioni come la scrive Claude Code), niente se prefix e' vuoto;
+        docs: i .md di docs\\notte e docs\\proposte delle cartelle `dirs`."""
+        ds = ",".join(self.q(d) for d in dirs) or "$null"
+        d = self.ps_json(f"""
+$since = [DateTimeOffset]::FromUnixTimeSeconds({int(since)}).UtcDateTime
+function row($f) {{ @{{ path = $f.FullName; size = $f.Length; mtime = [DateTimeOffset]::new($f.LastWriteTimeUtc).ToUnixTimeSeconds() }} }}
+$t = @(); $d = @()
+$pre = {self.q(prefix or "")}
+if ($pre) {{
+  Get-ChildItem (Join-Path $env:USERPROFILE '.claude\\projects') -Directory -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like ($pre + '*') }} | ForEach-Object {{
+    Get-ChildItem $_.FullName -Filter *.jsonl -File | Where-Object {{ $_.LastWriteTimeUtc -ge $since }} | ForEach-Object {{ $t += (row $_) }} }}
+}}
+foreach ($x in @({ds})) {{ if ($x) {{ foreach ($s in 'notte','proposte') {{
+  $p = Join-Path $x ('docs\\' + $s)
+  if (Test-Path -LiteralPath $p) {{ Get-ChildItem -LiteralPath $p -Filter *.md -File | Where-Object {{ $_.LastWriteTimeUtc -ge $since }} | ForEach-Object {{ $d += (row $_) }} }} }} }} }}
+ConvertTo-Json -Compress -Depth 4 @{{ transcripts = @($t); docs = @($d) }}""", timeout=120)
+        # PowerShell 5 scrive un array di un elemento come l'elemento
+        return {k: [x for x in (v if isinstance(v, list) else [v]) if isinstance(x, dict)] for k, v in
+                (("transcripts", d.get("transcripts") or []), ("docs", d.get("docs") or []))}
+
     def file_size(self, path):
         """10/10 (dal telefono: un file di una sessione su win «missing or unreadable»): i byte di un file di la',
         -1 se non c'e' o non e' un file."""

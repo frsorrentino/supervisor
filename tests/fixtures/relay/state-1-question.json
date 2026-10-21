@@ -356,7 +356,8 @@
     "permission_mode",
     "changes",
     "diff",
-    "studio"
+    "studio",
+    "nights"
   ],
   "slash": [
     "compact",
