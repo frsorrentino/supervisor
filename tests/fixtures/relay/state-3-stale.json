@@ -185,5 +185,40 @@
       "sessions": []
     }
   ],
-  "published_today": []
+  "published_today": [],
+  "commitments": [
+    {
+      "task": "orbit-docs-site",
+      "title": "Publish the orbit docs site",
+      "project": "work/own/orbit-docs",
+      "session": "orbit-docs",
+      "state": "approved",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1789120000,
+      "approved_by": "maintainer",
+      "age_s": 80000,
+      "last_step": {
+        "at": 1789190000,
+        "kind": "pause",
+        "text": "after the client's review"
+      },
+      "idle_s": 10000,
+      "next": "orbit-docs resumes and closes with task done orbit-docs-site",
+      "waits": {
+        "who": "person",
+        "on": "orbit-docs"
+      },
+      "expected": null,
+      "outcome_kind": null,
+      "check": null,
+      "paused": {
+        "reason": "after the client's review",
+        "at": 1789190000,
+        "by": "master"
+      },
+      "stalled": false
+    }
+  ]
 }

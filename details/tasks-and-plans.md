@@ -33,6 +33,35 @@ hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
 check is green (`supervisor task auto-close`); a red check there leaves the task
 as it is and counts no attempt.
 
+Commitments (22/10/2026, after a day lost on an APK: the task closed `done`
+on an intermediate step, the ok got lost in a hand-written handoff, nobody
+noticed an «Approve» for 46 minutes). A task born from an ok carries
+`outcome` in its contract: `expected` in the words of the ok, measurable, and
+a `kind` (`release`, `install`, `push`, `deploy`, `merge`, `custom`); the
+check must touch it (for each kind the registry knows the markers `check.cmd`
+must contain, e.g. `gh release`, `git tag`, `dumpsys`, `origin/`; `custom`
+needs `proof`), and `task add`, `task done` and the hourly auto-close refuse a
+check on an intermediate step. `supervisor task amend ID --check CMD |
+--outcome TEXT --kind K` corrects an open task; `task confirm ID --by B
+(--text T | --inbox MSG)` records the person's confirmation with the rules of
+`approve`, and `task confirmed ID` (exit 0 when it exists) is a valid check
+for an `install` outcome. `supervisor task impegni [--json] [--brief]
+[--stalled]` lists every approved task not yet done (an ok recorded or an
+approved plan) and the ones waiting for an ok, with age, last step, idle time,
+next step (`task step ID "text" --next "…"`), whose turn it is, pause with a
+reason (`task pause ID --reason R`, `task resume ID`: visible, never an alarm)
+and `stalled` after `tasks.stall_hours` (2) without a step. The same list goes
+to the master at every prompt and start (the full block when it changes, one
+line otherwise; `tasks.commitments_prompt`), into the morning report, into
+`/state.commitments` for the app (contract 1.76) and into the handoff
+(`handoff --written` appends the «Impegni dal registro» section from the
+registry; `restart arm` in the master writes it before the restart). Every
+guard round `task stall-check` finds the stalled ones not yet alerted for
+their last step: one summary to the master (`talk`) and, outside
+`tasks.quiet_hours` (23-07), to the person (event `task_stalled`, Telegram as
+a fallback). «Approve» from the app wakes the task's session with a `talk`,
+tells the master and clears the session's «waiting for you».
+
 fable-director is optional. When it is installed and enabled in the session's
 account, the unit's brief asks it to open its budget with the unit's check as
 `--verify` and its files as `--paths`; the task contract

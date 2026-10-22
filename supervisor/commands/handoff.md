@@ -16,6 +16,6 @@ supervisor handoff --prepare ${ARGUMENTS}
    - «Invoke next» names the skills, commands or files the next session should open first;
    - «Date and staleness» carries today's date and what would make this handoff stale (a release, a file, a decision).
 
-3. Run the `THEN:` command it printed (`supervisor handoff --written PATH`): it records the file and prints its size.
+3. Run the `THEN:` command it printed (`supervisor handoff --written PATH`): it records the file, appends the «Impegni dal registro» section from the task registry (never write that section yourself: the registry is the source) and prints its size.
 
 4. Tell the user in two lines: the path, and that sending `/clear` is enough — at the next start supervisor points the session to this file once. You cannot run `/clear` yourself: the user sends it (terminal, phone or web app).

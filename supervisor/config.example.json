@@ -347,7 +347,14 @@
   },
   "tasks": {
     "guard": false,
-    "notify": "master"
+    "notify": "master",
+    "stall_hours": 2,
+    "commitments_prompt": true,
+    "commitments_max_lines": 8,
+    "quiet_hours": [
+      23,
+      7
+    ]
   },
   "hooks": {
     "local_time": {

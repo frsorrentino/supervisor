@@ -177,6 +177,29 @@ o6 = hook("UserPromptSubmit", {"session_id": "sid-o", "cwd": str(home), "prompt"
 T.check("H6 in the master every prompt carries «Ti aspettano: pix-docs — login su win, da 12 min», without its own items; in another session nothing",
         "Ti aspettano: pix-docs — login su win, da 12 min" in m6.stdout and "la sua" not in m6.stdout and "Ti aspettano" not in o6.stdout, m6.stdout + m6.stderr + o6.stdout)
 
+# H7 (22/10/2026, P2): nella master ogni prompt e ogni avvio portano gli impegni dal registro; altrove niente; senza registro niente
+db7 = tmp / "tasks7.db"
+c7 = {"schema_version": 1, "task": {"id": "gantt-apk", "title": "APK del Gantt sul telefono", "plan": None,
+      "where": {"project": str(home / "ws" / "personali" / "alfa"), "session": "notte-app", "host": "local", "account": None},
+      "check": {"cmd": "adb shell dumpsys package x | grep -q lastUpdateTime", "cwd": None, "timeout_s": 30}, "perimeter": [], "lane": "closed",
+      "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test",
+      "outcome": {"expected": "l'utente vede il Gantt sul telefono", "kind": "install"}}}
+E7 = env(CM_TASKS_DB=str(db7))
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "add", "-"], input=json.dumps(c7), capture_output=True, text=True, env=E7, timeout=30)
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "wait-ok", "gantt-apk", "--what", "push e release", "--where", "GitHub"], capture_output=True, text=True, env=E7, timeout=30)
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "approve", "gantt-apk", "--by", "maintainer", "--text", "ok"], capture_output=True, text=True, env=E7, timeout=30)
+m7 = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
+s7 = hook("SessionStart", {"session_id": "sid-m", "cwd": str(home), "source": "startup"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
+o7 = hook("UserPromptSubmit", {"session_id": "sid-o", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="alfa", CM_TASKS_DB=str(db7))
+n7 = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(tmp / "none7.db"))
+T.check("H7 in the master the prompt carries «Impegni (1, 0 fermi):» with the task's line (session, ok time, next, whose turn, outcome); unchanged at the next prompt and start → one line «Impegni: 1, 0 fermi (invariati…)»; another session gets nothing; a missing registry gives nothing and exit 0",
+        "Impegni (1, 0 fermi):" in m7.stdout and "- gantt-apk · notte-app · approved · ok " in m7.stdout and "· tocca a notte-app" in m7.stdout
+        and "esito: l'utente vede il Gantt sul telefono" in m7.stdout and "Impegni: 1, 0 fermi (invariati" in s7.stdout and "- gantt-apk" not in s7.stdout and "Impegni" not in o7.stdout
+        and n7.returncode == 0 and "Impegni" not in n7.stdout and not n7.stderr.strip(), m7.stdout + m7.stderr + s7.stdout + s7.stderr + n7.stderr)
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "step", "gantt-apk", "APK in CI", "--next", "installazione"], capture_output=True, text=True, env=E7, timeout=30)
+m7b = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
+T.check("H7 a new step changes the signature → the full block again, with the new next step", "Impegni (1, 0 fermi):" in m7b.stdout and "prossimo: installazione" in m7b.stdout, m7b.stdout)
+
 # ---- restart con tmux privato e claude finto
 with T.PrivateTmux() as tm:
     scen = tmp / "scen"; scen.write_text("plain")

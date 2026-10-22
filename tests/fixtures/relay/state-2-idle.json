@@ -262,5 +262,68 @@
       "text": "origin/feature/checkout",
       "url": "https://github.com/example/atlas-shop/tree/feature/checkout"
     }
+  ],
+  "commitments": [
+    {
+      "task": "ledger-migrations-011",
+      "title": "Migrations 008-011 on staging",
+      "project": "work/clients/ledger-api",
+      "session": "ledger-api",
+      "state": "running",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1789200600,
+      "approved_by": "maintainer",
+      "age_s": 13800,
+      "last_step": {
+        "at": 1789200600,
+        "kind": "approval",
+        "text": "migrations on staging"
+      },
+      "idle_s": 13800,
+      "next": "ledger-api works; closes with task done ledger-migrations-011",
+      "waits": {
+        "who": "person",
+        "on": "ledger-api"
+      },
+      "expected": "the four migrations applied on staging, tests green",
+      "outcome_kind": "deploy",
+      "check": {
+        "outcome": "red",
+        "at": 1789199760
+      },
+      "paused": null,
+      "stalled": true
+    },
+    {
+      "task": "atlas-seo-pages",
+      "title": "SEO pages of atlas-shop online",
+      "project": "personal/atlas-shop",
+      "session": "atlas-shop",
+      "state": "approved",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1789213800,
+      "approved_by": "maintainer",
+      "age_s": 600,
+      "last_step": {
+        "at": 1789213800,
+        "kind": "approval",
+        "text": "push and deploy"
+      },
+      "idle_s": 600,
+      "next": "atlas-shop resumes and closes with task done atlas-seo-pages",
+      "waits": {
+        "who": "person",
+        "on": "atlas-shop"
+      },
+      "expected": "the SEO pages on shop.example.com",
+      "outcome_kind": "deploy",
+      "check": null,
+      "paused": null,
+      "stalled": false
+    }
   ]
 }

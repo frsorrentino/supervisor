@@ -11,6 +11,7 @@ GU4 install (riga cron ogni 5 min), status, uninstall
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -55,7 +56,9 @@ argslog = tmp / "cm-args.log"
 fake_cm = tmp / "supervisor"
 autoclose_log = tmp / "auto-close.log"
 # 16/10/2026: `task auto-close` (una volta l'ora) in un registro a parte: le altre prove contano le riprese
+stall_file = tmp / "stalled.json"   # 22/10/2026: `task stall-check --json` risponde con questo file, se c'e'
 fake_cm.write_text(f'#!/bin/sh\nif [ "$1 $2" = "task auto-close" ]; then echo "$*" >> "{autoclose_log}"; exit 0; fi\n'
+                   f'if [ "$1 $2" = "task stall-check" ]; then if [ -f "{stall_file}" ]; then cat "{stall_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'printf \'%s\\n\' "$*" >> "{argslog}"\n')
 fake_cm.chmod(0o755)
 cron = tmp / "crontab"
@@ -188,6 +191,26 @@ guard("run", now=NOW + 7200 + 3601)
 n2 = len(autoclose_log.read_text().splitlines()) if autoclose_log.exists() else 0
 T.check("GU-AC guard run calls `task auto-close` once an hour: the first pass, not 30 minutes later, again after an hour",
         n1 - n0 == 1 and n2 - n1 == 1, f"{n0} {n1} {n2}")
+
+# GU-ST (22/10/2026, P3): un impegno fermo (da `task stall-check`) → talk alla master e Telegram, con prossimo passo e chi lo deve fare
+stall_file.write_text(json.dumps([{"task": "gantt-apk", "idle_s": 9 * 3600, "approved_at": NOW - 9 * 3600, "next": "APK sul telefono",
+                                   "waits": {"who": "person", "on": "notte-app"}},
+                                  {"task": "ledger-release", "idle_s": 3 * 3600, "approved_at": NOW - 3 * 3600, "next": "l'ok a: tag v1.4",
+                                   "waits": {"who": "ledger-api", "on": "person"}}]))
+n_tg = len(CALLS.get("sendMessage", []))
+r = guard("run", now=NOW + 7200 + 3700)   # 09:00 locali: giorno
+args = argslog.read_text() if argslog.exists() else ""
+tk = re.findall(r"^talk master .*?--no-wait$", args, re.M | re.S)   # il riepilogo ha piu' righe: un argomento solo
+T.check("GU-ST two stalled commitments → ONE talk to the master «⏸ 2 impegni fermi …» with a line per task (tocca a notte-app / aspetta l'utente, next step), and the same once on Telegram",
+        r.returncode == 0 and len(tk) == 1 and "⏸ 2 impegni fermi da più di 2 h senza passi" in tk[0] and "- gantt-apk (9 h): tocca a notte-app; prossimo: APK sul telefono" in tk[0]
+        and "- ledger-release (3 h): tocca a l'utente; prossimo: l'ok a: tag v1.4" in tk[0] and tk[0].endswith("--no-wait")
+        and len(CALLS.get("sendMessage", [])) == n_tg + 1 and "gantt-apk" in CALLS["sendMessage"][-1]["text"] and "ledger-release" in CALLS["sendMessage"][-1]["text"], r.stdout + r.stderr + str(tk))
+r = guard("run", now=NOW + 17 * 3600)   # 02:00: ore quiete, solo la master
+tk2 = re.findall(r"^talk master .*?--no-wait$", argslog.read_text() if argslog.exists() else "", re.M | re.S)
+T.check("GU-ST in the quiet hours (23-07) the summary goes to the master only, not to the person", len(tk2) == 2 and len(CALLS.get("sendMessage", [])) == n_tg + 1, r.stderr)
+stall_file.unlink()
+guard("run", now=NOW + 7200 + 3800)
+T.check("GU-ST nothing new from stall-check → no talk", len(re.findall(r"^talk master ", argslog.read_text() if argslog.exists() else "", re.M)) == 2, "")
 
 srv.shutdown()
 T.rm(tmp)

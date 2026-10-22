@@ -21,9 +21,23 @@
   supervisor task constraint add (--project P | --topic T) TESTO
   supervisor task constraint list [--project P] [--topic T]
 
+Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esito non e' verde):
+  supervisor task impegni [--json] [--stalled] [--brief]   gli approvati non compiuti (e chi aspetta un ok), con eta',
+                                                ultimo passo, prossimo passo, chi aspetta chi, pausa; --brief per l'hook
+  supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
+  supervisor task pause ID --reason R [--by B] | task resume ID     «salvo altre priorita'», visibile, mai in allarme
+  supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P]
+                                                corregge il contratto di un compito aperto (validato di nuovo)
+  supervisor task confirm ID --by B (--text T | --inbox MSG)   la conferma della persona (come approve); `task
+  supervisor task confirmed ID                  confirmed ID` esce 0 se c'e': un controllo valido per un esito install
+  supervisor task stall-check [--json]          gli impegni fermi da piu' di tasks.stall_hours non ancora avvisati
+                                                (task-alerts.json accanto al registro); lo chiama guard run
+
 Il contratto e' schemas/task-contract.v1.json, condiviso con fable-director (copiato, mai importato). Il
 registro e' SQLite in ~/.config/cc-supervisor/tasks.db (CM_TASKS_DB per i test). Nessun «fatto» a giudizio:
 solo il controllo rieseguito e verde. Senza registro nessun altro comando di supervisor cambia.
+Esito atteso (task.outcome, facoltativo): le parole dell'ok e un kind; il controllo deve toccarlo (OUTCOME_MARKERS),
+altrimenti add e done lo rifiutano: un compito non si chiude su un passo intermedio.
 """
 import importlib.util
 import json
@@ -40,6 +54,18 @@ SCHEMA_PATH = HERE.parent / "schemas" / "task-contract.v1.json"
 STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved", "done", "failed", "cancelled")
 OPEN_STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved")
 PROOF_TAIL = 12
+# 22/10/2026 (P1, dalla giornata persa sull'APK del Gantt): per ogni kind di esito, i segni che il controllo deve
+# contenere per toccare l'ultimo passo e non uno intermedio; custom non ne ha e vuole `proof`
+OUTCOME_MARKERS = {
+    "release": ("gh release", "git tag", "tags/", "releases/", "version", "ls-remote", "api.github.com"),
+    "push": ("origin/", "ls-remote", "@{u}", "merge-base", "rev-list"),
+    "merge": ("merge-base", "is-ancestor", "origin/"),
+    "install": ("dumpsys", "lastupdatetime", "pm list", "pm path", "versioncode", "task confirmed"),
+    "deploy": ("curl", "http://", "https://", "firebase", "wget", "ssh "),
+    "custom": (),
+}
+STALL_HOURS = 2
+STEP_RANK = {"state": 0, "approval": 1, "result": 2, "amend": 3, "step": 3, "pause": 4, "commit": 5}
 
 
 # ------------------------------------------------------------------ schema
@@ -102,6 +128,21 @@ def validate(value, node=None, root=None, path="$"):
     return errs
 
 
+def outcome_errors(task):
+    """P1 (22/10): il controllo deve toccare l'esito atteso. [] senza outcome (il compito vale come prima)."""
+    oc = task.get("outcome")
+    if not oc:
+        return []
+    kind = oc.get("kind")
+    if kind == "custom":
+        return [] if str(oc.get("proof") or "").strip() else ["$.task.outcome.proof: required with kind custom"]
+    marks = OUTCOME_MARKERS.get(kind) or ()
+    cmd = str((task.get("check") or {}).get("cmd") or "").lower()
+    if any(m in cmd for m in marks):
+        return []
+    return [f"$.task.check.cmd: does not touch the outcome (kind {kind}): expected one of " + ", ".join(marks)]
+
+
 # ------------------------------------------------------------------ registro
 def db_path():
     p = os.environ.get("CM_TASKS_DB")
@@ -123,6 +164,8 @@ CREATE TABLE IF NOT EXISTS approvals (n INTEGER PRIMARY KEY, task TEXT, plan TEX
     what TEXT, where_ TEXT);
 CREATE TABLE IF NOT EXISTS constraints (n INTEGER PRIMARY KEY, project TEXT, topic TEXT, text TEXT, source TEXT,
     at INTEGER);
+CREATE TABLE IF NOT EXISTS steps (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, kind TEXT, text TEXT, next TEXT);
+CREATE TABLE IF NOT EXISTS pauses (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, reason TEXT, resumed_at INTEGER);
 """
 
 
@@ -162,6 +205,8 @@ def constraints_for(con, project, topic):
 def add(con, contract, topic=None):
     """(id, errori). Il contratto entra solo se valido; i vincoli pertinenti si aggiungono a task.constraints."""
     errs = validate(contract)
+    if not errs:
+        errs = outcome_errors(contract["task"])   # P1: un controllo che non tocca l'esito non entra
     if errs:
         return None, errs
     t = contract["task"]
@@ -203,6 +248,10 @@ def done(con, tid, constraint=None):
     if row["state"] not in OPEN_STATES:
         sys.exit(f"task {tid}: already {row['state']}")
     task = json.loads(row["contract"])["task"]
+    oe = outcome_errors(task)
+    if oe:   # P1: entrato prima della regola o cambiato: niente done su un passo intermedio (task amend lo corregge)
+        print("\n".join(oe), file=sys.stderr)
+        sys.exit(3)
     rc, tail = run_check(task)
     n = attempts(con, tid) + 1
     green = rc == 0
@@ -305,11 +354,210 @@ def auto_close(con, hours=AUTO_CLOSE_H):
     for r in con.execute("SELECT id, contract FROM tasks WHERE state IN (%s) AND created_at <= ? ORDER BY created_at"
                          % ",".join("?" * len(OPEN_STATES)), (*OPEN_STATES, cutoff)).fetchall():
         task = json.loads(r["contract"])["task"]
+        if outcome_errors(task):   # P1: un controllo che non tocca l'esito non chiude niente da solo
+            continue
         rc, _ = run_check(task)
         if rc == 0:
             done(con, r["id"])
         out.append((r["id"], rc == 0))
     return out
+
+
+# ------------------------------------------------------------------ impegni (22/10/2026, P2 e P3)
+_CFG = []
+
+
+def _cfg():
+    if not _CFG:
+        try:
+            cm = _load("cm-config")
+            _CFG.append((cm, cm.load(warn=False)))
+        except Exception:   # noqa: BLE001 — senza config: inglese e default
+            _CFG.append((None, {}))
+    return _CFG[0]
+
+
+def M(key, **kw):
+    cm, cfg = _cfg()
+    return cm.msg(cfg, key, **kw) if cm else key
+
+
+def tasks_cfg():
+    return (_cfg()[1].get("tasks") or {})
+
+
+def stall_seconds():
+    try:
+        return float(tasks_cfg().get("stall_hours", STALL_HOURS)) * 3600
+    except (TypeError, ValueError):
+        return STALL_HOURS * 3600
+
+
+def alerts_path():
+    p = os.environ.get("CM_TASKS_ALERTS")
+    return Path(p) if p else db_path().with_name("task-alerts.json")
+
+
+def _plan_approved(con, plan):
+    if not plan:
+        return None
+    r = con.execute("SELECT approved_by, approved_at FROM plans WHERE id=? AND approved_at IS NOT NULL", (plan,)).fetchone()
+    return (r["approved_by"], r["approved_at"]) if r else None
+
+
+def commitments(con, now_=None, git=True, stall_s=None, person=None):
+    """P2: gli impegni — i compiti aperti con un ok registrato (approvals.by_) o un piano approvato, piu' quelli in
+    awaiting_ok (approved false: la sessione aspetta la persona). Per ognuno eta' dall'ok, ultimo passo (stato, ok,
+    esito, task step, pausa, amend: solo il registro — 22/10 00:43: un commit del progetto contava come passo di OGNI
+    compito di quella cartella, e la vista dell'hook non coincideva con quella del CLI; `git` resta per compatibilita' e
+    non fa niente), fermo da, prossimo passo (il --next dell'ultimo passo o dallo stato), chi aspetta chi, esito atteso,
+    ultimo controllo noto, pausa, fermo (approvato, non in pausa, fermo da almeno stall_s). Fermi prima, poi dal piu' fermo."""
+    now_ = int(now_ or now())
+    stall_s = stall_seconds() if stall_s is None else stall_s
+    person = person or M("tasks.person")
+    out = []
+    q = "SELECT * FROM tasks WHERE state IN (%s) ORDER BY created_at, id" % ",".join("?" * len(OPEN_STATES))
+    for r in con.execute(q, OPEN_STATES).fetchall():
+        task = json.loads(r["contract"])["task"]
+        appr = con.execute("SELECT by_, at, what FROM approvals WHERE task=? AND by_ IS NOT NULL AND (what IS NULL OR what<>'confirmed') "
+                           "ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        plan = _plan_approved(con, r["plan"])
+        approved = bool(appr or plan)
+        if not approved and r["state"] != "awaiting_ok":
+            continue
+        req = con.execute("SELECT what, where_, at FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        approved_at = appr["at"] if appr else (plan[1] if plan else None)
+        approved_by = appr["by_"] if appr else (plan[0] if plan else None)
+        steps = [{"at": int(r["updated_at"] or r["created_at"] or 0), "kind": "state", "text": r["state"]}]
+        if appr:
+            steps.append({"at": int(appr["at"]), "kind": "approval", "text": appr["what"] or appr["by_"]})
+        res = con.execute("SELECT outcome, reason, at FROM results WHERE task=? ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        if res:
+            steps.append({"at": int(res["at"]), "kind": "result", "text": f"{res['outcome']}: {res['reason']}"})
+        st = con.execute("SELECT at, kind, text, next FROM steps WHERE task=? ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        if st:
+            steps.append({"at": int(st["at"]), "kind": st["kind"] or "step", "text": st["text"]})
+        pz = con.execute("SELECT at, by_, reason FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        if pz:
+            steps.append({"at": int(pz["at"]), "kind": "pause", "text": pz["reason"]})
+        last = max(steps, key=lambda s: (s["at"], STEP_RANK.get(s["kind"], 3)))
+        session = r["session"] or task["where"].get("session") or "master"
+        if r["state"] == "awaiting_ok":
+            waits = {"who": session, "on": "person"}
+            nxt = M("tasks.next_ok", person=person, what=(req["what"] if req and req["what"] else "")).rstrip(": ")
+        else:
+            waits = {"who": "person", "on": session}
+            nxt = M(f"tasks.next_{r['state']}", session=session, task=r["id"])
+        if st and st["next"]:
+            nxt = st["next"]
+        idle = max(0, now_ - last["at"])
+        out.append({"task": r["id"], "title": r["title"], "project": r["project"], "session": r["session"], "state": r["state"],
+                    "lane": r["lane"], "plan": r["plan"], "approved": approved, "approved_at": approved_at, "approved_by": approved_by,
+                    "age_s": max(0, now_ - int(approved_at or r["created_at"] or now_)), "last_step": last, "idle_s": idle,
+                    "next": nxt, "waits": waits,
+                    "expected": (task.get("outcome") or {}).get("expected"), "outcome_kind": (task.get("outcome") or {}).get("kind"),
+                    "check": {"outcome": res["outcome"], "at": int(res["at"])} if res else None,
+                    "paused": {"reason": pz["reason"], "at": int(pz["at"]), "by": pz["by_"]} if pz else None,
+                    "stalled": bool(approved and not pz and idle >= stall_s)})
+    out.sort(key=lambda x: (not x["stalled"], -x["idle_s"], x["task"]))
+    return out
+
+
+def duration(s):
+    s = max(0, int(s))
+    if s < 3600:
+        return M("tasks.dur_min", n=s // 60)
+    if s < 48 * 3600:
+        return M("tasks.dur_hm", h=s // 3600, m=(s % 3600) // 60)
+    return M("tasks.dur_dh", d=s // 86400, h=(s % 86400) // 3600)
+
+
+def _hm(epoch):
+    return time.strftime("%d/%m %H:%M", time.localtime(int(epoch))) if epoch else "?"
+
+
+def render_commitments(items, brief=False, max_lines=None, person=None):
+    """Il testo: «Impegni (N, K fermi):» e una riga per voce; --brief taglia a max_lines voci (tasks.commitments_max_lines)."""
+    person = person or M("tasks.person")
+    if not items:
+        return M("tasks.none")
+    head = M("tasks.header", n=len(items), k=sum(1 for x in items if x["stalled"]))
+    lines = []
+    for x in items:
+        # 22/10 00:35 (la master): «aspetta: l'utente → master» non si capiva; a chi tocca il prossimo passo, e basta
+        turn = M("tasks.turn_person", person=person) if x["waits"]["on"] == "person" else M("tasks.turn_session", session=x["waits"]["on"])
+        key_ = "tasks.line" if x["approved"] else "tasks.line_unapproved"
+        line = M(key_, task=x["task"], session=x["session"] or "master", state=x["state"], when=_hm(x["approved_at"] or (x["last_step"] or {}).get("at")),
+                 age=duration(x["age_s"]), idle=duration(x["idle_s"]), next=x["next"], turn=turn)
+        if x["paused"]:
+            line += M("tasks.pause_tag", reason=x["paused"]["reason"][:80])
+        if x["expected"]:
+            line += M("tasks.outcome_tag", expected=x["expected"])
+        lines.append(line)
+    if brief:
+        n = max_lines if max_lines is not None else int(tasks_cfg().get("commitments_max_lines", 8) or 8)
+        if len(lines) > n:
+            lines = lines[:n] + [M("tasks.more", n=len(lines) - n)]
+    return "\n".join([head] + lines)
+
+
+def signature(items):
+    """Cio' che conta come «cambiato» per l'hook della master (22/10 00:35: il blocco intero entrava a ogni messaggio in
+    arrivo, sei volte in un turno): id, stato, fermo, pausa, prossimo passo e l'ora dell'ultimo passo; mai le durate."""
+    return [[x["task"], x["state"], x["stalled"], (x["paused"] or {}).get("reason"), x["next"], (x["last_step"] or {}).get("at")] for x in items]
+
+
+def stall_check(con):
+    """P3: gli impegni fermi non ancora avvisati per questo ultimo passo (task-alerts.json: {task: last_step.at}); un
+    passo nuovo riarma l'avviso, un impegno uscito dai fermi esce dal file."""
+    items = [x for x in commitments(con) if x["stalled"]]
+    p = alerts_path()
+    try:
+        sent = json.loads(p.read_text())
+    except (OSError, ValueError):
+        sent = {}
+    new = [x for x in items if sent.get(x["task"]) != x["last_step"]["at"]]
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({x["task"]: x["last_step"]["at"] for x in items}))
+    except OSError:
+        pass
+    return new
+
+
+def amend(con, tid, check=None, timeout_s=None, expected=None, kind=None, proof=None, by=None):
+    """Corregge il contratto di un compito aperto; validato di nuovo (schema e regola dell'esito). [] o gli errori."""
+    row = get_task(con, tid)
+    if row["state"] not in OPEN_STATES:
+        sys.exit(f"task {tid}: already {row['state']}")
+    contract = json.loads(row["contract"])
+    t = contract["task"]
+    changes = []
+    if check:
+        t["check"]["cmd"] = check
+        changes.append(f"check: {check}")
+    if timeout_s is not None:
+        t["check"]["timeout_s"] = timeout_s
+        changes.append(f"timeout_s: {timeout_s}")
+    if expected is not None or kind is not None or proof is not None:
+        o = dict(t.get("outcome") or {})
+        if expected is not None:
+            o["expected"] = expected
+        if kind is not None:
+            o["kind"] = kind
+        if proof is not None:
+            o["proof"] = proof
+        t["outcome"] = o
+        changes.append(f"outcome ({o.get('kind')}): {o.get('expected')}")
+    if not changes:
+        sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P]")
+    errs = validate(contract) or outcome_errors(t)
+    if errs:
+        return errs
+    con.execute("UPDATE tasks SET contract=?, updated_at=? WHERE id=?", (json.dumps(contract, ensure_ascii=False), now(), tid))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (tid, now(), by, "amend", "; ".join(changes)))
+    con.commit()
+    return []
 
 
 def board(con):
@@ -398,8 +646,67 @@ def main(argv):
         out["contract"] = json.loads(row["contract"])
         out["results"] = [dict(r, proof=json.loads(r["proof"])) for r in con.execute("SELECT * FROM results WHERE task=? ORDER BY n", (args[0],))]
         out["approvals"] = [dict(r) for r in con.execute("SELECT * FROM approvals WHERE task=? ORDER BY n", (args[0],))]
+        out["steps"] = [dict(r) for r in con.execute("SELECT * FROM steps WHERE task=? ORDER BY n", (args[0],))]
+        out["pauses"] = [dict(r) for r in con.execute("SELECT * FROM pauses WHERE task=? ORDER BY n", (args[0],))]
         print(json.dumps(out, ensure_ascii=False, indent=None if as_json else 2))
         return 0
+    if verb == "impegni":
+        stalled_only, brief = _flag(args, "--stalled"), _flag(args, "--brief")
+        items = commitments(con)
+        if stalled_only:
+            items = [x for x in items if x["stalled"]]
+        print(json.dumps(items, ensure_ascii=False) if as_json else render_commitments(items, brief=brief))
+        return 0
+    if verb == "stall-check":
+        new = stall_check(con)
+        print(json.dumps(new, ensure_ascii=False) if as_json else (render_commitments(new) if new else ""))
+        return 0
+    if verb == "step":
+        nxt, by = _opt(args, "--next"), _opt(args, "--by")
+        if len(args) < 2:
+            sys.exit('usage: task step ID "text" [--next "next step"] [--by B]')
+        get_task(con, args[0])
+        con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,?)",
+                    (args[0], now(), by, "step", " ".join(args[1:])[:500], (nxt or "")[:300] or None))
+        con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (now(), args[0]))
+        con.commit()
+        return 0
+    if verb == "pause":
+        reason, by = _opt(args, "--reason"), _opt(args, "--by")
+        if not args or not reason:
+            sys.exit("usage: task pause ID --reason R [--by B]")
+        row = get_task(con, args[0])
+        if row["state"] not in OPEN_STATES:
+            sys.exit(f"task {args[0]}: already {row['state']}")
+        con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
+        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at) VALUES (?,?,?,?,NULL)", (args[0], now(), by, reason[:300]))
+        con.commit()
+        return 0
+    if verb == "resume":
+        get_task(con, args[0])
+        con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
+        con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (now(), args[0]))
+        con.commit()
+        return 0
+    if verb == "amend":
+        check, to = _opt(args, "--check"), _opt(args, "--timeout")
+        expected, kind, proof, by = _opt(args, "--outcome"), _opt(args, "--kind"), _opt(args, "--proof"), _opt(args, "--by")
+        if not args:
+            sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P]")
+        try:
+            to = int(to) if to is not None else None
+        except ValueError:
+            sys.exit("task amend: --timeout wants seconds")
+        errs = amend(con, args[0], check, to, expected, kind, proof, by)
+        if errs:
+            print("\n".join(errs), file=sys.stderr)
+            return 2
+        return 0
+    if verb == "confirmed":
+        get_task(con, args[0])
+        hit = con.execute("SELECT 1 FROM approvals WHERE task=? AND what='confirmed' AND by_ IS NOT NULL LIMIT 1", (args[0],)).fetchone()
+        print(M("tasks.confirmed_yes" if hit else "tasks.confirmed_no", task=args[0]))
+        return 0 if hit else 1
     if verb == "start":
         sess = _opt(args, "--session")
         row = get_task(con, args[0])
@@ -439,17 +746,24 @@ def main(argv):
         set_state(con, args[0], "awaiting_ok")
         con.commit()
         return 0
-    if verb == "approve":
+    if verb in ("approve", "confirm"):
         by, text, rec_id = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox")
         if not by or not (text or rec_id) or not args:
-            sys.exit("usage: task approve ID --by B (--text T | --inbox MSG [--text NOTE]) [--what W] [--where D]")
-        get_task(con, args[0])
+            sys.exit(f"usage: task {verb} ID --by B (--text T | --inbox MSG [--text NOTE])" + (" [--what W] [--where D]" if verb == "approve" else ""))
+        row = get_task(con, args[0])
         if rec_id:
             text = inbox_approval_text(by, rec_id, text)
         elif os.environ.get("CLAUDECODE") and os.environ.get("CM_APPROVE_VIA") != "relay":
             # una sessione Claude (anche la master) non scrive un ok a nome d'altri senza il messaggio che lo prova;
             # il relay eredita CLAUDECODE da chi l'ha avviato, e si dichiara con CM_APPROVE_VIA
-            sys.exit("task approve: from a Claude session an ok needs --inbox MSG (a relay message to the master from the last hour)")
+            sys.exit(f"task {verb}: from a Claude session an ok needs --inbox MSG (a relay message to the master from the last hour)")
+        if verb == "confirm":
+            # P1 (22/10): la conferma della persona («lo vedo sul telefono»), registrata con le regole dell'ok; `task
+            # confirmed ID` la legge: e' un controllo valido per un esito install. Lo stato non cambia
+            con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,'confirmed',NULL)",
+                        (args[0], row["plan"], by, now(), text))
+            con.commit()
+            return 0
         approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"))
         return 0
     if verb == "auto-close":

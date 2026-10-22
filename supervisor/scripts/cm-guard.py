@@ -344,9 +344,53 @@ def run():
                 log("auto-close: " + "; ".join(r.stdout.strip().splitlines()))
         except (OSError, subprocess.TimeoutExpired):
             pass
+    stalled_alerts(t)
     if changed:
         save_state(st)
     return 0
+
+
+def quiet_now(t):
+    """tasks.quiet_hours [da, a): di notte la persona non riceve gli allarmi di fermo (vanno nel resoconto del mattino)."""
+    q = (CFG.get("tasks") or {}).get("quiet_hours") or []
+    if len(q) != 2:
+        return False
+    h = dt.datetime.fromtimestamp(t).hour
+    a, b = int(q[0]), int(q[1])
+    return (a <= h < b) if a <= b else (h >= a or h < b)
+
+
+def stalled_alerts(t):
+    """P3 (22/10/2026): ogni giro, gli impegni approvati e fermi da piu' di tasks.stall_hours senza un passo (`task
+    stall-check`: una volta per passo) in UN riepilogo (00:35: sette messaggi separati alla master e alla persona):
+    alla master con talk; alla persona (evento task_stalled all'app, Telegram di scorta) solo fuori da
+    tasks.quiet_hours — di notte li trova nel resoconto del mattino."""
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    try:
+        r = subprocess.run([CM_BIN, "task", "stall-check", "--json"], capture_output=True, text=True, timeout=120)
+        items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return
+    if not items:
+        return
+    person = M("tasks.person")
+    hours = (CFG.get("tasks") or {}).get("stall_hours", 2)
+    lines = []
+    for x in items:
+        waits = x.get("waits") or {}
+        who = person if waits.get("on") == "person" else str(waits.get("on") or "master")
+        idle_h = int(x.get("idle_s") or 0) // 3600
+        lines.append(M("guard.stalled_item", task=x.get("task"), idle=f"{idle_h} h", who=who, next=x.get("next") or ""))
+    title = M("guard.stalled_one", h=hours) if len(items) == 1 else M("guard.stalled_many", n=len(items), h=hours)
+    body = "\n".join(lines)
+    try:
+        subprocess.run([CM_BIN, "talk", master, f"{title}\n{body}", "--no-wait"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if not quiet_now(t):
+        _load("cm-core").relay_event("task_stalled", title, body, ref=items[0].get("task"))
+        notify(title + "\n" + body)
+    log(f"stalled: {', '.join(str(x.get('task')) for x in items)}" + (" (quiet hours: master only)" if quiet_now(t) else ""))
 
 
 # ------------------------------------------------------------------ cron

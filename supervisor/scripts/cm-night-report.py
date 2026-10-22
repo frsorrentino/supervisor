@@ -424,6 +424,16 @@ def approvals(con):
     return out
 
 
+def commitments_of(con, now):
+    """1.76 (22/10, P2): gli impegni del registro nel resoconto del mattino — le stesse voci di `task impegni --json`."""
+    if con is None:
+        return []
+    try:
+        return _load("cm-tasks").commitments(con, now_=now, git=False)
+    except Exception:   # noqa: BLE001 — il registro e' facoltativo
+        return []
+
+
 def relay_state(sources):
     d = Path(cm.expand((CFG.get("relay") or {}).get("dir") or "~/.cc-supervisor/relay"))
     for f, keys in ((d / "last-state.json", ("full", "state")), (d / "local" / "state.json", (None,))):
@@ -953,10 +963,11 @@ def build(now=None, remote=True):
     con = registry(sources)
     state = relay_state(sources)
     att = attention(state, con)
+    commitments = commitments_of(con, now)
     items = sorted(jobs + session_items(rows, jobs, end), key=lambda x: (x["start"], x["id"] or ""))
     cards = project_cards(rows, items, att, state, win, con, remote_docs)
     return {"schema": SCHEMA, "v": V, "generated_at": int(time.time()), "date": dt.date.fromtimestamp(win["morning"]).isoformat(),
-            "title": night_title(cards), "window": win, "attention": att, "timeline": items, "queue": queue,
+            "title": night_title(cards), "window": win, "attention": att, "commitments": commitments, "timeline": items, "queue": queue,
             "projects": cards, "sources": sources}
 
 
@@ -1010,6 +1021,18 @@ def render_html(rep):
         out.append(f"<div class=\"box att\"><b>Ok · {e(x['title'])}</b>{e(x['what'] or '')}" + (f" → {e(x['where'])}" if x["where"] else "") + "</div>")
     for u in a["unblock"]:
         out.append(f"<div class=\"box att\"><b>Da sbloccare · {e(u['session'] or '')}</b>{e(u['text'])}</div>")
+    # 1.76 (22/10, P2): gli impegni — approvati e non compiuti — nel resoconto del mattino, i fermi evidenziati
+    out.append("<h2>Impegni</h2>")
+    cms = rep.get("commitments") or []
+    if not cms:
+        out.append("<div class=\"box empty\">Nessun impegno aperto.</div>")
+    for x in cms:
+        turn = "aspetta l'utente" if (x.get("waits") or {}).get("on") == "person" else f"tocca a {(x.get('waits') or {}).get('on') or 'master'}"
+        idle = int(x.get("idle_s") or 0)
+        out.append(f"<div class=\"box{' att' if x.get('stalled') else ''}\"><b>{e(x['task'])} · {e(x.get('session') or 'master')} · {e(x['state'])}</b>"
+                   + (f"approvato {hm(x['approved_at'])} · " if x.get("approved_at") else "") + f"fermo da {idle // 3600} h {(idle % 3600) // 60:02d} · prossimo: {e(x.get('next') or '')} · {e(turn)}"
+                   + (f"<div class=\"ev blocked\">PAUSA: {e(x['paused']['reason'])}</div>" if x.get("paused") else "")
+                   + (f"<div class=\"ev\">esito: {e(x['expected'])}</div>" if x.get("expected") else "") + "</div>")
     out.append("<h2>Cronologia</h2><div class=\"box\">")
     ticks, t0 = [], (w["start"] // 3600 + 1) * 3600
     for t in range(t0, w["end"], 3600 if span <= 8 * 3600 else 7200):

@@ -290,6 +290,7 @@ DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on 
 SRC1.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC1["hosts_status"], SRC1["published_today"] = F1["hosts_status"], F1["published_today"]
+SRC1["commitments"] = F1["commitments"]   # 1.76
 st1 = S.build_state(SRC1, 1789210800)
 
 
@@ -361,6 +362,7 @@ SRC2["account_kinds"] = KINDS
 SRC2.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["published_today"]
+SRC2["commitments"] = F2["commitments"]   # 1.76
 st2 = S.build_state(SRC2, 1789214400)
 T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
 SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "ledger": [], "questions": {},
@@ -370,6 +372,7 @@ SRC3["account_kinds"] = KINDS
 SRC3.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
+SRC3["commitments"] = F3["commitments"]   # 1.76
 st3 = S.build_state(SRC3, 1789200000)
 T.check("R2 build_state(src) == state-3-stale.json", st3 == _np(F3), diff(st3, _np(F3)) or "equal")
 T.check("R2 (1.33) no recurring list → no `recurring` field (the app shows no box)", "recurring" not in S.build_state(dict(SRC3, recurring=[]), 1789200000), "")
@@ -504,7 +507,7 @@ case "$1" in
       add) if [ "$4" = "FULL" ]; then echo "coda piena: 8 lavori, night.max_queued è 8" >&2; exit 4; fi; echo "in coda: 7b21d4e8 · $3 · account «work» (2 in coda)" ;;
       remove) case "$3" in 5d0e6b92) echo "tolta: $3" ;; a3f09c1e) echo "$3 è già partito: non si può togliere" >&2; exit 5 ;; *) echo "nessuna voce con id $3" >&2; exit 1 ;; esac ;;
     esac ;;
-  task) case "$2" in list) if [ -f "{tmp / 'tasks.json'}" ]; then cat "{tmp / 'tasks.json'}"; else echo '[]'; fi ;; approve) echo "" ;; esac ;;
+  task) case "$2" in list) if [ -f "{tmp / 'tasks.json'}" ]; then cat "{tmp / 'tasks.json'}"; else echo '[]'; fi ;; approve) echo "" ;; show) if [ -f "{tmp / 'task-show.json'}" ]; then cat "{tmp / 'task-show.json'}"; fi ;; impegni) if [ -f "{tmp / 'impegni.json'}" ]; then cat "{tmp / 'impegni.json'}"; else echo '[]'; fi ;; esac ;;
   launch) echo "sessione avviata"; echo "  link: https://claude.ai/code/session_01NEW"; if [ -f "{launch_adds}" ]; then cp "{launch_adds}" "{alive}"; fi ;;
 esac
 """)
@@ -1429,12 +1432,28 @@ tasks31.write_text(json.dumps([
      "request": {"what": "tag v2.4 and push to origin main", "where": "production (shop.example.com)", "at": 1789210600}},
     {"id": "notes-pr", "plan": None, "state": "awaiting_ok", "lane": "closed", "title": "Open the PR of the notes", "project": str(ws / "personal" / "field-notes"),
      "request": {"what": "push the branch notes", "where": "github fork", "at": 1789210500}}]))
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": "atlas-shop", "state": "awaiting_ok",
+    "contract": {"task": {"where": {"session": "atlas-shop"}}}, "approvals": [{"what": "tag v2.4 and push to origin main", "by_": None}]}))
+(state_dir / "needs-you").mkdir(parents=True, exist_ok=True)
+(state_dir / "needs-you" / "S-A.json").write_text(json.dumps({"reason": "ok per il push", "at": 1789210600, "name": "atlas-shop"}))
 n_calls = len(cm_calls())
 r31a = send_cmd(CMDS[32])
 r31b = send_cmd(CMDS[33])
 T.check("R31 (1.37) approve of a task waiting for an ok → `task approve <task> --by <by> --text \"<text> (dal telefono)\"`, as in the fixture; a task not waiting → refused, nothing recorded",
         r31a and r31a["ok"] is True and r31a["text"] == RES[32]["text"] and "task approve atlas-release-2-4 --by phone-pixel8 --text ok, go ahead (dal telefono)" in cm_calls()[n_calls:]
         and r31b and r31b["ok"] is False and r31b["text"] == RES[33]["text"] and not any(c.startswith("task approve atlas-old-task") for c in cm_calls()), str([r31a, r31b]) + str(cm_calls()[n_calls:]))
+# R63 (1.76, P4, 22/10): «Approva» risveglia — talk alla sessione responsabile e alla master (staccati), il «ferma per te» della sessione tolto
+T.check("R63 (1.76) after the ok: `talk atlas-shop «l'utente ha approvato atlas-release-2-4 alle HH:MM: tag v2.4 … Prosegui, e chiudi con task done …» --no-wait`, `talk master «… atlas-shop ha ricevuto il via.»`, and needs-you/S-A.json removed",
+        T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha approvato atlas-release-2-4 alle ") and ": tag v2.4 and push to origin main. Prosegui, e chiudi con task done atlas-release-2-4. --no-wait" in c for c in cm_calls()[n_calls:]), 10)
+        and T.wait_until(lambda: any(c.startswith("talk master l'utente ha approvato atlas-release-2-4 alle ") and c.endswith("; atlas-shop ha ricevuto il via. --no-wait") for c in cm_calls()[n_calls:]), 10)
+        and T.wait_until(lambda: not (state_dir / "needs-you" / "S-A.json").exists(), 10), str(cm_calls()[n_calls:]))
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
+n63 = len(cm_calls())
+r63 = send_cmd(dict(CMDS[32], id="6f1c2d3e-0370-4000-8000-000000000371"))   # un id nuovo: il bus non ripete un comando gia' fatto
+T.check("R63 (1.76) a task with no session: the ok is recorded and the answer is positive; only the master is told, nobody else",
+        r63 and r63["ok"] is True and T.wait_until(lambda: any(c.startswith("talk master ") for c in cm_calls()[n63:]), 10)
+        and not any(c.startswith("talk ") and not c.startswith("talk master ") for c in cm_calls()[n63:]), str(cm_calls()[n63:]))
+(tmp / "task-show.json").unlink()
 n_calls = len(cm_calls())
 r31c = send_cmd(CMDS[34])
 talk31 = [c for c in cm_calls()[n_calls:] if c.startswith("talk master ")]
@@ -3307,5 +3326,29 @@ T.check("R61 (1.75) the fixtures: state-2-idle with win up and one publication o
 T.check("R61 (1.75) a src without the two keys (an old caller) gives a /state without them; collect_sources passes both",
         "hosts_status" not in S.build_state({}, 1) and "published_today" not in S.build_state({}, 1)
         and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now)' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+# R62 (contratto 1.76, 22/10, impegni sempre visibili): /state.commitments dal registro, l'evento task_stalled, le fixture
+_cm62 = F2["commitments"]
+T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalled running task of ledger-api (its session gone, red check, outcome deploy) and atlas-seo-pages just approved, waiting for atlas-shop; state-3 one paused, never stalled",
+        F1["commitments"] == [] and [(x["task"], x["state"], x["approved"], x["stalled"], x["waits"]) for x in _cm62] == [("ledger-migrations-011", "running", True, True, {"who": "person", "on": "ledger-api"}),
+                                                                                                                  ("atlas-seo-pages", "approved", True, False, {"who": "person", "on": "atlas-shop"})]
+        and _cm62[0]["check"] == {"outcome": "red", "at": 1789199760} and _cm62[0]["outcome_kind"] == "deploy" and _cm62[1]["session"] == F2["sessions"][0]["name"]
+        and F3["commitments"][0]["paused"]["reason"] == "after the client's review" and F3["commitments"][0]["stalled"] is False
+        and all(list(x) == ["task", "title", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"] for s in (F2, F3) for x in s["commitments"]), str(_cm62)[:300])
+_ev62 = [e for e in EV if e["kind"] == "task_stalled"]
+T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
+        len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
+_small62 = dict(_cm62[1], title="t", next="n", expected=None, outcome_kind=None)
+_big62 = S.build_state(dict(SRC2, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)
+T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
+        len(S.build_state(dict(SRC2, commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
+        and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == st2["sessions"] and _big62["projects"] == st2["projects"]
+        and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
+(tmp / "impegni.json").write_text(json.dumps([{"task": "atlas-release-2-4", "title": "Release 2.4\nof atlas-shop", "project": str(ws / "personal" / "atlas-shop"), "session": "atlas-shop", "state": "awaiting_ok",
+    "lane": "closed", "plan": None, "approved": False, "approved_at": None, "approved_by": None, "age_s": 200, "last_step": {"at": 1789210600, "kind": "state", "text": "awaiting_ok"}, "idle_s": 200,
+    "next": "l'ok a: tag v2.4", "waits": {"who": "atlas-shop", "on": "person"}, "expected": None, "outcome_kind": None, "check": None, "paused": None, "stalled": False}]))
+_d62 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R62 (1.76) push: commitments from `task impegni --json`, project relative as sessions[].project, title on one line",
+        [(x["task"], x["project"], x["title"]) for x in _d62.get("commitments") or []] == [("atlas-release-2-4", "personal/atlas-shop", "Release 2.4 of atlas-shop")], str(_d62.get("commitments")))
+(tmp / "impegni.json").unlink()
 
 T.finish()

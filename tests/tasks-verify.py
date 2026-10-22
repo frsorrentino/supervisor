@@ -219,4 +219,105 @@ T.check("T10 auto-close: open for more than 6 hours with a green check → done;
         rc == 0 and show("ac_green")["state"] == "done" and show("ac_red")["state"] == "proposed" and not show("ac_red")["results"]
         and "ac_new" not in res and show("ac_new")["state"] == "proposed" and res.get("ac_green") is True and res.get("ac_red") is False, out + err)
 
+# T11 (22/10/2026, P1 — the day lost on the Gantt APK): the expected outcome in the contract, and a check that touches it
+oc = contract("o1", cmd="test -f ok.txt", outcome={"expected": "release 1.0 su GitHub", "kind": "release", "proof": None})
+rc, out, err = add(oc)
+T.check("T11 outcome release with a check that does not touch it → exit 2, the markers named, nothing stored",
+        rc == 2 and "does not touch the outcome (kind release)" in err and "gh release" in err and cm("show", "o1")[0] != 0, err)
+ok = contract("o2", cmd="git tag --list | grep -q v1.0", outcome={"expected": "release 1.0 su GitHub", "kind": "release"})
+T.check("T11 a check with `git tag` enters", add(ok)[0] == 0 and show("o2")["contract"]["task"]["outcome"]["kind"] == "release", "")
+T.check("T11 custom needs a proof", add(contract("o3", outcome={"expected": "x", "kind": "custom"}))[0] == 2
+        and add(contract("o4", outcome={"expected": "x", "kind": "custom", "proof": "il maintainer lo dice"}))[0] == 0, "")
+con11 = sqlite3.connect(str(tmp / "tasks.db"))   # un compito entrato prima della regola: il contratto cambiato nel DB
+c11 = json.loads(con11.execute("SELECT contract FROM tasks WHERE id='o2'").fetchone()[0])
+c11["task"]["check"]["cmd"] = "test -f ok.txt"
+con11.execute("UPDATE tasks SET contract=?, state='running' WHERE id='o2'", (json.dumps(c11),)); con11.commit(); con11.close()
+rc, out, err = cm("done", "o2")
+T.check("T11 done refuses a check that does not touch the outcome: exit 3, state unchanged, no result, no attempt",
+        rc == 3 and "does not touch the outcome" in err and show("o2")["state"] == "running" and show("o2")["results"] == [], err)
+rc, out, err = cm("auto-close", "--json")
+T.check("T11 auto-close skips it (never closes on an intermediate step)", "o2" not in [r["task"] for r in json.loads(out or "[]")] and show("o2")["state"] == "running", out + err)
+# T12 amend: il controllo corretto, poi done verde; un passo «amend» registrato
+rc, out, err = cm("amend", "o2", "--check", "git tag --list >/dev/null; test -f ok.txt", "--by", "master")
+s12 = show("o2")
+T.check("T12 amend --check rewrites the check (validated again) and records an amend step", rc == 0 and s12["contract"]["task"]["check"]["cmd"].startswith("git tag")
+        and s12["steps"][-1]["kind"] == "amend" and s12["steps"][-1]["by_"] == "master", err + json.dumps(s12.get("steps")))
+T.check("T12 amend --check that does not touch the outcome → exit 2, contract unchanged", cm("amend", "o2", "--check", "true")[0] == 2
+        and show("o2")["contract"]["task"]["check"]["cmd"].startswith("git tag"), "")
+rc, out, err = cm("amend", "o2", "--outcome", "la 1.0 è installata", "--kind", "install")
+T.check("T12 amend --outcome with a kind the check does not touch → exit 2", rc == 2 and show("o2")["contract"]["task"]["outcome"]["kind"] == "release", err)
+T.check("T12 amend --timeout that is not a number → refused", cm("amend", "o2", "--timeout", "x")[0] != 0, "")
+T.check("T12 done after the amend: green", cm("done", "o2")[0] == 0 and show("o2")["state"] == "done", "")
+T.check("T12 amend on a finished task → refused", cm("amend", "o2", "--check", "git tag")[0] != 0, "")
+# T13 confirm / confirmed: la conferma della persona come controllo di un esito «install»
+add(contract("c1", cmd="supervisor task confirmed c1", outcome={"expected": "APK sul telefono", "kind": "install"}))
+T.check("T13 confirmed before any confirmation → exit 1", cm("confirmed", "c1")[0] == 1, "")
+rc, _, err = cm("confirm", "c1", "--by", "maintainer", "--text", "lo vedo", env=CC)
+T.check("T13 confirm from a Claude session needs --inbox, as approve", rc != 0 and "--inbox" in err, err)
+rc, _, err = cm("confirm", "c1", "--by", "maintainer", "--text", "lo vedo (dal telefono)", env=dict(CC, CM_APPROVE_VIA="relay"))
+T.check("T13 confirm from the relay → recorded (what = confirmed), the state does not move; confirmed → exit 0", rc == 0 and cm("confirmed", "c1")[0] == 0
+        and show("c1")["approvals"][-1]["what"] == "confirmed" and show("c1")["state"] == "proposed", err)
+
+# T14 (22/10/2026, P2): gli impegni = aperti e approvati (ok o piano), piu' quelli in attesa di ok; eta', passi, prossimo, chi aspetta chi, pausa
+cfg14 = tmp / "config-it.json"
+cfg14.write_text(json.dumps({"language": "it", "state_dir": str(state9), "workspace": {"root_session_name": "master"}}))
+IT = {"CC_SUPERVISOR_CONFIG": str(cfg14)}
+r14 = json.loads(cm("impegni", "--json", env=IT)[1])
+ids14 = {x["task"] for x in r14}
+T.check("T14 impegni --json lists only open tasks with an ok or an approved plan, and the awaiting_ok ones (approved false); a confirmation alone is not an ok",
+        ids14 >= {"i1", "p1", "ok9", "i2", "i3", "i4", "i5"} and not ids14 & {"t1", "n2", "n3", "ac_new", "ac_red", "o4", "c1", "g1", "o2"}
+        and next(x for x in r14 if x["task"] == "i2")["approved"] is False and next(x for x in r14 if x["task"] == "i2")["waits"] == {"who": "master", "on": "person"},
+        str([(x["task"], x["state"], x["approved"]) for x in r14]))
+x14 = next(x for x in r14 if x["task"] == "i1")
+T.check("T14 an approved task: approved_at/by, age_s, last_step = the approval (it beats the state change of the same second), waits person→session, next from the state, stalled false (just approved)",
+        x14["approved_by"] == "maintainer" and isinstance(x14["approved_at"], int) and x14["age_s"] >= 0 and x14["last_step"]["kind"] == "approval"
+        and x14["waits"] == {"who": "person", "on": "master"} and "task done i1" in x14["next"] and x14["stalled"] is False and x14["paused"] is None, json.dumps(x14))
+rc, out, _ = cm("step", "i1", "test verdi", "--next", "release 0.9", env=IT)
+r14b = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}
+T.check("T14 task step: the last step and next come from it", rc == 0 and r14b["i1"]["last_step"]["text"] == "test verdi" and r14b["i1"]["last_step"]["kind"] == "step"
+        and r14b["i1"]["next"] == "release 0.9", json.dumps(r14b["i1"]))
+cm("pause", "i1", "--reason", "aspetta la CI", "--by", "master", env=IT)
+r14c = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}
+con14 = sqlite3.connect(str(tmp / "tasks.db"))
+con14.execute("UPDATE approvals SET at=? WHERE task='ok9'", (int(time.time()) - 3 * 3600,))
+con14.execute("UPDATE tasks SET updated_at=? WHERE id='ok9'", (int(time.time()) - 3 * 3600,))
+con14.commit(); con14.close()
+r14d = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}
+T.check("T14 pause: visible with its reason and who, never stalled; an approved task idle for 3 hours is stalled and comes first",
+        r14c["i1"]["paused"]["reason"] == "aspetta la CI" and r14c["i1"]["paused"]["by"] == "master" and r14c["i1"]["stalled"] is False
+        and r14d["ok9"]["stalled"] is True and r14d["ok9"]["idle_s"] >= 3 * 3600 and list(r14d)[0] == "ok9" and r14d["i1"]["stalled"] is False, json.dumps(r14d["ok9"]))
+T.check("T14 resume clears the pause", cm("resume", "i1", env=IT)[0] == 0 and {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["i1"]["paused"] is None, "")
+T.check("T14 an awaiting_ok task is never stalled (it waits for the person): i5 with a 3-hour-old request",
+        all(x["stalled"] is False for x in r14d.values() if x["state"] == "awaiting_ok"), "")
+# T15 il testo: intestazione con i conteggi, una riga per voce, --brief taglia, --stalled filtra
+txt = cm("impegni", env=IT)[1]
+T.check("T15 text: «Impegni (N, K fermi)», one line per item with id, session, state, ok time, idle, next, who waits for whom; the paused one carries PAUSA",
+        txt.startswith("Impegni (") and " fermi):" in txt.splitlines()[0] and any(l.startswith("- ok9 · master · approved · ok ") and "fermo da 3 h" in l for l in txt.splitlines())
+        and "prossimo:" in txt and "· tocca a master" in txt and any("- i2 · master · awaiting_ok · chiesto" in l and l.endswith("· aspetta l'utente") for l in txt.splitlines()), txt[:600])
+cm("pause", "p1", "--reason", "dopo la 0.9", env=IT)
+T.check("T15 PAUSA: reason on the paused line", any("- p1 ·" in l and "PAUSA: dopo la 0.9" in l for l in cm("impegni", env=IT)[1].splitlines()), cm("impegni", env=IT)[1])
+for i in range(9):
+    add(contract(f"m{i}", lane="closed"))
+    cm("wait-ok", f"m{i}", "--what", "x", "--where", "y")
+brief = cm("impegni", "--brief", env=IT)[1]
+full = cm("impegni", env=IT)[1]
+T.check("T15 --brief: the header, 8 items, then «… e altri N»; the full text has them all", len(brief.splitlines()) == 10 and brief.splitlines()[-1].startswith("… e altri ")
+        and len(full.splitlines()) == 1 + len(json.loads(cm("impegni", "--json", env=IT)[1])), brief)
+T.check("T15 --stalled: only the stalled ones", [x["task"] for x in json.loads(cm("impegni", "--json", "--stalled", env=IT)[1])] == ["ok9"], "")
+en15 = cm("impegni", env={"CC_SUPERVISOR_CONFIG": str(cfg9)})[1]
+T.check("T15 English config: «Commitments (N, K stalled)»", en15.startswith("Commitments (") and "idle for" in en15 and "master's turn" in en15 and "waits for the user" in en15, en15[:200])
+# T16 (P3): stall-check stampa i fermi una volta per passo; un passo nuovo riarma
+A16 = dict(IT, CM_TASKS_ALERTS=str(tmp / "alerts.json"))
+a1 = json.loads(cm("stall-check", "--json", env=A16)[1])
+a2 = json.loads(cm("stall-check", "--json", env=A16)[1])
+cm("step", "ok9", "ripreso", env=A16)
+a3 = json.loads(cm("stall-check", "--json", env=A16)[1])
+con16 = sqlite3.connect(str(tmp / "tasks.db"))
+con16.execute("UPDATE steps SET at=? WHERE task='ok9'", (int(time.time()) - 3 * 3600,)); con16.execute("UPDATE tasks SET updated_at=? WHERE id='ok9'", (int(time.time()) - 3 * 3600,))
+con16.commit(); con16.close()
+a4 = json.loads(cm("stall-check", "--json", env=A16)[1])
+T.check("T16 stall-check: the stalled task once (alerts file), nothing the second time, nothing after a fresh step, again when that step is 3 hours old",
+        [x["task"] for x in a1] == ["ok9"] and a2 == [] and a3 == [] and [x["task"] for x in a4] == ["ok9"] and json.loads((tmp / "alerts.json").read_text()) == {"ok9": a4[0]["last_step"]["at"]},
+        str((a1, a2, a3, a4))[:400])
+
 T.finish()

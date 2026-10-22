@@ -237,7 +237,7 @@ DEFAULTS = {
     "inbox": {"expires_h": 48},
     # 03/10: registro dei compiti. guard = la guardia della corsia chiusa (push, release, publish) nega quei comandi
     # fuori da un compito approvato: spenta di default, perche' vale per ogni sessione della macchina
-    "tasks": {"guard": False, "notify": "master"},
+    "tasks": {"guard": False, "notify": "master", "stall_hours": 2, "commitments_prompt": True, "commitments_max_lines": 8, "quiet_hours": [23, 7]},
     "hooks": {
         "local_time": {"enabled": True, "format": "%A %Y-%m-%d %H:%M", "prefix": "[local time]"},
         "restart_stop": {"enabled": True},

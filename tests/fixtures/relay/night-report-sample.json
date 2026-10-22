@@ -59,6 +59,69 @@
       }
     ]
   },
+  "commitments": [
+    {
+      "task": "ledger-release-14",
+      "title": "Release 1.4 di ledger-api",
+      "project": "/w/ledger-api",
+      "session": "ledger-api",
+      "state": "awaiting_ok",
+      "lane": "closed",
+      "plan": null,
+      "approved": false,
+      "approved_at": null,
+      "approved_by": null,
+      "age_s": 6000,
+      "last_step": {
+        "at": 1791332460,
+        "kind": "state",
+        "text": "awaiting_ok"
+      },
+      "idle_s": 6000,
+      "next": "l'ok a: tag v1.4 e push",
+      "waits": {
+        "who": "ledger-api",
+        "on": "person"
+      },
+      "expected": "la 1.4 su github.com/example/ledger-api",
+      "outcome_kind": "release",
+      "check": null,
+      "paused": null,
+      "stalled": false
+    },
+    {
+      "task": "notes-gantt-apk",
+      "title": "APK del Gantt sul telefono",
+      "project": "/w/field-notes",
+      "session": "field-notes",
+      "state": "running",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1791290460,
+      "approved_by": "maintainer",
+      "age_s": 48000,
+      "last_step": {
+        "at": 1791296000,
+        "kind": "step",
+        "text": "APK in CI"
+      },
+      "idle_s": 42460,
+      "next": "installazione sul telefono",
+      "waits": {
+        "who": "person",
+        "on": "field-notes"
+      },
+      "expected": "l'utente vede il Gantt sul telefono",
+      "outcome_kind": "install",
+      "check": {
+        "outcome": "red",
+        "at": 1791300000
+      },
+      "paused": null,
+      "stalled": true
+    }
+  ],
   "timeline": [
     {
       "kind": "session",

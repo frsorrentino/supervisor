@@ -1089,6 +1089,7 @@ def collect_sources(now=None):
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         "changes": changes_pills(rows, ledger, now),   # 1.72
         "hosts_status": hosts_status(rows, now), "published_today": published_cached(now),   # 1.75
+        "commitments": commitments_list(),   # 1.76
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1194,6 +1195,21 @@ def approvals_list():
         out.append({"task": t.get("id"), "title": S.one_line(str(t.get("title") or ""))[:200], "what": what[:300], "where": where[:300],
                     "deploy": bool(DEPLOY_RE.search(what + " " + where)), "requested_at": int(req.get("at") or 0) or None})
     return sorted(out, key=lambda a: (a["requested_at"] or 0, a["task"] or ""))
+
+
+def commitments_list():
+    """1.76 (22/10, P2): gli impegni del registro (`task impegni --json`: approvati non compiuti, e chi aspetta un ok)
+    per /state.commitments, con `project` relativo come sessions[].project; fermi prima, al massimo COMMITMENTS_MAX."""
+    root = cm.expand(CFG["workspace"]["root"])
+    out = []
+    for x in _json_cmd("task", "impegni", "--json") or []:
+        if not isinstance(x, dict) or not x.get("task"):
+            continue
+        y = dict(x)
+        y["project"] = S.project_of(x.get("project") or "", root)
+        y["title"] = S.one_line(str(x.get("title") or ""))[:200]
+        out.append(y)
+    return out[:S.COMMITMENTS_MAX]
 
 
 # ------------------------------------------------------------------ push
@@ -3354,7 +3370,40 @@ def approve_task(cmd, arg):
                      env={"CM_APPROVE_VIA": "relay"})
     if rc != 0:
         return False, (out.splitlines() or ["task approve failed"])[0]
+    wake_after_approve(tid, text)
     return True, M("relay.cmd_approved", task=tid)
+
+
+def wake_after_approve(tid, text):
+    """P4 (22/10/2026): «Approva» risveglia. 21/10 alle 20:38 l'ok c'era e nessuno se n'e' accorto per 46 minuti: la
+    sessione aspettava la master, la master si fidava della riga «Ti aspettano». Ora la sessione responsabile (dal
+    registro: tasks.session o where.session) riceve subito il via con `talk` (staccato: il bus non aspetta; chiusa →
+    resta nella casella), la master lo sa se non e' lei, e il «ferma per te» della sessione (needs-you/<sid>.json) si
+    spegne, cosi' «Ti aspettano» cade alla push seguente."""
+    info = _json_cmd("task", "show", tid, "--json", expect="{") or {}
+    task = (info.get("contract") or {}).get("task") or {}
+    sess = str(info.get("session") or (task.get("where") or {}).get("session") or "")
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    what = next((a.get("what") for a in reversed(info.get("approvals") or []) if isinstance(a, dict) and a.get("what") and a.get("what") != "confirmed"), "") or text
+    kw = {"person": M("tasks.person"), "task": tid, "when": time.strftime("%H:%M"), "what": S.one_line(str(what))[:200]}
+
+    def spawn(*args):
+        try:
+            subprocess.Popen([CM_BIN, *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
+    if sess:
+        spawn("talk", sess, M("relay.approve_wake", **kw), "--no-wait")
+        clear_needs_you(sess)
+    if sess != master:
+        spawn("talk", master, M("relay.approve_master", session=sess or "-", **kw), "--no-wait")
+
+
+def clear_needs_you(tm):
+    """Il file needs-you/<session_id>.json della sessione tmux `tm` (quello che «Ti aspettano» legge), se c'e'."""
+    for r in _json_cmd("sessions", "--json", "--no-screen") or []:
+        if (r.get("tmux") or r.get("name")) == tm and r.get("session_id"):
+            (Path(cm.expand(CFG["state_dir"])) / "needs-you" / f"{r['session_id']}.json").unlink(missing_ok=True)
 
 
 def decision_send(cmd, arg):

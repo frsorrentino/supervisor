@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.39-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.40-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -533,7 +533,8 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor offload <dir> --recipe NAME [--host H] [--explain] [--dirty]` · `offload --needs k=v,… -- <command>` · `offload list\|status\|log [-f]\|wait\|fetch\|cancel\|clean <id>` | a heavy job on the host that does it best: exact commit, declared assets, results back with sha256 |
 | `supervisor heavy run [--needs …] -- <command>` · `heavy status` | the same scheduler for a command a session would run here: it stays here inside a lease, or becomes an offload and waits |
 | `supervisor handoff --prepare [--here]` · `--written PATH` | the handoff of `/supervisor:handoff`: where to write it and with which sections, then records it so the next start after `/clear` points to it once |
-| `supervisor task add FILE\|- [--topic T]` · `list` · `show ID` · `start ID` · `result ID FILE` · `done ID [--constraint T]` · `wait-ok ID --what W --where D` · `approve ID --by B --text T` · `cancel ID` · `board [--json]` · `constraint add\|list` | the task registry: contracts validated, done only when the check rerun here is green, results, approvals and constraints recorded; `board` aggregates states and outcomes |
+| `supervisor task add FILE\|- [--topic T]` · `list` · `show ID` · `start ID` · `result ID FILE` · `done ID [--constraint T]` · `wait-ok ID --what W --where D` · `approve ID --by B --text T` · `cancel ID` · `board [--json]` · `constraint add\|list` | the task registry: contracts validated, done only when the check rerun here is green (and only when the check touches the task's expected `outcome`), results, approvals and constraints recorded; `board` aggregates states and outcomes |
+| `supervisor task impegni [--json\|--brief\|--stalled]` · `step ID "text" [--next N]` · `pause ID --reason R` · `resume ID` · `amend ID --check CMD\|--outcome T --kind K` · `confirm ID --by B` · `confirmed ID` · `stall-check` | the commitments: every approved task not yet done, with age, last step, next step, whose turn it is and pause; in the master at every prompt, in the morning report, in the app (contract 1.76) and in the handoff; `stall-check` (from `guard run`) alerts once per idle spell after `tasks.stall_hours` |
 | `supervisor plan check FILE` · `approve FILE --by B --text T` · `run FILE\|ID [--parallel N] [--turn-timeout S] [--dry-run]` · `status ID` | the map engine: approve a plan once, run its units in parallel where no edge joins them, retry only the red unit |
 | `supervisor timeline [NAME] [--since 6h] [--json] [--limit N]` | per session, in time order: prompts, tests with their summary, commits, «Esito:» lines, registry outcomes |
 | `supervisor render FILE.md\|- [--title T] [--meta M] [--out F]` | a Markdown summary as one HTML page with a fixed template, shown in the phone's chat under the command |

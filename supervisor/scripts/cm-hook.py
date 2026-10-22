@@ -232,6 +232,48 @@ def waiting_for_you(now=None):
     return M("hook.waiting_for_you", items="; ".join(parts) + more)
 
 
+def commitments_block():
+    """P2 (22/10/2026): solo nella master, a ogni prompt e a ogni avvio, gli impegni dal registro — gli approvati non
+    compiuti con eta', fermo da, prossimo passo, chi aspetta chi, pausa — letti da sqlite (niente git, niente figli:
+    l'hook ha 5 s). Niente se la lista e' vuota, se il registro non c'e' o se tasks.commitments_prompt e' falso."""
+    T_ = CFG.get("tasks") or {}
+    if not T_.get("commitments_prompt", True):
+        return ""
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    if my_tmux_name() != master:
+        return ""
+    try:
+        spec = importlib.util.spec_from_file_location("cm_tasks", HERE / "cm-tasks.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        con = mod.connect(create=False)
+        if con is None:
+            return ""
+        try:
+            items = mod.commitments(con, git=False, stall_s=float(T_.get("stall_hours", 2) or 2) * 3600, person=M("tasks.person"))
+        finally:
+            con.close()
+        if not items:
+            return ""
+        # 22/10 00:35 (la master): il blocco intero solo quando cambia (firma senza le durate), altrimenti una riga
+        sig = json.dumps(mod.signature(items), ensure_ascii=False)
+        f = STATE / f"commitments-{master}.json"
+        try:
+            same = f.read_text() == sig
+        except OSError:
+            same = False
+        if same:
+            return M("tasks.unchanged", n=len(items), stalled=sum(1 for x in items if x["stalled"]))   # mai `k=`: M e' lambda k
+        try:
+            STATE.mkdir(parents=True, exist_ok=True)
+            f.write_text(sig)
+        except OSError:
+            pass
+        return mod.render_commitments(items, brief=True, max_lines=int(T_.get("commitments_max_lines", 8) or 8), person=M("tasks.person"))
+    except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
+        return ""
+
+
 def task_check_on_stop():
     """1.57 (14/10): se questa sessione ha un task running, il relay riesegue il suo controllo e dice al telefono verde
     o rosso. Qui solo una lettura del registro (sqlite, millisecondi) e un figlio staccato: l'hook non aspetta."""
@@ -325,6 +367,9 @@ def main(argv):
         r = recent_recap(p)
         if r:
             sys.stdout.write(r + "\n")
+        c = commitments_block()   # P2: a ogni giro di regia, dal registro
+        if c:
+            sys.stdout.write(c + "\n")
         if p.get("source", "startup") in ("clear", "startup", ""):
             try:   # 13/10: l'handoff di /supervisor:handoff scritto prima di /clear, una volta sola
                 spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
@@ -358,6 +403,9 @@ def main(argv):
         line = waiting_for_you()
         if line:
             sys.stdout.write(line + "\n")
+        c = commitments_block()   # P2 (22/10): gli impegni dal registro, non dai messaggi delle sessioni
+        if c:
+            sys.stdout.write(c + "\n")
     elif ev == "PermissionRequest":
         if sid:
             (STATE / "waiting").mkdir(parents=True, exist_ok=True)

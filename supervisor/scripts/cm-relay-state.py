@@ -34,6 +34,8 @@ SHORT_MAX = 200   # 1.6: la riga «Watch:»/«Esito:» intera (a 60 il polso mos
 KEEP_GONE = 3     # fit_state: le sessioni finite piu' recenti che restano quando lo stato non entra
 PUBLISHED_MAX = 30   # 1.75: le pubblicazioni di oggi in /state; fit_state le scende a PUBLISHED_FIT, poi a 5
 PUBLISHED_FIT = 10
+COMMITMENTS_MAX = 30   # 1.76: gli impegni in /state; fit_state li scende a COMMITMENTS_FIT, poi a 5
+COMMITMENTS_FIT = 10
 RECAP_CUT = 80    # 1.7 fit_state: `done` e `next` del recap accorciati a fine parola invece di sparire per primi
 HIGH_WORDS = ["rm -rf", "git push", "deploy", "DROP", "ssh", "sudo", "--force", "git reset --hard"]
 LOW_TOOLS = {"Read", "Grep", "Glob", "WebFetch", "WebSearch", "LS", "TodoWrite"}
@@ -621,6 +623,10 @@ def build_state(src, now, fit=True):
         state["hosts_status"] = [dict(h, sessions=list(h.get("sessions") or [])) for h in (src.get("hosts_status") or [])]
     if "published_today" in src:
         state["published_today"] = [dict(x) for x in (src.get("published_today") or [])][:PUBLISHED_MAX]
+    # 1.76 (22/10, impegni sempre visibili, P2): gli approvati non compiuti dal registro (`task impegni --json`), fermi
+    # prima; [] quando non c'e' niente, assente con un relay vecchio
+    if "commitments" in src:
+        state["commitments"] = [dict(x) for x in (src.get("commitments") or [])][:COMMITMENTS_MAX]
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state
@@ -673,6 +679,10 @@ def fit_state(state, max_kb=8):
         state["published_today"] = state["published_today"][:PUBLISHED_FIT]
         if fits():
             return state
+    if len(state.get("commitments") or []) > COMMITMENTS_FIT:   # 1.76: i fermi e i piu' fermi restano
+        state["commitments"] = state["commitments"][:COMMITMENTS_FIT]
+        if fits():
+            return state
     state["projects"] = most_recent(state["projects"], 10)
     if fits():
         return state
@@ -702,6 +712,10 @@ def fit_state(state, max_kb=8):
         return state
     if state.get("published_today"):
         state["published_today"] = state["published_today"][:5]
+        if fits():
+            return state
+    if state.get("commitments"):
+        state["commitments"] = state["commitments"][:5]
         if fits():
             return state
     while not fits() and len(items) > 1:

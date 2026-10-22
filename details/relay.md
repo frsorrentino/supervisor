@@ -249,6 +249,40 @@ The list is counted by a detached `cm-relay.py published-refresh` at most once
 a minute and kept in `<relay.dir>/published-today.json`; a copy from another
 day is not served, so the first `/state` of the day may carry an empty list.
 
+Contract 1.76 keeps the commitments visible (22/10/2026, additive, `v` stays
+1; proposals P2-P4 of 21/10, approved by the maintainer at 23:58). `/state`
+carries `commitments`, the task registry's view (`supervisor task impegni
+--json`): every open task with a recorded ok or an approved plan, plus the
+ones waiting for an ok, stalled first, then by idle time; absent with an older
+relay, `[]` when there is nothing, cut to 10 then 5 by `fit_state` before
+projects and sessions. Each entry: `task`, `title`, `project` (as
+`sessions[].project`), `session` (who works on it, or null), `state`
+(`proposed|assigned|running|awaiting_ok|approved`), `lane`, `plan`,
+`approved`, `approved_at`, `approved_by`, `age_s` (since the ok, or since the
+task when not approved), `last_step` (`{at, kind: state|approval|result|step|
+amend|pause, text}`: only registry events, never a commit), `idle_s`, `next`
+(the `--next` of the last `task step`, else from the state), `waits` (`{who,
+on}`, `person` for the user: an `awaiting_ok` task waits on the person, every
+other one on its session), `expected` and `outcome_kind` (the contract's
+`outcome`, or null), `check` (`{outcome, at}` of the last recorded result, or
+null), `paused` (`{reason, at, by}` or null, from `task pause`) and `stalled`
+(approved, not paused, idle for `tasks.stall_hours`, 2 by default). An entry
+leaves when `task done` is green or the task is cancelled. `/events` adds
+`task_stalled`: one summary per guard round, `ref` the first task, `session`
+the one whose turn it is, a line per task in `body`; in `tasks.quiet_hours`
+(23-07) the person gets none and the morning report carries them. «Approve»
+(op `approve`, unchanged) now also wakes the task's session with a `talk`
+(«the user approved X at HH:MM: what. Go on, and close with task done X»),
+tells the master with another `talk` when she is not the one, and removes the
+session's «waiting for you» (`needs-you/<sid>.json`); the night report v2
+carries `commitments` with the same entries. The app's request
+(`docs/richieste/2026-10-22-impegni-approva.md` in supervisor-app) also asked
+for `release`/`installed_at` fields, per-commitment events, `covers[]` on the
+approvals and pause/step ops: the registry does not know a release or an
+installation, the list in `/state` replaces per-item events, the «covers»
+proposal is a later step, and pause/step stay CLI verbs of the sessions and
+the master for now.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

@@ -105,6 +105,8 @@ json.dump({"tmux": nome, "pid": int(pid), "cartella": cartella, "armato": time.s
            "gen": uuid.uuid4().hex[:8], "pulita": clean == "true", "conf_da": conf_da, "conf_a": conf_a,
            "sessione": sid, "account_a": acc_a}, open(f, "w"))
 PY
+  # P5 (22/10/2026): dalla master, la parte «impegni» del passaggio di consegne dal registro, prima del riavvio
+  [ "$nome" = "${CM_WORKSPACE_ROOT_SESSION_NAME:-master}" ] && python3 "$CM_SCRIPTS/cm-handoff.py" --snapshot "$cartella" "$nome" >/dev/null 2>&1 || true
   cm_msg restart.armed "name=$nome" "pid=$pid" "dir=$cartella"
   [ -n "$conf_a" ] && cm_msg restart.armed_switch "account=$(cm_get "$acc_a" LABEL || true)" "sid=$sid"
   [ "$clean" = true ] && cm_msg restart.armed_clean

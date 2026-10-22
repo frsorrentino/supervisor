@@ -194,6 +194,13 @@ T.check("NR7 on top: the question with its id and options, the registry's ok wit
         [(q["session"], q["id"], len(q["options"]), q["project"]) for q in att.get("questions", [])] == [("atlas", "q-1-1", 2, os.path.realpath(atlas))]
         and [(a["task"], a["what"], a["where"]) for a in att.get("approvals", [])] == [("v3", "release 1.2", "produzione")]
         and [u["text"] for u in att.get("unblock", [])] == ["ok al merge"], json.dumps(att))
+# NR-C (1.76, 22/10, P2): gli impegni dal registro nel resoconto — v3 aspetta l'ok (approved false), v2 senza ok non entra; la sezione nell'HTML
+cms = r.get("commitments")
+T.check("NR-C commitments from the registry: v3 awaiting_ok (approved false, waits for the person); v1 done and v2 without an ok are not commitments; key order of the contract",
+        [(x["task"], x["state"], x["approved"], x["waits"]) for x in cms or []] == [("v3", "awaiting_ok", False, {"who": "master", "on": "person"})]
+        and list(cms[0]) == ["task", "title", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"], json.dumps(cms)[:300])
+_html_c = NR.render_html(r)
+T.check("NR-C the HTML has an «Impegni» section with the task, «aspetta l'utente» and the next step", "<h2>Impegni</h2>" in _html_c and "<b>v3 · master · awaiting_ok</b>" in _html_c and "aspetta l&#x27;utente" in _html_c, _html_c[_html_c.find("<h2>Impegni"):][:300])
 tl = r.get("timeline", [])
 byid = {x["id"]: x for x in tl}
 T.check("NR8 timeline: the two night jobs of the window, the running one, the sessions atlas and orbit; yesterday's job and nova's `claude -p` transcript not repeated",
@@ -256,7 +263,7 @@ p = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night-report.py"), "--no
 r2 = json.loads(p.stdout) if p.returncode == 0 else {}
 T.check("NR21 missing sources are named in `sources` and the report is still built", p.returncode == 0
         and {k: r2["sources"][k] for k in ("night_done", "night_queue", "registry", "relay_state")} == {k: "missing" for k in ("night_done", "night_queue", "registry", "relay_state")}
-        and r2["attention"] == {"questions": [], "approvals": [], "unblock": []} and {x["id"] for x in r2["timeline"]} == {"atlas", "lyra", "orbit", "nova"},
+        and r2["attention"] == {"questions": [], "approvals": [], "unblock": []} and r2["commitments"] == [] and {x["id"] for x in r2["timeline"]} == {"atlas", "lyra", "orbit", "nova"},
         p.stdout[:300] + p.stderr[-500:])
 T.check("NR22 a bad --now → a plain error", run("--now", "yesterday", "--print")[0] != 0, "")
 
