@@ -34,6 +34,8 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 controllo) e i sei giorni prima con un conteggio; exit 3 senza registro
   supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P]
                                                 corregge il contratto di un compito aperto (validato di nuovo)
+  supervisor task short ID "testo" [--by B]     il titolo breve (task.short, 1-28 caratteri, una riga nell'app: contratto
+                                                1.79); senza, impegni e closed ne ricavano uno dal titolo (parole intere)
   supervisor task confirm ID --by B (--text T | --inbox MSG)   la conferma della persona (come approve); `task
   supervisor task confirmed ID                  confirmed ID` esce 0 se c'e': un controllo valido per un esito install
   supervisor task stall-check [--json]          gli impegni fermi da piu' di tasks.stall_hours non ancora avvisati
@@ -72,6 +74,13 @@ OUTCOME_MARKERS = {
 }
 STALL_HOURS = 2
 STEP_RANK = {"state": 0, "approval": 1, "result": 2, "amend": 3, "step": 3, "pause": 4, "commit": 5}
+SHORT_MAX = 28   # contratto 1.79: il titolo breve, una riga nell'app
+
+
+def short_of(task):
+    """task.short, o un ripiego dal titolo: parole intere fino a SHORT_MAX, mai «…» (cm-core.short_title)."""
+    s = " ".join(str(task.get("short") or "").split())
+    return s[:SHORT_MAX] if s else _load("cm-core").short_title(task.get("title") or "", SHORT_MAX)
 
 
 # ------------------------------------------------------------------ schema
@@ -473,7 +482,7 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
         if pz and pz["waits"] == "person":   # 1.77: in pausa per qualcosa che solo la persona puo' fare → «Per te» nell'app
             waits = {"who": session, "on": "person"}
         idle = max(0, now_ - last["at"])
-        out.append({"task": r["id"], "title": r["title"], "project": r["project"], "session": r["session"], "state": r["state"],
+        out.append({"task": r["id"], "title": r["title"], "short": short_of(task), "project": r["project"], "session": r["session"], "state": r["state"],
                     "lane": r["lane"], "plan": r["plan"], "approved": approved, "approved_at": approved_at, "approved_by": approved_by,
                     "age_s": max(0, now_ - int(approved_at or r["created_at"] or now_)), "last_step": last, "idle_s": idle,
                     "next": nxt, "waits": waits,
@@ -543,7 +552,7 @@ def closed(con, day=None, now_=None):
         task = json.loads(r["contract"])["task"]
         result = {"reason": res["reason"], "proof": json.loads(res["proof"])} if res else None
         day_ = dt.date.fromtimestamp(at)
-        by_day.setdefault(day_, []).append({"task": r["id"], "title": r["title"], "project": r["project"], "session": r["session"], "at": at,
+        by_day.setdefault(day_, []).append({"task": r["id"], "title": r["title"], "short": short_of(task), "project": r["project"], "session": r["session"], "at": at,
                                             "outcome": "green" if r["state"] == "done" else r["state"], "proof": proof_of(task, result)})
     rows = sorted(by_day.get(d0, []), key=lambda x: -x["at"])
     days = [{"date": d.isoformat(), "n": len(v)} for d, v in sorted(by_day.items(), reverse=True) if d < d0][:6]
@@ -643,6 +652,25 @@ def amend(con, tid, check=None, timeout_s=None, expected=None, kind=None, proof=
         return errs
     con.execute("UPDATE tasks SET contract=?, updated_at=? WHERE id=?", (json.dumps(contract, ensure_ascii=False), now(), tid))
     con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (tid, now(), by, "amend", "; ".join(changes)))
+    con.commit()
+    return []
+
+
+def set_short(con, tid, text, by=None):
+    """Il titolo breve di un compito aperto (contratto 1.79): 1-SHORT_MAX caratteri su una riga; [] o gli errori."""
+    row = get_task(con, tid)
+    if row["state"] not in OPEN_STATES:
+        sys.exit(f"task {tid}: already {row['state']}")
+    short = " ".join(str(text or "").split())
+    if not 1 <= len(short) <= SHORT_MAX:
+        return [f"$.task.short: 1-{SHORT_MAX} characters on one line, got {len(short)}"]
+    contract = json.loads(row["contract"])
+    contract["task"]["short"] = short
+    errs = validate(contract)
+    if errs:
+        return errs
+    con.execute("UPDATE tasks SET contract=?, updated_at=? WHERE id=?", (json.dumps(contract, ensure_ascii=False), now(), tid))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (tid, now(), by, "amend", f"short: {short}"))
     con.commit()
     return []
 
@@ -814,6 +842,15 @@ def main(argv):
         except ValueError:
             sys.exit("task amend: --timeout wants seconds")
         errs = amend(con, args[0], check, to, expected, kind, proof, by)
+        if errs:
+            print("\n".join(errs), file=sys.stderr)
+            return 2
+        return 0
+    if verb == "short":
+        by = _opt(args, "--by")
+        if len(args) != 2:
+            sys.exit('usage: task short ID "testo" [--by B]')
+        errs = set_short(con, args[0], args[1], by)
         if errs:
             print("\n".join(errs), file=sys.stderr)
             return 2

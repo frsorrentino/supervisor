@@ -54,7 +54,11 @@ check on an intermediate step. `supervisor task amend ID --check CMD |
 --outcome TEXT --kind K` corrects an open task; `task confirm ID --by B
 (--text T | --inbox MSG)` records the person's confirmation with the rules of
 `approve`, and `task confirmed ID` (exit 0 when it exists) is a valid check
-for an `install` outcome. `supervisor task impegni [--json] [--brief]
+for an `install` outcome. `task.short` (optional, 1-28 characters) is the
+title on one line in the app (contract 1.79): `supervisor task short ID
+"text"` sets it on an open task; without it `impegni` and `closed` derive one
+from the title (whole words within 28, no cut mark, no dangling article).
+`supervisor task impegni [--json] [--brief]
 [--stalled]` lists every approved task not yet done (an ok recorded or an
 approved plan) and the ones waiting for an ok, with age, last step, idle time,
 next step (`task step ID "text" --next "…"`), whose turn it is, pause with a

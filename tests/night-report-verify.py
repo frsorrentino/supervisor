@@ -198,7 +198,7 @@ T.check("NR7 on top: the question with its id and options, the registry's ok wit
 cms = r.get("commitments")
 T.check("NR-C commitments from the registry: v3 awaiting_ok (approved false, waits for the person); v1 done and v2 without an ok are not commitments; key order of the contract",
         [(x["task"], x["state"], x["approved"], x["waits"]) for x in cms or []] == [("v3", "awaiting_ok", False, {"who": "master", "on": "person"})]
-        and list(cms[0]) == ["task", "title", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"], json.dumps(cms)[:300])
+        and list(cms[0]) == ["task", "title", "short", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"], json.dumps(cms)[:300])
 _html_c = NR.render_html(r)
 T.check("NR-C the HTML has an «Impegni» section with the task, «aspetta l'utente» and the next step", "<h2>Impegni</h2>" in _html_c and "<b>v3 · master · awaiting_ok</b>" in _html_c and "aspetta l&#x27;utente" in _html_c, _html_c[_html_c.find("<h2>Impegni"):][:300])
 tl = r.get("timeline", [])

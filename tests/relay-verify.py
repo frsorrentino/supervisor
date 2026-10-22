@@ -3369,11 +3369,11 @@ T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalle
                                                                                                                   ("atlas-seo-pages", "approved", True, False, {"who": "person", "on": "atlas-shop"})]
         and _cm62[0]["check"] == {"outcome": "red", "at": 1789199760} and _cm62[0]["outcome_kind"] == "deploy" and _cm62[1]["session"] == F2["sessions"][0]["name"]
         and F3["commitments"][0]["paused"]["reason"] == "after the client's review" and F3["commitments"][0]["stalled"] is False
-        and all(list(x) == ["task", "title", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"] for s in (F2, F3) for x in s["commitments"]), str(_cm62)[:300])
+        and all(list(x) == ["task", "title", "short", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"] for s in (F2, F3) for x in s["commitments"]), str(_cm62)[:300])
 _ev62 = [e for e in EV if e["kind"] == "task_stalled"]
 T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
-_small62 = dict(_cm62[1], title="t", next="n", expected=None, outcome_kind=None)
+_small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
 _big62 = S.build_state(dict(SRC2, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
         len(S.build_state(dict(SRC2, commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
@@ -3386,5 +3386,32 @@ _d62 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R62 (1.76) push: commitments from `task impegni --json`, project relative as sessions[].project, title on one line",
         [(x["task"], x["project"], x["title"]) for x in _d62.get("commitments") or []] == [("atlas-release-2-4", "personal/atlas-shop", "Release 2.4 of atlas-shop")], str(_d62.get("commitments")))
 (tmp / "impegni.json").unlink()
+
+# R65 (contratto 1.79, 22/10, titolo breve: una riga sola nell'app, mai «…»): `short` negli impegni, nelle righe di done e dell'agenda
+(tmp / "impegni.json").write_text(json.dumps([dict(_small62, task="t-short", title="Release 2.4 of atlas-shop, the one with the new checkout", short="Release 2.4 of atlas-shop"),
+                                               {k: v for k, v in dict(_small62, task="t-derived", title="Move the docs site to the new host (orbit-docs)").items() if k != "short"}]))
+_d65 = json.loads(relay("push", "--dry-run").stdout)
+(tmp / "impegni.json").unlink()
+T.check("R65 (1.79) push: commitments carry `short` — the registry's when set, else derived from the title (whole words, at most 28, no «…»)",
+        [(x["task"], x["short"]) for x in _d65.get("commitments") or []] == [("t-short", "Release 2.4 of atlas-shop"), ("t-derived", "Move the docs site")], str(_d65.get("commitments")))
+T.check("R65 (1.79) the fixtures: every commitment of state-2/3 and the night report, every row of done …0760 and of agenda …0386 has a short of 1-28 characters without «…»",
+        all(0 < len(x["short"]) <= 28 and "…" not in x["short"] for s in (F2, F3) for x in s["commitments"])
+        and all(0 < len(x["short"]) <= 28 for x in json.loads(_res64["6f1c2d3e-0760-4000-8000-0000000000760"]["text"])["rows"])
+        and all(0 < len(x["short"]) <= 28 for x in json.loads(_res40["6f1c2d3e-0386-4000-8000-000000000386"]["text"])["rows"]), "")
+_ag65 = tmp / "agenda65.tsv"
+_ag65.write_bytes(("# state\tscope\tblocks\ttitle\tref\tdetail\tuntil\tshort\n"
+                   "aperto\tagenzia\towner\tConfirm the 6 client ids with a candidate\t.claude/to-decide.md\t\t\tClient ids to confirm\n"
+                   "aperto\tpersonale\tclaude\tMove the docs site to the new host\torbit-docs\n").encode())
+_rel65 = RL.CFG.setdefault("relay", {})
+_saved65 = _rel65.get("agenda_file")
+try:
+    _rel65["agenda_file"] = str(_ag65)
+    _rows65 = json.loads(RL.agenda_list()[1])["rows"]
+    _set65 = RL.agenda_set({"action": "done"}, _rows65[0]["key"])
+finally:
+    _rel65["agenda_file"] = _saved65
+T.check("R65 (1.79) agenda rows carry `short`: column 8 when written, else derived from the title; agenda_set keeps the column and answers with it",
+        [r["short"] for r in _rows65] == ["Client ids to confirm", "Move the docs site"] and _set65[0] is True and json.loads(_set65[1])["row"]["short"] == "Client ids to confirm"
+        and _ag65.read_text().splitlines()[1].endswith("\tClient ids to confirm"), str(_rows65) + str(_set65))
 
 T.finish()

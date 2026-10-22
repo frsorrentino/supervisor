@@ -708,6 +708,37 @@ def short_name(name, prefixes=(), n=NAME_MAX):
     return name[:n]
 
 
+SHORT_TAIL = frozenset("a al alla alle ai agli an and as at che con da dal dalla dei del della delle di e ed for from gli i il in l la le lo "
+                       "nel nella nei non not of on or per su sul sulla the to un una uno with".split())   # mai in coda a un titolo breve
+SHORT_MAX = 28    # il titolo breve di un compito o di una voce dell'agenda: una riga sola nell'app (contratto 1.79)
+
+
+def short_title(text, n=SHORT_MAX):
+    """Un titolo breve ricavato dal titolo (22/10/2026, contratto 1.79: ogni riga della pagina Lavori sta su una riga e
+    l'app non mette mai «…»): spazi normalizzati, via un prefisso «nome: » senza spazi (il progetto o la sessione: la
+    riga li porta a parte), poi parole intere fino a n caratteri, senza virgole, due punti o una parentesi aperta in
+    coda. Una prima parola piu' lunga di n si taglia a n. Mai vuoto quando il titolo non lo e'."""
+    t = " ".join(str(text or "").split())
+    m = re.match(r"^[\w.-]+:\s+(\S.*)$", t)
+    if m and len(t) > n:
+        t = m.group(1)
+    if len(t) <= n:
+        return t
+    cut = t[:n + 1]
+    out = cut[:cut.rfind(" ")] if " " in cut else t[:n]
+    while True:
+        was = out
+        out = out.rstrip(" ,;:·-(")
+        if "(" in out and ")" not in out[out.rfind("("):]:
+            out = out[:out.rfind("(")]
+        words = out.split()
+        if len(words) > 1 and words[-1].lower() in SHORT_TAIL:   # «Move the docs site to the» → «Move the docs site»
+            out = " ".join(words[:-1])
+        if out == was:
+            break
+    return out.strip() or t[:n].strip()
+
+
 def line(text):
     """Una riga logica = una riga fisica (l'utente 12/09 11:14, screenshot di telefono e watch): spazi normalizzati,
     NESSUN taglio ne' a capo interno — la bolla di Telegram si allarga quanto la riga piu' lunga, e a 22

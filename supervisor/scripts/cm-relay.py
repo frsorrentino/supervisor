@@ -64,6 +64,7 @@ def _load(name):
 
 cm = _load("cm-config")
 S = _load("cm-relay-state")
+short_title = _load("cm-core").short_title   # 1.79: the short title of a task or an agenda row
 C = _load("cm-relay-crypto")
 DF = _load("cm-diff")   # 1.72: il diff dal telefono (voci, op diff e changes, pillola)
 core = _load("cm-core")   # il cuore condiviso (16/09): ledger, transcript, icona, reopen — niente Telegram
@@ -1208,6 +1209,7 @@ def commitments_list():
         y = dict(x)
         y["project"] = S.project_of(x.get("project") or "", root)
         y["title"] = S.one_line(str(x.get("title") or ""))[:200]
+        y["short"] = short_title(x.get("short") or y["title"])   # 1.79: one line in the app, never «…»
         out.append(y)
     return out[:S.COMMITMENTS_MAX]
 
@@ -2717,6 +2719,7 @@ def done_list(arg):
         y = dict(x)
         y["project"] = S.project_of(x.get("project") or "", root)
         y["title"] = S.one_line(str(x.get("title") or ""))[:200]
+        y["short"] = short_title(x.get("short") or y["title"])   # 1.79
         rows.append(y)
     res = {"date": d.get("date"), "rows": rows, "days": list(d.get("days") or []), "more": False}
     while rows and len(json.dumps(res, ensure_ascii=False).encode()) > DONE_MAX_BYTES:
@@ -2725,7 +2728,7 @@ def done_list(arg):
     return True, json.dumps(res, ensure_ascii=False)
 
 
-AGENDA_FIELDS = ("state", "scope", "blocks", "title", "ref", "detail", "until")
+AGENDA_FIELDS = ("state", "scope", "blocks", "title", "ref", "detail", "until", "short")   # 1.79: column 8, optional
 AGENDA_CLOSED = ("fatto", "scartato")
 AGENDA_ACTIONS = {"done": "fatto", "snooze": "sospeso", "remove": "scartato", "pass": None}
 AGENDA_BACKUPS = 30
@@ -2764,10 +2767,16 @@ def agenda_keys(lines):
 
 def agenda_row(line, key):
     """A TSV line as the op shows it: «chiuso» reads as «fatto»; detail with its «\n» turned into line breaks, or null;
-    until only as AAAA-MM-GG, or null. Columns past the seventh are not read."""
+    until only as AAAA-MM-GG, or null. 1.79: `short`, column 8 when written (the master writes it), else derived from
+    the title (whole words, at most 28). Columns past the eighth are not read."""
     cells = [c.strip() for c in line.rstrip("\r\n").split("\t")]
     cells += [""] * (len(AGENDA_FIELDS) - len(cells))
-    row = dict(zip(AGENDA_FIELDS, cells[:len(AGENDA_FIELDS)]))
+    got = dict(zip(AGENDA_FIELDS, cells[:len(AGENDA_FIELDS)]))
+    row = {}
+    for k in AGENDA_FIELDS[:-1]:   # `short` right after `title`, as in commitments and done
+        row[k] = got[k]
+        if k == "title":
+            row["short"] = short_title(got["short"] or got["title"])
     if row["state"] == "chiuso":
         row["state"] = "fatto"
     row["detail"] = row["detail"].replace("\\n", "\n") or None

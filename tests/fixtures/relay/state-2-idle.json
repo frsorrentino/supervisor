@@ -268,6 +268,7 @@
     {
       "task": "ledger-migrations-011",
       "title": "Migrations 008-011 on staging",
+      "short": "Migrations 008-011",
       "project": "work/clients/ledger-api",
       "session": "ledger-api",
       "state": "running",
@@ -300,6 +301,7 @@
     {
       "task": "atlas-seo-pages",
       "title": "SEO pages of atlas-shop online",
+      "short": "SEO pages of atlas-shop",
       "project": "personal/atlas-shop",
       "session": "atlas-shop",
       "state": "approved",

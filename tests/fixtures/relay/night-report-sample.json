@@ -63,6 +63,7 @@
     {
       "task": "ledger-release-14",
       "title": "Release 1.4 di ledger-api",
+      "short": "Release 1.4 di ledger-api",
       "project": "/w/ledger-api",
       "session": "ledger-api",
       "state": "awaiting_ok",
@@ -92,6 +93,7 @@
     {
       "task": "notes-gantt-apk",
       "title": "APK del Gantt sul telefono",
+      "short": "APK del Gantt sul telefono",
       "project": "/w/field-notes",
       "session": "field-notes",
       "state": "running",

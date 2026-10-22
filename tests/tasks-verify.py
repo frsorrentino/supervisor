@@ -346,7 +346,7 @@ rows18 = {x["task"]: x for x in c18["rows"]}
 T.check("T18 closed --json: {date (today), rows (newest first, outcome green|cancelled|failed, at, session, proof), days, more false}",
         c18["date"] == time.strftime("%Y-%m-%d") and c18["more"] is False and [x["at"] for x in c18["rows"]] == sorted((x["at"] for x in c18["rows"]), reverse=True)
         and rows18["g1"]["outcome"] == "green" and rows18["g1"]["session"] == "cm-a" and rows18["r1"]["outcome"] == "failed" and rows18["z2"]["outcome"] == "cancelled"
-        and list(rows18["g1"]) == ["task", "title", "project", "session", "at", "outcome", "proof"], json.dumps(c18)[:400])
+        and list(rows18["g1"]) == ["task", "title", "short", "project", "session", "at", "outcome", "proof"], json.dumps(c18)[:400])
 T.check("T18 the proof: release from the check's tag; commit from the outcome (short hash, no url without a GitHub remote); file from the outcome; else the check's first line",
         rows18["z2"]["proof"] == {"kind": "release", "value": "v1.2.3", "url": None} and rows18["z5"]["proof"] == {"kind": "release", "value": "impegni-2026-10-22-b", "url": None} and rows18["z3"]["proof"] == {"kind": "commit", "value": "9f8e7d6", "url": None}
         and rows18["z4"]["proof"] == {"kind": "file", "value": "docs/notte/2026-10-22-prova.md", "url": None} and rows18["g1"]["proof"] == {"kind": "check", "value": "test -f ok.txt", "url": None}, json.dumps({k: v["proof"] for k, v in rows18.items()}))
@@ -386,5 +386,32 @@ with T.PrivateTmux() as tm:
     rel19 = inbox_put("altra", "Dall'utente via telefono. vai pure", "relay")
     rc, out, err = cm("approve", "s5", "--by", "maintainer", "--inbox", rel19, env=A19)
     T.check("T19 from the task's session, a relay message addressed to it (the app's chat) → approved", rc == 0 and show("s5")["state"] == "approved" and "origin relay, to altra" in show("s5")["approvals"][-1]["text"], err)
+
+# T20 (22/10/2026, contratto 1.79, titolo-breve): task.short al massimo 28 caratteri; `task short`; il ripiego dal titolo a parole intere
+rc, out, err = add(contract("u1", title="supervisor: titolo breve dei compiti (campo short) nel registro", short="x" * 29))
+T.check("T20 a short of 29 characters is refused by task add (exit 2, the field named)", rc == 2 and "$.task.short: length out of range" in err, err)
+rc, out, err = add(contract("u1", title="supervisor: titolo breve dei compiti (campo short) nel registro", short="Titolo breve nel registro"))
+add(contract("u2", title="Albo Chiaro fase 1 (task 1-8): repository e CI, verifiche, database"))
+add(contract("u3", title="Move the docs site to the new host"))
+for tid in ("u1", "u2", "u3"):
+    cm("approve", tid, "--by", "maintainer", "--text", "ok")
+imp = {x["task"]: x for x in json.loads(cm("impegni", "--json")[1])}
+T.check("T20 task add keeps a short of 28 or less; impegni --json carries `short` right after `title`",
+        rc == 0 and imp["u1"]["short"] == "Titolo breve nel registro" and list(imp["u1"])[:3] == ["task", "title", "short"], out + err + json.dumps(imp.get("u1")))
+T.check("T20 without short: derived from the title, whole words within 28, no «…», no dangling parenthesis, no article or preposition at the end; «name: » prefix dropped",
+        imp["u2"]["short"] == "Albo Chiaro fase 1" and imp["u3"]["short"] == "Move the docs site" and "…" not in imp["u2"]["short"]
+        and json.loads(cm("show", "u2", "--json")[1])["contract"]["task"].get("short") is None, json.dumps({k: v["short"] for k, v in imp.items()}))
+rc, out, err = cm("short", "u2", "Albo Chiaro, fase 1", "--by", "master")
+s20 = show("u2")
+T.check("T20 `task short ID \"testo\" --by B` sets task.short (validated, an amend step with who) and impegni shows it",
+        rc == 0 and s20["contract"]["task"]["short"] == "Albo Chiaro, fase 1" and s20["steps"][-1]["kind"] == "amend" and s20["steps"][-1]["text"] == "short: Albo Chiaro, fase 1" and s20["steps"][-1]["by_"] == "master"
+        and {x["task"]: x["short"] for x in json.loads(cm("impegni", "--json")[1])}["u2"] == "Albo Chiaro, fase 1", err + json.dumps(s20["steps"][-1:]))
+rc, out, err = cm("short", "u2", "  Un titolo che supera i ventotto caratteri  ")
+rc2, out2, err2 = cm("short", "u2", "   ")
+T.check("T20 `task short` refuses 29+ characters and an empty text (exit 2, nothing changes)", rc == 2 and rc2 == 2 and "$.task.short: 1-28" in err and "$.task.short: 1-28" in err2 and show("u2")["contract"]["task"]["short"] == "Albo Chiaro, fase 1", err + err2)
+cm("cancel", "u3")
+rc, out, err = cm("short", "u3", "Docs site")
+cl = {x["task"]: x for x in json.loads(cm("closed", "--json")[1])["rows"]}
+T.check("T20 a closed task takes no short; `task closed` rows carry `short` too (derived here)", rc != 0 and "already cancelled" in err and cl["u3"]["short"] == imp["u3"]["short"] and list(cl["u3"])[:3] == ["task", "title", "short"], err + json.dumps(cl.get("u3")))
 
 T.finish()

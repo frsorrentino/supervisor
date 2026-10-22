@@ -191,6 +191,7 @@
     {
       "task": "orbit-docs-site",
       "title": "Publish the orbit docs site",
+      "short": "Publish the orbit docs site",
       "project": "work/own/orbit-docs",
       "session": "orbit-docs",
       "state": "approved",

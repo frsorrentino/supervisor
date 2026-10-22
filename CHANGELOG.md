@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.45 — 2026-10-22: a short title for every task and agenda row (contract 1.79).**
+  - Asked by the master on 22/10 at 21:16 after the maintainer's ok from the phone on the mockup of the «In corso» block of the app's «Lavori» page: one row per task, a title on one line, never «…».
+  - `task.short` (optional, 1-28 characters) in the contract, validated by `task add`; `supervisor task short ID "text" [--by B]` sets it on an open task (an amend step). Without it the registry derives one from the title: a leading `name: ` prefix dropped, whole words within 28, no comma, open parenthesis, article or preposition at the end.
+  - `short` right after `title` in `task impegni --json`, `task closed --json`, `/state.commitments`, the rows of op `done` and the night report's commitments; the rows of op `agenda` and `agenda_set` carry it too: column 8 of the agenda file when written (the master writes it), else derived.
+  - Fixtures: `state-2-idle.json`, `state-3-stale.json`, `cmd-result-sample.json` (agenda, agenda_set, done), `night-report-sample.json`; the schema copy in fable-director updated.
+  - Tests: T20 (registry), R65 (relay: push, fixtures, agenda column 8), the key order in R62 and NR-C, T18.
 - **0.8.44 — 2026-10-22: no emoji in the texts generated for the app and the notifications (contract 1.78).**
   - Asked by the maintainer on 22/10 at 13:36 from the web («non voglio emoji nell'app o nelle notifiche, solo svg o fontawesome», with the screenshot of a «⛔ limite cinque ore finito» notification).
   - Event titles are the plain name or text (question, answered, outcome, gone, quota, quota_limit, turn_failed, task_check, task_stalled, relay_stale, restart_failed), the recap's and the night report's lines carry no marks (`ok`/`KO` before a night job), the guard's quota and stall messages, the question notices on Telegram and the wrist lose their symbol. The type stays in `kind`; `task_check` events add `ok` (true when green). The sessions' `icon` (the tab's colour) is data and stays.

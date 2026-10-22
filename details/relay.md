@@ -319,6 +319,24 @@ The sessions' `icon` (the tab's colour circle) is data, not decoration, and
 stays. Fixtures: `events-sample.json` and `local-api.json` without emoji,
 `task_check` with `ok`.
 
+Contract 1.79 gives every row of the app's «Lavori» page a short title
+(22/10/2026, the maintainer's ok from the phone at 21:16 on the mockup of the
+«In corso» block; additive, `v` stays 1): one line, at most 28 characters,
+and the app never writes «…». Each entry of `/state.commitments` and each row
+of op `done` carries `short` right after `title`: the task's `task.short`
+when the contract has it (`supervisor task short ID "text"`, or `short` in
+the contract given to `task add`, 1-28 characters), else one derived from the
+title: spaces normalised, a leading `name: ` prefix without spaces dropped
+(the project or the session, which the entry carries apart), whole words up
+to 28, no comma, colon, open parenthesis, article or preposition left at the
+end; a first word longer than 28 is cut at 28. The rows of op `agenda` (and
+the row `agenda_set` answers with) carry `short` the same way: column 8 of
+`relay.agenda_file` when written (`state, scope, blocks, title, ref, detail,
+until, short`; the master writes it), else derived from the title. Fixtures:
+`state-2-idle.json` and `state-3-stale.json` (one explicit short, the others
+derived), `cmd-result-sample.json` (…0386, …0470-…0474, …0760),
+`night-report-sample.json`.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within
