@@ -150,6 +150,11 @@ T.check("H4c stop row carries tail and esito (the «Esito:» line), last still �
 r = hook("StopFailure", {"session_id": "sid3", "error": "boom"})
 rows = [json.loads(l) for l in ledger.read_text().splitlines()]
 T.check("H5 StopFailure in the ledger", rows[-1]["event"] == "stop-failure" and rows[-1]["error"] == "boom", str(rows[-1]))
+# H5d (22/10/2026, 0.8.41): il motivo vero sta in last_assistant_message quando error_details manca
+r = hook("StopFailure", {"session_id": "sid3d", "error": "server_error", "error_details": "", "last_assistant_message": "API Error: 529  overloaded\n{\"type\":\"error\"}"})
+rows = [json.loads(l) for l in ledger.read_text().splitlines()]
+T.check("H5d StopFailure keeps the error type and the rendered error text (whitespace folded) in the ledger as details",
+        rows[-1]["error"] == "server_error" and rows[-1]["details"] == 'API Error: 529 overloaded {"type":"error"}', str(rows[-1]))
 # H5b: lo Stop toglie il flag waiting — a fine turno nessun dialogo e' aperto (risposta da tastiera: nessun prompt fino al turno dopo)
 (state / "waiting" / "sid-stop").write_text("AskUserQuestion")
 r = hook("Stop", {"session_id": "sid-stop", "cwd": str(home), "last_assistant_message": "fatto"})

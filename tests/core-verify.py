@@ -387,4 +387,20 @@ T.check("CO16 (1.73) prefix + [studio] block + blank line + text → the text an
         and core._origin_of(f"{_pre16} [studio]\nno end") == ("[studio]\nno end", _org16)
         and core._origin_of(f"{_blk16}\n\nhi") == (f"{_blk16}\n\nhi", "pc"), str(core._origin_of(f"{_pre16} {_blk16}\n\nwhat is due this week?")))
 
+# CO-N (22/10/2026, relay-filtro-api-request): i record api-request della trascrizione (dalla 2.1.300) si scartano dal
+# prefisso di riga, prima di json.loads, anche se dentro hanno «"type":"user"», «Bash», «Esito» e un timestamp
+T.check("CO-N noise(): api-request and api-request-blob lines, bytes or str; a user line that mentions api-request in its text is not noise",
+        core.noise(b'{"type":"api-request","sessionId":"x"}') and core.noise('{"type": "api-request-blob","x":1}') and core.noise(b'  {"type":"api-request"}')
+        and not core.noise(b'{"type":"user","message":{"content":"api-request"}}') and not core.noise(b"") and not core.noise("{}"), "")
+_tn = tdir / "S-N.jsonl"
+_u = {"type": "user", "uuid": "u-n1", "timestamp": "2026-10-22T01:00:00.000Z", "cwd": str(tdir), "message": {"role": "user", "content": "ciao"}}
+_a = {"type": "assistant", "uuid": "a-n1", "timestamp": "2026-10-22T01:00:05.000Z", "message": {"role": "assistant", "model": "claude-opus-5-5", "content": [{"type": "text", "text": "Esito: fatto"}]}}
+_api = {"type": "api-request", "timestamp": "2026-10-22T01:30:00.000Z", "request": {"messages": [dict(_u, uuid="u-fake"), {"type": "user", "content": [{"type": "tool_result", "content": "Esito: finto"}]}],
+        "tools": [{"name": "Bash", "input": {"command": "rm -rf /"}}]}}
+_tn.write_text("\n".join(json.dumps(x) for x in (_u, _a)) + "\n")
+_ev1, _ = core.transcript_events(_tn, 0)
+_tn.write_text("\n".join(json.dumps(x) for x in (_api, _u, _api, _a, _api)) + "\n")
+_ev2, _ = core.transcript_events(_tn, 0)
+T.check("CO-N transcript_events: three api-request lines around the same user and assistant lines add no event", _ev1 == _ev2 and len(_ev1) >= 1, str((_ev1, _ev2))[:300])
+
 T.finish()

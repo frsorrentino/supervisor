@@ -105,7 +105,7 @@ def idle_compaction(lines, i, d):
         return None
     start = core._turn_epoch(d.get("timestamp")) - int(meta.get("durationMs") or 0) / 1000
     for raw in reversed(lines[max(0, i - 400):i]):
-        if b'"type":"assistant"' not in raw and b'"type":"user"' not in raw:
+        if (b'"type":"assistant"' not in raw and b'"type":"user"' not in raw) or core.noise(raw):
             continue
         try:
             p = json.loads(raw)
@@ -135,6 +135,8 @@ def transcript_events(path, since):
             lines = lines[1:]
         first = None
         for raw in lines[:50]:
+            if core.noise(raw):
+                continue
             try:
                 first = core._turn_epoch(json.loads(raw).get("timestamp"))
                 if first:
@@ -145,7 +147,7 @@ def transcript_events(path, since):
             break
     out, tests, peers = [], {}, set()
     for i, raw in enumerate(lines):
-        if not raw.strip() or not (b'"Bash"' in raw or b"tool_result" in raw or b"Esito" in raw or b"Outcome" in raw or b'"type":"user"' in raw
+        if not raw.strip() or core.noise(raw) or not (b'"Bash"' in raw or b"tool_result" in raw or b"Esito" in raw or b"Outcome" in raw or b'"type":"user"' in raw
                                    or b'"peer"' in raw or b"queued_command" in raw or b'"compact_boundary"' in raw):
             continue
         try:

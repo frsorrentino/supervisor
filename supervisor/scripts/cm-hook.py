@@ -462,9 +462,12 @@ def main(argv):
             if box:
                 sys.stdout.write(json.dumps({"decision": "block", "reason": box}, ensure_ascii=False) + "\n")
     elif ev == "StopFailure":
-        ledger("stop-failure", p, error=str(p.get("error", ""))[:200])
+        # 22/10/2026 (0.8.41, nota sul changelog 2.1.306): in 65 stop-failure del ledger error_details era sempre vuoto e il
+        # motivo vero stava in last_assistant_message («the API error string itself»), che nessuno leggeva
+        details = " ".join(str(p.get("error_details") or p.get("last_assistant_message") or "").split())[:300]
+        ledger("stop-failure", p, error=str(p.get("error", ""))[:200], details=details[:200])
         # 1.58 (14/10): un turno fermato dal limite della quota → il telefono propone le tre strade
-        err = (str(p.get("error", "")) + " " + str(p.get("error_details", ""))).strip()
+        err = (str(p.get("error", "")) + (": " + details if details else "")).strip()
         name = my_tmux_name() if (CFG.get("relay") or {}).get("enabled") else ""
         if name and re.search(r"rate.?limit|usage.?limit|limit reached|quota", err, re.I):
             subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name], stdin=subprocess.DEVNULL,

@@ -449,4 +449,18 @@ p = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night-report.py"), "--no
 r5 = json.loads(p.stdout) if p.returncode == 0 else {}
 T.check("NR37 (v2) --no-remote: no host read, no win session", "host:win" not in r5.get("sources", {}) and not any(x.get("host") == "win" for x in r5.get("timeline", [])), json.dumps(r5.get("sources")))
 
+# NR-N (22/10/2026, relay-filtro-api-request): un api-request porta un timestamp e contava come attivita': ora e' scartato
+_pn = tmp / "nr-n.jsonl"
+_b0 = EVE + 2 * H
+_ts = lambda s: dt.datetime.fromtimestamp(s, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # noqa: E731
+_real = [{"type": "user", "uuid": "n-u", "timestamp": _ts(_b0), "cwd": str(tmp), "message": {"role": "user", "content": "vai"}},
+         {"type": "assistant", "uuid": "n-a", "timestamp": _ts(_b0 + 60), "message": {"role": "assistant", "content": [{"type": "text", "text": "ok"}]}}]
+_pn.write_text("\n".join(json.dumps(x, separators=(",", ":")) for x in _real) + "\n")   # compatto come Claude Code: scan cerca "timestamp":"
+_s1 = NR.scan(_pn, EVE, NOW)
+_noise = [{"type": "api-request", "timestamp": _ts(_b0 + 40 * 60 * k), "request": {"messages": [{"type": "user", "content": "x"}]}} for k in range(1, 6)]
+_pn.write_text("\n".join(json.dumps(x, separators=(",", ":")) for x in _real + _noise) + "\n")
+_s2 = NR.scan(_pn, EVE, NOW)
+T.check("NR-N scan: five api-request lines with timestamps 40 minutes apart add no span (they are not the session's activity)",
+        _s1["spans"] == _s2["spans"] and len(_s1["spans"]) == 1, str((_s1["spans"], _s2["spans"])))
+
 T.finish()

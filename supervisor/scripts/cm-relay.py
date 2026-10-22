@@ -4730,7 +4730,7 @@ def turn_failed(tm, error):
     write_json(p, {k: v for k, v in seen.items() if now - float(v or 0) < 86400})
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None) or {}
     name = S.short_name(tm, prefixes())
-    reason = S.redact_preview(S.short_of(error or "?", 120))
+    reason = S.redact_preview(S.short_of(error or "?", 160))   # 22/10: anche il testo dell'errore mostrato in chat
     attention_mark("turn_failed", name, name, M("relay.event_turn_failed", name=name, reason=reason))
     emit("turn_failed", M("relay.event_turn_failed", name=name, reason=reason), "", ref=name, account=row.get("account"), session=name,
          extra={"reason": reason, "continue_text": M("relay.continue_text")})

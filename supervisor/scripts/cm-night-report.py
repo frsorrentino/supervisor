@@ -186,6 +186,8 @@ def scan(path, since, until):
     except OSError:
         return {"spans": [], "assigned": [], "name": None}
     for raw in data.split(b"\n"):
+        if core.noise(raw):   # 22/10: un api-request ha un timestamp, e contava come attivita'
+            continue
         head = raw[:64]
         if b'"agent-name"' in head or b'"custom-title"' in head:
             try:

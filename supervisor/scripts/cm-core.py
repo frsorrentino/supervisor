@@ -22,6 +22,19 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# 22/10/2026 (relay-filtro-api-request, chiesto dal maintainer il 19/10 dalla web app): dalla 2.1.300 la trascrizione porta i
+# record api-request (la richiesta intera: strumenti, sistema, messaggi), il 6-17 % dei byte, e ogni filtro a
+# sottostringa li prendeva perche' contengono tutto («Bash», «tool_result», «Esito», un timestamp). Si scartano dal
+# prefisso di riga, prima di json.loads. Misura del 19/10: il demone del relay a 26 min di CPU in 11 h, RSS 331 MB.
+_NOISE_RE = re.compile(rb'^\s*\{"type":\s*"api-request')
+
+
+def noise(raw):
+    """True per una riga della trascrizione da non leggere (api-request e api-request-blob); bytes o str."""
+    head = raw[:40]
+    if isinstance(head, str):
+        head = head.encode("utf-8", "replace")
+    return _NOISE_RE.match(head) is not None
 
 
 def _load(name):
@@ -162,6 +175,8 @@ def pending_ask(path, window=1024 * 1024):
         return None
     asks, done = {}, set()
     for line in lines:
+        if noise(line):
+            continue
         try:
             d = json.loads(line)
         except ValueError:
@@ -274,7 +289,7 @@ WINDOW_STD = 200_000
 def _identity_in(lines):
     """L'ULTIMA voce di sistema col modello fra queste righe, o None."""
     for raw in reversed(lines):
-        if not raw.strip():
+        if not raw.strip() or noise(raw):
             continue
         try:
             d = json.loads(raw)
@@ -450,7 +465,7 @@ def _transcript_runtime(row, tail_bytes, head_bytes):
         lines = lines[1:]   # la prima riga della coda e' mozza
     assistant, boundary = None, None
     for raw in reversed(lines):
-        if not raw.strip():
+        if not raw.strip() or noise(raw):
             continue
         try:
             d = json.loads(raw)
@@ -606,7 +621,7 @@ def model_fallback(row, tail_bytes=512 * 1024):
             size = os.fstat(f.fileno()).st_size
             f.seek(max(0, size - tail_bytes))
             for raw in reversed(f.read().split(b"\n")):
-                if b'"type":"assistant"' not in raw:
+                if b'"type":"assistant"' not in raw or noise(raw):
                     continue
                 try:
                     m = str((json.loads(raw).get("message") or {}).get("model") or "")
@@ -913,6 +928,8 @@ def transcript_diffs(path, diff_cap):
         return []
     writes, out = {}, []
     for raw in data.split(b"\n"):
+        if noise(raw):
+            continue
         if b'"tool_use"' in raw and any(n in raw for n in _WRITE_NAMES):
             try:
                 d = json.loads(raw)
@@ -1003,7 +1020,7 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
         peer_seen.add(o.get("msg_id"))
         return t, origin
     for raw in lines:
-        if not raw.strip():
+        if not raw.strip() or noise(raw):
             continue
         if chat_only and (b'"tool_result"' in raw or (b'"tool_use"' in raw and b'"type":"text"' not in raw)):
             continue
@@ -1121,7 +1138,7 @@ def transcript_events(path, offset):
     except OSError:
         return events, offset
     for raw in data.split(b"\n"):
-        if not raw.strip():
+        if not raw.strip() or noise(raw):
             continue
         try:
             d = json.loads(raw)

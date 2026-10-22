@@ -2714,6 +2714,12 @@ k46 = got46[0][3] if got46 else {}
 T.check("R46 (1.61) turn_failed: one event per session per minute, the reason in one line with the key hidden, continue_text for the button",
         len(got46) == 1 and got46[0][0] == "turn_failed" and "529 overloaded_error" in got46[0][1] and "sk-abc" not in got46[0][1]
         and k46["extra"]["reason"].endswith("key •••)") and k46["extra"]["continue_text"] and k46["session"] == "atlas-shop" and k46["ref"] == "atlas-shop", str(got46))
+RL.rdir, RL._json_cmd, RL.emit = (lambda: f46), (lambda *a, **kw: [{"name": "field-notes", "tmux": "field-notes", "account": "personal"}]), (lambda kind, title, body, **kw: got46.append((kind, title, body, kw)))
+RL.turn_failed("field-notes", "server_error: API Error: 529 overloaded (key sk-abcdefghijklmnopqrstuv) " + "x" * 300)   # 22/10 (0.8.41): il testo mostrato in chat
+RL.rdir, RL._json_cmd, RL.emit = _rd, _jc, _em
+_r46b = got46[1][3]["extra"]["reason"] if len(got46) > 1 else ""
+T.check("R46b (0.8.41) the reason composed by the hook (type: rendered error text) reaches the phone cut at 160 characters, the key hidden",
+        len(got46) == 2 and _r46b.startswith("server_error: API Error: 529 overloaded (key •••)") and "sk-abc" not in _r46b and len(_r46b) <= 161, _r46b)
 
 
 # R47 (contratto 1.62, 14/10): telefono e orologio zitti quando la sessione e' usata al PC
