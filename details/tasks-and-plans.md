@@ -24,10 +24,19 @@ only as the command (`bash release.sh 1.0`, `./release.sh`), not as an argument
 (`grep … release.sh`). The hooks that block a push when the guard fails wait 30
 seconds, so a loaded machine does not block it by timeout.
 
-An ok on someone's behalf comes from their device. From a Claude session,
-`supervisor task approve ID --by NAME --inbox MSG [--text NOTE]` is the only
-way: only the root session can run it, `MSG` must be a relay message (phone,
-watch, web app) in its inbox from the last hour, and the ok quotes that message.
+An ok on someone's behalf comes from the person, never from the model. From a
+Claude session, `supervisor task approve ID --by NAME --inbox MSG [--text
+NOTE]` is the only way, and `MSG` must be a message of the person from the
+last hour: the root session cites a relay message (phone, watch, web app)
+addressed to it; since 22/10/2026 the task's own session cites a message
+addressed to it, either typed by the person in its terminal (the
+`UserPromptSubmit` hook saves every prompt the person types in the session's
+inbox with origin `terminal`, delivered, pruned after a day; never a
+cross-session message, a notification, a slash command or a text that matches
+a fresh record of the box, which is what the relay and `talk` write before
+delivering) or arrived from the relay (the app's chat). A text from another
+session (origin `session`) is refused. The ok quotes the message with its id,
+origin and recipient.
 The relay's own oks («Approve» on the phone) are recorded as before. Once an
 hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
 check is green (`supervisor task auto-close`); a red check there leaves the task

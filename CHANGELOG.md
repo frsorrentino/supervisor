@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.43 — 2026-10-22: an ok the person writes in a session counts like the others.**
+  - Asked by the maintainer on 22/10 at 13:34 from the web («ho dato ok nella sessione social ma non l'accetta, questo comportamento va corretto, l'ok nella sessione deve essere valido come gli altri»): four times in a day an ok typed in a session needed a second «Approve» in the app.
+  - The `UserPromptSubmit` hook saves every prompt the person types in the session's inbox with origin `terminal` (delivered at once, pruned after a day, no «talk» row in the ledger); never a cross-session message, a notification, a slash command, or a text that matches a fresh record of the box (what the relay and `talk` write before delivering: another session's words never count).
+  - `task approve --inbox MSG` and `task confirm --inbox MSG`, run from the task's own session, accept a message addressed to that session with origin `terminal` or `relay` from the last hour; the root session keeps its rule (a relay message addressed to it). The ok quotes the message with its id, origin and recipient. The model still never writes an ok.
+  - Tests: T19 in `tests/tasks-verify.py` (68/68), H8 in `tests/hooks-restart-verify.py`.
 - **0.8.42 — 2026-10-22: the «Fatto» block of the app's Lavori page — the tasks closed per day with their proof, and a pause that waits for the person (contract 1.77).**
   - Approved by the maintainer on 22/10 at 12:43 (from the phone: the mockup of the single «Lavori» page; its «cosa cambia nei dati» note sends the request to the relay), request `docs/richieste/2026-10-22-lavori-fatto.md` of supervisor-app.
   - `supervisor task closed [YYYY-MM-DD] [--json]` and op `done` (a read, last in `ops`): the tasks closed that day (green, cancelled, failed), newest first, each with one proof chosen in order: the release or tag the check names, the commit the check or the outcome names, the report file the outcome names, else the check's first line (`url` on GitHub when known); up to six earlier days with a count; rows beyond 60 KB cut from the end (`more`); without a registry `ok` false.

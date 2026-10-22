@@ -205,6 +205,31 @@ subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "step", "gantt-a
 m7b = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 T.check("H7 a new step changes the signature → the full block again, with the new next step", "Impegni (1, 0 fermi):" in m7b.stdout and "prossimo: installazione" in m7b.stdout, m7b.stdout)
 
+# H8 (22/10/2026, ok-in-sessione): ogni messaggio scritto dalla persona finisce nella casella della sessione, origine terminal, gia' consegnato
+box8 = state / "inbox" / "alfa"
+import shutil as _sh8
+_sh8.rmtree(box8, ignore_errors=True)   # i prompt «altro» di H6/H7 sono gia' stati registrati: si parte da una casella vuota
+hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home / "ws" / "personali" / "alfa"), "prompt": "ok, pubblica pure"}, CM_HOOK_TMUX_NAME="alfa")
+recs8 = [json.loads(p.read_text()) for p in box8.glob("*.json")]
+T.check("H8 a prompt typed by the person → one inbox record for the session: origin terminal, from terminal, delivered, the text; no «talk» row in the ledger",
+        len(recs8) == 1 and recs8[0]["origin"] == "terminal" and recs8[0]["from"] == "terminal" and recs8[0]["status"] == "delivered" and recs8[0]["text"] == "ok, pubblica pure"
+        and recs8[0]["to"] == "alfa" and not any(json.loads(l).get("event") == "talk" and json.loads(l).get("to") == "alfa" for l in ledger.read_text().splitlines()), str(recs8))
+for bad8 in ("<cross-session-message from=\"x\">ok</cross-session-message>", "<task-notification>done</task-notification>", "/clear", "   "):
+    hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": bad8}, CM_HOOK_TMUX_NAME="alfa")
+T.check("H8 a cross-session message, a notification, a slash command and an empty prompt are never recorded", len(list(box8.glob("*.json"))) == 1, str(list(box8.glob("*.json"))))
+import importlib.util as _ilu8
+_s8 = _ilu8.spec_from_file_location("cm_inbox", T.SCRIPTS / "cm-inbox.py"); IB8 = _ilu8.module_from_spec(_s8)
+os.environ["CC_SUPERVISOR_CONFIG"] = str(cfg); _s8.loader.exec_module(IB8)
+r8 = IB8.put("alfa", "Dall'utente via telefono. vai pure", "supervisor", origin="relay")
+hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": "Dall'utente via telefono. vai pure"}, CM_HOOK_TMUX_NAME="alfa")
+hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": "vai pure"}, CM_HOOK_TMUX_NAME="alfa")
+T.check("H8 a prompt that matches a fresh record of the box (the relay's or a talk's, written before delivery) is not recorded twice; a short prompt that only ends a record is a new message",
+        len([p for p in box8.glob("*.json") if json.loads(p.read_text())["origin"] == "terminal"]) == 2, str([json.loads(p.read_text())["text"] for p in box8.glob("*.json")]))
+old8 = IB8.put("alfa", "vecchio", "terminal", origin="terminal", quiet=True)
+p8 = IB8._path_of(old8["id"]); d8 = json.loads(p8.read_text()); d8["created"] -= 2 * 86400; p8.write_text(json.dumps(d8))
+hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": "ancora uno"}, CM_HOOK_TMUX_NAME="alfa")
+T.check("H8 terminal records older than a day are pruned at the next prompt", not p8.exists() and len([p for p in box8.glob("*.json") if json.loads(p.read_text())["origin"] == "terminal"]) == 3, "")
+
 # ---- restart con tmux privato e claude finto
 with T.PrivateTmux() as tm:
     scen = tmp / "scen"; scen.write_text("plain")

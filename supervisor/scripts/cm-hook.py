@@ -232,6 +232,40 @@ def waiting_for_you(now=None):
     return M("hook.waiting_for_you", items="; ".join(parts) + more)
 
 
+PROMPT_SKIP = ("<cross-session-message", "<task-notification", "[Cross-session", "<system-reminder", "[supervisor queue]", "<local-command", "/")
+PROMPT_RECENT_S = 600
+PROMPT_KEEP_S = 86400
+
+
+def record_person_prompt(p):
+    """22/10/2026 (ok-in-sessione, the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli
+    altri»): ogni messaggio scritto dalla persona in questa sessione (terminale) va nella sua casella con origine
+    «terminal», gia' consegnato, cosi' `task approve --inbox` lo puo' citare dalla sessione del compito. Mai i testi
+    delle altre sessioni (cross-session, notifiche, comandi) ne' un prompt che coincide con un record recente della
+    casella (il relay e `talk` scrivono il record prima di consegnare: quello non e' la persona)."""
+    text = str(p.get("prompt") or "").strip()
+    if not text or text.startswith(PROMPT_SKIP):
+        return
+    name = my_tmux_name()
+    if not name:
+        return
+    try:
+        ib = inbox()
+        now = time.time()
+        for r in ib.messages(name, include_all=True):
+            if now - float(r.get("created") or 0) > PROMPT_RECENT_S:
+                continue
+            other = " ".join(str(r.get("text") or "").split())
+            mine = " ".join(text.split())
+            if other == mine or (len(mine) >= 20 and other.endswith(mine)):
+                return
+        rec = ib.put(name, text[:4000], "terminal", p.get("cwd") or "", origin="terminal", quiet=True)
+        ib.mark(rec["id"], "delivered", "terminal")
+        ib.prune_origin(name, "terminal", PROMPT_KEEP_S)
+    except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
+        pass
+
+
 def commitments_block():
     """P2 (22/10/2026): solo nella master, a ogni prompt e a ogni avvio, gli impegni dal registro — gli approvati non
     compiuti con eta', fermo da, prossimo passo, chi aspetta chi, pausa — letti da sqlite (niente git, niente figli:
@@ -397,6 +431,7 @@ def main(argv):
             (STATE / "waiting" / sid).unlink(missing_ok=True)
             (STATE / "needs-you" / f"{sid}.json").unlink(missing_ok=True)   # 1.68: il prompt dopo chiude «ferma per te»
         ledger("prompt", p)   # l'inizio del turno (turn_started per il polso)
+        record_person_prompt(p)   # 22/10: l'ok scritto qui vale (casella della sessione, origine terminal)
         relay_push()   # 08/10 (fase 1): un prompt dalla tastiera arrivava alle app solo al giro del cron
         if CFG["hooks"]["local_time"]["enabled"]:
             sys.stdout.write(local_time() + "\n")

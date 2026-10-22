@@ -14,7 +14,9 @@
   supervisor task approve ID --by B --text T [--what W] [--where D]
   supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D]
                                                 da una sessione Claude l'ok a nome di una persona passa solo cosi':
-                                                dalla master, citando un suo messaggio del relay dell'ultima ora
+                                                dalla master citando un messaggio del relay a lei, o (22/10) dalla
+                                                sessione del compito citando un messaggio della persona a lei
+                                                (scritto nel terminale: origin terminal, o dal relay), dell'ultima ora
   supervisor task auto-close [--hours 6] [--json]   chiude i compiti aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
@@ -329,29 +331,38 @@ def _load(name):
     return mod
 
 
-def inbox_approval_text(by, rec_id, note=None):
-    """16/10/2026 (the maintainer from the phone, «Sì, tutte e due»): l'ok a nome di una persona registrato da una sessione vale solo se lo
-    registra la master e cita un messaggio del relay (telefono, orologio, web) arrivato nella sua casella nell'ultima
-    ora; il testo dell'ok e' copiato da li', non riscritto. Torna il testo o esce con il motivo."""
+def inbox_approval_text(by, rec_id, note=None, task_session=None):
+    """16/10/2026 (the maintainer from the phone, «Sì, tutte e due»): l'ok a nome di una persona registrato da una sessione vale solo se
+    cita un messaggio della persona arrivato nella casella nell'ultima ora; il testo dell'ok e' copiato da li', non
+    riscritto. Due vie: la master con un messaggio del relay (telefono, orologio, web) indirizzato a lei; dal 22/10
+    (the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli altri», quattro ok ripetuti
+    nell'app in un giorno) anche la sessione del compito con un messaggio indirizzato a lei, scritto dalla persona nel
+    terminale (origin «terminal», lo salva l'hook) o arrivato dal relay. Mai un testo di un'altra sessione (origin
+    «session»). Torna il testo o esce con il motivo."""
     cm = _load("cm-config")
     cfg = cm.load(warn=False)
     master = str((cfg.get("workspace") or {}).get("root_session_name") or "master")
     caller = _caller_session()
-    if caller != master:
-        sys.exit(f"task approve --inbox: only the master session ({master}) records an ok on someone's behalf; this is {caller or 'not a tmux session'}")
+    allowed = {master} | ({task_session} if task_session else set())
+    if caller not in allowed:
+        who = f"only the master session ({master})" + (f" or the task's session ({task_session})" if task_session else "")
+        sys.exit(f"task approve --inbox: {who} records an ok on someone's behalf; this is {caller or 'not a tmux session'}")
     rec = _load("cm-inbox").load(rec_id)
     if not rec:
         sys.exit(f"task approve --inbox: no message {rec_id} in the inbox")
-    if rec.get("to") != master:
-        sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {master}")
-    if rec.get("origin") != "relay":
-        sys.exit(f"task approve --inbox: message {rec_id} did not come from the relay (origin {rec.get('origin') or '?'}): an ok on someone's behalf comes from their device")
+    if rec.get("to") != caller:
+        sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {caller}")
+    origin = str(rec.get("origin") or "?")
+    ok_origins = ("relay",) if caller == master else ("relay", "terminal")
+    if origin not in ok_origins:
+        why = "an ok on someone's behalf comes from their device" if caller == master else "an ok comes from the person (the terminal or their device), never from another session's text"
+        sys.exit(f"task approve --inbox: message {rec_id} did not come from the {'relay' if caller == master else 'person'} (origin {origin}): {why}")
     age = time.time() - float(rec.get("created") or 0)
     if age > INBOX_MAX_AGE_S:
         sys.exit(f"task approve --inbox: message {rec_id} is {int(age // 60)} minutes old (at most {INBOX_MAX_AGE_S // 60})")
     quote = " ".join(str(rec.get("text") or "").split())[:400]
     when = time.strftime("%d/%m %H:%M", time.localtime(float(rec["created"])))
-    return f"{by}, {when}: «{quote}» (inbox {rec_id}, origin relay)" + (f" — {note}" if note else "")
+    return f"{by}, {when}: «{quote}» (inbox {rec_id}, origin {origin}, to {caller})" + (f" — {note}" if note else "")
 
 
 def auto_close(con, hours=AUTO_CLOSE_H):
@@ -857,7 +868,7 @@ def main(argv):
             sys.exit(f"usage: task {verb} ID --by B (--text T | --inbox MSG [--text NOTE])" + (" [--what W] [--where D]" if verb == "approve" else ""))
         row = get_task(con, args[0])
         if rec_id:
-            text = inbox_approval_text(by, rec_id, text)
+            text = inbox_approval_text(by, rec_id, text, row["session"] or json.loads(row["contract"])["task"]["where"].get("session"))
         elif os.environ.get("CLAUDECODE") and os.environ.get("CM_APPROVE_VIA") != "relay":
             # una sessione Claude (anche la master) non scrive un ok a nome d'altri senza il messaggio che lo prova;
             # il relay eredita CLAUDECODE da chi l'ha avviato, e si dichiara con CM_APPROVE_VIA

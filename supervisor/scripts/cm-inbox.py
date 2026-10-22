@@ -13,7 +13,9 @@ la destinataria stessa: allo Stop di un turno (se era viva ma occupata) o al Ses
                                          rimasto in casella per una sessione chiusa prima di riceverlo)
 
 File: <state_dir>/inbox/<nome-tmux>/<id>.json — {id, to, to_cwd, from, text, created, expires, status, delivered_at, via, origin}.
-`origin`: «relay» per i messaggi del relay (dal telefono, dall'orologio, dalla web), «session» per tutti gli altri.
+`origin`: «relay» per i messaggi del relay (dal telefono, dall'orologio, dalla web), «terminal» per i messaggi che la
+persona scrive nella sessione (li salva l'hook UserPromptSubmit, 22/10/2026: un ok scritto in una sessione vale come
+gli altri), «session» per tutti gli altri.
 Identita' della destinataria: il nome tmux (resta uguale nei riavvii) e, se nota, la cartella: una sessione nuova con
 lo stesso nome in un'altra cartella non riceve la posta della vecchia.
 """
@@ -107,7 +109,8 @@ def _take_claim(to, text):
     return best[1].get("origin")
 
 
-def put(to, text, sender, to_cwd="", origin="session"):
+def put(to, text, sender, to_cwd="", origin="session", quiet=False):
+    """quiet (22/10): nessuna riga «talk» nel diario — i messaggi della persona salvati dall'hook non sono un talk."""
     if origin == "session":
         try:
             origin = _take_claim(to, text) or origin
@@ -123,8 +126,21 @@ def put(to, text, sender, to_cwd="", origin="session"):
     p = d / f"{rec['id']}.json"
     with open(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
         json.dump(rec, f, ensure_ascii=False)
-    ledger("talk", sender=sender, to=to, id=rec["id"], text=first_line(text))
+    if not quiet:
+        ledger("talk", sender=sender, to=to, id=rec["id"], text=first_line(text))
     return rec
+
+
+def prune_origin(to, origin, max_age_s):
+    """I record di `origin` piu' vecchi di max_age_s vanno via (22/10: un file per prompt della persona, mai per sempre)."""
+    cut = time.time() - max_age_s
+    for p in box(to).glob("*.json"):
+        try:
+            rec = json.loads(p.read_text())
+            if rec.get("origin") == origin and float(rec.get("created") or 0) < cut:
+                p.unlink()
+        except (OSError, ValueError):
+            continue
 
 
 def mark_origin(to, text, since, origin):

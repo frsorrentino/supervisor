@@ -360,4 +360,31 @@ T.check("T18 days: the days before with at least one closed task, newest first, 
 T.check("T18 a bad date → usage; no registry → exit 3 «no task registry» and no database created",
         cm("closed", "ieri")[0] != 0 and cm("closed", "--json", env={"CM_TASKS_DB": str(tmp / "no" / "tasks.db")})[0] == 3 and not (tmp / "no" / "tasks.db").exists(), "")
 
+# T19 (22/10/2026, ok-in-sessione): l'ok scritto dalla persona nella sessione del compito vale; i testi di altre sessioni no
+with T.PrivateTmux() as tm:
+    tm("new-session", "-d", "-s", "master", "sleep 300")
+    tm("new-session", "-d", "-s", "altra", "sleep 300")
+    pane_m = tm("display-message", "-p", "-t", "master", "#{pane_id}").stdout.strip()
+    pane_a = tm("display-message", "-p", "-t", "altra", "#{pane_id}").stdout.strip()
+    M19 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_m)
+    A19 = dict(M19, TMUX_PANE=pane_a)
+    for tid, sess in (("s1", "altra"), ("s2", "altra"), ("s3", "altra"), ("s4", None), ("s5", "altra")):
+        add(contract(tid, where={"project": str(proj), "session": sess, "host": "local", "account": None}))
+        cm("wait-ok", tid, "--what", "push", "--where", "github")
+    term = inbox_put("altra", "ok, pubblica pure", "terminal")
+    rc, out, err = cm("approve", "s1", "--by", "maintainer", "--inbox", term, env=A19)
+    a19 = show("s1")["approvals"][-1]
+    T.check("T19 from the task's session, a message the person typed there (origin terminal) → approved; the text quotes it with id, origin and recipient",
+            rc == 0 and show("s1")["state"] == "approved" and "«ok, pubblica pure»" in a19["text"] and f"inbox {term}, origin terminal, to altra" in a19["text"], err + json.dumps(a19))
+    rc, out, err = cm("approve", "s2", "--by", "maintainer", "--inbox", term, env=M19)
+    T.check("T19 the master cannot use a message addressed to another session", rc != 0 and "is for altra, not for master" in err and show("s2")["state"] == "awaiting_ok", err)
+    sess19 = inbox_put("altra", "ok dalla master via talk", "session")
+    rc, out, err = cm("approve", "s3", "--by", "maintainer", "--inbox", sess19, env=A19)
+    T.check("T19 a text from another session (origin session) is refused even in the task's session", rc != 0 and "never from another session" in err and show("s3")["state"] == "awaiting_ok", err)
+    rc, out, err = cm("approve", "s4", "--by", "maintainer", "--inbox", term, env=A19)
+    T.check("T19 a task with no session: only the master records an ok", rc != 0 and "only the master session (master) records" in err and show("s4")["state"] == "awaiting_ok", err)
+    rel19 = inbox_put("altra", "Dall'utente via telefono. vai pure", "relay")
+    rc, out, err = cm("approve", "s5", "--by", "maintainer", "--inbox", rel19, env=A19)
+    T.check("T19 from the task's session, a relay message addressed to it (the app's chat) → approved", rc == 0 and show("s5")["state"] == "approved" and "origin relay, to altra" in show("s5")["approvals"][-1]["text"], err)
+
 T.finish()
