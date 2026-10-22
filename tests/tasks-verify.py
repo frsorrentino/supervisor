@@ -320,4 +320,44 @@ T.check("T16 stall-check: the stalled task once (alerts file), nothing the secon
         [x["task"] for x in a1] == ["ok9"] and a2 == [] and a3 == [] and [x["task"] for x in a4] == ["ok9"] and json.loads((tmp / "alerts.json").read_text()) == {"ok9": a4[0]["last_step"]["at"]},
         str((a1, a2, a3, a4))[:400])
 
+# T17 (22/10/2026, contratto 1.77): una pausa che aspetta la persona (--waits person) e l'inizio vero (--since)
+cm("pause", "ok9", "--reason", "aspetta la casella Aruba", "--waits", "person", "--since", "2026-10-18T09:00", "--by", "master", env=IT)
+r17 = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}
+t17 = time.mktime(time.strptime("2026-10-18T09:00", "%Y-%m-%dT%H:%M"))
+T.check("T17 pause --waits person --since: waits = {who: session, on: person}, paused.at = the real start, never stalled, the line says «aspetta l'utente» with PAUSA",
+        r17["ok9"]["waits"] == {"who": "master", "on": "person"} and r17["ok9"]["paused"]["at"] == int(t17) and r17["ok9"]["paused"]["reason"] == "aspetta la casella Aruba"
+        and r17["ok9"]["stalled"] is False and any("- ok9 ·" in l and "aspetta l'utente" in l and "PAUSA: aspetta la casella Aruba" in l for l in cm("impegni", env=IT)[1].splitlines())
+        and "ok9" not in [x["task"] for x in json.loads(cm("stall-check", "--json", env=A16)[1])], json.dumps(r17["ok9"]))
+T.check("T17 resume brings waits back to the session's turn", cm("resume", "ok9", env=IT)[0] == 0 and {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["waits"] == {"who": "person", "on": "master"}, "")
+T.check("T17 --waits takes only person; --since wants an epoch or an ISO time", cm("pause", "ok9", "--reason", "x", "--waits", "nobody")[0] != 0 and cm("pause", "ok9", "--reason", "x", "--since", "ieri")[0] != 0, "")
+cm("pause", "ok9", "--reason", "pausa normale", "--since", "1700000000", env=IT)
+T.check("T17 --since as an epoch; a pause without --waits leaves waits as it was", {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["paused"]["at"] == 1700000000
+        and {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["waits"]["on"] == "master", "")
+
+# T18 (1.77): task closed — i compiti chiusi per giorno con la prova (release, commit, file, controllo) e i giorni prima
+add(contract("z2", cmd="git fetch -q --tags origin && git tag -l v1.2.3 | grep -q '^v1.2.3$'", outcome={"expected": "la 1.2.3 pubblicata", "kind": "release"}))
+add(contract("z3", cmd="test -f ok.txt", outcome={"expected": "il commit 9f8e7d6 pushato", "kind": "custom", "proof": "git log"}))
+add(contract("z4", cmd="test -f ok.txt", outcome={"expected": "docs/notte/2026-10-22-prova.md con FINE", "kind": "custom", "proof": "il file"}))
+add(contract("z5", cmd='R=$(gh release view impegni-2026-10-22-b --json tagName -q .tagName) && test -n "$R"', outcome={"expected": "la pre-release installata", "kind": "release"}))
+for z in ("z2", "z3", "z4", "z5"):
+    cm("cancel", z)
+c18 = json.loads(cm("closed", "--json", env=IT)[1])
+rows18 = {x["task"]: x for x in c18["rows"]}
+T.check("T18 closed --json: {date (today), rows (newest first, outcome green|cancelled|failed, at, session, proof), days, more false}",
+        c18["date"] == time.strftime("%Y-%m-%d") and c18["more"] is False and [x["at"] for x in c18["rows"]] == sorted((x["at"] for x in c18["rows"]), reverse=True)
+        and rows18["g1"]["outcome"] == "green" and rows18["g1"]["session"] == "cm-a" and rows18["r1"]["outcome"] == "failed" and rows18["z2"]["outcome"] == "cancelled"
+        and list(rows18["g1"]) == ["task", "title", "project", "session", "at", "outcome", "proof"], json.dumps(c18)[:400])
+T.check("T18 the proof: release from the check's tag; commit from the outcome (short hash, no url without a GitHub remote); file from the outcome; else the check's first line",
+        rows18["z2"]["proof"] == {"kind": "release", "value": "v1.2.3", "url": None} and rows18["z5"]["proof"] == {"kind": "release", "value": "impegni-2026-10-22-b", "url": None} and rows18["z3"]["proof"] == {"kind": "commit", "value": "9f8e7d6", "url": None}
+        and rows18["z4"]["proof"] == {"kind": "file", "value": "docs/notte/2026-10-22-prova.md", "url": None} and rows18["g1"]["proof"] == {"kind": "check", "value": "test -f ok.txt", "url": None}, json.dumps({k: v["proof"] for k, v in rows18.items()}))
+con18 = sqlite3.connect(str(tmp / "tasks.db"))
+y18 = int(time.time()) - 86400
+con18.execute("UPDATE results SET at=? WHERE task='n1' AND accepted=1", (y18,)); con18.execute("UPDATE tasks SET updated_at=? WHERE id='z4'", (y18 - 86400,)); con18.commit(); con18.close()
+c18b = json.loads(cm("closed", "--json", env=IT)[1])
+T.check("T18 days: the days before with at least one closed task, newest first, with the count; a day asked for explicitly lists its rows",
+        [(d["date"], d["n"]) for d in c18b["days"]] == [(time.strftime("%Y-%m-%d", time.localtime(y18)), 1), (time.strftime("%Y-%m-%d", time.localtime(y18 - 86400)), 1)]
+        and [x["task"] for x in json.loads(cm("closed", time.strftime("%Y-%m-%d", time.localtime(y18)), "--json", env=IT)[1])["rows"]] == ["n1"], json.dumps(c18b["days"]))
+T.check("T18 a bad date → usage; no registry → exit 3 «no task registry» and no database created",
+        cm("closed", "ieri")[0] != 0 and cm("closed", "--json", env={"CM_TASKS_DB": str(tmp / "no" / "tasks.db")})[0] == 3 and not (tmp / "no" / "tasks.db").exists(), "")
+
 T.finish()

@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.42 — 2026-10-22: the «Fatto» block of the app's Lavori page — the tasks closed per day with their proof, and a pause that waits for the person (contract 1.77).**
+  - Approved by the maintainer on 22/10 at 12:43 (from the phone: the mockup of the single «Lavori» page; its «cosa cambia nei dati» note sends the request to the relay), request `docs/richieste/2026-10-22-lavori-fatto.md` of supervisor-app.
+  - `supervisor task closed [YYYY-MM-DD] [--json]` and op `done` (a read, last in `ops`): the tasks closed that day (green, cancelled, failed), newest first, each with one proof chosen in order: the release or tag the check names, the commit the check or the outcome names, the report file the outcome names, else the check's first line (`url` on GitHub when known); up to six earlier days with a count; rows beyond 60 KB cut from the end (`more`); without a registry `ok` false.
+  - `task pause ID --reason R --waits person [--since T]`: a pause for something only the person can do shows in `commitments` with `waits.on = person` (the app's «Per te»), `paused.at` the real start; `task resume` brings the turn back. Never an alarm.
+  - Fixtures: `done` last in `ops` of the three states, `state-3-stale` with the paused task waiting for the person, `cmd-result-sample` with a `done` of each proof kind, one without a registry and one with a bad date.
+  - Tests: T17-T18 in `tests/tasks-verify.py`, R64 in `tests/relay-verify.py`.
 - **0.8.41 — 2026-10-22: the transcript's api-request records are skipped before json.loads, and a failed turn carries the error text shown in chat.**
   - Asked by the maintainer on 19/10 from the web app («sollecita il filtro del relay», task relay-filtro-api-request) and on 22/10 at 00:36 («tutto approvato», the note on Claude Code 2.1.306).
   - Since Claude Code 2.1.300 the transcript carries `api-request` records (the whole request: tools, system prompt, messages), 6-17 % of its bytes; every substring prefilter took them (they contain «Bash», «tool_result», «Esito», a timestamp) and parsed them. `cm-core.noise()` drops them from the line prefix in every transcript reader (outcome, model, context, changes, timeline, night report's work spans: an api-request's timestamp no longer counts as activity).

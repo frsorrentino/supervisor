@@ -507,7 +507,7 @@ case "$1" in
       add) if [ "$4" = "FULL" ]; then echo "coda piena: 8 lavori, night.max_queued è 8" >&2; exit 4; fi; echo "in coda: 7b21d4e8 · $3 · account «work» (2 in coda)" ;;
       remove) case "$3" in 5d0e6b92) echo "tolta: $3" ;; a3f09c1e) echo "$3 è già partito: non si può togliere" >&2; exit 5 ;; *) echo "nessuna voce con id $3" >&2; exit 1 ;; esac ;;
     esac ;;
-  task) case "$2" in list) if [ -f "{tmp / 'tasks.json'}" ]; then cat "{tmp / 'tasks.json'}"; else echo '[]'; fi ;; approve) echo "" ;; show) if [ -f "{tmp / 'task-show.json'}" ]; then cat "{tmp / 'task-show.json'}"; fi ;; impegni) if [ -f "{tmp / 'impegni.json'}" ]; then cat "{tmp / 'impegni.json'}"; else echo '[]'; fi ;; esac ;;
+  task) case "$2" in list) if [ -f "{tmp / 'tasks.json'}" ]; then cat "{tmp / 'tasks.json'}"; else echo '[]'; fi ;; approve) echo "" ;; show) if [ -f "{tmp / 'task-show.json'}" ]; then cat "{tmp / 'task-show.json'}"; fi ;; closed) if [ -f "{tmp / 'tasks-closed.json'}" ]; then cat "{tmp / 'tasks-closed.json'}"; else echo "no task registry" >&2; exit 3; fi ;; impegni) if [ -f "{tmp / 'impegni.json'}" ]; then cat "{tmp / 'impegni.json'}"; else echo '[]'; fi ;; esac ;;
   launch) echo "sessione avviata"; echo "  link: https://claude.ai/code/session_01NEW"; if [ -f "{launch_adds}" ]; then cp "{launch_adds}" "{alive}"; fi ;;
 esac
 """)
@@ -3221,8 +3221,38 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-1] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-2] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
+
+# R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
+_res64 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_done64 = json.loads(_res64["6f1c2d3e-0760-4000-8000-0000000000760"]["text"])
+_abs64 = {"personal/atlas-shop": str(ws / "personal" / "atlas-shop"), "work/clients/ledger-api": str(ws / "work" / "clients" / "ledger-api"),
+          "personal/field-notes": str(ws / "personal" / "field-notes"), "work/own/orbit-docs": str(ws / "work" / "own" / "orbit-docs")}
+(tmp / "tasks-closed.json").write_text(json.dumps(dict(_done64, rows=[dict(x, project=_abs64[x["project"]], title=x["title"] + "\n") for x in _done64["rows"]])))
+n64 = len(cm_calls())
+_cmd64 = {c["id"]: c for c in CMDS}
+r64 = RL.execute(_cmd64["6f1c2d3e-0760-4000-8000-0000000000760"])     # execute(): la stessa via del bus, senza la chiave (riassegnata piu' su)
+r64b = RL.execute(_cmd64["6f1c2d3e-0762-4000-8000-0000000000762"])
+(tmp / "tasks-closed.json").unlink()
+r64c = RL.execute(_cmd64["6f1c2d3e-0761-4000-8000-0000000000761"])
+T.check("R64 (1.77) done → `task closed --json`; the same JSON as the fixture's …0760: rows with the proof (release, commit, file, check), project relative, title on one line, days, more false",
+        r64[0] is True and json.loads(r64[1]) == _done64 and "task closed --json" in cm_calls()[n64:], str(r64)[:300] + str(cm_calls()[n64:]))
+T.check("R64 (1.77) done with a day → `task closed 2026-02-09 --json`; a bad date is refused as in …0762; no registry → ok false «no task registry» as in …0761",
+        r64b[0] is False and r64b[1] == _res64["6f1c2d3e-0762-4000-8000-0000000000762"]["text"] and not any("task closed ieri" in c for c in cm_calls()[n64:])
+        and r64c[0] is False and r64c[1] == _res64["6f1c2d3e-0761-4000-8000-0000000000761"]["text"] and "task closed 2026-02-09 --json" in cm_calls()[n64:], str((r64b, r64c)))
+_big64 = dict(_done64, rows=[dict(_done64["rows"][0], task=f"t-{i:04d}", title="x" * 180) for i in range(400)])
+_rc64, _run64 = RL.run_cm, None
+RL.run_cm = lambda *a, **kw: (0, json.dumps(_big64))
+try:
+    _cut64 = json.loads(RL.done_list(None)[1])
+finally:
+    RL.run_cm = _rc64
+T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, last in ops, absent from /state; the fixtures carry it last",
+        _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-1] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-1] == "done" for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
+        F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
 # R61 (contratto 1.75, 21/10, home a tre colonne della web): hosts_status e published_today in /state
 import datetime as _dt  # noqa: E402

@@ -72,7 +72,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -2695,6 +2695,36 @@ def nights_list():
     return True, json.dumps({"nights": out}, ensure_ascii=False)
 
 
+DONE_MAX_BYTES = 60 * 1024   # 1.77: le righe di `done` oltre questo si tagliano dal fondo (more: true)
+
+
+def done_list(arg):
+    """1.77 (22/10, blocco «Fatto» della pagina Lavori, mockup approvato dal maintainer alle 12:43): i compiti chiusi nel
+    giorno `arg` (ISO, null = oggi) con la prova (release, commit, file o controllo) e fino a sei giorni prima con un
+    conteggio, da `task closed --json`; project relativo come sessions[].project; senza registro ok false."""
+    day = str(arg or "").strip()
+    if day and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        return False, M("relay.cmd_done_bad_date", arg=day)
+    rc, out = run_cm("task", "closed", *([day] if day else []), "--json")
+    if rc == 3:
+        return False, M("relay.cmd_done_no_registry")
+    if rc != 0 or not out.strip().startswith("{"):
+        return False, (out.splitlines() or ["task closed failed"])[-1]
+    d = json.loads(out)
+    root = cm.expand(CFG["workspace"]["root"])
+    rows = []
+    for x in d.get("rows") or []:
+        y = dict(x)
+        y["project"] = S.project_of(x.get("project") or "", root)
+        y["title"] = S.one_line(str(x.get("title") or ""))[:200]
+        rows.append(y)
+    res = {"date": d.get("date"), "rows": rows, "days": list(d.get("days") or []), "more": False}
+    while rows and len(json.dumps(res, ensure_ascii=False).encode()) > DONE_MAX_BYTES:
+        rows.pop()
+        res["more"] = True
+    return True, json.dumps(res, ensure_ascii=False)
+
+
 AGENDA_FIELDS = ("state", "scope", "blocks", "title", "ref", "detail", "until")
 AGENDA_CLOSED = ("fatto", "scartato")
 AGENDA_ACTIONS = {"done": "fatto", "snooze": "sospeso", "remove": "scartato", "pass": None}
@@ -3777,6 +3807,8 @@ def execute(cmd):
             return night_report(arg)
         if op == "nights":
             return nights_list()
+        if op == "done":
+            return done_list(arg)
         if op == "agenda":
             return agenda_list()
         if op == "agenda_set":
@@ -3912,7 +3944,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):

@@ -25,7 +25,11 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
   supervisor task impegni [--json] [--stalled] [--brief]   gli approvati non compiuti (e chi aspetta un ok), con eta',
                                                 ultimo passo, prossimo passo, chi aspetta chi, pausa; --brief per l'hook
   supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
-  supervisor task pause ID --reason R [--by B] | task resume ID     «salvo altre priorita'», visibile, mai in allarme
+  supervisor task pause ID --reason R [--by B] [--waits person] [--since EPOCH|ISO]
+                                                «salvo altre priorita'», visibile, mai in allarme; --waits person = la pausa
+  supervisor task resume ID                     aspetta l'utente (waits.on = person), --since = l'inizio vero (contratto 1.77)
+  supervisor task closed [AAAA-MM-GG] [--json]  i compiti chiusi quel giorno (oggi) con la prova (release, commit, file o
+                                                controllo) e i sei giorni prima con un conteggio; exit 3 senza registro
   supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P]
                                                 corregge il contratto di un compito aperto (validato di nuovo)
   supervisor task confirm ID --by B (--text T | --inbox MSG)   la conferma della persona (come approve); `task
@@ -178,6 +182,11 @@ def connect(create=True):
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript(SQL)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(pauses)")}   # 1.77 (22/10): una pausa che aspetta la persona, dall'inizio vero
+    if "waits" not in cols:
+        con.execute("ALTER TABLE pauses ADD COLUMN waits TEXT")
+        con.execute("ALTER TABLE pauses ADD COLUMN since INTEGER")
+        con.commit()
     return con
 
 
@@ -437,7 +446,7 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
         st = con.execute("SELECT at, kind, text, next FROM steps WHERE task=? ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
         if st:
             steps.append({"at": int(st["at"]), "kind": st["kind"] or "step", "text": st["text"]})
-        pz = con.execute("SELECT at, by_, reason FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        pz = con.execute("SELECT at, by_, reason, waits, since FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
         if pz:
             steps.append({"at": int(pz["at"]), "kind": "pause", "text": pz["reason"]})
         last = max(steps, key=lambda s: (s["at"], STEP_RANK.get(s["kind"], 3)))
@@ -450,6 +459,8 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
             nxt = M(f"tasks.next_{r['state']}", session=session, task=r["id"])
         if st and st["next"]:
             nxt = st["next"]
+        if pz and pz["waits"] == "person":   # 1.77: in pausa per qualcosa che solo la persona puo' fare → «Per te» nell'app
+            waits = {"who": session, "on": "person"}
         idle = max(0, now_ - last["at"])
         out.append({"task": r["id"], "title": r["title"], "project": r["project"], "session": r["session"], "state": r["state"],
                     "lane": r["lane"], "plan": r["plan"], "approved": approved, "approved_at": approved_at, "approved_by": approved_by,
@@ -457,10 +468,75 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
                     "next": nxt, "waits": waits,
                     "expected": (task.get("outcome") or {}).get("expected"), "outcome_kind": (task.get("outcome") or {}).get("kind"),
                     "check": {"outcome": res["outcome"], "at": int(res["at"])} if res else None,
-                    "paused": {"reason": pz["reason"], "at": int(pz["at"]), "by": pz["by_"]} if pz else None,
+                    "paused": {"reason": pz["reason"], "at": int(pz["since"] or pz["at"]), "by": pz["by_"]} if pz else None,
                     "stalled": bool(approved and not pz and idle >= stall_s)})
     out.sort(key=lambda x: (not x["stalled"], -x["idle_s"], x["task"]))
     return out
+
+
+# ------------------------------------------------------------------ chiusi per giorno (contratto 1.77, 22/10/2026)
+_REMOTES = {}
+
+
+def repo_url(project):
+    """https://github.com/<owner>/<repo> del remoto origin del progetto, o None (cache per cartella, nessun fetch)."""
+    if project in _REMOTES:
+        return _REMOTES[project]
+    url = None
+    try:
+        p = subprocess.run(["git", "-C", project, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=5)
+        m = re.search(r"github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$", p.stdout.strip()) if p.returncode == 0 else None
+        url = f"https://github.com/{m.group(1)}/{m.group(2)}" if m else None
+    except (OSError, subprocess.SubprocessError):
+        url = None
+    _REMOTES[project] = url
+    return url
+
+
+_TAG_RE = re.compile(r"(?:git tag (?:-l|--list)\s+|gh release (?:view|create)\s+|tags/)[\"']?([A-Za-z0-9][\w.-]*)")   # anche impegni-2026-10-22-b
+_HASH_RE = re.compile(r"(?<![\w/])([0-9a-f]{7,40})(?![\w/])")
+_FILE_RE = re.compile(r"(?<![\w/])((?:docs|details)/[\w./-]+\.md)\b")
+
+
+def proof_of(task, result):
+    """La prova del risultato, una sola, in quest'ordine (richiesta dell'app, 22/10): la release o il tag se il controllo
+    ne cita uno; il commit se il controllo o l'esito ne citano uno; il file se l'esito cita un resoconto; altrimenti la
+    prima riga del controllo. {kind, value, url}."""
+    cmd = str((task.get("check") or {}).get("cmd") or "")
+    texts = [cmd, str((task.get("outcome") or {}).get("expected") or ""), str((result or {}).get("reason") or ""), str(((result or {}).get("proof") or {}).get("value") or "")]
+    repo = repo_url(task["where"]["project"])
+    m = _TAG_RE.search(cmd)
+    if m:
+        return {"kind": "release", "value": m.group(1), "url": f"{repo}/releases/tag/{m.group(1)}" if repo else None}
+    for t in texts:
+        m = _HASH_RE.search(t)
+        if m and not m.group(1).isdigit():
+            return {"kind": "commit", "value": m.group(1)[:7], "url": f"{repo}/commit/{m.group(1)}" if repo else None}
+    for t in texts[1:]:
+        m = _FILE_RE.search(t)
+        if m:
+            return {"kind": "file", "value": m.group(1), "url": None}
+    return {"kind": "check", "value": cmd.splitlines()[0][:300] if cmd else "", "url": None}
+
+
+def closed(con, day=None, now_=None):
+    """{date, rows, days, more}: i compiti chiusi nel giorno `day` (ISO, oggi se None) — done verde, cancellati, falliti —
+    dal piu' recente, con la prova; `days` = fino a sei giorni prima con almeno un chiuso, con il conteggio."""
+    import datetime as dt
+    now_ = int(now_ or now())
+    d0 = dt.date.fromisoformat(day) if day else dt.date.fromtimestamp(now_)
+    by_day = {}
+    for r in con.execute("SELECT * FROM tasks WHERE state IN ('done','failed','cancelled')").fetchall():
+        res = con.execute("SELECT outcome, reason, proof, at FROM results WHERE task=? AND accepted=1 ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        at = int(res["at"]) if res and r["state"] != "cancelled" else int(r["updated_at"] or r["created_at"] or 0)
+        task = json.loads(r["contract"])["task"]
+        result = {"reason": res["reason"], "proof": json.loads(res["proof"])} if res else None
+        day_ = dt.date.fromtimestamp(at)
+        by_day.setdefault(day_, []).append({"task": r["id"], "title": r["title"], "project": r["project"], "session": r["session"], "at": at,
+                                            "outcome": "green" if r["state"] == "done" else r["state"], "proof": proof_of(task, result)})
+    rows = sorted(by_day.get(d0, []), key=lambda x: -x["at"])
+    days = [{"date": d.isoformat(), "n": len(v)} for d, v in sorted(by_day.items(), reverse=True) if d < d0][:6]
+    return {"date": d0.isoformat(), "rows": rows, "days": days, "more": False}
 
 
 def duration(s):
@@ -614,6 +690,9 @@ def main(argv):
         return 0
     verb, args = argv[0], list(argv[1:])
     as_json = _flag(args, "--json")
+    if verb == "closed" and not db_path().exists():   # 1.77: l'app chiede «senza registro: ok false», senza crearne uno
+        print("no task registry", file=sys.stderr)
+        return 3
     con = connect()
     if verb == "add":
         topic = _opt(args, "--topic")
@@ -672,15 +751,41 @@ def main(argv):
         con.commit()
         return 0
     if verb == "pause":
-        reason, by = _opt(args, "--reason"), _opt(args, "--by")
+        reason, by, waits, since = _opt(args, "--reason"), _opt(args, "--by"), _opt(args, "--waits"), _opt(args, "--since")
         if not args or not reason:
-            sys.exit("usage: task pause ID --reason R [--by B]")
+            sys.exit("usage: task pause ID --reason R [--by B] [--waits person] [--since EPOCH|ISO]")
+        if waits not in (None, "person", "user"):
+            sys.exit("task pause: --waits takes person")
+        since_at = None
+        if since:
+            try:
+                since_at = int(since) if since.isdigit() else int(__import__("datetime").datetime.fromisoformat(since).timestamp())
+            except ValueError:
+                sys.exit("task pause: --since wants an epoch or an ISO time (2026-10-18T09:00)")
         row = get_task(con, args[0])
         if row["state"] not in OPEN_STATES:
             sys.exit(f"task {args[0]}: already {row['state']}")
         con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
-        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at) VALUES (?,?,?,?,NULL)", (args[0], now(), by, reason[:300]))
+        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since) VALUES (?,?,?,?,NULL,?,?)",
+                    (args[0], now(), by, reason[:300], "person" if waits else None, since_at))
         con.commit()
+        return 0
+    if verb == "closed":
+        day = args[0] if args and not args[0].startswith("-") else None
+        if day:
+            try:
+                __import__("datetime").date.fromisoformat(day)
+            except ValueError:
+                sys.exit("usage: task closed [AAAA-MM-GG] [--json]")
+        out = closed(con, day)
+        if as_json:
+            print(json.dumps(out, ensure_ascii=False))
+        else:
+            print(f"{out['date']}: {len(out['rows'])}")
+            for x in out["rows"]:
+                print(f"- {x['task']} · {x['outcome']} · {time.strftime('%H:%M', time.localtime(x['at']))} · {x['proof']['kind']}: {x['proof']['value'][:80]}")
+            for d in out["days"]:
+                print(f"  {d['date']}: {d['n']}")
         return 0
     if verb == "resume":
         get_task(con, args[0])

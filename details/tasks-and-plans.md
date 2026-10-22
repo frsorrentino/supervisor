@@ -49,7 +49,9 @@ for an `install` outcome. `supervisor task impegni [--json] [--brief]
 [--stalled]` lists every approved task not yet done (an ok recorded or an
 approved plan) and the ones waiting for an ok, with age, last step, idle time,
 next step (`task step ID "text" --next "…"`), whose turn it is, pause with a
-reason (`task pause ID --reason R`, `task resume ID`: visible, never an alarm)
+reason (`task pause ID --reason R [--waits person] [--since T]`, `task resume
+ID`: visible, never an alarm; `--waits person` puts it in the app's «Per te»
+with `waits.on = person`, `--since` the real start)
 and `stalled` after `tasks.stall_hours` (2) without a step. The same list goes
 to the master at every prompt and start (the full block when it changes, one
 line otherwise; `tasks.commitments_prompt`), into the morning report, into
@@ -60,7 +62,10 @@ guard round `task stall-check` finds the stalled ones not yet alerted for
 their last step: one summary to the master (`talk`) and, outside
 `tasks.quiet_hours` (23-07), to the person (event `task_stalled`, Telegram as
 a fallback). «Approve» from the app wakes the task's session with a `talk`,
-tells the master and clears the session's «waiting for you».
+tells the master and clears the session's «waiting for you». `supervisor
+task closed [YYYY-MM-DD] [--json]` lists the tasks closed that day (green,
+cancelled, failed) with one proof each (release, commit, file or the check)
+and the earlier days with a count: the app's «Fatto» block (contract 1.77).
 
 fable-director is optional. When it is installed and enabled in the session's
 account, the unit's brief asks it to open its budget with the unit's check as

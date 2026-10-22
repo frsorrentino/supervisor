@@ -283,6 +283,27 @@ installation, the list in `/state` replaces per-item events, the «covers»
 proposal is a later step, and pause/step stay CLI verbs of the sessions and
 the master for now.
 
+Contract 1.77 serves the «Fatto» block of the app's single «Lavori» page
+(22/10/2026, mockup approved by the maintainer at 12:43; additive, `v` stays
+1). Op `done` (a read, last in `ops`): `arg` a day `YYYY-MM-DD`, null for
+today; `text` is `{date, rows, days, more}` from `supervisor task closed`.
+`rows` are the tasks closed that day (`task done` green, auto-close,
+`cancel`, the third red), newest first: `{task, title, project (as
+sessions[].project), session, at (epoch of the closing), outcome:
+green|cancelled|failed, proof}`. `proof` is one `{kind, value, url}` chosen
+in this order: `release` when the check names a tag (`git tag -l v…`, `gh
+release view …`, `tags/…`; `url` the GitHub release page when origin is on
+GitHub), `commit` when the check or the outcome names a hash (short hash,
+`url` the commit page), `file` when the outcome names a `docs/…md` report,
+else `check` with the check's first line; `url` null when unknown. `days`
+lists up to six earlier days with at least one closed task, `{date, n}`,
+newest first. Rows beyond 60 KB are cut from the end and `more` is true. A
+bad day is refused; without a registry `ok` is false, «no task registry». A
+pause that waits for the person (`task pause ID --reason R --waits person
+[--since T]`) shows in `commitments` with `waits = {who: the session, on:
+person}` while it lasts, `paused.at` the real start when `--since` says it
+(else the pause's record), never stalled; `task resume` brings `waits` back.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

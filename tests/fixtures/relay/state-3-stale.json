@@ -103,7 +103,8 @@
     "changes",
     "diff",
     "studio",
-    "nights"
+    "nights",
+    "done"
   ],
   "slash": [
     "compact",
@@ -207,15 +208,15 @@
       "idle_s": 10000,
       "next": "orbit-docs resumes and closes with task done orbit-docs-site",
       "waits": {
-        "who": "person",
-        "on": "orbit-docs"
+        "who": "orbit-docs",
+        "on": "person"
       },
       "expected": null,
       "outcome_kind": null,
       "check": null,
       "paused": {
         "reason": "after the client's review",
-        "at": 1789190000,
+        "at": 1789100000,
         "by": "master"
       },
       "stalled": false

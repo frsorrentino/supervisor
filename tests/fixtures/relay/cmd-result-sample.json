@@ -655,6 +655,32 @@
       "arg": null,
       "issued": 1789211610,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0760-4000-8000-0000000000760",
+      "op": "done",
+      "session": null,
+      "arg": null,
+      "device": "phone",
+      "issued": 1789211700,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0761-4000-8000-0000000000761",
+      "op": "done",
+      "session": null,
+      "arg": "2026-02-09",
+      "device": "web",
+      "issued": 1789211710,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0762-4000-8000-0000000000762",
+      "op": "done",
+      "session": null,
+      "arg": "ieri",
+      "issued": 1789211720,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1100,6 +1126,24 @@
       "ok": true,
       "text": "{\"nights\": []}",
       "at": 1789211611
+    },
+    {
+      "id": "6f1c2d3e-0760-4000-8000-0000000000760",
+      "ok": true,
+      "text": "{\"date\": \"2026-02-10\", \"rows\": [{\"task\": \"atlas-release-2-3\", \"title\": \"Release 2.3 of atlas-shop\", \"project\": \"personal/atlas-shop\", \"session\": \"atlas-shop\", \"at\": 1789211400, \"outcome\": \"green\", \"proof\": {\"kind\": \"release\", \"value\": \"v2.3\", \"url\": \"https://github.com/example/atlas-shop/releases/tag/v2.3\"}}, {\"task\": \"ledger-migrations-010\", \"title\": \"Migrations 008-010 on staging\", \"project\": \"work/clients/ledger-api\", \"session\": \"ledger-api\", \"at\": 1789209000, \"outcome\": \"green\", \"proof\": {\"kind\": \"commit\", \"value\": \"9f8e7d6\", \"url\": \"https://github.com/example/ledger-api/commit/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e\"}}, {\"task\": \"notes-night-report\", \"title\": \"Night report of field-notes\", \"project\": \"personal/field-notes\", \"session\": null, \"at\": 1789205000, \"outcome\": \"cancelled\", \"proof\": {\"kind\": \"file\", \"value\": \"docs/notte/2026-02-10-field-notes.md\", \"url\": null}}, {\"task\": \"orbit-docs-lint\", \"title\": \"Lint of the orbit docs\", \"project\": \"work/own/orbit-docs\", \"session\": \"orbit-docs\", \"at\": 1789201000, \"outcome\": \"failed\", \"proof\": {\"kind\": \"check\", \"value\": \"npm run lint\", \"url\": null}}], \"days\": [{\"date\": \"2026-02-09\", \"n\": 3}, {\"date\": \"2026-02-07\", \"n\": 1}], \"more\": false}",
+      "at": 1789211701
+    },
+    {
+      "id": "6f1c2d3e-0761-4000-8000-0000000000761",
+      "ok": false,
+      "text": "no task registry",
+      "at": 1789211711
+    },
+    {
+      "id": "6f1c2d3e-0762-4000-8000-0000000000762",
+      "ok": false,
+      "text": "ieri: not a date YYYY-MM-DD",
+      "at": 1789211721
     }
   ]
 }
