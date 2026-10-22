@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+E_EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u23E9-\u23FA\uFE0F]")   # 22/10: niente emoji negli avvisi
 import subprocess
 import sys
 import threading
@@ -151,7 +152,7 @@ r = guard("run")
 msgs5 = [c["text"] for c in CALLS["sendMessage"][n5:]]
 r2 = guard("run", now=NOW + 600)
 T.check("GU5 weekly reset: «80 % still unused» for personale, «at this pace the week runs out» for professionale; a second pass repeats neither",
-        r.returncode == 0 and len(msgs5) == 2 and any("personale" in m and "80 %" in m for m in msgs5) and any("professionale" in m and "⏳" in m for m in msgs5)
+        r.returncode == 0 and len(msgs5) == 2 and any("personale" in m and "80 %" in m for m in msgs5) and any("professionale" in m and "ritmo" in m for m in msgs5)
         and len(CALLS["sendMessage"]) == n5 + 2, r.stdout + r.stderr + str(msgs5))
 
 # GU6 (14/10): cambio automatico di account al limite, solo per gli account elencati, con isteresi e attesa
@@ -201,8 +202,8 @@ n_tg = len(CALLS.get("sendMessage", []))
 r = guard("run", now=NOW + 7200 + 3700)   # 09:00 locali: giorno
 args = argslog.read_text() if argslog.exists() else ""
 tk = re.findall(r"^talk master .*?--no-wait$", args, re.M | re.S)   # il riepilogo ha piu' righe: un argomento solo
-T.check("GU-ST two stalled commitments → ONE talk to the master «⏸ 2 impegni fermi …» with a line per task (tocca a notte-app / aspetta l'utente, next step), and the same once on Telegram",
-        r.returncode == 0 and len(tk) == 1 and "⏸ 2 impegni fermi da più di 2 h senza passi" in tk[0] and "- gantt-apk (9 h): tocca a notte-app; prossimo: APK sul telefono" in tk[0]
+T.check("GU-ST two stalled commitments → ONE talk to the master «2 impegni fermi …» (no emoji, 22/10) with a line per task (tocca a notte-app / aspetta l'utente, next step), and the same once on Telegram",
+        r.returncode == 0 and len(tk) == 1 and "2 impegni fermi da più di 2 h senza passi" in tk[0] and not E_EMOJI.search(tk[0]) and "- gantt-apk (9 h): tocca a notte-app; prossimo: APK sul telefono" in tk[0]
         and "- ledger-release (3 h): tocca a l'utente; prossimo: l'ok a: tag v1.4" in tk[0] and tk[0].endswith("--no-wait")
         and len(CALLS.get("sendMessage", [])) == n_tg + 1 and "gantt-apk" in CALLS["sendMessage"][-1]["text"] and "ledger-release" in CALLS["sendMessage"][-1]["text"], r.stdout + r.stderr + str(tk))
 r = guard("run", now=NOW + 17 * 3600)   # 02:00: ore quiete, solo la master

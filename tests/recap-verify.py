@@ -107,8 +107,8 @@ out = r.stdout
 T.check("DI1 short: title counts shown projects (3, zeta hidden), 1 waiting, no turns", r.returncode == 0 and "3 progetti" in out and "turni" not in out and "1 ferme" in out, out + r.stderr)
 T.check("DI1 short: master waiting first, its real icon (🟠 from the colour registry), link in the name, tool and time", out.index("FERME") < out.index("CHIUSE") and "🟠 master (https://claude.ai/code/session_01LINK) · AskUserQuestion" in out and "11:40" not in out, out)
 T.check("DI1 short: the waiting one quotes its last message, 'ok fatto:' opener stripped", "     risposta pronta" in out, out)
-T.check("DI1 short: closed alfa = one line of what was done (its last message, restarts merged), no icon, no times", "✓ alfa: riga buona senza email" in out and "⚪ alfa" not in out and "09:00" not in out, out)
-T.check("DI1 short: zeta (0 turns) hidden, sito.com closed with 1 turno", "zeta" not in out and "✓ sito.\u2060com: risposta cliente" in out, out)
+T.check("DI1 short: closed alfa = one line of what was done (its last message, restarts merged), no icon, no times", "alfa: riga buona senza email" in out and "✓ alfa" not in out and "⚪ alfa" not in out and "09:00" not in out, out)
+T.check("DI1 short: zeta (0 turns) hidden, sito.com closed with 1 turno", "zeta" not in out and "sito.\u2060com: risposta cliente" in out, out)
 T.check("DI1 short: totals per account with the account's shape, no turns", "⚪ personale 3" in out and "⬜ professionale 1" in out and "3/4" not in out, out)
 # DI1b: riassunto di TUTTA la giornata da un modello (finto): JSON {progetto: frase}, con cache per giorno
 fake_sum = tmp / "fake-claude-sum.sh"
@@ -116,10 +116,10 @@ fake_sum.write_text('#!/bin/sh\necho "$@" >> "%s"\necho \'{"alfa": {"fatto": "Te
 fake_sum.chmod(0o755)
 cfg_model = json.loads(cfg.read_text()); cfg_model["recap"]["summary"] = "model"; cfg.write_text(json.dumps(cfg_model))
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--date", "2026-09-09"], capture_output=True, text=True, env={**{"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_DIARY_FAKE_PROC": "1"}, "CM_CLAUDE_BIN": str(fake_sum)}, timeout=60)
-T.check("DI1b model summary: one sentence per project from ALL its stop messages, haiku -p called once", "✓ alfa: Test sistemati e changelog aggiornato" in r.stdout and "✓ sito.\u2060com: Risposta al cliente inviata" in r.stdout and (tmp / "sum-args.log").read_text().count("-p") == 1 and "riga buona senza email" in (tmp / "sum-args.log").read_text(), r.stdout + r.stderr)
+T.check("DI1b model summary: one sentence per project from ALL its stop messages, haiku -p called once", "alfa: Test sistemati e changelog aggiornato" in r.stdout and "sito.\u2060com: Risposta al cliente inviata" in r.stdout and (tmp / "sum-args.log").read_text().count("-p") == 1 and "riga buona senza email" in (tmp / "sum-args.log").read_text(), r.stdout + r.stderr)
 T.check("DI1b «prossimo» only where the model gave one: not under closed rows", "prossimo: Attendere" not in r.stdout, r.stdout)
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--date", "2026-09-09"], capture_output=True, text=True, env={**{"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_DIARY_FAKE_PROC": "1"}, "CM_CLAUDE_BIN": str(fake_sum)}, timeout=60)
-T.check("DI1b second run served from the day's cache: no new model call", "✓ alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args.log").read_text().count("-p") == 1, r.stdout)
+T.check("DI1b second run served from the day's cache: no new model call", "alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args.log").read_text().count("-p") == 1, r.stdout)
 # DI1d (14/09): il cron delle 20:00 ha PATH=/usr/bin:/bin e claude sta solo in ~/.local/bin → prima «claude» non si
 # trovava, l'errore era inghiottito e i riassunti del giorno si scrivevano vuoti. Cache svuotata: il modello va chiamato.
 import shutil as _sh
@@ -131,7 +131,7 @@ local_claude.parent.mkdir(parents=True, exist_ok=True)
 local_claude.write_text(fake_sum.read_text().replace(str(tmp / "sum-args.log"), str(tmp / "sum-args-cron.log")))
 local_claude.chmod(0o755)
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--date", "2026-09-09"], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_DIARY_FAKE_PROC": "1"}, timeout=60)
-T.check("DI1d cron PATH (/usr/bin:/bin), claude only in ~/.local/bin: the model is found and the summary is there (before: empty summaries since 12/09)", "✓ alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args-cron.log").is_file() and (tmp / "sum-args-cron.log").read_text().count("-p") == 1, r.stdout + r.stderr)
+T.check("DI1d cron PATH (/usr/bin:/bin), claude only in ~/.local/bin: the model is found and the summary is there (before: empty summaries since 12/09)", "alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args-cron.log").is_file() and (tmp / "sum-args-cron.log").read_text().count("-p") == 1, r.stdout + r.stderr)
 local_claude.unlink()
 cfg_model["recap"]["summary"] = "last"; cfg.write_text(json.dumps(cfg_model))
 # DI1c: la riga del giorno in docs/recap.md di ogni progetto (dalla cache del modello finto)
@@ -146,7 +146,7 @@ T.check("DI1c the root project (master) gets its line too, sito.com as well", (w
 cfg_thr = json.loads(cfg.read_text()); cfg_thr["recap"]["min_turns"] = 3; cfg.write_text(json.dumps(cfg_thr))
 r = recap("--date", "2026-09-09")
 out = r.stdout
-T.check("DI6 min_turns 3: sito.com (1 turn) folded into one «altro» line, alfa (3 turns) keeps its line", r.returncode == 0 and "✓ sito" not in out and "altro: sito.\u2060com" in out and "✓ alfa: riga buona senza email" in out, out + r.stderr)
+T.check("DI6 min_turns 3: sito.com (1 turn) folded into one «altro» line, alfa (3 turns) keeps its line", r.returncode == 0 and "sito.\u2060com: risposta" not in out and "altro: sito.\u2060com" in out and "alfa: riga buona senza email" in out, out + r.stderr)
 T.check("DI6 title still counts 3 projects, master (waiting, 1 turn) untouched", "3 progetti" in out and "🟠 master (https://claude.ai/code/session_01LINK)" in out, out)
 cfg_thr["recap"]["min_turns"] = 1; cfg.write_text(json.dumps(cfg_thr))
 r = recap("--date", "2026-09-09", "--full")

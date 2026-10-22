@@ -122,9 +122,9 @@ with T.PrivateTmux() as tm:
     T.check("A4 message: how to answer («2 a beta»), cut to the wrist width", t and "2 a beta" in t[0], t[0] if t else "-")
     # A4b (polso, 11/09 16:36): resa compatta; dal 16/09 il messaggio e' di solo testo (bot interattivo ritirato)
     m4 = CALLS["sendMessage"][0]
-    T.check("A4b notice: first line «❓ 🔴 beta · Colore» (icon, name, header: the widest line first), whole lines, no «…», NOT silent", t[0].splitlines()[0].startswith("❓ ") and t[0].splitlines()[0].endswith(" beta · Colore") and "…" not in t[0] and m4.get("disable_notification") != "true", t[0])
+    T.check("A4b notice: first line «🔴 beta · Colore» (icon, name, header: the widest line first; no ❓ since 22/10), whole lines, no «…», NOT silent", not t[0].splitlines()[0].startswith("❓") and t[0].splitlines()[0].endswith(" beta · Colore") and "…" not in t[0] and m4.get("disable_notification") != "true", t[0])
     T.check("A4b no inline keyboard: Telegram is one-way now, the wrist answers", not m4.get("reply_markup"), str(m4))
-    T.check("A4c ❓ name / the question WHOLE / «n label · description» one whole line per option (the text says what the buttons cannot)", len(t[0].splitlines()) >= 3 and t[0].splitlines()[1] == "colore preferito?" and t[0].splitlines()[2] == "1 rosso · descrizione 1" and t[0].splitlines()[4] == "3 verde · descrizione 3", t[0])
+    T.check("A4c name / the question WHOLE / «n label · description» one whole line per option (the text says what the buttons cannot)", len(t[0].splitlines()) >= 3 and t[0].splitlines()[1] == "colore preferito?" and t[0].splitlines()[2] == "1 rosso · descrizione 1" and t[0].splitlines()[4] == "3 verde · descrizione 3", t[0])
     led = (tmp / "state" / "ledger.jsonl")
     T.check("A4 ledger row ask-notified", led.is_file() and '"ask-notified"' in led.read_text() and '"beta"' in led.read_text(), led.read_text() if led.is_file() else "-")
     scr = subprocess.run(["tmux", "-L", tm.socket, "capture-pane", "-p", "-t", "beta"], capture_output=True, text=True).stdout
@@ -162,7 +162,7 @@ r = notify(None, {"session_id": "sid-g", "cwd": str(home / "gamma"), "tool_name"
                   "tool_input": {"questions": [{"question": long_q, "header": "Trasporto",
                                                 "options": [{"label": "Firebase RTDB + FCM (Recommended)"}, {"label": "Relay sul tuo hosting + FCM"}, {"label": "Telefono come ponte"}, {"label": "Tailscale diretto"}]}]}})
 t7 = texts()[0].splitlines() if texts() else []
-T.check("A7 the notice shows the interrogative sentence WHOLE on one line (no «…»), the context sentence dropped; first line «❓ … gamma · Trasporto»", r.returncode == 0 and t7 and t7[0].endswith(" gamma · Trasporto") and t7[1] == "Da dove possono passare stato e comandi fra PC e orologio?" and "…" not in texts()[0] and "Crostini" not in texts()[0], texts()[0] if texts() else r.stderr)
+T.check("A7 the notice shows the interrogative sentence WHOLE on one line (no «…»), the context sentence dropped; first line «… gamma · Trasporto»", r.returncode == 0 and t7 and t7[0].endswith(" gamma · Trasporto") and t7[1] == "Da dove possono passare stato e comandi fra PC e orologio?" and "…" not in texts()[0] and "Crostini" not in texts()[0], texts()[0] if texts() else r.stderr)
 T.check("A7 options after it, one per line, «(Recommended)» dropped from the labels (no tmux here → no option buttons, as A5)", any(l == "1 Firebase RTDB + FCM" for l in t7) and t7[-1] == "4 Tailscale diretto", texts()[0])
 fake_syn = tmp / "fake-synth.sh"; syn_log = tmp / "synth-args.log"
 fake_syn.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "' + str(syn_log) + '"\necho "Dove passano stato e comandi fra PC e orologio?"\n'); fake_syn.chmod(0o755)

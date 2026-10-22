@@ -304,6 +304,21 @@ pause that waits for the person (`task pause ID --reason R --waits person
 person}` while it lasts, `paused.at` the real start when `--since` says it
 (else the pause's record), never stalled; `task resume` brings `waits` back.
 
+Contract 1.78 removes every emoji from the texts the relay and the plugin
+generate for the app and the notifications (22/10/2026, the maintainer from
+the web at 13:36: «non voglio emoji nell'app o nelle notifiche, solo svg o
+fontawesome»; additive, `v` stays 1). Event titles are the plain name or
+text (`ledger-api`, `atlas-shop`, `96 % personal`, `state stopped for 11
+min`), the bodies of the recap, the night report and the quota events carry
+no marks (`ok`/`KO` before a night job's name), the guard's and `needs-you`'s
+messages, the stall and task-check titles, the question notices on Telegram
+and the wrist lose their leading symbol. The app picks the icon from `kind`;
+`task_check` events add `ok` (true when the check is green) because their
+title no longer says it; the `preview.title` of an event follows the title.
+The sessions' `icon` (the tab's colour circle) is data, not decoration, and
+stays. Fixtures: `events-sample.json` and `local-api.json` without emoji,
+`task_check` with `ok`.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

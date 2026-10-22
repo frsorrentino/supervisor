@@ -774,29 +774,29 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
             add("launched", s, f"▶ {name}", s.get("project") or "")
         pq, q = (p or {}).get("question"), s.get("question")
         if q and (not pq or pq.get("id") != q["id"]):
-            add("question", s, f"❓ {name}", q["text"], q["id"])
+            add("question", s, name, q["text"], q["id"])
         if pq and not q:
-            add("answered", s, f"✓ {name}", "", pq.get("id"))
+            add("answered", s, name, "", pq.get("id"))
         po, o = (p or {}).get("outcome"), s.get("outcome")
         if o and p is not None and (not po or po.get("at") != o.get("at")):
-            add("outcome", s, f"✓ {name}", o["short"])
+            add("outcome", s, name, o["short"])
         # 1.68: «ferma per te» e la fine turno bloccante, un evento quando compaiono o cambiano
         if s.get("needs_you") and (p is None or (p.get("needs_you") or {}).get("at") != s["needs_you"]["at"]):
             add("needs_you", s, f"✋ {name}", s["needs_you"]["reason"], name)
         elif s.get("turn_blocking") and p is not None and (p.get("turn_blocking") or {}) != s["turn_blocking"]:
             add("turn_blocking", s, f"✋ {name}", s["turn_blocking"]["text"], name)
         if s["state"] == "gone" and p is not None and p["state"] != "gone":
-            add("gone", s, f"✗ {name}", "")
+            add("gone", s, name, "")
     for name, p in pv.items():
         if name not in cv and p["state"] != "gone":
-            add("gone", p, f"✗ {name}", "")
+            add("gone", p, name, "")
     for acc, q in (cur or {}).get("quota", {}).items():
         pq = ((prev or {}).get("quota") or {}).get(acc) or {}
         for k, label in (("h5", "5 h"), ("w7", "settimana")):
             v, pvv = q.get(k), pq.get(k)
             if v is not None and v >= warn_pct and (pvv is None or pvv < warn_pct):
                 # l'ora del reset della finestra che ha passato la soglia (prima: sempre quello settimanale)
-                add("quota", None, f"⚠ {v} % {acc}", f"reset {_hm(q.get('reset_h5' if k == 'h5' else 'reset_w7'))}")
+                add("quota", None, f"{v} % {acc}", f"reset {_hm(q.get('reset_h5' if k == 'h5' else 'reset_w7'))}")
                 out[-1]["account"] = acc
     return out, seq
 

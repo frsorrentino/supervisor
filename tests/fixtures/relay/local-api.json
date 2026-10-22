@@ -1,342 +1,342 @@
 {
- "contract": "1.35",
- "base": "http://127.0.0.1:8765",
- "token": "Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
- "rules": "Bearer token on every /api call (GET also ?t=); Host 127.0.0.1 or localhost on the relay's port; no CORS headers; `at` varies; JSON in clear, as in the other fixtures; 1.70: GET /api/tail/<id> = the body of /tail/<id> in clear (`at` varies), ?tx= equal to the current tx → 304 without a body, 404 {\"error\": \"no such session\"} for an id with no live transcript; 1.72: every entry of /api/tail carries `diff` (null when it is not a Write, Edit, MultiEdit or NotebookEdit with a structured result)",
- "exchanges": [
-  {
-   "name": "state",
-   "request": {
-    "method": "GET",
-    "path": "/api/state",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "application/json; charset=utf-8",
-    "body_ref": "state-2-idle.json"
-   }
-  },
-  {
-   "name": "state-no-token",
-   "request": {
-    "method": "GET",
-    "path": "/api/state",
-    "headers": {}
-   },
-   "response": {
-    "status": 401,
-    "content_type": "application/json; charset=utf-8",
-    "body": {
-     "error": "token"
-    }
-   }
-  },
-  {
-   "name": "state-wrong-host",
-   "request": {
-    "method": "GET",
-    "path": "/api/state",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
-     "Host": "evil.example:8765"
-    }
-   },
-   "response": {
-    "status": 403,
-    "content_type": "application/json; charset=utf-8",
-    "body": {
-     "error": "host"
-    }
-   }
-  },
-  {
-   "name": "events",
-   "request": {
-    "method": "GET",
-    "path": "/api/events?since=1789200000",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "application/json; charset=utf-8",
-    "body": [
-     {
-      "key": "1789264800_015",
-      "kind": "night_report",
-      "session": null,
-      "account": null,
-      "ts": 1789264800,
-      "title": "Night: 2 jobs, 1 succeeded",
-      "body": "Night shift: 2 jobs run, 0 still queued\n✓ atlas-shop (personal, 812 s, rc=0): Fixed the three flaky tests, two were real.\n   /home/demo/workspaces/personal/atlas-shop/docs/notte/2026-09-13-a3f09c1e-go-through-the-open-issues.md\n✗ ledger-api (work, 3600 s, rc=124): timed out (night.item_timeout_s = 3600)\n   /home/demo/workspaces/work/clients/ledger-api/docs/notte/2026-09-13-7b21d4e8-update-the-changelog.md",
-      "ref": "2026-09-13"
-     },
-     {
-      "key": "1789236000_014",
-      "kind": "recap",
-      "session": null,
-      "account": null,
-      "ts": 1789236000,
-      "title": "Diary 12/09",
-      "body": "Recap 12/09/2026 · 3 projects · 1 waiting on a question\n\nWAITING ON A QUESTION\n⏳ ledger-api · since 14:15 · AskUserQuestion\n   Deploy ready, waiting for the client's ok.\n\nOPEN\n● atlas-shop · 6 turns · last 13:45\n   Migrations 008-011 applied, tests green\n\nCLOSED TODAY\n✓ field-notes · 2 turns\n   README rewritten with the three sections asked for.\n\nProjects: atlas-shop 6, ledger-api 3, field-notes 2",
-      "ref": "2026-09-12"
-     },
-     {
-      "key": "1789215000_016",
-      "kind": "quota",
-      "session": null,
-      "account": "personal",
-      "ts": 1789215000,
-      "title": "✓ quota personal back",
-      "body": "reset 13:10\n✅ quota “personal” back: 1 sessions resumed (atlas-shop); night queue: nothing to do",
-      "ref": null
-     },
-     {
-      "key": "1789210900_001",
-      "kind": "answered",
-      "session": "ledger-api",
-      "account": "work",
-      "ts": 1789210900,
-      "title": "1 yes",
-      "body": "answered from watch-pixel5",
-      "ref": "q-1789210500-1"
-     },
-     {
-      "key": "1789210500_001",
-      "kind": "question",
-      "session": "ledger-api",
-      "account": "work",
-      "ts": 1789210500,
-      "title": "❓ ledger-api",
-      "body": "Deploy ready, waiting for the client's ok. Deploy now?",
-      "ref": "q-1789210500-1"
-     },
-     {
-      "key": "1789210300_001",
-      "kind": "outcome",
-      "session": "atlas-shop",
-      "account": "personal",
-      "ts": 1789210300,
-      "title": "✓ atlas-shop",
-      "body": "Migrations 008-011 applied, tests green",
-      "ref": null
-     }
-    ]
-   }
-  },
-  {
-   "name": "stream",
-   "request": {
-    "method": "GET",
-    "path": "/api/stream?t=Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
-    "headers": {
-     "Accept": "text/event-stream"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "text/event-stream; charset=utf-8",
-    "first_event": "state",
-    "body_ref": "state-2-idle.json"
-   }
-  },
-  {
-   "name": "cmd-file",
-   "request": {
-    "method": "POST",
-    "path": "/api/cmd",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
-     "Content-Type": "application/json"
-    },
-    "body": {
-     "id": "6f1c2d3e-0140-4000-8000-000000000140",
-     "op": "file",
-     "session": "field-notes",
-     "arg": "/home/demo/workspaces/personal/field-notes/docs/cover.png",
-     "issued": 1789210790,
-     "by": "phone-pixel8"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "application/json; charset=utf-8",
-    "body": {
-     "id": "6f1c2d3e-0140-4000-8000-000000000140",
-     "ok": true,
-     "text": "file ready (image/png, 69 bytes)",
-     "at": 1789210791
-    },
-    "vary": [
-     "at"
-    ]
-   }
-  },
-  {
-   "name": "file",
-   "request": {
-    "method": "GET",
-    "path": "/api/file/6f1c2d3e-0140-4000-8000-000000000140",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "image/png",
-    "content_disposition": "inline; filename*=UTF-8''cover.png",
-    "body_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-   }
-  },
-  {
-   "name": "share",
-   "request": {
-    "method": "POST",
-    "path": "/api/share/7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
-     "Content-Type": "application/json"
-    },
-    "body": {
-     "mime": "image/png",
-     "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
-     "name": "checkout.png"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "application/json; charset=utf-8",
-    "body": {
-     "id": "7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
-     "ok": true,
-     "size": 69
-    }
-   }
-  },
-  {
-   "name": "cmd-report",
-   "request": {
-    "method": "POST",
-    "path": "/api/cmd",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
-     "Content-Type": "application/json"
-    },
-    "body": {
-     "id": "6f1c2d3e-0125-4000-8000-000000000125",
-     "op": "report",
-     "session": "atlas-shop",
-     "arg": "7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
-     "text": "the client says the checkout button is grey on iPhone",
-     "issued": 1789210710,
-     "by": "phone-pixel8"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "application/json; charset=utf-8",
-    "body": {
-     "id": "6f1c2d3e-0125-4000-8000-000000000125",
-     "ok": true,
-     "text": "sent to atlas-shop: image saved as docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg",
-     "at": 1789210716
-    },
-    "vary": [
-     "at"
-    ]
-   }
-  },
-  {
-   "name": "tail",
-   "request": {
-    "method": "GET",
-    "path": "/api/tail/f61903c0-ea6a-409c-a961-d01126a0f3ad",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
-    }
-   },
-   "response": {
-    "status": 200,
-    "content_type": "application/json; charset=utf-8",
-    "vary": [
-     "at"
-    ],
-    "body": {
-     "session": "atlas-shop",
-     "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
-     "tx": "318-1789210000000000000",
-     "at": 1789210800,
-     "entries": [
-      {
-       "id": "u70.0",
-       "role": "user",
-       "text": "review the test seeds",
-       "at": 1789207200,
-       "tool": null,
-       "note": null,
-       "error": null,
-       "cut": false,
-       "turn": null,
-       "files": null,
-       "origin": "pc",
-       "queued": false,
-       "diff": null
+  "contract": "1.35",
+  "base": "http://127.0.0.1:8765",
+  "token": "Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
+  "rules": "Bearer token on every /api call (GET also ?t=); Host 127.0.0.1 or localhost on the relay's port; no CORS headers; `at` varies; JSON in clear, as in the other fixtures; 1.70: GET /api/tail/<id> = the body of /tail/<id> in clear (`at` varies), ?tx= equal to the current tx → 304 without a body, 404 {\"error\": \"no such session\"} for an id with no live transcript; 1.72: every entry of /api/tail carries `diff` (null when it is not a Write, Edit, MultiEdit or NotebookEdit with a structured result)",
+  "exchanges": [
+    {
+      "name": "state",
+      "request": {
+        "method": "GET",
+        "path": "/api/state",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+        }
       },
-      {
-       "id": "a70.0",
-       "role": "assistant",
-       "text": "Seeds reviewed: 3 were flaky, fixed and green.",
-       "at": 1789207205,
-       "tool": null,
-       "note": null,
-       "error": null,
-       "cut": false,
-       "turn": null,
-       "files": null,
-       "origin": null,
-       "queued": false,
-       "diff": null
+      "response": {
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "body_ref": "state-2-idle.json"
       }
-     ],
-     "more": false
+    },
+    {
+      "name": "state-no-token",
+      "request": {
+        "method": "GET",
+        "path": "/api/state",
+        "headers": {}
+      },
+      "response": {
+        "status": 401,
+        "content_type": "application/json; charset=utf-8",
+        "body": {
+          "error": "token"
+        }
+      }
+    },
+    {
+      "name": "state-wrong-host",
+      "request": {
+        "method": "GET",
+        "path": "/api/state",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
+          "Host": "evil.example:8765"
+        }
+      },
+      "response": {
+        "status": 403,
+        "content_type": "application/json; charset=utf-8",
+        "body": {
+          "error": "host"
+        }
+      }
+    },
+    {
+      "name": "events",
+      "request": {
+        "method": "GET",
+        "path": "/api/events?since=1789200000",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "body": [
+          {
+            "key": "1789264800_015",
+            "kind": "night_report",
+            "session": null,
+            "account": null,
+            "ts": 1789264800,
+            "title": "Night: 2 jobs, 1 succeeded",
+            "body": "Night shift: 2 jobs run, 0 still queued\nok atlas-shop (personal, 812 s, rc=0): Fixed the three flaky tests, two were real.\n/home/demo/workspaces/personal/atlas-shop/docs/notte/2026-09-13-a3f09c1e-go-through-the-open-issues.md\nKO ledger-api (work, 3600 s, rc=124): timed out (night.item_timeout_s = 3600)\n/home/demo/workspaces/work/clients/ledger-api/docs/notte/2026-09-13-7b21d4e8-update-the-changelog.md",
+            "ref": "2026-09-13"
+          },
+          {
+            "key": "1789236000_014",
+            "kind": "recap",
+            "session": null,
+            "account": null,
+            "ts": 1789236000,
+            "title": "Diary 12/09",
+            "body": "Recap 12/09/2026 · 3 projects · 1 waiting on a question\n\nWAITING ON A QUESTION\nledger-api · since 14:15 · AskUserQuestion\nDeploy ready, waiting for the client's ok.\n\nOPEN\natlas-shop · 6 turns · last 13:45\nMigrations 008-011 applied, tests green\n\nCLOSED TODAY\nok field-notes · 2 turns\nREADME rewritten with the three sections asked for.\n\nProjects: atlas-shop 6, ledger-api 3, field-notes 2",
+            "ref": "2026-09-12"
+          },
+          {
+            "key": "1789215000_016",
+            "kind": "quota",
+            "session": null,
+            "account": "personal",
+            "ts": 1789215000,
+            "title": "quota personal back",
+            "body": "reset 13:10\nquota “personal” back: 1 sessions resumed (atlas-shop); night queue: nothing to do",
+            "ref": null
+          },
+          {
+            "key": "1789210900_001",
+            "kind": "answered",
+            "session": "ledger-api",
+            "account": "work",
+            "ts": 1789210900,
+            "title": "1 yes",
+            "body": "answered from watch-pixel5",
+            "ref": "q-1789210500-1"
+          },
+          {
+            "key": "1789210500_001",
+            "kind": "question",
+            "session": "ledger-api",
+            "account": "work",
+            "ts": 1789210500,
+            "title": "ledger-api",
+            "body": "Deploy ready, waiting for the client's ok. Deploy now?",
+            "ref": "q-1789210500-1"
+          },
+          {
+            "key": "1789210300_001",
+            "kind": "outcome",
+            "session": "atlas-shop",
+            "account": "personal",
+            "ts": 1789210300,
+            "title": "atlas-shop",
+            "body": "Migrations 008-011 applied, tests green",
+            "ref": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "stream",
+      "request": {
+        "method": "GET",
+        "path": "/api/stream?t=Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
+        "headers": {
+          "Accept": "text/event-stream"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "text/event-stream; charset=utf-8",
+        "first_event": "state",
+        "body_ref": "state-2-idle.json"
+      }
+    },
+    {
+      "name": "cmd-file",
+      "request": {
+        "method": "POST",
+        "path": "/api/cmd",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "id": "6f1c2d3e-0140-4000-8000-000000000140",
+          "op": "file",
+          "session": "field-notes",
+          "arg": "/home/demo/workspaces/personal/field-notes/docs/cover.png",
+          "issued": 1789210790,
+          "by": "phone-pixel8"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "body": {
+          "id": "6f1c2d3e-0140-4000-8000-000000000140",
+          "ok": true,
+          "text": "file ready (image/png, 69 bytes)",
+          "at": 1789210791
+        },
+        "vary": [
+          "at"
+        ]
+      }
+    },
+    {
+      "name": "file",
+      "request": {
+        "method": "GET",
+        "path": "/api/file/6f1c2d3e-0140-4000-8000-000000000140",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "image/png",
+        "content_disposition": "inline; filename*=UTF-8''cover.png",
+        "body_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+      }
+    },
+    {
+      "name": "share",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "mime": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+          "name": "checkout.png"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "body": {
+          "id": "7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
+          "ok": true,
+          "size": 69
+        }
+      }
+    },
+    {
+      "name": "cmd-report",
+      "request": {
+        "method": "POST",
+        "path": "/api/cmd",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "id": "6f1c2d3e-0125-4000-8000-000000000125",
+          "op": "report",
+          "session": "atlas-shop",
+          "arg": "7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
+          "text": "the client says the checkout button is grey on iPhone",
+          "issued": 1789210710,
+          "by": "phone-pixel8"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "body": {
+          "id": "6f1c2d3e-0125-4000-8000-000000000125",
+          "ok": true,
+          "text": "sent to atlas-shop: image saved as docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg",
+          "at": 1789210716
+        },
+        "vary": [
+          "at"
+        ]
+      }
+    },
+    {
+      "name": "tail",
+      "request": {
+        "method": "GET",
+        "path": "/api/tail/f61903c0-ea6a-409c-a961-d01126a0f3ad",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "vary": [
+          "at"
+        ],
+        "body": {
+          "session": "atlas-shop",
+          "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
+          "tx": "318-1789210000000000000",
+          "at": 1789210800,
+          "entries": [
+            {
+              "id": "u70.0",
+              "role": "user",
+              "text": "review the test seeds",
+              "at": 1789207200,
+              "tool": null,
+              "note": null,
+              "error": null,
+              "cut": false,
+              "turn": null,
+              "files": null,
+              "origin": "pc",
+              "queued": false,
+              "diff": null
+            },
+            {
+              "id": "a70.0",
+              "role": "assistant",
+              "text": "Seeds reviewed: 3 were flaky, fixed and green.",
+              "at": 1789207205,
+              "tool": null,
+              "note": null,
+              "error": null,
+              "cut": false,
+              "turn": null,
+              "files": null,
+              "origin": null,
+              "queued": false,
+              "diff": null
+            }
+          ],
+          "more": false
+        }
+      }
+    },
+    {
+      "name": "tail-unchanged",
+      "request": {
+        "method": "GET",
+        "path": "/api/tail/f61903c0-ea6a-409c-a961-d01126a0f3ad?tx=318-1789210000000000000",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+        }
+      },
+      "response": {
+        "status": 304,
+        "content_type": "application/json; charset=utf-8",
+        "body": null
+      }
+    },
+    {
+      "name": "tail-no-session",
+      "request": {
+        "method": "GET",
+        "path": "/api/tail/00000000-0000-4000-8000-000000000000",
+        "headers": {
+          "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
+        }
+      },
+      "response": {
+        "status": 404,
+        "content_type": "application/json; charset=utf-8",
+        "body": {
+          "error": "no such session"
+        }
+      }
     }
-   }
-  },
-  {
-   "name": "tail-unchanged",
-   "request": {
-    "method": "GET",
-    "path": "/api/tail/f61903c0-ea6a-409c-a961-d01126a0f3ad?tx=318-1789210000000000000",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
-    }
-   },
-   "response": {
-    "status": 304,
-    "content_type": "application/json; charset=utf-8",
-    "body": null
-   }
-  },
-  {
-   "name": "tail-no-session",
-   "request": {
-    "method": "GET",
-    "path": "/api/tail/00000000-0000-4000-8000-000000000000",
-    "headers": {
-     "Authorization": "Bearer Lc4Ma5t3r-l0cal-t0ken-f0r-te5ts-0nly-AAAAAAA"
-    }
-   },
-   "response": {
-    "status": 404,
-    "content_type": "application/json; charset=utf-8",
-    "body": {
-     "error": "no such session"
-    }
-   }
-  }
- ]
+  ]
 }

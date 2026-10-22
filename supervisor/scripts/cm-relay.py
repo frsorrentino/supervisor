@@ -4901,7 +4901,7 @@ def task_check(tm):
         key_ = "relay.event_task_check_green" if green else "relay.event_task_check_red"
         attention_mark("task_red", name, t["id"], M(key_, task=t["id"]), remove=green)
         body = S.one_line(t.get("title") or "") + ("\n" + "\n".join(str(res.get("tail") or "").splitlines()[-3:]) if not green and res.get("tail") else "")
-        emit("task_check", M(key_, task=t["id"]), body, ref=t["id"], session=name)
+        emit("task_check", M(key_, task=t["id"]), body, ref=t["id"], session=name, extra={"ok": green})   # 1.78: l'icona la sceglie l'app da ok
         log(f"task_check {t['id']} ({name}): {'verde' if green else 'rosso'}")
     write_json(p, seen)
     return 0

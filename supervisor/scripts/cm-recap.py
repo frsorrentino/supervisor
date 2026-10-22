@@ -413,7 +413,7 @@ def render_short(groups, label, as_html=False, between=None, deadlines=None):
         lines.append("")
         lines += [f"📅 {esc(cal.line(e))}" for e in deadlines[0]]
         if deadlines[1]:
-            lines.append(f"⚠ {esc(deadlines[1])}")
+            lines.append(esc(deadlines[1]))
         lines.append("")
     if ferme:
         if lines[-1] != "":
@@ -450,7 +450,7 @@ def render_short(groups, label, as_html=False, between=None, deadlines=None):
             if g in minor:
                 continue
             sm, _ = said.get(id(g), ("", ""))
-            lines.append(f"✓ {name_of(g, False)}" + (f": {esc(sm)}" if sm else ""))
+            lines.append(name_of(g, False) + (f": {esc(sm)}" if sm else ""))
             lines.append("")
         if minor:
             lines.append(esc(M("recap.h_other", names=", ".join(shown(g["project"], False) for g in minor))))

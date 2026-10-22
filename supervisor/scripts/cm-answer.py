@@ -316,7 +316,7 @@ def notify_lines(p, name, on_screen, ui):
     icon = icon_of(name)
     header = header or str(q0.get("header") or "")
     # larghezza piena (l'utente 12/09 11:14): righe intere, la prima la piu' lunga («❓ 🔴 master · Trasporto»)
-    lines = [ui.join(f"❓ {icon} {ui.short_name(name)}".replace("  ", " "), header)]
+    lines = [ui.join(f"{icon} {ui.short_name(name)}".replace("  ", " "), header)]
     if question or options:
         lines.append(ui.line(synth_question(question, ui) or "?"))
         # il testo dice solo quello che i tasti non dicono (l'utente 12/09 11:12): le opzioni si elencano se hanno

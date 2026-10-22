@@ -106,8 +106,8 @@ T.check("H2 SessionStart triggers the registry", (tmp / "registry.json").exists(
 # H3
 k = r.stdout
 # 2200 (02/10/2026): la regola 10, «Prossimi:» per i consigli toccabili del telefono, approvata dal maintainer
-# 14/10: 2400 caratteri, con la regola 11 (needs-you)
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2400 and len(k.strip().splitlines()) <= 13, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 14/10: 2400 caratteri, con la regola 11 (needs-you); 22/10: 2700 e 14 righe, con la regola 12 (l'ok scritto nella sessione)
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2700 and len(k.strip().splitlines()) <= 14, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
@@ -368,8 +368,8 @@ with T.PrivateTmux() as tm:
     f9.write_text(json.dumps({"tmux": "beta", "pid": morto.pid, "cartella": str(home / "ws" / "personali" / "beta"), "gen": "mai"}))
     r9 = subprocess.run([str(T.SCRIPTS / "cm-restart.sh"), "exec", str(f9)], capture_output=True, text=True, env=e9b, timeout=120)
     o9 = r9.stdout + r9.stderr
-    T.check("R9 the process never dies → «riavvio annullato», exit 1, and the user is told: «avviso: ⚠ riavvio di beta non riuscito» (app and Telegram tried)",
-            r9.returncode == 1 and "pid " in o9 and "riavvio annullato" in o9 and "avviso: ⚠ riavvio di beta non riuscito" in o9 and "riavvio completato" not in o9, o9[-800:])
+    T.check("R9 the process never dies → «riavvio annullato», exit 1, and the user is told: «avviso: riavvio di beta non riuscito» (no emoji, 22/10) (app and Telegram tried)",
+            r9.returncode == 1 and "pid " in o9 and "riavvio annullato" in o9 and "avviso: riavvio di beta non riuscito" in o9 and "riavvio completato" not in o9, o9[-800:])
 
 T.rm(str(tmp))
 T.finish()

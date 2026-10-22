@@ -455,16 +455,16 @@ T.check("R2 awaiting state: a session with a wrist prompt pending is «awaiting�
 # R3: eventi dal diff
 EV = json.loads((FIX / "events-sample.json").read_text())
 # 1.56-1.58: preview (quando qualcosa e' nascosto) e i campi di quota_limit sono facoltativi; gli altri sempre
-EV_OPT = {"preview", "reset_at", "window", "other_account", "actions", "reason", "continue_text", "quiet"}
+EV_OPT = {"preview", "reset_at", "window", "other_account", "actions", "reason", "continue_text", "quiet", "ok"}
 ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
 ev, seq = S.events_between(F2, F1, 1789210800, 1)
-T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "❓ ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
+T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
 ev2, _ = S.events_between(F1, F2, 1789214400, 1)
-T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone)", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes")] and ev2[1]["title"] == "✗ ledger-api", str(ev2))
+T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone)", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes")] and ev2[1]["title"] == "ledger-api", str(ev2))
 q_prev = {"sessions": [F1["sessions"][0]], "quota": {"personal": {"h5": 90, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
 q_cur = {"sessions": [dict(F1["sessions"][0], question=None)], "quota": {"personal": {"h5": 96, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
 ev3, _ = S.events_between(q_prev, q_cur, 1789210900, 7)
-T.check("R3 question gone → answered (ref = question id); quota crossing warn_pct → «⚠ 96 % personal» with the reset time", [(e["kind"], e["key"]) for e in ev3] == [("answered", "1789210900_007"), ("quota", "1789210900_008")] and ev3[0]["ref"] == "q-1789210500-1" and ev3[1]["title"] == "⚠ 96 % personal" and ev3[1]["account"] == "personal" and ev3[1]["body"].startswith("reset "), str(ev3))
+T.check("R3 question gone → answered (ref = question id); quota crossing warn_pct → «96 % personal» with the reset time (no emoji, 22/10)", [(e["kind"], e["key"]) for e in ev3] == [("answered", "1789210900_007"), ("quota", "1789210900_008")] and ev3[0]["ref"] == "q-1789210500-1" and ev3[1]["title"] == "96 % personal" and ev3[1]["account"] == "personal" and ev3[1]["body"].startswith("reset "), str(ev3))
 
 # R4: relay push contro il Firebase finto, con dispatcher finto e stato finto della macchina
 home = tmp / "home"; (home / ".claude" / "waiting").mkdir(parents=True)
@@ -1195,7 +1195,7 @@ r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night.py"), "run", "--se
 ev = new_events("night_report", before)
 T.check("R14 (1.18) night run --send → one `night_report` event: title «Notte: 1 lavori, 1 riusciti», body = the Telegram summary, ref = today",
         r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Notte: 1 lavori, 1 riusciti" and ev[0]["ref"] == today
-        and ev[0]["body"].startswith("Turno di notte: 1 lavori eseguiti") and "✓ atlas-shop" in ev[0]["body"], r.stdout[-300:] + r.stderr[-300:] + str(ev))
+        and ev[0]["body"].startswith("Turno di notte: 1 lavori eseguiti") and "ok atlas-shop" in ev[0]["body"] and "✓" not in ev[0]["body"], r.stdout[-300:] + r.stderr[-300:] + str(ev))
 nq.unlink(missing_ok=True)
 CORE = f"import importlib.util as u; s = u.spec_from_file_location('c', {str(T.SCRIPTS / 'cm-core.py')!r}); m = u.module_from_spec(s); s.loader.exec_module(m); "
 before = set(STORE.get("events") or {})
@@ -2007,7 +2007,7 @@ T.check("R34 (1.40) events-sample: restart_failed, a restart that did not succee
         (_rf := next((e for e in EV if e["kind"] == "restart_failed"), {})) and _rf["session"] is None and _rf["ref"] == "field-notes" and ev_ok(_rf), str(_rf))
 _rs = next((e for e in EV if e["kind"] == "relay_stale"), {})
 T.check("R38 (1.45) events-sample: relay_stale, no session and no ref, with the shape of the other events",
-        _rs and _rs["session"] is None and _rs["ref"] is None and _rs["title"].startswith("⚠") and ev_ok(_rs), str(_rs))
+        _rs and _rs["session"] is None and _rs["ref"] is None and _rs["title"].startswith("state stopped") and ev_ok(_rs), str(_rs))
 rows_alive("ledger-api", "atlas-shop", "field-notes")
 r = relay("push", "--dry-run"); dry11 = json.loads(r.stdout)
 p_atlas = next(p_ for p_ in dry11["projects"] if p_["name"] == "atlas-shop")

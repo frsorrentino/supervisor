@@ -414,7 +414,7 @@ def summary_line(item, res, report):
     src = [l.strip() for l in (res.get("final") or res["out"]).splitlines() if l.strip()]
     esito = next((ESITO_RE.sub("", l) for l in reversed(src) if ESITO_RE.match(l)), None) if res.get("final") else None
     first = (esito or (src[0] if src else ""))[:120]
-    mark = "✓" if res["rc"] == 0 else "✗"
+    mark = "ok" if res["rc"] == 0 else "KO"
     return f"{mark} {os.path.basename(item['dir'])} ({item['account']}, {res['seconds']} s, rc={res['rc']}): {first}\n   {report}"
 
 
@@ -493,7 +493,7 @@ def run(argv):
     if send and lines:
         text = M("night.summary_title", n=len(lines), left=len(read_jsonl(queue_path()))) + "\n" + "\n".join(lines)
         # contratto 1.18: il resoconto anche all'app, evento `night_report` del relay, prima di Telegram
-        _load("cm-core").relay_event("night_report", M("night.event_title", n=len(lines), ok=sum(1 for l in lines if l.startswith("✓"))),
+        _load("cm-core").relay_event("night_report", M("night.event_title", n=len(lines), ok=sum(1 for l in lines if l.startswith("ok "))),
                                      text, ref=dt.date.today().isoformat())
         bot = _load("cm-bot")
         if bot.token():

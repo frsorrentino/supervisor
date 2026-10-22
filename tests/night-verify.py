@@ -132,7 +132,7 @@ T.check("NI3 queue emptied, done has both with rc", queue.read_text().strip() ==
 T.check("NI3 end of the run: the night report rebuilt once, after the items, and the log says so",
         report_marker.is_file() and len(report_marker.read_text().splitlines()) == 1
         and "night report: rc=0 /x/report.json" in (state / "night.log").read_text(), (state / "night.log").read_text()[-400:])
-T.check("NI3 --send: one Telegram message with both items", len(CALLS["sendMessage"]) == 1 and "alfa" in CALLS["sendMessage"][0]["text"] and "sito.com" in CALLS["sendMessage"][0]["text"] and "✓" in CALLS["sendMessage"][0]["text"], str(CALLS["sendMessage"])[:400])
+T.check("NI3 --send: one Telegram message with both items", len(CALLS["sendMessage"]) == 1 and "alfa" in CALLS["sendMessage"][0]["text"] and "sito.com" in CALLS["sendMessage"][0]["text"] and "ok alfa" in CALLS["sendMessage"][0]["text"] and "✓" not in CALLS["sendMessage"][0]["text"], str(CALLS["sendMessage"])[:400])
 
 # NI4
 argslog.unlink()
@@ -234,7 +234,7 @@ took = time.time() - t0
 done7 = {d["prompt"]: d for d in (json.loads(l) for l in (state / "night-done.jsonl").read_text().splitlines()) if d["prompt"] in KINDS7}
 out7 = {k: (Path(d["report"]).read_text() if Path(d["report"]).is_file() else "") for k, d in done7.items()}
 so = r.stdout.splitlines()
-lines7 = {k: l for i, l in enumerate(so[:-1]) if l.startswith(("✓", "✗")) for k, d in done7.items() if d["id"] in so[i + 1]}
+lines7 = {k: l for i, l in enumerate(so[:-1]) if l.startswith(("ok ", "KO ")) for k, d in done7.items() if d["id"] in so[i + 1]}
 
 
 def alive(pidfile):

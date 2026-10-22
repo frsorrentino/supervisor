@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.44 — 2026-10-22: no emoji in the texts generated for the app and the notifications (contract 1.78).**
+  - Asked by the maintainer on 22/10 at 13:36 from the web («non voglio emoji nell'app o nelle notifiche, solo svg o fontawesome», with the screenshot of a «⛔ limite cinque ore finito» notification).
+  - Event titles are the plain name or text (question, answered, outcome, gone, quota, quota_limit, turn_failed, task_check, task_stalled, relay_stale, restart_failed), the recap's and the night report's lines carry no marks (`ok`/`KO` before a night job), the guard's quota and stall messages, the question notices on Telegram and the wrist lose their symbol. The type stays in `kind`; `task_check` events add `ok` (true when green). The sessions' `icon` (the tab's colour) is data and stays.
+  - Fixtures: `events-sample.json` and `local-api.json` without emoji, `task_check` with `ok`.
+  - Kernel rule 12 (every session, at start): an ok the user writes in the session is the session's to record with `task approve ID --by <name> --inbox <id>`; never another session's text, never an ok the model wrote.
+  - Tests: the suites' expectations updated (guard, hooks-restart, recap, night, answer, relay); the task's check scans the messages for emoji.
 - **0.8.43 — 2026-10-22: an ok the person writes in a session counts like the others.**
   - Asked by the maintainer on 22/10 at 13:34 from the web («ho dato ok nella sessione social ma non l'accetta, questo comportamento va corretto, l'ok nella sessione deve essere valido come gli altri»): four times in a day an ok typed in a session needed a second «Approve» in the app.
   - The `UserPromptSubmit` hook saves every prompt the person types in the session's inbox with origin `terminal` (delivered at once, pruned after a day, no «talk» row in the ledger); never a cross-session message, a notification, a slash command, or a text that matches a fresh record of the box (what the relay and `talk` write before delivering: another session's words never count).
