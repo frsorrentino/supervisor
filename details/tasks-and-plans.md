@@ -27,16 +27,24 @@ seconds, so a loaded machine does not block it by timeout.
 An ok on someone's behalf comes from the person, never from the model. From a
 Claude session, `supervisor task approve ID --by NAME --inbox MSG [--text
 NOTE]` is the only way, and `MSG` must be a message of the person from the
-last hour: the root session cites a relay message (phone, watch, web app)
-addressed to it; since 22/10/2026 the task's own session cites a message
-addressed to it, either typed by the person in its terminal (the
-`UserPromptSubmit` hook saves every prompt the person types in the session's
-inbox with origin `terminal`, delivered, pruned after a day; never a
-cross-session message, a notification, a slash command or a text that matches
-a fresh record of the box, which is what the relay and `talk` write before
-delivering) or arrived from the relay (the app's chat). A text from another
-session (origin `session`) is refused. The ok quotes the message with its id,
-origin and recipient.
+last hour addressed to the citing session: the root session or (since
+22/10/2026) the task's own session, with a message either typed by the person
+in that terminal (origin `terminal`; since 23/10/2026 the root session too:
+«an ok from the terminal is worth the same as one from the app») or arrived
+from the relay (phone, watch, web app, the app's chat: origin `relay`). The
+`UserPromptSubmit` hook saves every prompt in the session's inbox, delivered,
+pruned after a day, with the origin the transcript gives it: Claude Code
+appends the prompt's `user` line (`turnOrigin`) before running the hooks, so
+a prompt the person typed, accepted as a suggestion, queued or sent from
+Remote Control is `terminal`; a prompt fired by the session's own cron
+(CronCreate) is `cron`; a message from another session or a task
+notification is not recorded; a prompt the transcript does not show within a
+second is `unverified`. Never a slash command, nor a text that matches a
+fresh record written by someone else (the relay and `talk` write the record
+before delivering); the hook's own records never make a repeated text a
+duplicate. Only `terminal` and `relay` are good for an ok; `cron`,
+`unverified` and `session` are refused with the origin named. The ok quotes
+the message with its id, origin and recipient.
 The relay's own oks («Approve» on the phone) are recorded as before. Once an
 hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
 check is green (`supervisor task auto-close`); a red check there leaves the task

@@ -205,30 +205,90 @@ subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "step", "gantt-a
 m7b = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 T.check("H7 a new step changes the signature → the full block again, with the new next step", "Impegni (1, 0 fermi):" in m7b.stdout and "prossimo: installazione" in m7b.stdout, m7b.stdout)
 
-# H8 (22/10/2026, ok-in-sessione): ogni messaggio scritto dalla persona finisce nella casella della sessione, origine terminal, gia' consegnato
+# H8 (22/10/2026, ok-in-sessione; 23/10/2026, casella-ok-origine): ogni messaggio scritto dalla persona finisce nella
+# casella della sessione, origine terminal, gia' consegnato. Chi l'ha scritto lo dice la riga `user` della trascrizione
+# (turnOrigin: human, scheduled, peer…), che Claude Code scrive prima di lanciare gli hook: il testo da solo non basta
+# (il 23/10 tre prompt del cron della master erano «terminal»).
 box8 = state / "inbox" / "alfa"
 import shutil as _sh8
 _sh8.rmtree(box8, ignore_errors=True)   # i prompt «altro» di H6/H7 sono gia' stati registrati: si parte da una casella vuota
-hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home / "ws" / "personali" / "alfa"), "prompt": "ok, pubblica pure"}, CM_HOOK_TMUX_NAME="alfa")
-recs8 = [json.loads(p.read_text()) for p in box8.glob("*.json")]
-T.check("H8 a prompt typed by the person → one inbox record for the session: origin terminal, from terminal, delivered, the text; no «talk» row in the ledger",
-        len(recs8) == 1 and recs8[0]["origin"] == "terminal" and recs8[0]["from"] == "terminal" and recs8[0]["status"] == "delivered" and recs8[0]["text"] == "ok, pubblica pure"
-        and recs8[0]["to"] == "alfa" and not any(json.loads(l).get("event") == "talk" and json.loads(l).get("to") == "alfa" for l in ledger.read_text().splitlines()), str(recs8))
+tr8 = tmp / "transcript-8.jsonl"
+
+
+def transcript8(text, **meta):
+    """Le righe che Claude Code appende alla trascrizione a ogni prompt: un tool_result prima, la riga `user` del prompt
+    (content stringa, o lista con testo), un allegato dopo."""
+    row = {"parentUuid": "p", "isSidechain": False, "type": "user", "message": {"role": "user", "content": text},
+           "timestamp": "2026-10-23T09:00:00.000Z", "uuid": "u", "promptSource": "typed", "turnOrigin": "human"}
+    row.update(meta)
+    with open(tr8, "a") as f:
+        f.write(json.dumps({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "x"}]}}) + "\n")
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        f.write(json.dumps({"type": "attachment", "attachment": {"type": "output_style"}}) + "\n")
+
+
+def prompt8(text, transcript=True, **meta):
+    if transcript:
+        transcript8(text, **meta)
+    payload = {"session_id": "sid-8", "cwd": str(home / "ws" / "personali" / "alfa"), "prompt": text}
+    if transcript is not None:
+        payload["transcript_path"] = str(tr8)
+    t0 = time.time()
+    r = hook("UserPromptSubmit", payload, CM_HOOK_TMUX_NAME="alfa")
+    return r, time.time() - t0
+
+
+def recs8(origin=None):
+    out = sorted((json.loads(p.read_text()) for p in box8.glob("*.json")), key=lambda r: r["created"])
+    return [r for r in out if origin is None or r["origin"] == origin]
+
+
+prompt8("ok, pubblica pure")
+T.check("H8 a prompt typed by the person (transcript: turnOrigin human) → one inbox record for the session: origin terminal, from terminal, delivered, the text; no «talk» row in the ledger",
+        len(recs8()) == 1 and recs8()[0]["origin"] == "terminal" and recs8()[0]["from"] == "terminal" and recs8()[0]["status"] == "delivered" and recs8()[0]["text"] == "ok, pubblica pure"
+        and recs8()[0]["to"] == "alfa" and not any(json.loads(l).get("event") == "talk" and json.loads(l).get("to") == "alfa" for l in ledger.read_text().splitlines()), str(recs8()))
 for bad8 in ("<cross-session-message from=\"x\">ok</cross-session-message>", "<task-notification>done</task-notification>", "/clear", "   "):
-    hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": bad8}, CM_HOOK_TMUX_NAME="alfa")
-T.check("H8 a cross-session message, a notification, a slash command and an empty prompt are never recorded", len(list(box8.glob("*.json"))) == 1, str(list(box8.glob("*.json"))))
+    prompt8(bad8, promptSource="system", turnOrigin="peer", isMeta=True)
+T.check("H8 a cross-session message, a notification, a slash command and an empty prompt are never recorded", len(recs8()) == 1, str(recs8()))
+prompt8("Regia di Bluey: fai solo questo, poi rispondi con «Esito:»", promptSource="system", turnOrigin="scheduled", isMeta=True, scheduledTaskId="5088eb98", scheduledFireId="f1")
+cron8 = recs8("cron")
+T.check("H8b (23/10) a prompt fired by the session's own cron (transcript: turnOrigin scheduled) → recorded with origin cron, from cron, never terminal",
+        len(cron8) == 1 and cron8[0]["from"] == "cron" and cron8[0]["text"].startswith("Regia di Bluey") and len(recs8("terminal")) == 1, str(recs8()))
+prompt8("Another Claude session sent a message: <cross-session-message from=\"uds:\">ok</cross-session-message>", promptSource="system", turnOrigin="peer", isMeta=True)
+prompt8("Esito del lavoro in background: tutto verde", promptSource="system", turnOrigin="task_notification", isMeta=True)
+T.check("H8b a peer message or a task notification whose text has no marker in front (transcript: turnOrigin peer / task_notification) is not recorded", len(recs8()) == 2, str([r["text"][:40] for r in recs8()]))
+r8n, dt8n = prompt8("ok senza trascrizione", transcript=None)
+transcript8("un altro prompt, non questo")
+r8m, dt8m = prompt8("ok non ancora scritto", transcript=False)
+unv8 = recs8("unverified")
+T.check("H8b no transcript_path, or a transcript whose last prompt is another text (not written yet, or never) → recorded with origin unverified, from terminal: visible, never good for an ok; the hook waits at most about a second",
+        len(unv8) == 2 and [r["text"] for r in unv8] == ["ok senza trascrizione", "ok non ancora scritto"] and all(r["from"] == "terminal" for r in unv8)
+        and dt8n < 1.0 and 1.0 <= dt8m < 3.0 and r8m.returncode == 0, f"{dt8n:.2f}s {dt8m:.2f}s " + str(unv8))
+prompt8("ok a tutti e tre")
+prompt8("ok a tutti e tre")
+T.check("H8d (23/10, 11:15) the same text typed twice within ten minutes → two terminal records: the hook's own records never make a prompt a duplicate",
+        len([r for r in recs8("terminal") if r["text"] == "ok a tutti e tre"]) == 2, str([r["text"] for r in recs8("terminal")]))
 import importlib.util as _ilu8
 _s8 = _ilu8.spec_from_file_location("cm_inbox", T.SCRIPTS / "cm-inbox.py"); IB8 = _ilu8.module_from_spec(_s8)
 os.environ["CC_SUPERVISOR_CONFIG"] = str(cfg); _s8.loader.exec_module(IB8)
 r8 = IB8.put("alfa", "Dall'utente via telefono. vai pure", "supervisor", origin="relay")
-hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": "Dall'utente via telefono. vai pure"}, CM_HOOK_TMUX_NAME="alfa")
-hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": "vai pure"}, CM_HOOK_TMUX_NAME="alfa")
+prompt8("Dall'utente via telefono. vai pure")
+prompt8("vai pure")
 T.check("H8 a prompt that matches a fresh record of the box (the relay's or a talk's, written before delivery) is not recorded twice; a short prompt that only ends a record is a new message",
-        len([p for p in box8.glob("*.json") if json.loads(p.read_text())["origin"] == "terminal"]) == 2, str([json.loads(p.read_text())["text"] for p in box8.glob("*.json")]))
+        len(recs8("terminal")) == 4 and recs8("terminal")[-1]["text"] == "vai pure", str([r["text"] for r in recs8()]))
 old8 = IB8.put("alfa", "vecchio", "terminal", origin="terminal", quiet=True)
-p8 = IB8._path_of(old8["id"]); d8 = json.loads(p8.read_text()); d8["created"] -= 2 * 86400; p8.write_text(json.dumps(d8))
-hook("UserPromptSubmit", {"session_id": "sid-8", "cwd": str(home), "prompt": "ancora uno"}, CM_HOOK_TMUX_NAME="alfa")
-T.check("H8 terminal records older than a day are pruned at the next prompt", not p8.exists() and len([p for p in box8.glob("*.json") if json.loads(p.read_text())["origin"] == "terminal"]) == 3, "")
+oldc8 = IB8.put("alfa", "Regia vecchia", "cron", origin="cron", quiet=True)
+for o in (old8, oldc8):
+    p8 = IB8._path_of(o["id"]); d8 = json.loads(p8.read_text()); d8["created"] -= 2 * 86400; p8.write_text(json.dumps(d8))
+    os.utime(p8, (d8["created"], d8["created"]))   # il file e' vecchio quanto il record (la potatura guarda prima l'mtime)
+(box8 / ".pruned").touch(); os.utime(box8 / ".pruned", (time.time() - 7200, time.time() - 7200))
+prompt8("ancora uno")
+T.check("H8 terminal and cron records older than a day are pruned at the next prompt (once an hour, not at every prompt: the master's box has thousands of files)",
+        not IB8._path_of(old8["id"]) and not IB8._path_of(oldc8["id"]) and len(recs8("terminal")) == 5 and len(recs8("cron")) == 1, str([r["text"] for r in recs8()]))
+hooks8 = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
+T.check("H8e (23/10, 10:47) the UserPromptSubmit hook has 10 seconds: at 5 a loaded machine cancelled it before the record was written and the prompt was lost",
+        all(h["timeout"] >= 10 for m in hooks8["UserPromptSubmit"] for h in m["hooks"] if "cm-hook.py" in h["command"]), str(hooks8["UserPromptSubmit"]))
+
 
 # ---- restart con tmux privato e claude finto
 with T.PrivateTmux() as tm:

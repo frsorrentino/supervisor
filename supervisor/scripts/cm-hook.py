@@ -235,14 +235,81 @@ def waiting_for_you(now=None):
 PROMPT_SKIP = ("<cross-session-message", "<task-notification", "[Cross-session", "<system-reminder", "[supervisor queue]", "<local-command", "/")
 PROMPT_RECENT_S = 600
 PROMPT_KEEP_S = 86400
+PROMPT_OWN_ORIGINS = ("terminal", "cron", "unverified")   # i record che scrive questo hook
+PROMPT_WAIT_S = 1.0
+PRUNE_EVERY_S = 3600
+TRANSCRIPT_TAIL = 262144
+
+
+def last_prompt_line(path):
+    """(riga, testo) dell'ultimo prompt nella trascrizione: la riga `user` piu' recente che non e' un tool_result ne' un
+    sidechain; None se non c'e'. Legge solo la coda del file (la trascrizione della master supera i 10 MB)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - TRANSCRIPT_TAIL))
+            tail = f.read()
+    except OSError:
+        return None
+    for line in reversed(tail.split(b"\n")):
+        if b'"user"' not in line:
+            continue
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(r, dict) or r.get("type") != "user" or r.get("isSidechain"):
+            continue
+        c = (r.get("message") or {}).get("content")
+        if isinstance(c, list):
+            parts = [x for x in c if isinstance(x, dict)]
+            if parts and all(x.get("type") == "tool_result" for x in parts):
+                continue
+            text = " ".join(str(x.get("text") or "") for x in parts if x.get("type") == "text")
+        else:
+            text = str(c or "")
+        return r, text
+    return None
+
+
+def prompt_origin(p, text):
+    """23/10/2026 (casella-ok-origine, the maintainer in the master's terminal at 11:05: «Correggi la casella degli ok»): chi ha
+    scritto il prompt lo dice la riga `user` che Claude Code appende alla trascrizione PRIMA di lanciare gli hook
+    (turnOrigin: human, scheduled, peer, task_notification…), non il testo: tre prompt del cron della master
+    (CronCreate, «Regia di Bluey…») erano finiti in casella come «terminal». Il payload dell'hook non porta l'origine
+    (hook_event_name, prompt, session_id, transcript_path, cwd, permission_mode, session_title: 2.1.309).
+    «terminal» = la persona (tastiera, Remote Control, suggerimento accettato, prompt in coda); «cron» = il cron della
+    sessione; "" = un'altra sessione o il sistema (niente record); «unverified» = la trascrizione non mostra il prompt
+    entro PROMPT_WAIT_S (o non c'e'): il record resta, visibile, mai buono per un ok."""
+    path = str(p.get("transcript_path") or "")
+    if not path:
+        return "unverified"
+    mine = " ".join(text.split())
+    deadline = time.time() + PROMPT_WAIT_S
+    while True:
+        got = last_prompt_line(path)
+        if got and " ".join(got[1].split()) == mine:
+            row = got[0]
+            kind = str(row.get("turnOrigin") or ("" if row.get("isMeta") else "human"))
+            if kind == "human":
+                return "terminal"
+            if kind == "scheduled" or row.get("scheduledTaskId"):
+                return "cron"
+            return ""
+        if time.time() >= deadline:
+            return "unverified"
+        time.sleep(0.05)
 
 
 def record_person_prompt(p):
     """22/10/2026 (ok-in-sessione, the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli
-    altri»): ogni messaggio scritto dalla persona in questa sessione (terminale) va nella sua casella con origine
-    «terminal», gia' consegnato, cosi' `task approve --inbox` lo puo' citare dalla sessione del compito. Mai i testi
-    delle altre sessioni (cross-session, notifiche, comandi) ne' un prompt che coincide con un record recente della
-    casella (il relay e `talk` scrivono il record prima di consegnare: quello non e' la persona)."""
+    altri»): ogni messaggio scritto dalla persona in questa sessione va nella sua casella con origine «terminal», gia'
+    consegnato, cosi' `task approve --inbox` lo puo' citare. L'origine la decide prompt_origin() dalla trascrizione
+    (23/10). Mai i testi delle altre sessioni (cross-session, notifiche, comandi) ne' un prompt che coincide con un record
+    recente scritto da altri (il relay e `talk` scrivono il record prima di consegnare: quello non e' la persona); i
+    record di questo hook non contano (23/10, 11:15: «ok a tutti e tre» due volte in tre minuti, il secondo perso).
+    Costo (23/10, 10:47: hook annullato a 5 s, prompt perso): stat dei file, lettura solo dei recenti, potatura una
+    volta l'ora."""
     text = str(p.get("prompt") or "").strip()
     if not text or text.startswith(PROMPT_SKIP):
         return
@@ -252,16 +319,33 @@ def record_person_prompt(p):
     try:
         ib = inbox()
         now = time.time()
-        for r in ib.messages(name, include_all=True):
-            if now - float(r.get("created") or 0) > PROMPT_RECENT_S:
+        mine = " ".join(text.split())
+        d = ib.box(name)
+        for f in d.glob("*.json"):
+            try:
+                if now - f.stat().st_mtime > PROMPT_RECENT_S:
+                    continue
+                r = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            if r.get("origin") in PROMPT_OWN_ORIGINS:
                 continue
             other = " ".join(str(r.get("text") or "").split())
-            mine = " ".join(text.split())
             if other == mine or (len(mine) >= 20 and other.endswith(mine)):
                 return
-        rec = ib.put(name, text[:4000], "terminal", p.get("cwd") or "", origin="terminal", quiet=True)
+        origin = prompt_origin(p, text)
+        if not origin:
+            return
+        rec = ib.put(name, text[:4000], "cron" if origin == "cron" else "terminal", p.get("cwd") or "", origin=origin, quiet=True)
         ib.mark(rec["id"], "delivered", "terminal")
-        ib.prune_origin(name, "terminal", PROMPT_KEEP_S)
+        stamp = d / ".pruned"
+        try:
+            fresh = now - stamp.stat().st_mtime < PRUNE_EVERY_S
+        except OSError:
+            fresh = False
+        if not fresh:
+            ib.prune_origin(name, PROMPT_OWN_ORIGINS, PROMPT_KEEP_S)
+            stamp.touch()
     except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
         pass
 

@@ -15,7 +15,8 @@ la destinataria stessa: allo Stop di un turno (se era viva ma occupata) o al Ses
 File: <state_dir>/inbox/<nome-tmux>/<id>.json — {id, to, to_cwd, from, text, created, expires, status, delivered_at, via, origin}.
 `origin`: «relay» per i messaggi del relay (dal telefono, dall'orologio, dalla web), «terminal» per i messaggi che la
 persona scrive nella sessione (li salva l'hook UserPromptSubmit, 22/10/2026: un ok scritto in una sessione vale come
-gli altri), «session» per tutti gli altri.
+gli altri), «cron» per i prompt del cron della sessione stessa e «unverified» per un prompt che la trascrizione non
+attribuisce (23/10/2026: li salva lo stesso hook, mai buoni per un ok), «session» per tutti gli altri.
 Identita' della destinataria: il nome tmux (resta uguale nei riavvii) e, se nota, la cartella: una sessione nuova con
 lo stesso nome in un'altra cartella non riceve la posta della vecchia.
 """
@@ -132,12 +133,16 @@ def put(to, text, sender, to_cwd="", origin="session", quiet=False):
 
 
 def prune_origin(to, origin, max_age_s):
-    """I record di `origin` piu' vecchi di max_age_s vanno via (22/10: un file per prompt della persona, mai per sempre)."""
+    """I record di `origin` (uno o una tupla) piu' vecchi di max_age_s vanno via (22/10: un file per prompt della persona,
+    mai per sempre). Legge solo i file con mtime oltre la soglia (23/10: la casella della master ha 1500 file)."""
     cut = time.time() - max_age_s
+    origins = (origin,) if isinstance(origin, str) else tuple(origin)
     for p in box(to).glob("*.json"):
         try:
+            if p.stat().st_mtime >= cut:
+                continue
             rec = json.loads(p.read_text())
-            if rec.get("origin") == origin and float(rec.get("created") or 0) < cut:
+            if rec.get("origin") in origins and float(rec.get("created") or 0) < cut:
                 p.unlink()
         except (OSError, ValueError):
             continue

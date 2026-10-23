@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.46 — 2026-10-23: the inbox tells who wrote a prompt; an ok typed in the root session's terminal is worth the same as one from the app.**
+  - Asked by the maintainer in the master's terminal on 23/10 at 11:05 («Correggi la casella degli ok») after the ok «ok al rilascio di chrome-bridge 1.30.6» was refused; decision at 11:10: «l'ok da terminale ha lo stesso valore di quello da app».
+  - Three prompts fired by the master's cron (CronCreate, «Regia di Bluey…», 08:47, 09:17, 09:47) were in the inbox with origin `terminal`: the hook payload carries no origin. Now the `UserPromptSubmit` hook reads the prompt's `user` line that Claude Code appends to the transcript before the hooks run (`turnOrigin`): `human` → origin `terminal` (typed, suggestion accepted, queued, Remote Control); `scheduled` → origin `cron`, from `cron`; `peer` and `task_notification` → not recorded; no matching line within a second, or no `transcript_path` → origin `unverified` (visible, never good for an ok).
+  - `task approve --inbox` accepts `terminal` and `relay` from the root session too; `cron`, `unverified` and `session` are refused with the origin named.
+  - The prompt «Metti il link allo store nell'errore di chrome-bridge» (10:47) was lost because the hook, on a loaded machine, hit its 5 s timeout before writing the record (`hook_cancelled`, 5204 ms): the hook now has 10 s, reads only the recent records (stat first) and prunes once an hour instead of reading the whole box (1500 files in the master's) at every prompt.
+  - «ok a tutti e tre» typed twice in three minutes (11:12, 11:15): the second was dropped as a duplicate of the first; the hook's own records (`terminal`, `cron`, `unverified`) no longer count as duplicates, only the ones the relay and `talk` write before delivering.
+  - Tests: H8b, H8d, H8e (hooks), T21 (registry), T10 wording.
 - **0.8.45 — 2026-10-22: a short title for every task and agenda row (contract 1.79).**
   - Asked by the master on 22/10 at 21:16 after the maintainer's ok from the phone on the mockup of the «In corso» block of the app's «Lavori» page: one row per task, a title on one line, never «…».
   - `task.short` (optional, 1-28 characters) in the contract, validated by `task add`; `supervisor task short ID "text" [--by B]` sets it on an open task (an amend step). Without it the registry derives one from the title: a leading `name: ` prefix dropped, whole words within 28, no comma, open parenthesis, article or preposition at the end.

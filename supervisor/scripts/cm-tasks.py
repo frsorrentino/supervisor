@@ -14,9 +14,10 @@
   supervisor task approve ID --by B --text T [--what W] [--where D]
   supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D]
                                                 da una sessione Claude l'ok a nome di una persona passa solo cosi':
-                                                dalla master citando un messaggio del relay a lei, o (22/10) dalla
-                                                sessione del compito citando un messaggio della persona a lei
-                                                (scritto nel terminale: origin terminal, o dal relay), dell'ultima ora
+                                                dalla master o (22/10) dalla sessione del compito, citando un messaggio
+                                                della persona a lei dell'ultima ora: scritto nel suo terminale (origin
+                                                terminal, 23/10 anche per la master) o dal relay; mai cron, unverified
+                                                o session
   supervisor task auto-close [--hours 6] [--json]   chiude i compiti aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
@@ -346,8 +347,10 @@ def inbox_approval_text(by, rec_id, note=None, task_session=None):
     riscritto. Due vie: la master con un messaggio del relay (telefono, orologio, web) indirizzato a lei; dal 22/10
     (the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli altri», quattro ok ripetuti
     nell'app in un giorno) anche la sessione del compito con un messaggio indirizzato a lei, scritto dalla persona nel
-    terminale (origin «terminal», lo salva l'hook) o arrivato dal relay. Mai un testo di un'altra sessione (origin
-    «session»). Torna il testo o esce con il motivo."""
+    terminale (origin «terminal», lo salva l'hook) o arrivato dal relay. Dal 23/10 (the maintainer in the master's
+    terminal at 11:10: «l'ok da terminale ha lo stesso valore di quello da app») anche la master accetta «terminal»;
+    l'hook distingue i prompt della persona da quelli del cron («cron») e da quelli che non sa attribuire
+    («unverified»): mai buoni. Mai un testo di un'altra sessione (origin «session»). Torna il testo o esce con il motivo."""
     cm = _load("cm-config")
     cfg = cm.load(warn=False)
     master = str((cfg.get("workspace") or {}).get("root_session_name") or "master")
@@ -362,10 +365,10 @@ def inbox_approval_text(by, rec_id, note=None, task_session=None):
     if rec.get("to") != caller:
         sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {caller}")
     origin = str(rec.get("origin") or "?")
-    ok_origins = ("relay",) if caller == master else ("relay", "terminal")
-    if origin not in ok_origins:
-        why = "an ok on someone's behalf comes from their device" if caller == master else "an ok comes from the person (the terminal or their device), never from another session's text"
-        sys.exit(f"task approve --inbox: message {rec_id} did not come from the {'relay' if caller == master else 'person'} (origin {origin}): {why}")
+    if origin not in ("relay", "terminal"):
+        why = {"cron": "a prompt of the session's own cron is not the person", "unverified": "the hook could not attribute the prompt to the person; ask them to write it again"}.get(
+            origin, "an ok comes from the person (the terminal or their device), never from another session's text")
+        sys.exit(f"task approve --inbox: message {rec_id} did not come from the person (origin {origin}): {why}")
     age = time.time() - float(rec.get("created") or 0)
     if age > INBOX_MAX_AGE_S:
         sys.exit(f"task approve --inbox: message {rec_id} is {int(age // 60)} minutes old (at most {INBOX_MAX_AGE_S // 60})")

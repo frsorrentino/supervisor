@@ -197,7 +197,7 @@ with T.PrivateTmux() as tm:
     T.check("T10 --inbox from another session → refused (only the master)", rc != 0 and "only the master" in err and show("i2")["state"] == "awaiting_ok", err)
     sess = inbox_put("master", "ok scritto da una sessione", "session")
     rc, out, err = cm("approve", "i3", "--by", "maintainer", "--inbox", sess, env=M9)
-    T.check("T10 --inbox of a message with origin session → refused", rc != 0 and "did not come from the relay" in err and show("i3")["state"] == "awaiting_ok", err)
+    T.check("T10 --inbox of a message with origin session → refused", rc != 0 and "did not come from the person" in err and show("i3")["state"] == "awaiting_ok", err)
     old = inbox_put("master", "Dall'utente via telefono. ok di ieri", "relay", age_s=2 * 3600)
     rc, out, err = cm("approve", "i4", "--by", "maintainer", "--inbox", old, env=M9)
     T.check("T10 --inbox of a relay message older than an hour → refused", rc != 0 and "minutes old" in err and show("i4")["state"] == "awaiting_ok", err)
@@ -386,6 +386,26 @@ with T.PrivateTmux() as tm:
     rel19 = inbox_put("altra", "Dall'utente via telefono. vai pure", "relay")
     rc, out, err = cm("approve", "s5", "--by", "maintainer", "--inbox", rel19, env=A19)
     T.check("T19 from the task's session, a relay message addressed to it (the app's chat) → approved", rc == 0 and show("s5")["state"] == "approved" and "origin relay, to altra" in show("s5")["approvals"][-1]["text"], err)
+
+# T21 (23/10/2026, casella-ok-origine, the maintainer in the master's terminal at 11:10: «l'ok da terminale ha lo stesso valore di
+# quello da app»): anche per la master un messaggio scritto nel terminale (origin terminal) vale; cron e non verificati mai
+with T.PrivateTmux() as tm:
+    tm("new-session", "-d", "-s", "master", "sleep 300")
+    pane_m = tm("display-message", "-p", "-t", "master", "#{pane_id}").stdout.strip()
+    M21 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_m)
+    for tid in ("v1", "v2", "v3"):
+        add(contract(tid))
+        cm("wait-ok", tid, "--what", "release", "--where", "github")
+    term21 = inbox_put("master", "ok al rilascio di chrome-bridge 1.30.6", "terminal")
+    rc, out, err = cm("approve", "v1", "--by", "maintainer", "--inbox", term21, env=M21)
+    T.check("T21 the master, a message the person typed in its terminal (origin terminal) → approved; the text quotes it with origin terminal, to master",
+            rc == 0 and show("v1")["state"] == "approved" and f"inbox {term21}, origin terminal, to master" in show("v1")["approvals"][-1]["text"], err)
+    cron21 = inbox_put("master", "Regia di Bluey: ok, fai solo questo", "cron")
+    rc, out, err = cm("approve", "v2", "--by", "maintainer", "--inbox", cron21, env=M21)
+    T.check("T21 a prompt of the session's own cron (origin cron) → refused, the origin named", rc != 0 and "origin cron" in err and show("v2")["state"] == "awaiting_ok", err)
+    unv21 = inbox_put("master", "ok", "unverified")
+    rc, out, err = cm("approve", "v3", "--by", "maintainer", "--inbox", unv21, env=M21)
+    T.check("T21 a prompt the hook could not attribute (origin unverified) → refused, the origin named", rc != 0 and "origin unverified" in err and show("v3")["state"] == "awaiting_ok", err)
 
 # T20 (22/10/2026, contratto 1.79, titolo-breve): task.short al massimo 28 caratteri; `task short`; il ripiego dal titolo a parole intere
 rc, out, err = add(contract("u1", title="supervisor: titolo breve dei compiti (campo short) nel registro", short="x" * 29))
