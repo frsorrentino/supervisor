@@ -17,6 +17,8 @@ File: <state_dir>/inbox/<nome-tmux>/<id>.json — {id, to, to_cwd, from, text, c
 persona scrive nella sessione (li salva l'hook UserPromptSubmit, 22/10/2026: un ok scritto in una sessione vale come
 gli altri), «cron» per i prompt del cron della sessione stessa e «unverified» per un prompt che la trascrizione non
 attribuisce (23/10/2026: li salva lo stesso hook, mai buoni per un ok), «session» per tutti gli altri.
+Ritenzione (23/10/2026, «ok 7 giorno per supervisor»): i record restano 7 giorni, quelli dell'hook (terminal, cron,
+unverified) un giorno; pota l'hook, una volta l'ora, al prompt della sessione (`prune`).
 Identita' della destinataria: il nome tmux (resta uguale nei riavvii) e, se nota, la cartella: una sessione nuova con
 lo stesso nome in un'altra cartella non riceve la posta della vecchia.
 """
@@ -38,6 +40,7 @@ _spec.loader.exec_module(cm)
 CFG = cm.load(warn=False)
 STATE = Path(cm.expand(CFG["state_dir"]))
 EXPIRES_S = float((CFG.get("inbox") or {}).get("expires_h") or 48) * 3600
+KEEP_S = 7 * 86400   # 23/10/2026: ritenzione della casella, ogni origine (i prompt della persona un giorno: cm-hook.py)
 SHOW_MAX, SHOW_BYTES = 5, 4096
 
 
@@ -132,17 +135,24 @@ def put(to, text, sender, to_cwd="", origin="session", quiet=False):
     return rec
 
 
-def prune_origin(to, origin, max_age_s):
-    """I record di `origin` (uno o una tupla) piu' vecchi di max_age_s vanno via (22/10: un file per prompt della persona,
-    mai per sempre). Legge solo i file con mtime oltre la soglia (23/10: la casella della master ha 1500 file)."""
-    cut = time.time() - max_age_s
-    origins = (origin,) if isinstance(origin, str) else tuple(origin)
+def prune(to, ages=None, default_s=None):
+    """Potatura della casella. 22/10: un file per prompt della persona, mai per sempre; 23/10 (il maintainer dalla web
+    alle 13:20, «ok 7 giorno per supervisor»): ritenzione di 7 giorni per tutto il resto, i record del relay e delle
+    altre sessioni e quelli vecchi senza origine (la casella della master: 1500 file, 950 senza origine). `ages`:
+    origine → secondi; le altre origini durano `default_s` (KEEP_S). Legge solo i file con mtime oltre la soglia piu'
+    corta (23/10: la lettura di tutta la casella a ogni prompt faceva scadere l'hook)."""
+    ages = dict(ages or {})
+    default_s = KEEP_S if default_s is None else default_s
+    now = time.time()
+    cut = now - min([default_s] + list(ages.values()))
     for p in box(to).glob("*.json"):
         try:
             if p.stat().st_mtime >= cut:
                 continue
             rec = json.loads(p.read_text())
-            if rec.get("origin") in origins and float(rec.get("created") or 0) < cut:
+            if not isinstance(rec, dict):
+                continue
+            if float(rec.get("created") or 0) < now - ages.get(rec.get("origin"), default_s):
                 p.unlink()
         except (OSError, ValueError):
             continue

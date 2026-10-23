@@ -12,6 +12,8 @@ IB8 registro: righe talk e delivered nel diario, con la sola prima riga del test
 IB10 origin: «session» from talk (no option to change it), «relay» only through mark_origin
 IB9 inbox cancel ID: un messaggio in attesa diventa cancelled e non si consegna piu'; uno gia' consegnato o un
     id ignoto: exit 1, niente cambia
+IB11 prune (23/10/2026, «ok 7 giorno per supervisor»): sette giorni per ogni origine, anche mancante; le origini in
+    `ages` la loro; un file con mtime fresco non si legge
 """
 import json
 import os
@@ -200,4 +202,23 @@ c4 = inbox("cancel", "nessuno")
 T.check("IB9 cancel refuses what is not pending (cancelled, delivered) and an unknown id: exit 1, the status unchanged",
         c2.returncode == 1 and c3.returncode == 1 and "delivered" in c3.stderr and c4.returncode == 1
         and load_status(rid) == "delivered", c2.stderr + c3.stderr + c4.stderr)
+# IB11: la ritenzione della casella (23/10/2026)
+py(f"I.put('zeta','talk vecchia','beta',{str(work)!r})")
+py(f"I.put('zeta','relay vecchio','supervisor',{str(work)!r},origin='relay')")
+py(f"I.put('zeta','senza origine','beta',{str(work)!r})")
+py(f"I.put('zeta','talk di sei giorni','beta',{str(work)!r})")
+py(f"I.put('zeta','prompt di due giorni','terminal',{str(work)!r},origin='terminal')")
+py(f"I.put('zeta','creato ieri, file di oggi','beta',{str(work)!r})")
+ages11 = {"talk vecchia": 8, "relay vecchio": 8, "senza origine": 8, "talk di sei giorni": 6, "prompt di due giorni": 2, "creato ieri, file di oggi": 8}
+for p11 in (state / "inbox" / "zeta").glob("*.json"):
+    d11 = json.loads(p11.read_text()); d11["created"] -= ages11[d11["text"]] * 86400
+    if d11["text"] == "senza origine":
+        del d11["origin"]
+    p11.write_text(json.dumps(d11))
+    if d11["text"] != "creato ieri, file di oggi":
+        os.utime(p11, (d11["created"], d11["created"]))
+py("I.prune('zeta', {'terminal': 86400})")
+left11 = sorted(r["text"] for r in recs("zeta"))
+T.check("IB11 prune: records older than seven days go whatever the origin (talk, relay, none); an origin in `ages` has its own retention; a record of six days and a file with a fresh mtime stay",
+        left11 == ["creato ieri, file di oggi", "talk di sei giorni"], str(left11))
 T.finish()

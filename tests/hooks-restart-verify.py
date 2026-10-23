@@ -278,13 +278,23 @@ T.check("H8 a prompt that matches a fresh record of the box (the relay's or a ta
         len(recs8("terminal")) == 4 and recs8("terminal")[-1]["text"] == "vai pure", str([r["text"] for r in recs8()]))
 old8 = IB8.put("alfa", "vecchio", "terminal", origin="terminal", quiet=True)
 oldc8 = IB8.put("alfa", "Regia vecchia", "cron", origin="cron", quiet=True)
-for o in (old8, oldc8):
-    p8 = IB8._path_of(o["id"]); d8 = json.loads(p8.read_text()); d8["created"] -= 2 * 86400; p8.write_text(json.dumps(d8))
+olds8 = IB8.put("alfa", "talk di otto giorni fa", "beta", origin="session", quiet=True)
+oldn8 = IB8.put("alfa", "record vecchio senza origine", "beta", quiet=True)
+keeps8 = IB8.put("alfa", "talk di sei giorni fa", "beta", origin="session", quiet=True)
+keepr8 = IB8.put("alfa", "Dall'utente via telefono. sei giorni fa", "supervisor", origin="relay", quiet=True)
+def age8(o, days, drop_origin=False):
+    p8 = IB8._path_of(o["id"]); d8 = json.loads(p8.read_text()); d8["created"] -= days * 86400
+    if drop_origin:
+        del d8["origin"]
+    p8.write_text(json.dumps(d8))
     os.utime(p8, (d8["created"], d8["created"]))   # il file e' vecchio quanto il record (la potatura guarda prima l'mtime)
+age8(old8, 2); age8(oldc8, 2); age8(olds8, 8); age8(oldn8, 8, drop_origin=True); age8(keeps8, 6); age8(keepr8, 6)
 (box8 / ".pruned").touch(); os.utime(box8 / ".pruned", (time.time() - 7200, time.time() - 7200))
 prompt8("ancora uno")
 T.check("H8 terminal and cron records older than a day are pruned at the next prompt (once an hour, not at every prompt: the master's box has thousands of files)",
         not IB8._path_of(old8["id"]) and not IB8._path_of(oldc8["id"]) and len(recs8("terminal")) == 5 and len(recs8("cron")) == 1, str([r["text"] for r in recs8()]))
+T.check("H8f (23/10, «ok 7 giorno per supervisor») the same prune keeps the box to seven days: a talk and a record without origin of eight days ago go, a talk and a relay message of six days ago stay",
+        not IB8._path_of(olds8["id"]) and not IB8._path_of(oldn8["id"]) and IB8._path_of(keeps8["id"]) and IB8._path_of(keepr8["id"]), str([r["text"] for r in recs8()]))
 hooks8 = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
 T.check("H8e (23/10, 10:47) the UserPromptSubmit hook has 10 seconds: at 5 a loaded machine cancelled it before the record was written and the prompt was lost",
         all(h["timeout"] >= 10 for m in hooks8["UserPromptSubmit"] for h in m["hooks"] if "cm-hook.py" in h["command"]), str(hooks8["UserPromptSubmit"]))

@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.47 — 2026-10-23: the inbox keeps seven days.**
+  - Asked by the maintainer from the web app on 23/10 at 13:20 («ok 7 giorno per supervisor»), after 0.8.46 found 1500 files in the master's box: only the hook's own records were pruned (after a day); the relay's, `talk`'s and the old records without origin never (950 of them).
+  - `cm-inbox.py`: `prune(to, ages)` replaces `prune_origin` — one scan, stat first; every record goes after `KEEP_S` (seven days), the origins in `ages` after their own retention. The `UserPromptSubmit` hook calls it once an hour with a day for `terminal`, `cron` and `unverified`. An approval keeps its quote and the message id in the registry, so a pruned record changes nothing there.
+  - Tests: H8f (hooks), IB11 (inbox).
 - **0.8.46 — 2026-10-23: the inbox tells who wrote a prompt; an ok typed in the root session's terminal is worth the same as one from the app.**
   - Asked by the maintainer in the master's terminal on 23/10 at 11:05 («Correggi la casella degli ok») after the ok «ok al rilascio di chrome-bridge 1.30.6» was refused; decision at 11:10: «l'ok da terminale ha lo stesso valore di quello da app».
   - Three prompts fired by the master's cron (CronCreate, «Regia di Bluey…», 08:47, 09:17, 09:47) were in the inbox with origin `terminal`: the hook payload carries no origin. Now the `UserPromptSubmit` hook reads the prompt's `user` line that Claude Code appends to the transcript before the hooks run (`turnOrigin`): `human` → origin `terminal` (typed, suggestion accepted, queued, Remote Control); `scheduled` → origin `cron`, from `cron`; `peer` and `task_notification` → not recorded; no matching line within a second, or no `transcript_path` → origin `unverified` (visible, never good for an ok).

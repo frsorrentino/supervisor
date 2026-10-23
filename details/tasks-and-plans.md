@@ -33,7 +33,8 @@ in that terminal (origin `terminal`; since 23/10/2026 the root session too:
 «an ok from the terminal is worth the same as one from the app») or arrived
 from the relay (phone, watch, web app, the app's chat: origin `relay`). The
 `UserPromptSubmit` hook saves every prompt in the session's inbox, delivered,
-pruned after a day, with the origin the transcript gives it: Claude Code
+pruned after a day (the rest of the box after seven, since 23/10/2026: «ok 7
+giorno per supervisor»), with the origin the transcript gives it: Claude Code
 appends the prompt's `user` line (`turnOrigin`) before running the hooks, so
 a prompt the person typed, accepted as a suggestion, queued or sent from
 Remote Control is `terminal`; a prompt fired by the session's own cron

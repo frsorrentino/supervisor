@@ -344,7 +344,7 @@ def record_person_prompt(p):
         except OSError:
             fresh = False
         if not fresh:
-            ib.prune_origin(name, PROMPT_OWN_ORIGINS, PROMPT_KEEP_S)
+            ib.prune(name, {o: PROMPT_KEEP_S for o in PROMPT_OWN_ORIGINS})   # il resto 7 giorni (ib.KEEP_S)
             stamp.touch()
     except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
         pass
