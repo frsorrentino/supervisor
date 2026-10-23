@@ -359,14 +359,20 @@ def inbox_approval_text(by, rec_id, note=None, task_session=None):
     if caller not in allowed:
         who = f"only the master session ({master})" + (f" or the task's session ({task_session})" if task_session else "")
         sys.exit(f"task approve --inbox: {who} records an ok on someone's behalf; this is {caller or 'not a tmux session'}")
-    rec = _load("cm-inbox").load(rec_id)
+    ib = _load("cm-inbox")
+    rec = ib.load(rec_id)
     if not rec:
         sys.exit(f"task approve --inbox: no message {rec_id} in the inbox")
+    if rec.get("origin") == "unverified":
+        # 23/10 16:22: Claude Code scrive la riga `user` della trascrizione dopo gli hook; al momento dell'uso c'e'
+        rec = ib.resolve(rec)
+        if rec is None:
+            sys.exit(f"task approve --inbox: message {rec_id} did not come from the person (origin peer): the transcript shows it as another session's or the system's")
     if rec.get("to") != caller:
         sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {caller}")
     origin = str(rec.get("origin") or "?")
     if origin not in ("relay", "terminal"):
-        why = {"cron": "a prompt of the session's own cron is not the person", "unverified": "the hook could not attribute the prompt to the person; ask them to write it again"}.get(
+        why = {"cron": "a prompt of the session's own cron is not the person", "unverified": "the transcript does not show the prompt (yet): try again in a few seconds, or ask them to write it again"}.get(
             origin, "an ok comes from the person (the terminal or their device), never from another session's text")
         sys.exit(f"task approve --inbox: message {rec_id} did not come from the person (origin {origin}): {why}")
     age = time.time() - float(rec.get("created") or 0)

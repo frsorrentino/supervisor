@@ -16,7 +16,9 @@ File: <state_dir>/inbox/<nome-tmux>/<id>.json — {id, to, to_cwd, from, text, c
 `origin`: «relay» per i messaggi del relay (dal telefono, dall'orologio, dalla web), «terminal» per i messaggi che la
 persona scrive nella sessione (li salva l'hook UserPromptSubmit, 22/10/2026: un ok scritto in una sessione vale come
 gli altri), «cron» per i prompt del cron della sessione stessa e «unverified» per un prompt che la trascrizione non
-attribuisce (23/10/2026: li salva lo stesso hook, mai buoni per un ok), «session» per tutti gli altri.
+attribuisce ancora (23/10/2026: li salva lo stesso hook; Claude Code scrive la riga `user` della trascrizione dopo gli
+hook, quindi ogni prompt nasce «unverified» e si risolve dopo, da quella riga: `resolve`, al prompt o allo Stop
+seguente, nell'elenco e dentro `task approve --inbox`; mai buono per un ok finche' resta tale), «session» per tutti gli altri.
 Ritenzione (23/10/2026, «ok 7 giorno per supervisor»): i record restano 7 giorni, quelli dell'hook (terminal, cron,
 unverified) un giorno; pota l'hook, una volta l'ora, al prompt della sessione (`prune`).
 Identita' della destinataria: il nome tmux (resta uguale nei riavvii) e, se nota, la cartella: una sessione nuova con
@@ -113,8 +115,9 @@ def _take_claim(to, text):
     return best[1].get("origin")
 
 
-def put(to, text, sender, to_cwd="", origin="session", quiet=False):
-    """quiet (22/10): nessuna riga «talk» nel diario — i messaggi della persona salvati dall'hook non sono un talk."""
+def put(to, text, sender, to_cwd="", origin="session", quiet=False, transcript=None):
+    """quiet (22/10): nessuna riga «talk» nel diario — i messaggi della persona salvati dall'hook non sono un talk.
+    transcript (23/10): la trascrizione della sessione, per risolvere l'origine dopo (`resolve`)."""
     if origin == "session":
         try:
             origin = _take_claim(to, text) or origin
@@ -127,6 +130,8 @@ def put(to, text, sender, to_cwd="", origin="session", quiet=False):
            "text": text, "created": now, "expires": now + EXPIRES_S, "status": "pending", "delivered_at": None, "via": None,
            # 0319ab (14/10): «relay» solo per cio' che consegna il relay (talk_as dentro il suo processo), mai dalla CLI
            "origin": origin}
+    if transcript:
+        rec["transcript"] = str(transcript)
     p = d / f"{rec['id']}.json"
     with open(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
         json.dump(rec, f, ensure_ascii=False)
@@ -156,6 +161,110 @@ def prune(to, ages=None, default_s=None):
                 p.unlink()
         except (OSError, ValueError):
             continue
+
+
+TRANSCRIPT_TAILS = (262144, 4194304, 67108864)   # la coda della trascrizione: prima poca, poi di piu' (la master supera i 30 MB)
+RESOLVE_WINDOW_S = 180   # la riga user del prompt e il record dell'hook distano secondi, mai minuti
+RESOLVE_RECENT_S = 86400
+
+
+def _iso_epoch(ts):
+    try:
+        return datetime.datetime.strptime(str(ts)[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=datetime.timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
+def find_prompt_line(path, text, created, window_s=RESOLVE_WINDOW_S):
+    """La riga `user` della trascrizione che porta il prompt `text` entro `window_s` da `created` (quella con l'ora piu'
+    vicina); None se non c'e'. Niente tool_result ne' sidechain. Legge code via via piu' lunghe, mai tutto il file."""
+    mine = " ".join(str(text).split())
+    if not mine:
+        return None
+    best = None
+    for size in TRANSCRIPT_TAILS:
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, 2)
+                total = f.tell()
+                f.seek(max(0, total - size))
+                tail = f.read()
+        except OSError:
+            return None
+        for line in tail.split(b"\n"):
+            if b'"user"' not in line:
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(r, dict) or r.get("type") != "user" or r.get("isSidechain"):
+                continue
+            c = (r.get("message") or {}).get("content")
+            if isinstance(c, list):
+                parts = [x for x in c if isinstance(x, dict)]
+                if parts and all(x.get("type") == "tool_result" for x in parts):
+                    continue
+                got = " ".join(str(x.get("text") or "") for x in parts if x.get("type") == "text")
+            else:
+                got = str(c or "")
+            if " ".join(got.split()) != mine:
+                continue
+            at = _iso_epoch(r.get("timestamp"))
+            gap = abs(at - float(created)) if at is not None else window_s
+            if gap <= window_s and (best is None or gap < best[0]):
+                best = (gap, r)
+        if best or total <= size:
+            break
+    return best[1] if best else None
+
+
+def resolve(rec):
+    """L'origine di un record «unverified» dell'hook, dalla riga `user` della trascrizione (23/10/2026, 16:22, la
+    regressione della 0.8.46: Claude Code 2.1.308 scrive quella riga DOPO gli hook, mai prima; al momento dell'hook
+    non c'e'). human → «terminal»; scheduled (il cron della sessione) → «cron»; peer, task_notification e il resto (un'altra
+    sessione, il sistema) → il record va via e torna None. Senza riga, o senza `transcript`, resta com'e'. Il file
+    viene riscritto; torna il record."""
+    if not isinstance(rec, dict) or rec.get("origin") != "unverified" or not rec.get("transcript"):
+        return rec
+    row = find_prompt_line(rec["transcript"], rec.get("text") or "", float(rec.get("created") or 0))
+    if row is None:
+        return rec
+    kind = str(row.get("turnOrigin") or ("" if row.get("isMeta") else "human"))
+    p = _path_of(rec.get("id") or "")
+    if kind == "human":
+        rec["origin"] = "terminal"
+    elif kind == "scheduled" or row.get("scheduledTaskId"):
+        rec["origin"], rec["from"] = "cron", "cron"
+    else:
+        if p:
+            p.unlink(missing_ok=True)
+        return None
+    if p:
+        try:
+            p.write_text(json.dumps(rec, ensure_ascii=False))
+        except OSError:
+            pass
+    return rec
+
+
+def resolve_box(to, max_age_s=RESOLVE_RECENT_S):
+    """Risolve i record «unverified» recenti della casella (stat prima: si leggono solo i file giovani). Torna quanti
+    hanno cambiato origine o sono andati via."""
+    cut = time.time() - max_age_s
+    n = 0
+    for p in box(to).glob("*.json"):
+        try:
+            if p.stat().st_mtime < cut:
+                continue
+            rec = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(rec, dict) and rec.get("origin") == "unverified" and rec.get("transcript"):
+            out = resolve(rec)
+            if out is None or out.get("origin") != "unverified":
+                n += 1
+    return n
 
 
 def mark_origin(to, text, since, origin):
@@ -309,6 +418,10 @@ def main(argv):
     names = [a for a in argv if not a.startswith("--")] or sorted(p.name for p in (STATE / "inbox").glob("*") if p.is_dir())
     any_ = False
     for n in names:
+        try:
+            resolve_box(n)   # 23/10: i record dell'hook ancora «unverified», se la trascrizione ormai li mostra
+        except OSError:
+            pass
         for r in messages(n, include_all):
             any_ = True
             print(f"{r['id']}  {r['status']:<9} {when(r.get('created'))}  {r.get('from') or '?'} → {n}: {first_line(r.get('text'), 100)}")

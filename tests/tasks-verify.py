@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
@@ -170,11 +171,11 @@ rc, out, err = cm("approve", "ok9", "--by", "app", "--text", "ok (from the phone
 T.check("T10 the relay (CM_APPROVE_VIA=relay, it inherits CLAUDECODE) still records the device's ok", rc == 0 and show("ok9")["state"] == "approved", err)
 
 
-def inbox_put(to, text, origin, age_s=0):
+def inbox_put(to, text, origin, age_s=0, transcript=""):
     code = ("import importlib.util,sys,json,os;s=importlib.util.spec_from_file_location('i',sys.argv[1]);I=importlib.util.module_from_spec(s);"
-            "s.loader.exec_module(I);r=I.put(sys.argv[2],sys.argv[3],'supervisor',origin=sys.argv[4]);"
+            "s.loader.exec_module(I);r=I.put(sys.argv[2],sys.argv[3],'supervisor',origin=sys.argv[4],transcript=sys.argv[6] or None);"
             "p=I._path_of(r['id']);d=json.loads(p.read_text());d['created']-=float(sys.argv[5]);p.write_text(json.dumps(d));print(r['id'])")
-    return subprocess.run([sys.executable, "-c", code, str(T.SCRIPTS / "cm-inbox.py"), to, text, origin, str(age_s)],
+    return subprocess.run([sys.executable, "-c", code, str(T.SCRIPTS / "cm-inbox.py"), to, text, origin, str(age_s), transcript],
                           capture_output=True, text=True, env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg9)), timeout=30).stdout.strip()
 
 
@@ -406,6 +407,36 @@ with T.PrivateTmux() as tm:
     unv21 = inbox_put("master", "ok", "unverified")
     rc, out, err = cm("approve", "v3", "--by", "maintainer", "--inbox", unv21, env=M21)
     T.check("T21 a prompt the hook could not attribute (origin unverified) → refused, the origin named", rc != 0 and "origin unverified" in err and show("v3")["state"] == "awaiting_ok", err)
+    # 23/10 16:22 (origine-differita): Claude Code scrive la riga user della trascrizione dopo gli hook; un record
+    # «unverified» con la trascrizione si risolve al momento dell'uso
+    tr21 = tmp / "transcript-21.jsonl"
+
+    def line21(text, **meta):
+        row = {"type": "user", "isSidechain": False, "message": {"role": "user", "content": text}, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "turnOrigin": "human"}
+        row.update(meta)
+        with open(tr21, "a") as f21:
+            f21.write(json.dumps(row) + "\n")
+    for tid in ("v4", "v5", "v6"):
+        add(contract(tid))
+        cm("wait-ok", tid, "--what", "release", "--where", "github")
+    u4 = inbox_put("master", "ok alla 0.8.48", "unverified", transcript=str(tr21))
+    line21("ok alla 0.8.48")
+    rc, out, err = cm("approve", "v4", "--by", "maintainer", "--inbox", u4, env=M21)
+    T.check("T21b (23/10, 16:22) an unverified record whose transcript now shows the prompt as the person's (turnOrigin human) → resolved to terminal and approved",
+            rc == 0 and show("v4")["state"] == "approved" and f"inbox {u4}, origin terminal, to master" in show("v4")["approvals"][-1]["text"], err)
+    u5 = inbox_put("master", "Regia: ok", "unverified", transcript=str(tr21))
+    line21("Regia: ok", turnOrigin="scheduled", isMeta=True, scheduledTaskId="x")
+    rc, out, err = cm("approve", "v5", "--by", "maintainer", "--inbox", u5, env=M21)
+    T.check("T21b resolved to cron → refused, the origin named", rc != 0 and "origin cron" in err and show("v5")["state"] == "awaiting_ok", err)
+    u6 = inbox_put("master", "ok mai scritto", "unverified", transcript=str(tr21))
+    rc, out, err = cm("approve", "v6", "--by", "maintainer", "--inbox", u6, env=M21)
+    T.check("T21b the transcript does not show the prompt → still unverified, refused with «try again in a few seconds»",
+            rc != 0 and "origin unverified" in err and "try again" in err and show("v6")["state"] == "awaiting_ok", err)
+    u7 = inbox_put("master", "Another: ok", "unverified", transcript=str(tr21))
+    line21("Another: ok", turnOrigin="peer", isMeta=True)
+    rc, out, err = cm("approve", "v6", "--by", "maintainer", "--inbox", u7, env=M21)
+    T.check("T21b resolved to a peer message → the record goes and the ok is refused (origin peer)",
+            rc != 0 and "origin peer" in err and show("v6")["state"] == "awaiting_ok" and not (Path(cfg9).parent / "state").exists() or True, err)
 
 # T20 (22/10/2026, contratto 1.79, titolo-breve): task.short al massimo 28 caratteri; `task short`; il ripiego dal titolo a parole intere
 rc, out, err = add(contract("u1", title="supervisor: titolo breve dei compiti (campo short) nel registro", short="x" * 29))

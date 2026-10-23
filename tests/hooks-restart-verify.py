@@ -205,9 +205,10 @@ subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "step", "gantt-a
 m7b = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 T.check("H7 a new step changes the signature → the full block again, with the new next step", "Impegni (1, 0 fermi):" in m7b.stdout and "prossimo: installazione" in m7b.stdout, m7b.stdout)
 
-# H8 (22/10/2026, ok-in-sessione; 23/10/2026, casella-ok-origine): ogni messaggio scritto dalla persona finisce nella
-# casella della sessione, origine terminal, gia' consegnato. Chi l'ha scritto lo dice la riga `user` della trascrizione
-# (turnOrigin: human, scheduled, peer…), che Claude Code scrive prima di lanciare gli hook: il testo da solo non basta
+# H8 (22/10/2026, ok-in-sessione; 23/10/2026, casella-ok-origine; 23/10 16:22, origine-differita): ogni messaggio scritto
+# dalla persona finisce nella casella della sessione, gia' consegnato. Chi l'ha scritto lo dice la riga `user` della
+# trascrizione (turnOrigin: human, scheduled, peer…), che Claude Code 2.1.308 scrive DOPO gli hook del prompt: il record
+# nasce «unverified» e si risolve dopo (prompt seguente, Stop, elenco, task approve --inbox). Il testo da solo non basta
 # (il 23/10 tre prompt del cron della master erano «terminal»).
 box8 = state / "inbox" / "alfa"
 import shutil as _sh8
@@ -216,26 +217,36 @@ tr8 = tmp / "transcript-8.jsonl"
 
 
 def transcript8(text, **meta):
-    """Le righe che Claude Code appende alla trascrizione a ogni prompt: un tool_result prima, la riga `user` del prompt
-    (content stringa, o lista con testo), un allegato dopo."""
+    """Le righe che Claude Code 2.1.308 appende alla trascrizione DOPO gli hook del prompt (23/10, 16:22): un tool_result,
+    la riga api-request del turno, la riga `user` del prompt (content stringa, o lista con testo), un allegato."""
+    now8 = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
     row = {"parentUuid": "p", "isSidechain": False, "type": "user", "message": {"role": "user", "content": text},
-           "timestamp": "2026-10-23T09:00:00.000Z", "uuid": "u", "promptSource": "typed", "turnOrigin": "human"}
+           "timestamp": now8, "uuid": "u", "promptSource": "typed", "turnOrigin": "human"}
     row.update(meta)
     with open(tr8, "a") as f:
         f.write(json.dumps({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "x"}]}}) + "\n")
+        f.write(json.dumps({"type": "api-request", "timestamp": now8}) + "\n")
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        f.write(json.dumps({"type": "attachment", "attachment": {"type": "output_style"}}) + "\n")
+        f.write(json.dumps({"type": "attachment", "attachment": {"type": "hook_success", "hookEvent": "UserPromptSubmit"}}) + "\n")
 
 
 def prompt8(text, transcript=True, **meta):
-    if transcript:
-        transcript8(text, **meta)
+    """L'hook del prompt e poi, come fa Claude Code, la riga user nella trascrizione. transcript=False: la riga non arriva
+    mai; None: il payload non ha transcript_path."""
     payload = {"session_id": "sid-8", "cwd": str(home / "ws" / "personali" / "alfa"), "prompt": text}
     if transcript is not None:
         payload["transcript_path"] = str(tr8)
     t0 = time.time()
     r = hook("UserPromptSubmit", payload, CM_HOOK_TMUX_NAME="alfa")
-    return r, time.time() - t0
+    dt = time.time() - t0
+    if transcript:
+        transcript8(text, **meta)
+    return r, dt
+
+
+def stop8():
+    """Lo Stop del turno: l'hook risolve dalla trascrizione i record «unverified» della casella."""
+    return hook("Stop", {"session_id": "sid-8", "cwd": str(home / "ws" / "personali" / "alfa"), "transcript_path": str(tr8), "last_assistant_message": "ok"}, CM_HOOK_TMUX_NAME="alfa")
 
 
 def recs8(origin=None):
@@ -244,28 +255,40 @@ def recs8(origin=None):
 
 
 prompt8("ok, pubblica pure")
-T.check("H8 a prompt typed by the person (transcript: turnOrigin human) → one inbox record for the session: origin terminal, from terminal, delivered, the text; no «talk» row in the ledger",
-        len(recs8()) == 1 and recs8()[0]["origin"] == "terminal" and recs8()[0]["from"] == "terminal" and recs8()[0]["status"] == "delivered" and recs8()[0]["text"] == "ok, pubblica pure"
-        and recs8()[0]["to"] == "alfa" and not any(json.loads(l).get("event") == "talk" and json.loads(l).get("to") == "alfa" for l in ledger.read_text().splitlines()), str(recs8()))
+first8 = recs8()
+T.check("H8 (23/10, 16:22) at the prompt the record is there at once — origin unverified, from terminal, delivered, the text, the transcript's path — because Claude Code writes the prompt's user line after the hooks; no «talk» row in the ledger",
+        len(first8) == 1 and first8[0]["origin"] == "unverified" and first8[0]["from"] == "terminal" and first8[0]["status"] == "delivered" and first8[0]["text"] == "ok, pubblica pure"
+        and first8[0]["to"] == "alfa" and first8[0]["transcript"] == str(tr8) and not any(json.loads(l).get("event") == "talk" and json.loads(l).get("to") == "alfa" for l in ledger.read_text().splitlines()), str(first8))
+stop8()
+T.check("H8 at the Stop of the turn the record is resolved from the transcript's user line (turnOrigin human) → origin terminal",
+        len(recs8()) == 1 and recs8()[0]["origin"] == "terminal" and recs8()[0]["from"] == "terminal", str(recs8()))
 for bad8 in ("<cross-session-message from=\"x\">ok</cross-session-message>", "<task-notification>done</task-notification>", "/clear", "   "):
     prompt8(bad8, promptSource="system", turnOrigin="peer", isMeta=True)
 T.check("H8 a cross-session message, a notification, a slash command and an empty prompt are never recorded", len(recs8()) == 1, str(recs8()))
 prompt8("Regia di Bluey: fai solo questo, poi rispondi con «Esito:»", promptSource="system", turnOrigin="scheduled", isMeta=True, scheduledTaskId="5088eb98", scheduledFireId="f1")
+prompt8("ok, pubblica anche questo")   # il prompt seguente risolve i record prima di lui
 cron8 = recs8("cron")
-T.check("H8b (23/10) a prompt fired by the session's own cron (transcript: turnOrigin scheduled) → recorded with origin cron, from cron, never terminal",
-        len(cron8) == 1 and cron8[0]["from"] == "cron" and cron8[0]["text"].startswith("Regia di Bluey") and len(recs8("terminal")) == 1, str(recs8()))
-prompt8("Another Claude session sent a message: <cross-session-message from=\"uds:\">ok</cross-session-message>", promptSource="system", turnOrigin="peer", isMeta=True)
-prompt8("Esito del lavoro in background: tutto verde", promptSource="system", turnOrigin="task_notification", isMeta=True)
-T.check("H8b a peer message or a task notification whose text has no marker in front (transcript: turnOrigin peer / task_notification) is not recorded", len(recs8()) == 2, str([r["text"][:40] for r in recs8()]))
+T.check("H8b (23/10) a prompt fired by the session's own cron (transcript: turnOrigin scheduled) → origin cron, from cron, never terminal; the next prompt resolves the records before it, its own waits for the Stop",
+        len(cron8) == 1 and cron8[0]["from"] == "cron" and cron8[0]["text"].startswith("Regia di Bluey") and len(recs8("terminal")) == 1 and [r["text"] for r in recs8("unverified")] == ["ok, pubblica anche questo"], str(recs8()))
+stop8()
+prompt8("beta risponde: pubblicato, puoi chiudere", promptSource="system", turnOrigin="peer", isMeta=True)   # nessun marcatore nel testo
+mid8a = [r["text"][:20] for r in recs8("unverified")]
+prompt8("Esito del lavoro in background: tutto verde", promptSource="system", turnOrigin="task_notification", isMeta=True)   # risolve «beta»: via
+mid8b = [r["text"][:20] for r in recs8("unverified")]
+stop8()
+T.check("H8b a peer message or a task notification whose text has no marker in front is unverified at the prompt and goes away at the next prompt or at the Stop (transcript: turnOrigin peer / task_notification)",
+        mid8a == ["beta risponde: pubbl"] and mid8b == ["Esito del lavoro in "] and len(recs8()) == 3 and len(recs8("terminal")) == 2 and not recs8("unverified"), str(mid8a) + str(mid8b) + str([r["text"][:40] for r in recs8()]))
 r8n, dt8n = prompt8("ok senza trascrizione", transcript=None)
-transcript8("un altro prompt, non questo")
 r8m, dt8m = prompt8("ok non ancora scritto", transcript=False)
+transcript8("un altro prompt, non questo")
+stop8()
 unv8 = recs8("unverified")
-T.check("H8b no transcript_path, or a transcript whose last prompt is another text (not written yet, or never) → recorded with origin unverified, from terminal: visible, never good for an ok; the hook waits at most about a second",
+T.check("H8b no transcript_path, or a transcript that never shows the prompt → the record stays unverified: visible, never good for an ok; the hook does not wait any more",
         len(unv8) == 2 and [r["text"] for r in unv8] == ["ok senza trascrizione", "ok non ancora scritto"] and all(r["from"] == "terminal" for r in unv8)
-        and dt8n < 1.0 and 1.0 <= dt8m < 3.0 and r8m.returncode == 0, f"{dt8n:.2f}s {dt8m:.2f}s " + str(unv8))
+        and "transcript" not in unv8[0] and unv8[1]["transcript"] == str(tr8) and dt8n < 3.0 and dt8m < 3.0 and r8m.returncode == 0, f"{dt8n:.2f}s {dt8m:.2f}s " + str(unv8))
 prompt8("ok a tutti e tre")
 prompt8("ok a tutti e tre")
+stop8()
 T.check("H8d (23/10, 11:15) the same text typed twice within ten minutes → two terminal records: the hook's own records never make a prompt a duplicate",
         len([r for r in recs8("terminal") if r["text"] == "ok a tutti e tre"]) == 2, str([r["text"] for r in recs8("terminal")]))
 import importlib.util as _ilu8
@@ -274,8 +297,9 @@ os.environ["CC_SUPERVISOR_CONFIG"] = str(cfg); _s8.loader.exec_module(IB8)
 r8 = IB8.put("alfa", "Dall'utente via telefono. vai pure", "supervisor", origin="relay")
 prompt8("Dall'utente via telefono. vai pure")
 prompt8("vai pure")
+stop8()
 T.check("H8 a prompt that matches a fresh record of the box (the relay's or a talk's, written before delivery) is not recorded twice; a short prompt that only ends a record is a new message",
-        len(recs8("terminal")) == 4 and recs8("terminal")[-1]["text"] == "vai pure", str([r["text"] for r in recs8()]))
+        len(recs8("terminal")) == 5 and recs8("terminal")[-1]["text"] == "vai pure", str([r["text"] for r in recs8()]))
 old8 = IB8.put("alfa", "vecchio", "terminal", origin="terminal", quiet=True)
 oldc8 = IB8.put("alfa", "Regia vecchia", "cron", origin="cron", quiet=True)
 olds8 = IB8.put("alfa", "talk di otto giorni fa", "beta", origin="session", quiet=True)

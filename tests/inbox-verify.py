@@ -221,4 +221,20 @@ py("I.prune('zeta', {'terminal': 86400})")
 left11 = sorted(r["text"] for r in recs("zeta"))
 T.check("IB11 prune: records older than seven days go whatever the origin (talk, relay, none); an origin in `ages` has its own retention; a record of six days and a file with a fresh mtime stay",
         left11 == ["creato ieri, file di oggi", "talk di sei giorni"], str(left11))
+# IB12 (23/10/2026, 16:22): la risoluzione differita dell'origine dalla riga user della trascrizione
+tr12 = tmp / "transcript-12.jsonl"
+now12 = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+old12 = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 900))
+with open(tr12, "w") as f12:
+    f12.write(json.dumps({"type": "assistant", "message": {"content": "x" * 300000}}) + "\n")   # oltre la prima coda di 256 KB
+    for text12, meta12 in (("ok, vai", {"turnOrigin": "human"}), ("Regia: fai", {"turnOrigin": "scheduled", "isMeta": True, "scheduledTaskId": "a"}),
+                           ("Another: ok", {"turnOrigin": "peer", "isMeta": True}), ("vecchio", {"turnOrigin": "human", "timestamp": old12})):
+        f12.write(json.dumps({"type": "user", "isSidechain": False, "message": {"role": "user", "content": text12}, "timestamp": now12, **meta12}) + "\n")
+for text12 in ("ok, vai", "Regia: fai", "Another: ok", "mai scritto", "vecchio"):
+    py(f"I.put('eta',{text12!r},'terminal',{str(work)!r},origin='unverified',transcript={str(tr12)!r})")
+n12 = py("print(I.resolve_box('eta'))").stdout.strip()
+got12 = {r["text"]: r for r in recs("eta")}
+T.check("IB12 resolve_box: human → terminal, scheduled → cron (from cron), peer → the record goes; a prompt the transcript never shows, or shows 15 minutes away, stays unverified; the line is found beyond the first 256 KB tail",
+        n12 == "3" and got12["ok, vai"]["origin"] == "terminal" and got12["Regia: fai"]["origin"] == "cron" and got12["Regia: fai"]["from"] == "cron"
+        and "Another: ok" not in got12 and got12["mai scritto"]["origin"] == "unverified" and got12["vecchio"]["origin"] == "unverified", n12 + " " + str({k: v["origin"] for k, v in got12.items()}))
 T.finish()

@@ -34,13 +34,15 @@ in that terminal (origin `terminal`; since 23/10/2026 the root session too:
 from the relay (phone, watch, web app, the app's chat: origin `relay`). The
 `UserPromptSubmit` hook saves every prompt in the session's inbox, delivered,
 pruned after a day (the rest of the box after seven, since 23/10/2026: «ok 7
-giorno per supervisor»), with the origin the transcript gives it: Claude Code
-appends the prompt's `user` line (`turnOrigin`) before running the hooks, so
-a prompt the person typed, accepted as a suggestion, queued or sent from
-Remote Control is `terminal`; a prompt fired by the session's own cron
-(CronCreate) is `cron`; a message from another session or a task
-notification is not recorded; a prompt the transcript does not show within a
-second is `unverified`. Never a slash command, nor a text that matches a
+giorno per supervisor»), with the origin the transcript gives it. Claude Code
+(2.1.308) appends the prompt's `user` line (`turnOrigin`) only after the hooks
+have run, so the record is born `unverified` and is resolved later from that
+line: at the session's next prompt or Stop, in the inbox listing and inside
+`task approve --inbox` at the moment of use. A prompt the person typed,
+accepted as a suggestion, queued or sent from Remote Control becomes
+`terminal`; one fired by the session's own cron (CronCreate) becomes `cron`; a
+message from another session or a task notification goes away; a prompt the
+transcript never shows stays `unverified`, never good for an ok. Never a slash command, nor a text that matches a
 fresh record written by someone else (the relay and `talk` write the record
 before delivering); the hook's own records never make a repeated text a
 duplicate. Only `terminal` and `relay` are good for an ok; `cron`,

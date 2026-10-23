@@ -236,76 +236,14 @@ PROMPT_SKIP = ("<cross-session-message", "<task-notification", "[Cross-session",
 PROMPT_RECENT_S = 600
 PROMPT_KEEP_S = 86400
 PROMPT_OWN_ORIGINS = ("terminal", "cron", "unverified")   # i record che scrive questo hook
-PROMPT_WAIT_S = 1.0
 PRUNE_EVERY_S = 3600
-TRANSCRIPT_TAIL = 262144
-
-
-def last_prompt_line(path):
-    """(riga, testo) dell'ultimo prompt nella trascrizione: la riga `user` piu' recente che non e' un tool_result ne' un
-    sidechain; None se non c'e'. Legge solo la coda del file (la trascrizione della master supera i 10 MB)."""
-    try:
-        with open(path, "rb") as f:
-            f.seek(0, 2)
-            f.seek(max(0, f.tell() - TRANSCRIPT_TAIL))
-            tail = f.read()
-    except OSError:
-        return None
-    for line in reversed(tail.split(b"\n")):
-        if b'"user"' not in line:
-            continue
-        try:
-            r = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(r, dict) or r.get("type") != "user" or r.get("isSidechain"):
-            continue
-        c = (r.get("message") or {}).get("content")
-        if isinstance(c, list):
-            parts = [x for x in c if isinstance(x, dict)]
-            if parts and all(x.get("type") == "tool_result" for x in parts):
-                continue
-            text = " ".join(str(x.get("text") or "") for x in parts if x.get("type") == "text")
-        else:
-            text = str(c or "")
-        return r, text
-    return None
-
-
-def prompt_origin(p, text):
-    """23/10/2026 (casella-ok-origine, the maintainer in the master's terminal at 11:05: «Correggi la casella degli ok»): chi ha
-    scritto il prompt lo dice la riga `user` che Claude Code appende alla trascrizione PRIMA di lanciare gli hook
-    (turnOrigin: human, scheduled, peer, task_notification…), non il testo: tre prompt del cron della master
-    (CronCreate, «Regia di Bluey…») erano finiti in casella come «terminal». Il payload dell'hook non porta l'origine
-    (hook_event_name, prompt, session_id, transcript_path, cwd, permission_mode, session_title: 2.1.309).
-    «terminal» = la persona (tastiera, Remote Control, suggerimento accettato, prompt in coda); «cron» = il cron della
-    sessione; "" = un'altra sessione o il sistema (niente record); «unverified» = la trascrizione non mostra il prompt
-    entro PROMPT_WAIT_S (o non c'e'): il record resta, visibile, mai buono per un ok."""
-    path = str(p.get("transcript_path") or "")
-    if not path:
-        return "unverified"
-    mine = " ".join(text.split())
-    deadline = time.time() + PROMPT_WAIT_S
-    while True:
-        got = last_prompt_line(path)
-        if got and " ".join(got[1].split()) == mine:
-            row = got[0]
-            kind = str(row.get("turnOrigin") or ("" if row.get("isMeta") else "human"))
-            if kind == "human":
-                return "terminal"
-            if kind == "scheduled" or row.get("scheduledTaskId"):
-                return "cron"
-            return ""
-        if time.time() >= deadline:
-            return "unverified"
-        time.sleep(0.05)
 
 
 def record_person_prompt(p):
     """22/10/2026 (ok-in-sessione, the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli
     altri»): ogni messaggio scritto dalla persona in questa sessione va nella sua casella con origine «terminal», gia'
-    consegnato, cosi' `task approve --inbox` lo puo' citare. L'origine la decide prompt_origin() dalla trascrizione
-    (23/10). Mai i testi delle altre sessioni (cross-session, notifiche, comandi) ne' un prompt che coincide con un record
+    consegnato, cosi' `task approve --inbox` lo puo' citare. L'origine (23/10) la dice la riga `user` della trascrizione,
+    che Claude Code scrive dopo gli hook: il record nasce «unverified» e lo risolve ib.resolve piu' tardi. Mai i testi delle altre sessioni (cross-session, notifiche, comandi) ne' un prompt che coincide con un record
     recente scritto da altri (il relay e `talk` scrivono il record prima di consegnare: quello non e' la persona); i
     record di questo hook non contano (23/10, 11:15: «ok a tutti e tre» due volte in tre minuti, il secondo perso).
     Costo (23/10, 10:47: hook annullato a 5 s, prompt perso): stat dei file, lettura solo dei recenti, potatura una
@@ -321,6 +259,7 @@ def record_person_prompt(p):
         now = time.time()
         mine = " ".join(text.split())
         d = ib.box(name)
+        stale = []   # i prompt precedenti ancora «unverified»: la loro riga user ormai c'e'
         for f in d.glob("*.json"):
             try:
                 if now - f.stat().st_mtime > PROMPT_RECENT_S:
@@ -329,15 +268,19 @@ def record_person_prompt(p):
             except (OSError, ValueError):
                 continue
             if r.get("origin") in PROMPT_OWN_ORIGINS:
+                if r.get("origin") == "unverified" and r.get("transcript"):
+                    stale.append(r)
                 continue
             other = " ".join(str(r.get("text") or "").split())
             if other == mine or (len(mine) >= 20 and other.endswith(mine)):
                 return
-        origin = prompt_origin(p, text)
-        if not origin:
-            return
-        rec = ib.put(name, text[:4000], "cron" if origin == "cron" else "terminal", p.get("cwd") or "", origin=origin, quiet=True)
+        # 23/10 16:22 (regressione della 0.8.46): Claude Code 2.1.308 scrive la riga `user` della trascrizione DOPO gli
+        # hook, quindi qui l'origine non si sa: il record nasce «unverified» con la via della trascrizione e lo risolve
+        # ib.resolve (al prompt seguente, allo Stop, nell'elenco e dentro task approve --inbox)
+        rec = ib.put(name, text[:4000], "terminal", p.get("cwd") or "", origin="unverified", quiet=True, transcript=p.get("transcript_path") or None)
         ib.mark(rec["id"], "delivered", "terminal")
+        for r in stale:
+            ib.resolve(r)
         stamp = d / ".pruned"
         try:
             fresh = now - stamp.stat().st_mtime < PRUNE_EVERY_S
@@ -548,6 +491,12 @@ def main(argv):
         # «waiting» con la domanda gia' risposta (14/09: answered e outcome partiti 3 minuti tardi)
         if sid:
             (STATE / "waiting" / sid).unlink(missing_ok=True)
+        try:   # 23/10 16:22: i prompt del turno, «unverified» all'hook, si risolvono ora dalla trascrizione
+            tm_name = my_tmux_name()
+            if tm_name:
+                inbox().resolve_box(tm_name)
+        except Exception:   # noqa: BLE001
+            pass
         msg = p.get("last_assistant_message") or ""
         last = msg[:300]
         # per il polso (regola 9): l'ultima riga di testo e, se c'e', la riga «Esito:» — i primi 300
