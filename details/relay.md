@@ -367,6 +367,13 @@ for the person. Fixtures: `state-2-idle.json` (an approval with `options`),
 `cmd-result-sample.json` (an `approve` with `choice`, one refused). Without
 1.81 the app works as before: the field is additive.
 
+Names (23/10/2026): a session on a remote host is `win:bluey` in
+`sessions[].name` and `win-bluey` in `sessions[].remote_name` — the real
+name on that host, the one the registry, `talk` and the lane guard use.
+Inside `/state` the first one holds: `commitments[].session`, `waits` and the
+`attention` items from the registry carry the state's name, so the app joins
+on `sessions[].name` and nothing else.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

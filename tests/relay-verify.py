@@ -3462,6 +3462,16 @@ T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them t
         len(S.build_state(dict(SRC2, approvals=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
         and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == st2["sessions"] and _big62["projects"] == st2["projects"]
         and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
+# R68 (23/10 23:42, supervisor-app: «win:bluey» nello stato, «win-bluey» nel registro): dentro lo stato vale il nome dello stato
+_row68 = {"name": "win:bluey", "tmux": "", "host": "win", "remote_name": "win-bluey", "account": "personal", "cwd": "D:/cm-sessions/personali/bluey", "status": "idle", "waiting": False,
+          "session_id": "S-WB", "channel": "remoto", "attached": None, "started_at": 1789214000000, "link": "", "socket": "", "registry": "", "low_priority": "off", "goal_status": None}
+_cm68 = [dict(_small62, task="bluey-emulatore", session="win-bluey", waits={"who": "win-bluey", "on": "person"}), dict(_small62, task="atlas-seo-pages", session="atlas-shop", waits={"who": "person", "on": "atlas-shop"})]
+_st68 = S.build_state(dict(SRC2, rows=SRC2["rows"] + [_row68], commitments=_cm68,
+                           attention=[{"kind": "task_red", "session": "win-bluey", "ref": "bluey-emulatore", "title": "bluey-emulatore: check red", "since": 1789214300}]), 1789214400, fit=False)
+T.check("R68 (23/10) a commitment or a task_red item whose session is the registry's remote name («win-bluey») carries the state's name («win:bluey», sessions[].name) in session and waits; local names untouched",
+        [(x["session"], x["waits"]) for x in _st68["commitments"]] == [("win:bluey", {"who": "win:bluey", "on": "person"}), ("atlas-shop", {"who": "person", "on": "atlas-shop"})]
+        and [(a["kind"], a["session"]) for a in _st68["attention"] if a["kind"] == "task_red"] == [("task_red", "win:bluey")] and "win:bluey" in {s["name"] for s in _st68["sessions"]},
+        str((_st68.get("commitments"), _st68.get("attention"), [s["name"] for s in _st68["sessions"]])))
 (tmp / "impegni.json").write_text(json.dumps([{"task": "atlas-release-2-4", "title": "Release 2.4\nof atlas-shop", "project": str(ws / "personal" / "atlas-shop"), "session": "atlas-shop", "state": "awaiting_ok",
     "lane": "closed", "plan": None, "approved": False, "approved_at": None, "approved_by": None, "age_s": 200, "last_step": {"at": 1789210600, "kind": "state", "text": "awaiting_ok"}, "idle_s": 200,
     "next": "l'ok a: tag v2.4", "waits": {"who": "atlas-shop", "on": "person"}, "expected": None, "outcome_kind": None, "check": None, "paused": None, "stalled": False}]))

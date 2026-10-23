@@ -565,6 +565,19 @@ def build_devices(devices, seen):
 AT_PC_S = 120
 
 
+def canon_session(name, rows):
+    """23/10/2026 23:42 (supervisor-app: «win:bluey» nello stato, «win-bluey» negli impegni): il registro, talk e la
+    guardia chiamano una sessione remota col suo nome vero («win-bluey», quello di launch --host, in
+    sessions[].remote_name); lo stato la mostra come «win:bluey» (10/10). Dentro lo stato vale il nome dello stato: un
+    nome che combacia con remote_name di una riga viva diventa il suo name, cosi' l'app aggancia su sessions[].name."""
+    if not name or not isinstance(name, str):
+        return name
+    for r in rows or []:
+        if r.get("remote_name") == name and r.get("name"):
+            return r["name"]
+    return name
+
+
 def build_state(src, now, fit=True):
     src = dict(src, _now=now)   # 1.62: build_session confronta l'attivita' al PC con l'ora della raccolta
     sessions = order_sessions([build_session(r, src) for r in (src.get("rows") or [])])
@@ -622,7 +635,7 @@ def build_state(src, now, fit=True):
             for s in sessions if s.get("needs_you")]
     att += [{"kind": "turn_blocking", "session": s["name"], "ref": s["name"], "title": redact_preview(s["turn_blocking"]["text"]), "since": s["turn_blocking"]["at"], "closes": "prompt"}
             for s in sessions if s.get("turn_blocking") and not s.get("needs_you")]
-    att += [dict(x, closes="check" if x.get("kind") == "task_red" else "prompt") for x in (src.get("attention") or [])]
+    att += [dict(x, session=canon_session(x.get("session"), src.get("rows")), closes="check" if x.get("kind") == "task_red" else "prompt") for x in (src.get("attention") or [])]
     if att:
         state["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
     # 1.64: le cartelle madri ammesse per un progetto nuovo dal telefono (op project_new); assente = relay precedente
@@ -637,7 +650,13 @@ def build_state(src, now, fit=True):
     # 1.76 (22/10, impegni sempre visibili, P2): gli approvati non compiuti dal registro (`task impegni --json`), fermi
     # prima; [] quando non c'e' niente, assente con un relay vecchio
     if "commitments" in src:
-        state["commitments"] = [dict(x) for x in (src.get("commitments") or [])][:COMMITMENTS_MAX]
+        cms = []
+        for x in (src.get("commitments") or [])[:COMMITMENTS_MAX]:
+            x = dict(x, session=canon_session(x.get("session"), src.get("rows")))   # 23/10: il nome dello stato, non quello del registro
+            if isinstance(x.get("waits"), dict):
+                x["waits"] = {k: canon_session(v, src.get("rows")) for k, v in x["waits"].items()}
+            cms.append(x)
+        state["commitments"] = cms
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state

@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.54 — 2026-10-23: inside `/state` a remote session has one name.**
+  - Seen by supervisor-app at 23:25: the state names a session on win `win:bluey` (`sessions[].name`), the registry and its oks say `win-bluey` (the real name on that host, `sessions[].remote_name`, the one `launch --host`, `talk` and the lane guard use), so the app could not attach that session's oks and work to its card.
+  - `build_state` now maps a registry name that equals a live row's `remote_name` to that row's name in `commitments[].session`, `waits` and the `attention` items from the registry (`task_red`): the app joins on `sessions[].name` and nothing else. The registry keeps the real name. No contract change.
+  - Tests: R68.
 - **0.8.53 — 2026-10-23: a task that asks a choice (contract 1.81).**
   - Asked by supervisor-app at 23:11 (task scelte-con-tasti, ok of the maintainer at 23:08): a task that asks a choice must show one button per option in the app and on the web, instead of «Approve», and the choice is recorded with the ok.
   - `supervisor task wait-ok ID --what W --where D --options "A|B"`: two to four distinct labels of 1-24 characters; `task list --json` carries `request.options`, `task show` the `options` of the request and the `choice` of the approval. `task approve ID … --choice C`: required when the request has options, refused when it has none or the label is not one of them («choose one of A, B», «choice X not among A, B»). A standing ok never picks: such a task always waits for the person.
