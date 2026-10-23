@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.52 — 2026-10-23: a standing ok of the person (`task standing`).**
+  - Asked by the maintainer from the phone at 19:58: «Quando ci sono aggiornamenti di supervisor, effettuali direttamente.» The registry wanted a message of the last hour for every ok; a permanent ok is the message itself.
+  - `supervisor task standing add --by NAME --inbox MSG --project DIR --kind K`: a rule that cites a message of the person from the caller's own inbox (origin `terminal` or `relay`, any age), scoped to a project folder and an outcome kind (`release`, `deploy`, `install`…); `task standing list [--json]`, `task standing remove N` (revoked, kept). At `task wait-ok` a task the rule covers is approved at once, by the person, with a text that quotes the message and names the rule; the app shows no «Approva», the lane guard sees the approval. Nothing else changes: an ok for a single task still needs a message of the last hour.
+  - Tests: T24.
 - **0.8.51 — 2026-10-23: the requests in «Needs you» close by themselves (contract 1.80); the keys guard reads the command without its quoted text.**
   - Asked by the maintainer at 18:39 («dobbiamo assicurarci che le richieste in attesa appaiano solo quando ci sono davvero e scompaiano quando non ci sono più»), ok from the phone at 19:35. Until now a `needs-you` request died only at the session's next prompt or with `--clear`: done elsewhere, it stayed (two files of 19/10 and 22/10 on disk); a turn ending with a «Da te» list stayed until someone wrote to that session.
   - `supervisor needs-you "…" --until "<command>"`: the relay runs it once a minute (10 s, in the caller's folder) and, when it exits 0, removes the request, writes the ledger and tells the session in its inbox («fatto alle HH:MM … Riprendi»). `--expires 2h` (24 h without): the request lapses by itself, with a ledger row and a message to the session. Files of sessions gone for more than a day are pruned.

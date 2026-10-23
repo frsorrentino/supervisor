@@ -546,4 +546,33 @@ with T.PrivateTmux() as tm:
     rc, out, err = cm("approve", "x2", "--by", "maintainer", "--inbox", u2, env=M23)
     dt = time.time() - t0
     T.check("T23 a line that never comes → after CM_INBOX_WAIT_S «try again», for the session; the state unchanged", rc != 0 and "try again" in err and dt >= 5.5 and show("x2")["state"] == "awaiting_ok", f"{dt:.1f}s " + err)
+# T24 (23/10/2026 20:00, the maintainer from the phone at 19:58: «Quando ci sono aggiornamenti di supervisor, effettuali
+# direttamente»): l'ok permanente — task standing add, approvazione automatica al wait-ok, list, remove
+with T.PrivateTmux() as tm:
+    tm("new-session", "-d", "-s", "master", "sleep 300")
+    pane_m = tm("display-message", "-p", "-t", "master", "#{pane_id}").stdout.strip()
+    M24 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_m)
+    old24 = inbox_put("master", "Quando ci sono aggiornamenti di supervisor, effettuali direttamente.", "relay", age_s=5 * 3600)
+    rc, out, err = cm("standing", "add", "--by", "maintainer", "--inbox", old24, "--project", str(proj), "--kind", "release", env=M24)
+    T.check("T24 task standing add cites a message of the person from the caller's inbox, whatever its age (a permanent ok is the message itself): rule n1 with the quote",
+            rc == 0 and "standing ok n1" in out and "«Quando ci sono aggiornamenti di supervisor, effettuali direttamente.»" in out, out + err)
+    rc, out, err = cm("standing", "add", "--by", "maintainer", "--inbox", inbox_put("master", "Regia: sì", "cron"), "--project", str(proj), "--kind", "release", env=M24)
+    T.check("T24 a cron prompt never makes a standing ok", rc != 0 and "origin cron" in err, err)
+    add(contract("y1", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))
+    rc, out, err = cm("wait-ok", "y1", "--what", "release 0.8.52", "--where", "github", env=M24)
+    a24 = show("y1")["approvals"][-1]
+    T.check("T24 wait-ok of a task of that project with outcome.kind release → approved at once, by the person, the text quoting the message and naming the rule",
+            rc == 0 and "approved by standing ok n1" in out and show("y1")["state"] == "approved" and a24["by_"] == "maintainer" and "standing ok n1 for release" in a24["text"] and "inbox " + old24 in a24["text"], out + err + json.dumps(a24))
+    (tmp / "other").mkdir(exist_ok=True)
+    add(contract("y2", outcome={"expected": "deployed", "kind": "deploy"}, cmd="grep -q https:// ok.txt"))
+    rc, out, err = cm("wait-ok", "y2", "--what", "deploy", "--where", "prod", env=M24)
+    add(contract("y3", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt", where={"project": str(tmp / "other"), "session": None, "host": "local", "account": None}))
+    rc3, out3, err3 = cm("wait-ok", "y3", "--what", "release", "--where", "github", env=M24)
+    T.check("T24 another kind (deploy) or another project → still awaiting_ok: the rule is scoped", rc == 0 and show("y2")["state"] == "awaiting_ok" and rc3 == 0 and show("y3")["state"] == "awaiting_ok", out + out3 + err + err3)
+    rc, out, err = cm("standing", "list", env=M24)
+    rcr, outr, errr = cm("standing", "remove", "1", env=M24)
+    add(contract("y4", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))
+    rc4, out4, err4 = cm("wait-ok", "y4", "--what", "release", "--where", "github", env=M24)
+    T.check("T24 standing list shows the rule; remove N revokes it: the next wait-ok waits for an ok again",
+            rc == 0 and "n1" in out and "release" in out and rcr == 0 and "revoked" in outr and show("y4")["state"] == "awaiting_ok" and "standing" not in out4, out + outr + out4 + errr)
 T.finish()

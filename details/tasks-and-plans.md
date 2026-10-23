@@ -64,6 +64,19 @@ hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
 check is green (`supervisor task auto-close`); a red check there leaves the task
 as it is and counts no attempt.
 
+A standing ok (since 23/10/2026 20:00, the maintainer from the phone:
+«Quando ci sono aggiornamenti di supervisor, effettuali direttamente»):
+`supervisor task standing add --by NAME --inbox MSG --project DIR --kind K`
+records a permanent rule that cites a message of the person from the
+caller's own inbox (origin `terminal` or `relay`; its age does not matter,
+the message is the ok), scoped to a project folder and an outcome kind
+(`release`, `deploy`, `install`…). At `task wait-ok` a task the rule covers
+is approved at once, by the person, with a text that quotes the message and
+names the rule: the app shows no «Approva» and the lane guard sees the
+approval. `task standing list [--json]` shows the rules, `task standing
+remove N` revokes one (kept in the registry). Nothing else changes: an ok
+for a single task still needs a message of the last hour.
+
 Commitments (22/10/2026, after a day lost on an APK: the task closed `done`
 on an intermediate step, the ok got lost in a hand-written handoff, nobody
 noticed an «Approve» for 46 minutes). A task born from an ok carries

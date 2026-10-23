@@ -44,6 +44,13 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 1.79); senza, impegni e closed ne ricavano uno dal titolo (parole intere)
   supervisor task confirm ID --by B (--text T | --inbox MSG)   la conferma della persona (come approve); `task
   supervisor task confirmed ID                  confirmed ID` esce 0 se c'e': un controllo valido per un esito install
+  supervisor task standing add --by B --inbox MSG --project DIR --kind K
+                                                (23/10 20:00, «Quando ci sono aggiornamenti di supervisor, effettuali
+                                                direttamente»): un ok permanente della persona per i compiti di DIR
+                                                con outcome.kind K; cita un messaggio della persona nella casella di
+                                                chi chiama (origin terminal o relay, senza limite d'ora); al wait-ok
+                                                il compito coperto si approva da solo citando messaggio e regola
+  supervisor task standing list [--json] | remove N   le regole permanenti; la revoca (resta nel registro)
   supervisor task stall-check [--json]          gli impegni fermi da piu' di tasks.stall_hours non ancora avvisati
                                                 (task-alerts.json accanto al registro); lo chiama guard run
 
@@ -187,6 +194,8 @@ CREATE TABLE IF NOT EXISTS constraints (n INTEGER PRIMARY KEY, project TEXT, top
     at INTEGER);
 CREATE TABLE IF NOT EXISTS steps (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, kind TEXT, text TEXT, next TEXT);
 CREATE TABLE IF NOT EXISTS pauses (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, reason TEXT, resumed_at INTEGER);
+CREATE TABLE IF NOT EXISTS standing (n INTEGER PRIMARY KEY, project TEXT, kind TEXT, by_ TEXT, text TEXT, inbox_id TEXT,
+    created_at INTEGER, revoked_at INTEGER);
 """
 
 
@@ -404,6 +413,54 @@ def pin_approval_text(by, pin, note=None):
         sys.exit(f"task approve --pin: the PIN belongs to {what}, not to {by}")
     when = time.strftime("%d/%m %H:%M")
     return what, f"{what}, {when}: PIN (via {caller or 'a terminal'})" + (f" — {note}" if note else "")
+
+
+def standing_text(by, rec_id):
+    """23/10/2026 20:00 (the maintainer from the phone at 19:58: «Quando ci sono aggiornamenti di supervisor, effettuali
+    direttamente»): un ok permanente cita un messaggio della persona come un ok normale (la casella di chi chiama,
+    origine terminal o relay, risolta dalla trascrizione), ma la sua eta' non conta: il messaggio stesso e' l'ok."""
+    caller = _caller_session()
+    ib = _load("cm-inbox")
+    rec = ib.load(rec_id)
+    if not rec:
+        sys.exit(f"task standing add: no message {rec_id} in the inbox")
+    if rec.get("to") != caller:
+        sys.exit(f"task standing add: message {rec_id} is for {rec.get('to')}, not for {caller or 'this shell'}: only the session that received it records it")
+    if rec.get("origin") == "unverified":
+        rec = ib.resolve(rec)
+        if rec is None:
+            sys.exit(f"task standing add: message {rec_id} did not come from the person (origin peer)")
+    origin = str(rec.get("origin") or "?")
+    if origin not in ("relay", "terminal"):
+        sys.exit(f"task standing add: message {rec_id} did not come from the person (origin {origin}): a standing ok is the person's own message, never a cron prompt or another session's text")
+    quote = " ".join(str(rec.get("text") or "").split())[:400]
+    when = time.strftime("%d/%m %H:%M", time.localtime(float(rec["created"])))
+    return f"{by}, {when}: «{quote}» (inbox {rec_id}, origin {origin}, to {caller})"
+
+
+def standing_match(con, row):
+    """La regola permanente che copre il compito: la cartella della regola e' quella del compito o la contiene, e il
+    kind e' quello dell'esito (outcome.kind). None se nessuna."""
+    task = json.loads(row["contract"])["task"]
+    kind = str((task.get("outcome") or {}).get("kind") or "")
+    if not kind:
+        return None
+    proj = os.path.realpath(row["project"] or (task.get("where") or {}).get("project") or "")
+    for r in con.execute("SELECT * FROM standing WHERE revoked_at IS NULL ORDER BY n").fetchall():
+        rp = os.path.realpath(r["project"])
+        if r["kind"] == kind and (proj == rp or proj.startswith(rp.rstrip("/") + "/")):
+            return r
+    return None
+
+
+def standing_apply(con, tid):
+    """Al wait-ok: se una regola copre il compito, l'approvazione nasce subito, a nome della persona, citando il
+    messaggio e la regola. Torna la regola o None."""
+    r = standing_match(con, get_task(con, tid))
+    if r is None:
+        return None
+    approve(con, tid, r["by_"], f"{r['text']} — standing ok n{r['n']} for {r['kind']} in {r['project']}")
+    return r
 
 
 def auto_close(con, hours=AUTO_CLOSE_H):
@@ -930,7 +987,43 @@ def main(argv):
                     (args[0], None, now(), what, where))   # la richiesta: by NULL finche' nessuno approva
         set_state(con, args[0], "awaiting_ok")
         con.commit()
+        r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
+        if r is not None:
+            print(f"{args[0]}: approved by standing ok n{r['n']} ({r['by_']}, {r['kind']} in {r['project']})")
         return 0
+    if verb == "standing":
+        sub = args[0] if args else "list"
+        if sub == "add":
+            by, rec_id, project, kind = _opt(args, "--by"), _opt(args, "--inbox"), _opt(args, "--project"), _opt(args, "--kind")
+            if not (by and rec_id and project and kind):
+                sys.exit("usage: task standing add --by B --inbox MSG --project DIR --kind K   (K = outcome.kind: release, deploy, install…)")
+            text = standing_text(by, rec_id)
+            cur = con.execute("INSERT INTO standing (project, kind, by_, text, inbox_id, created_at, revoked_at) VALUES (?,?,?,?,?,?,NULL)",
+                              (os.path.realpath(os.path.expanduser(project)), kind, by, text, rec_id, now()))
+            con.commit()
+            print(f"standing ok n{cur.lastrowid}: {kind} in {project} — {text}")
+            return 0
+        if sub == "remove":
+            if len(args) != 2 or not args[1].isdigit():
+                sys.exit("usage: task standing remove N")
+            n = con.execute("UPDATE standing SET revoked_at=? WHERE n=? AND revoked_at IS NULL", (now(), int(args[1]))).rowcount
+            con.commit()
+            if not n:
+                sys.exit(f"task standing remove: no standing ok n{args[1]}")
+            print(f"standing ok n{args[1]} revoked")
+            return 0
+        if sub == "list":
+            rows = con.execute("SELECT * FROM standing WHERE revoked_at IS NULL ORDER BY n").fetchall()
+            if as_json:
+                print(json.dumps([dict(r) for r in rows], ensure_ascii=False))
+                return 0
+            if not rows:
+                print("no standing ok")
+                return 0
+            for r in rows:
+                print(f"n{r['n']}  {r['kind']:<8} {r['project']}  {r['text']}")
+            return 0
+        sys.exit("usage: task standing add --by B --inbox MSG --project DIR --kind K | list [--json] | remove N")
     if verb in ("approve", "confirm"):
         by, text, rec_id, pin = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox"), _opt(args, "--pin")
         if not (by or pin) or not (text or rec_id or pin) or not args:
