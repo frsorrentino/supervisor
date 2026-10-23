@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.55 — 2026-10-24: kernel rule 13, every mockup reaches the chat as files.**
+  - Asked by the maintainer at 00:40 (task anteprime-in-app): a mockup or canvas shown only as a link is unreadable on the phone; the app shows attached files inside the chat.
+  - Rule 13 for every session: a mockup or canvas (HTML, SVG, an image) goes in the chat as files too — a real-size PNG and, when there is one, the standalone HTML — attached with `SendUserFile` in the same message as the link; never the link alone. H3 bound 3400 characters, 15 lines.
 - **0.8.54 — 2026-10-23: inside `/state` a remote session has one name.**
   - Seen by supervisor-app at 23:25: the state names a session on win `win:bluey` (`sessions[].name`), the registry and its oks say `win-bluey` (the real name on that host, `sessions[].remote_name`, the one `launch --host`, `talk` and the lane guard use), so the app could not attach that session's oks and work to its card.
   - `build_state` now maps a registry name that equals a live row's `remote_name` to that row's name in `commitments[].session`, `waits` and the `attention` items from the registry (`task_red`): the app joins on `sessions[].name` and nothing else. The registry keeps the real name. No contract change.

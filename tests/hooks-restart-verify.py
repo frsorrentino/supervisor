@@ -5,7 +5,7 @@ H1  UserPromptSubmit stampa `[ora locale] <giorno> <data>` con il giorno nella l
 H2  PermissionRequest scrive waiting/<sid> con il tool; SessionStart lo cancella e aggiorna il registro (file scritto)
 H2b PermissionRequest con hooks.ask_notify abilitato: l'hook esce subito e un processo staccato manda il messaggio
     Telegram (domanda e opzioni dal payload); H2c con ask_notify.enabled false: nessun messaggio
-H3  SessionStart stampa il kernel (<= 2200 caratteri, <= 13 righe) a startup/resume/compact; non per source ignoto; non se disabilitato
+H3  SessionStart stampa il kernel (<= 3400 caratteri, <= 15 righe) a startup/resume/compact; non per source ignoto; non se disabilitato
 H4  Stop scrive nel ledger `last` troncato; con coda → {"decision":"block","reason":...} e la voce esce dalla coda; con stop_hook_active non consuma; voci scadute scartate
 H4c Stop salva anche `tail` (la coda del messaggio, 600 caratteri) ed `esito` (riga «Esito:») per il polso
 H5  StopFailure scrive nel ledger
@@ -109,7 +109,7 @@ k = r.stdout
 # 14/10: 2400 caratteri, con la regola 11 (needs-you); 22/10: 2700 e 14 righe, con la regola 12 (l'ok scritto nella sessione);
 # 23/10: 2800, la regola 12 con il PIN; 23/10 18:53: 2900, la regola 12 «un ok vale sempre, anche d'altra sessione»;
 # 23/10 19:40: 3000, la regola 11 con --until/--expires
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3000 and len(k.strip().splitlines()) <= 14, f"{len(k)} chars, {len(k.splitlines())} lines")
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3400 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
