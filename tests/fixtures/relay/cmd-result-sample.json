@@ -701,6 +701,28 @@
       "device": "phone",
       "issued": 1789211740,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0780-4000-8000-000000000780",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-checkout-layout",
+      "text": "ok",
+      "choice": "Strada B",
+      "device": "phone",
+      "issued": 1789211750,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0781-4000-8000-000000000781",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-checkout-layout",
+      "text": "ok",
+      "choice": "Strada C",
+      "device": "phone",
+      "issued": 1789211760,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1176,6 +1198,18 @@
       "ok": false,
       "text": "needs_you nobody: nothing to close",
       "at": 1789211741
+    },
+    {
+      "id": "6f1c2d3e-0780-4000-8000-000000000780",
+      "ok": true,
+      "text": "approved atlas-checkout-layout (Strada B)",
+      "at": 1789211751
+    },
+    {
+      "id": "6f1c2d3e-0781-4000-8000-000000000781",
+      "ok": false,
+      "text": "atlas-checkout-layout: choice Strada C not among Strada A, Strada B",
+      "at": 1789211761
     }
   ]
 }

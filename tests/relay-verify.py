@@ -363,6 +363,9 @@ SRC2.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["published_today"]
 SRC2["commitments"] = F2["commitments"]   # 1.76
+# 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
+SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
+                      "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"]}]
 st2 = S.build_state(SRC2, 1789214400)
 T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
 SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "ledger": [], "questions": {},
@@ -1533,6 +1536,26 @@ T.check("R31 (1.37) approvals from the registry's tasks in awaiting_ok, the olde
 tasks31.unlink()
 T.check("R31 (1.37) without tasks waiting approvals is an empty list (always present); ops carries approve and decision",
         json.loads(relay("push", "--dry-run").stdout)["approvals"] == [] and {"approve", "decision"} <= set(d31["ops"]), "")
+# R67 (1.81, 23/10 23:11, supervisor-app «scelte con tasti»): un compito che chiede una scelta — options in approvals[], approve con choice
+tasks31.write_text(json.dumps([{"id": "atlas-checkout-layout", "plan": None, "state": "awaiting_ok", "lane": "closed", "title": "Checkout layout of atlas-shop", "project": str(ws / "personal" / "atlas-shop"),
+                                "request": {"what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "at": 1789211700, "options": ["Strada A", "Strada B"]}}]))
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-checkout-layout", "session": "atlas-shop", "state": "approved", "contract": {"task": {"where": {"session": "atlas-shop"}}},
+    "approvals": [{"what": "pick the checkout layout", "by_": None, "options": ["Strada A", "Strada B"], "choice": None}, {"what": None, "by_": "phone-pixel8", "options": None, "choice": "Strada B"}]}))
+d67 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R67 (1.81) approvals[] carries options (the labels, in order) for a task whose request has them; state-2 shows one",
+        d67["approvals"] == [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789211700, "options": ["Strada A", "Strada B"]}]
+        and (F2["approvals"] or [{}])[0].get("options") == ["Strada A", "Strada B"], str(d67["approvals"]))
+n67 = len(cm_calls())
+r67a = send_cmd(CMDS[78])
+r67b = send_cmd(CMDS[79])
+r67c = send_cmd(dict(CMDS[78], id="6f1c2d3e-0782-4000-8000-000000000782", choice=None))
+T.check("R67 (1.81) approve with a choice among the options → `task approve … --choice Strada B`, «approved <task> (Strada B)» as in the fixture, the session woken with «; scelta: Strada B»; a label not among them → refused as in the fixture; no choice → «choose one of …»; nothing recorded for the refused ones",
+        r67a and r67a["ok"] is True and r67a["text"] == RES[78]["text"] and "task approve atlas-checkout-layout --by phone-pixel8 --text ok (dal telefono) --choice Strada B" in cm_calls()[n67:]
+        and T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha approvato atlas-checkout-layout alle ") and ": pick the checkout layout; scelta: Strada B. Prosegui, e chiudi con task done atlas-checkout-layout. --no-wait" in c for c in cm_calls()[n67:]), 10)
+        and r67b and r67b["ok"] is False and r67b["text"] == RES[79]["text"] and r67c and r67c["ok"] is False and r67c["text"] == "atlas-checkout-layout: choose one of Strada A, Strada B"
+        and len([c for c in cm_calls()[n67:] if c.startswith("task approve")]) == 1, str((r67a, r67b, r67c, cm_calls()[n67:])))
+tasks31.unlink()
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
 rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"started_at": 1789200000000}})
 _two31 = json.loads(alive.read_text())
 _two31.append(dict(_two31[2], pid=10, name="field-notes-2", tmux="field-notes-2", started_at=1789210000000, link=""))
@@ -3434,9 +3457,9 @@ _ev62 = [e for e in EV if e["kind"] == "task_stalled"]
 T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
 _small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
-_big62 = S.build_state(dict(SRC2, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)
+_big62 = S.build_state(dict(SRC2, approvals=[], commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
-        len(S.build_state(dict(SRC2, commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
+        len(S.build_state(dict(SRC2, approvals=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
         and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == st2["sessions"] and _big62["projects"] == st2["projects"]
         and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
 (tmp / "impegni.json").write_text(json.dumps([{"task": "atlas-release-2-4", "title": "Release 2.4\nof atlas-shop", "project": str(ws / "personal" / "atlas-shop"), "session": "atlas-shop", "state": "awaiting_ok",

@@ -352,6 +352,21 @@ The new op `attention_done {kind, ref, since?}` is the app's «Done» button:
 turn shows it again; `turn_failed`, `quota_limit`, `task_red` → removed.
 Without 1.80 the app works as before: the new fields are additive.
 
+Contract 1.81 (23/10/2026, the app's «scelte con tasti»: a task that asks a
+choice shows one button per option instead of «Approve») adds `options` to an
+`approvals[]` entry — two to four short labels (1-24 characters), from
+`supervisor task wait-ok ID --what W --where D --options "A|B"`, absent when
+the task asks only an ok — and `choice` to the op `approve`: one of those
+labels, required when the entry has `options`, refused when it has none. The
+registry records the ok with the choice (`task approve ID … --choice B`), the
+result reads «approved <task> (B)», and the waiting session hears the choice
+in its inbox («…: <what>; scelta: B. Prosegui…»). A label not among the
+options → «<task>: choice X not among A, B»; a missing one → «<task>: choose
+one of A, B». A standing ok never picks: a task with `options` always waits
+for the person. Fixtures: `state-2-idle.json` (an approval with `options`),
+`cmd-result-sample.json` (an `approve` with `choice`, one refused). Without
+1.81 the app works as before: the field is additive.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

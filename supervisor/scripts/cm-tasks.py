@@ -10,9 +10,12 @@
   supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
-  supervisor task wait-ok ID --what W --where D   attende ok (corsia chiusa fuori da un piano approvato)
-  supervisor task approve ID --by B --text T [--what W] [--where D]
-  supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D]
+  supervisor task wait-ok ID --what W --where D [--options "A|B"]   attende ok (corsia chiusa fuori da un piano
+                                                approvato); --options (1.81, 23/10): il compito chiede una scelta, da
+                                                2 a 4 etichette di 1-24 caratteri: l'app mostra un tasto per opzione e
+                                                l'ok arriva con --choice; una regola permanente non sceglie mai
+  supervisor task approve ID --by B --text T [--what W] [--where D] [--choice C]
+  supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D] [--choice C]
                                                 da una sessione Claude l'ok a nome di una persona passa cosi': la
                                                 sessione che ha ricevuto l'ok (casella sua: supervisor inbox NOME --all)
                                                 lo registra per qualunque compito, anche di un'altra sessione (23/10
@@ -20,7 +23,7 @@
                                                 dell'ultima ora scritto nel suo terminale (origin terminal, dalla
                                                 trascrizione) o arrivato dal relay; mai cron o session; un record ancora
                                                 unverified si aspetta fino a 15 s, poi «try again» (la sessione riprova)
-  supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D]
+  supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D] [--choice C]
                                                 facoltativo (23/10 17:14): con il PIN della persona (supervisor pin set)
                                                 l'ok vale anche da una shell; il PIN non si scrive da nessun'altra parte
   supervisor task auto-close [--hours 6] [--json]   chiude i compiti aperti da piu' di 6 ore col controllo verde
@@ -189,7 +192,7 @@ CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, plan TEXT, project TEXT, 
 CREATE TABLE IF NOT EXISTS results (n INTEGER PRIMARY KEY, task TEXT, attempt INTEGER, outcome TEXT, reason TEXT,
     proof TEXT, perimeter TEXT, at INTEGER, accepted INTEGER);
 CREATE TABLE IF NOT EXISTS approvals (n INTEGER PRIMARY KEY, task TEXT, plan TEXT, by_ TEXT, at INTEGER, text TEXT,
-    what TEXT, where_ TEXT);
+    what TEXT, where_ TEXT, options TEXT, choice TEXT);
 CREATE TABLE IF NOT EXISTS constraints (n INTEGER PRIMARY KEY, project TEXT, topic TEXT, text TEXT, source TEXT,
     at INTEGER);
 CREATE TABLE IF NOT EXISTS steps (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, kind TEXT, text TEXT, next TEXT);
@@ -212,6 +215,11 @@ def connect(create=True):
     if "waits" not in cols:
         con.execute("ALTER TABLE pauses ADD COLUMN waits TEXT")
         con.execute("ALTER TABLE pauses ADD COLUMN since INTEGER")
+        con.commit()
+    cols = {r[1] for r in con.execute("PRAGMA table_info(approvals)")}   # 1.81 (23/10): le opzioni di una scelta e quella presa
+    if "options" not in cols:
+        con.execute("ALTER TABLE approvals ADD COLUMN options TEXT")
+        con.execute("ALTER TABLE approvals ADD COLUMN choice TEXT")
         con.commit()
     return con
 
@@ -322,10 +330,33 @@ def record_result(con, tid, result):
     return []
 
 
-def approve(con, tid, by, text, what=None, where=None):
+OPTIONS_MAX, OPTION_LEN = 4, 24   # 1.81 (23/10): le opzioni di una scelta, un tasto ciascuna nell'app
+
+
+def parse_options(s):
+    """1.81 (23/10/2026, supervisor-app «scelte con tasti»): «A|B» → ["A", "B"]: da 2 a 4 etichette distinte di 1-24
+    caratteri, senza «|» ne' a capo. L'app mostra un tasto per etichetta al posto di «Approva»."""
+    opts = [" ".join(o.split()) for o in str(s or "").split("|")]
+    if not 2 <= len(opts) <= OPTIONS_MAX or any(not o or len(o) > OPTION_LEN for o in opts) or len(set(opts)) != len(opts):
+        sys.exit(f"task wait-ok --options: 2 to {OPTIONS_MAX} distinct labels of 1-{OPTION_LEN} characters separated by «|», e.g. \"Strada A|Strada B\"")
+    return opts
+
+
+def request_options(con, tid):
+    """Le opzioni dell'ultima richiesta di ok del compito (wait-ok --options), o None."""
+    a = con.execute("SELECT options FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    return json.loads(a["options"]) if a and a["options"] else None
+
+
+def approve(con, tid, by, text, what=None, where=None, choice=None):
     row = get_task(con, tid)
-    con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,?,?)",
-                (tid, row["plan"], by, now(), text, what, where))
+    opts = request_options(con, tid)   # 1.81: un compito che chiede una scelta si approva con una delle sue opzioni
+    if opts and choice not in opts:
+        sys.exit(f"task approve {tid}: " + (f"choice {choice} not among {', '.join(opts)}" if choice else f"choose one of {', '.join(opts)} (--choice)"))
+    if choice and not opts:
+        sys.exit(f"task approve {tid}: no options to choose from")
+    con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, choice) VALUES (?,?,?,?,?,?,?,?)",
+                (tid, row["plan"], by, now(), text, what, where, choice))
     if row["state"] == "awaiting_ok":
         set_state(con, tid, "approved")
     con.commit()
@@ -456,6 +487,8 @@ def standing_match(con, row):
 def standing_apply(con, tid):
     """Al wait-ok: se una regola copre il compito, l'approvazione nasce subito, a nome della persona, citando il
     messaggio e la regola. Torna la regola o None."""
+    if request_options(con, tid):   # 1.81: una scelta la fa la persona, mai una regola permanente
+        return None
     r = standing_match(con, get_task(con, tid))
     if r is None:
         return None
@@ -843,8 +876,10 @@ def main(argv):
         if as_json:
             # contratto 1.37 (05/10): la richiesta di ok (wait-ok: cosa esce e dove) per «Da approvare» nell'app
             for r in rows:
-                a = con.execute("SELECT what, where_, at FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+                a = con.execute("SELECT what, where_, at, options FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
                 r["request"] = {"what": a["what"], "where": a["where_"], "at": a["at"]} if a else None
+                if a and a["options"]:   # 1.81: le opzioni di una scelta
+                    r["request"]["options"] = json.loads(a["options"])
         print(json.dumps(rows, ensure_ascii=False) if as_json else "\n".join(f"{r['id']}  {r['state']:<11} {r['lane']:<6} {r['title']}" for r in rows))
         return 0
     if verb == "show":
@@ -852,7 +887,7 @@ def main(argv):
         out = dict(row)
         out["contract"] = json.loads(row["contract"])
         out["results"] = [dict(r, proof=json.loads(r["proof"])) for r in con.execute("SELECT * FROM results WHERE task=? ORDER BY n", (args[0],))]
-        out["approvals"] = [dict(r) for r in con.execute("SELECT * FROM approvals WHERE task=? ORDER BY n", (args[0],))]
+        out["approvals"] = [dict(r, options=json.loads(r["options"]) if r["options"] else None) for r in con.execute("SELECT * FROM approvals WHERE task=? ORDER BY n", (args[0],))]
         out["steps"] = [dict(r) for r in con.execute("SELECT * FROM steps WHERE task=? ORDER BY n", (args[0],))]
         out["pauses"] = [dict(r) for r in con.execute("SELECT * FROM pauses WHERE task=? ORDER BY n", (args[0],))]
         print(json.dumps(out, ensure_ascii=False, indent=None if as_json else 2))
@@ -979,12 +1014,13 @@ def main(argv):
         print(json.dumps(res, ensure_ascii=False) if as_json else f"{args[0]}: {res['outcome']} — {res['reason']}")
         return 0 if green else 1
     if verb == "wait-ok":
-        what, where = _opt(args, "--what"), _opt(args, "--where")
-        if not what or not where:
-            sys.exit("usage: task wait-ok ID --what W --where D")
+        what, where, options = _opt(args, "--what"), _opt(args, "--where"), _opt(args, "--options")
+        if not what or not where or not args:
+            sys.exit("usage: task wait-ok ID --what W --where D [--options \"A|B\"]")
+        opts = parse_options(options) if options is not None else None   # 1.81: il compito chiede una scelta
         get_task(con, args[0])
-        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,NULL,?,NULL,?,?)",
-                    (args[0], None, now(), what, where))   # la richiesta: by NULL finche' nessuno approva
+        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options) VALUES (?,?,NULL,?,NULL,?,?,?)",
+                    (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None))   # la richiesta: by NULL finche' nessuno approva
         set_state(con, args[0], "awaiting_ok")
         con.commit()
         r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
@@ -1025,9 +1061,9 @@ def main(argv):
             return 0
         sys.exit("usage: task standing add --by B --inbox MSG --project DIR --kind K | list [--json] | remove N")
     if verb in ("approve", "confirm"):
-        by, text, rec_id, pin = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox"), _opt(args, "--pin")
+        by, text, rec_id, pin, choice = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox"), _opt(args, "--pin"), _opt(args, "--choice")
         if not (by or pin) or not (text or rec_id or pin) or not args:
-            sys.exit(f"usage: task {verb} ID --by B (--text T | --inbox MSG [--text NOTE] | --pin P [--text NOTE])" + (" [--what W] [--where D]" if verb == "approve" else ""))
+            sys.exit(f"usage: task {verb} ID --by B (--text T | --inbox MSG [--text NOTE] | --pin P [--text NOTE])" + (" [--what W] [--where D] [--choice C]" if verb == "approve" else ""))
         row = get_task(con, args[0])
         if pin:
             by, text = pin_approval_text(by, pin, text)   # 23/10 17:14: la prova e' il PIN, da qualunque sessione o shell
@@ -1044,7 +1080,7 @@ def main(argv):
                         (args[0], row["plan"], by, now(), text))
             con.commit()
             return 0
-        approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"))
+        approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"), choice)
         return 0
     if verb == "auto-close":
         hours = float(_opt(args, "--hours", AUTO_CLOSE_H))

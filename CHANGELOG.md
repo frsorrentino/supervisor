@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.53 — 2026-10-23: a task that asks a choice (contract 1.81).**
+  - Asked by supervisor-app at 23:11 (task scelte-con-tasti, ok of the maintainer at 23:08): a task that asks a choice must show one button per option in the app and on the web, instead of «Approve», and the choice is recorded with the ok.
+  - `supervisor task wait-ok ID --what W --where D --options "A|B"`: two to four distinct labels of 1-24 characters; `task list --json` carries `request.options`, `task show` the `options` of the request and the `choice` of the approval. `task approve ID … --choice C`: required when the request has options, refused when it has none or the label is not one of them («choose one of A, B», «choice X not among A, B»). A standing ok never picks: such a task always waits for the person.
+  - Contract 1.81: `approvals[].options` (absent when the task asks only an ok); op `approve` takes `choice`, the result reads «approved <task> (B)»; the waiting session hears the choice in its inbox («…: <what>; scelta: B»). Fixtures: `state-2-idle.json` (an approval with options), `cmd-result-sample.json` (an approve with choice, one refused).
+  - Tests: T25, R67.
 - **0.8.52 — 2026-10-23: a standing ok of the person (`task standing`).**
   - Asked by the maintainer from the phone at 19:58: «Quando ci sono aggiornamenti di supervisor, effettuali direttamente.» The registry wanted a message of the last hour for every ok; a permanent ok is the message itself.
   - `supervisor task standing add --by NAME --inbox MSG --project DIR --kind K`: a rule that cites a message of the person from the caller's own inbox (origin `terminal` or `relay`, any age), scoped to a project folder and an outcome kind (`release`, `deploy`, `install`…); `task standing list [--json]`, `task standing remove N` (revoked, kept). At `task wait-ok` a task the rule covers is approved at once, by the person, with a text that quotes the message and names the rule; the app shows no «Approva», the lane guard sees the approval. Nothing else changes: an ok for a single task still needs a message of the last hour.

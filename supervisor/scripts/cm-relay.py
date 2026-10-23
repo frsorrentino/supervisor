@@ -1189,13 +1189,18 @@ def duplicates_of(rows):
 
 def approvals_list():
     """I compiti del registro in attesa di ok, con la richiesta di wait-ok: cosa esce e dove. deploy = la
-    destinazione o la cosa nomina la produzione."""
+    destinazione o la cosa nomina la produzione. 1.81 (23/10): `options`, le etichette di una scelta (wait-ok
+    --options), solo quando ci sono: l'app mostra un tasto per opzione al posto di «Approva»."""
     out = []
     for t in _json_cmd("task", "list", "--state", "awaiting_ok", "--json") or []:
         req = t.get("request") or {}
         what, where = str(req.get("what") or ""), str(req.get("where") or "")
-        out.append({"task": t.get("id"), "title": S.one_line(str(t.get("title") or ""))[:200], "what": what[:300], "where": where[:300],
-                    "deploy": bool(DEPLOY_RE.search(what + " " + where)), "requested_at": int(req.get("at") or 0) or None})
+        a = {"task": t.get("id"), "title": S.one_line(str(t.get("title") or ""))[:200], "what": what[:300], "where": where[:300],
+             "deploy": bool(DEPLOY_RE.search(what + " " + where)), "requested_at": int(req.get("at") or 0) or None}
+        opts = req.get("options")
+        if isinstance(opts, list) and opts:
+            a["options"] = [S.one_line(str(o))[:24] for o in opts[:4]]
+        out.append(a)
     return sorted(out, key=lambda a: (a["requested_at"] or 0, a["task"] or ""))
 
 
@@ -3400,18 +3405,28 @@ def approve_task(cmd, arg):
     n = cmd.get("confirmations")
     if live and (isinstance(n, bool) or not isinstance(n, int) or n < 2):
         return False, M("relay.cmd_approve_live_needs_two", task=tid or "?")
-    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid) or tid not in {a["task"] for a in approvals_list()}:
+    entry = next((a for a in approvals_list() if a["task"] == tid), None) if re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid) else None
+    if entry is None:
         return False, M("relay.cmd_approve_not_waiting", task=tid or "?")
+    # 1.81 (23/10): un compito che chiede una scelta vuole `choice`, una delle sue `options`; senza opzioni, niente choice
+    opts = entry.get("options") or []
+    choice = S.one_line(str(cmd.get("choice") or "")).strip()[:24] if isinstance(cmd.get("choice"), str) else ""
+    if opts and not choice:
+        return False, M("relay.cmd_approve_needs_choice", task=tid, options=", ".join(opts))
+    if opts and choice not in opts:
+        return False, M("relay.cmd_approve_bad_choice", task=tid, choice=choice, options=", ".join(opts))
+    if choice and not opts:
+        return False, M("relay.cmd_approve_no_options", task=tid)
     text = S.one_line(str(cmd.get("text") or "").strip())[:500] or "ok"
     where = from_device(cmd) + (", " + M("relay.approve_live") if live else "")
     # 16/10/2026: il demone eredita CLAUDECODE dalla sessione che l'ha avviato; `task approve` lo prenderebbe per una
     # sessione Claude e vorrebbe --inbox. L'ok che arriva qui viene dal dispositivo
-    rc, out = run_cm("task", "approve", tid, "--by", str(cmd.get("by") or "app"), "--text", f"{text} ({where})",
+    rc, out = run_cm("task", "approve", tid, "--by", str(cmd.get("by") or "app"), "--text", f"{text} ({where})", *(["--choice", choice] if choice else []),
                      env={"CM_APPROVE_VIA": "relay"})
     if rc != 0:
         return False, (out.splitlines() or ["task approve failed"])[0]
     wake_after_approve(tid, text)
-    return True, M("relay.cmd_approved", task=tid)
+    return True, M("relay.cmd_approved_choice", task=tid, choice=choice) if choice else M("relay.cmd_approved", task=tid)
 
 
 def wake_after_approve(tid, text):
@@ -3425,6 +3440,9 @@ def wake_after_approve(tid, text):
     sess = str(info.get("session") or (task.get("where") or {}).get("session") or "")
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
     what = next((a.get("what") for a in reversed(info.get("approvals") or []) if isinstance(a, dict) and a.get("what") and a.get("what") != "confirmed"), "") or text
+    choice = next((a.get("choice") for a in reversed(info.get("approvals") or []) if isinstance(a, dict) and a.get("by_") and a.get("choice")), None)
+    if choice:   # 1.81: la scelta della persona arriva alla sessione nel messaggio di ok
+        what = f"{S.one_line(str(what))[:170]}; " + M("relay.approve_choice", choice=S.one_line(str(choice))[:24])
     kw = {"person": M("tasks.person"), "task": tid, "when": time.strftime("%H:%M"), "what": S.one_line(str(what))[:200]}
 
     def spawn(*args):

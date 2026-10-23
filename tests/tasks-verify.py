@@ -546,6 +546,30 @@ with T.PrivateTmux() as tm:
     rc, out, err = cm("approve", "x2", "--by", "maintainer", "--inbox", u2, env=M23)
     dt = time.time() - t0
     T.check("T23 a line that never comes → after CM_INBOX_WAIT_S «try again», for the session; the state unchanged", rc != 0 and "try again" in err and dt >= 5.5 and show("x2")["state"] == "awaiting_ok", f"{dt:.1f}s " + err)
+# T25 (1.81, 23/10/2026 23:11, supervisor-app «scelte con tasti»): un compito che chiede una scelta — wait-ok --options,
+# list --json le porta, approve vuole --choice fra quelle
+add(contract("ch1", lane="closed"))
+rc, out, err = cm("wait-ok", "ch1", "--what", "pick the checkout layout", "--where", "atlas-shop, branch checkout", "--options", "Strada A | Strada B")
+_l25 = json.loads(cm("list", "--state", "awaiting_ok", "--json")[1])
+T.check("T25 (1.81) wait-ok --options \"A|B\" → awaiting_ok; list --json carries request.options (labels trimmed); the other requests have no such key",
+        rc == 0 and show("ch1")["state"] == "awaiting_ok" and next(x["request"].get("options") for x in _l25 if x["id"] == "ch1") == ["Strada A", "Strada B"]
+        and all("options" not in (x["request"] or {}) for x in _l25 if x["id"] != "ch1"), out + err + json.dumps(_l25)[:300])
+bad25 = {o: cm("wait-ok", "ch1", "--what", "x", "--where", "y", "--options", o) for o in ("Solo una", "A|B|C|D|E", "A|A", "|B", "A|" + "x" * 25)}
+T.check("T25 one label, five, a duplicate, an empty one or one over 24 characters → refused", all(r[0] != 0 and "2 to 4 distinct labels" in r[2] for r in bad25.values()), str({k: v[2][:70] for k, v in bad25.items()}))
+rc1, _, err1 = cm("approve", "ch1", "--by", "maintainer (phone)", "--text", "ok")
+rc2, _, err2 = cm("approve", "ch1", "--by", "maintainer (phone)", "--text", "ok", "--choice", "Strada C")
+st25 = show("ch1")["state"]
+rc3, _, err3 = cm("approve", "ch1", "--by", "maintainer (phone)", "--text", "ok (dal telefono)", "--choice", "Strada B")
+s25 = show("ch1")
+T.check("T25 approve without --choice → «choose one of Strada A, Strada B»; a label not among them → «choice Strada C not among …», still awaiting; the right one → approved, the choice recorded, the request's options in show",
+        rc1 != 0 and "choose one of Strada A, Strada B" in err1 and rc2 != 0 and "choice Strada C not among Strada A, Strada B" in err2 and st25 == "awaiting_ok"
+        and rc3 == 0 and s25["state"] == "approved" and s25["approvals"][-1]["choice"] == "Strada B" and s25["approvals"][-1]["by_"] == "maintainer (phone)"
+        and s25["approvals"][0]["options"] == ["Strada A", "Strada B"] and s25["approvals"][-1]["options"] is None, err1 + err2 + err3 + json.dumps(s25["approvals"]))
+add(contract("ch2", lane="closed"))
+cm("wait-ok", "ch2", "--what", "release", "--where", "github")
+rc4, _, err4 = cm("approve", "ch2", "--by", "maintainer (phone)", "--text", "ok", "--choice", "Strada A")
+T.check("T25 --choice on a task without options → refused, state unchanged", rc4 != 0 and "no options to choose from" in err4 and show("ch2")["state"] == "awaiting_ok", err4)
+
 # T24 (23/10/2026 20:00, the maintainer from the phone at 19:58: «Quando ci sono aggiornamenti di supervisor, effettuali
 # direttamente»): l'ok permanente — task standing add, approvazione automatica al wait-ok, list, remove
 with T.PrivateTmux() as tm:
@@ -569,6 +593,9 @@ with T.PrivateTmux() as tm:
     add(contract("y3", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt", where={"project": str(tmp / "other"), "session": None, "host": "local", "account": None}))
     rc3, out3, err3 = cm("wait-ok", "y3", "--what", "release", "--where", "github", env=M24)
     T.check("T24 another kind (deploy) or another project → still awaiting_ok: the rule is scoped", rc == 0 and show("y2")["state"] == "awaiting_ok" and rc3 == 0 and show("y3")["state"] == "awaiting_ok", out + out3 + err + err3)
+    add(contract("y5", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))
+    rc5, out5, err5 = cm("wait-ok", "y5", "--what", "release", "--where", "github", "--options", "Strada A|Strada B", env=M24)
+    T.check("T25 (1.81) a task that asks a choice is never approved by a standing ok: it waits for the person", rc5 == 0 and "standing" not in out5 and show("y5")["state"] == "awaiting_ok", out5 + err5)
     rc, out, err = cm("standing", "list", env=M24)
     rcr, outr, errr = cm("standing", "remove", "1", env=M24)
     add(contract("y4", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))

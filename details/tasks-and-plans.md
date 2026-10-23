@@ -77,6 +77,16 @@ approval. `task standing list [--json]` shows the rules, `task standing
 remove N` revokes one (kept in the registry). Nothing else changes: an ok
 for a single task still needs a message of the last hour.
 
+A choice (23/10/2026, contract 1.81): `task wait-ok ID --what W --where D
+--options "Strada A|Strada B"` says the task asks a choice, not only an ok:
+two to four labels of 1-24 characters. The app shows one button per option
+and the ok is recorded with it, `task approve ID --by B … --choice "Strada
+B"`: required when the request has options, refused when it has none, and
+the label must be one of them. `task list --json` carries `request.options`,
+`task show` the `options` of the request and the `choice` of the approval,
+and the waiting session hears the choice in its inbox. A standing ok never
+picks: such a task always waits for the person.
+
 Commitments (22/10/2026, after a day lost on an APK: the task closed `done`
 on an intermediate step, the ok got lost in a hand-written handoff, nobody
 noticed an «Approve» for 46 minutes). A task born from an ok carries

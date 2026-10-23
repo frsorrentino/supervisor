@@ -207,7 +207,20 @@
       "seen": null
     }
   ],
-  "approvals": [],
+  "approvals": [
+    {
+      "task": "atlas-checkout-layout",
+      "title": "Checkout layout of atlas-shop",
+      "what": "pick the checkout layout",
+      "where": "atlas-shop, branch checkout",
+      "deploy": false,
+      "requested_at": 1789214100,
+      "options": [
+        "Strada A",
+        "Strada B"
+      ]
+    }
+  ],
   "recurring": [
     {
       "id": "x-posts",
