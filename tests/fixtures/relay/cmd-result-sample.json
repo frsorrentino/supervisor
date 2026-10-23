@@ -681,6 +681,26 @@
       "arg": "ieri",
       "issued": 1789211720,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0770-4000-8000-000000000770",
+      "op": "attention_done",
+      "session": null,
+      "arg": "atlas-shop",
+      "kind": "needs_you",
+      "device": "phone",
+      "issued": 1789211730,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0771-4000-8000-000000000771",
+      "op": "attention_done",
+      "session": null,
+      "arg": "nobody",
+      "kind": "needs_you",
+      "device": "phone",
+      "issued": 1789211740,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1144,6 +1164,18 @@
       "ok": false,
       "text": "ieri: not a date YYYY-MM-DD",
       "at": 1789211721
+    },
+    {
+      "id": "6f1c2d3e-0770-4000-8000-000000000770",
+      "ok": true,
+      "text": "closed: needs_you atlas-shop",
+      "at": 1789211731
+    },
+    {
+      "id": "6f1c2d3e-0771-4000-8000-000000000771",
+      "ok": false,
+      "text": "needs_you nobody: nothing to close",
+      "at": 1789211741
     }
   ]
 }

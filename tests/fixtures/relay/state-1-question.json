@@ -346,6 +346,7 @@
     "timeline",
     "pair_add",
     "approve",
+    "attention_done",
     "decision",
     "unpair",
     "night",
@@ -441,7 +442,8 @@
       "session": "ledger-api",
       "ref": "q-1789210500-1",
       "title": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?",
-      "since": 1789210500
+      "since": 1789210500,
+      "closes": "answer"
     }
   ],
   "project_parents": [

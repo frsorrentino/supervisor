@@ -176,7 +176,7 @@
   "needs_you.saved": "{name} ora è ferma per te: {reason}",
   "needs_you.cleared": "non è più ferma per te",
   "needs_you.unknown_option": "supervisor needs-you: opzione sconosciuta {opt}",
-  "needs_you.usage": "uso: supervisor needs-you \"<cosa serve dall'utente>\" | --clear",
+  "needs_you.usage": "uso: supervisor needs-you \"<cosa serve dall'utente>\" [--until \"<comando che esce 0 a cosa fatta>\"] [--expires 2h] | --clear",
   "needs_you.no_session": "supervisor needs-you: va lanciato da una sessione in tmux",
   "needs_you.to_master": "{name} aspetta l'utente: {reason}",
   "tasks.turn_session": "tocca a {session}",
@@ -982,5 +982,13 @@
   "relay.stale_lock": "nessuna push dalle {since}: il lock delle push è occupato da {lock} min.",
   "relay.stale_ok": "Lo stato è ripartito.",
   "doctor.shim_shadowed": "nel PATH `supervisor` è {other}, non il nostro {path} (per esempio node-supervisor da npm)",
-  "doctor.fix_shim_shadowed": "metti ~/.local/bin prima nel PATH, oppure usa il percorso pieno {path}"
+  "doctor.fix_shim_shadowed": "metti ~/.local/bin prima nel PATH, oppure usa il percorso pieno {path}",
+  "needs_you.option_needs_value": "supervisor needs-you: {opt} vuole un valore",
+  "needs_you.bad_expires": "supervisor needs-you: --expires vuole una durata come 30m, 2h, 1d (non «{value}»)",
+  "needs_you.saved_until": "  si chiude da sola quando esce 0: {cmd}",
+  "relay.needs_you_done": "{name}: fatto alle {when} — «{reason}» si è verificata (il comando è uscito 0). Riprendi.",
+  "relay.needs_you_expired": "{name}: la richiesta «{reason}» è scaduta alle {when} senza risposta: chiedila di nuovo se serve ancora.",
+  "relay.needs_you_app_done": "{person} ha segnato «fatto» alle {when} ({device}): {reason}. Riprendi.",
+  "relay.cmd_attention_done": "closed: {kind} {ref}",
+  "relay.cmd_attention_unknown": "{kind} {ref}: nothing to close"
 }

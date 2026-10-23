@@ -1448,6 +1448,15 @@ T.check("R63 (1.76) after the ok: `talk atlas-shop «l'utente ha approvato atlas
         and T.wait_until(lambda: any(c.startswith("talk master l'utente ha approvato atlas-release-2-4 alle ") and c.endswith("; atlas-shop ha ricevuto il via. --no-wait") for c in cm_calls()[n_calls:]), 10)
         and T.wait_until(lambda: not (state_dir / "needs-you" / "S-A.json").exists(), 10), str(cm_calls()[n_calls:]))
 (tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
+# R66 (1.80, 23/10): «Fatto» dall'app — op attention_done
+(state_dir / "needs-you" / "S-A.json").write_text(json.dumps({"reason": "installa l'APK 1.31", "at": 1789210600, "name": "atlas-shop", "expires_at": 1789297000}))
+n66 = len(cm_calls())
+r66a = send_cmd(CMDS[76])
+r66b = send_cmd(CMDS[77])
+T.check("R66 (1.80) attention_done needs_you atlas-shop → the file goes, «l'utente ha segnato «fatto» alle HH:MM (…): installa l'APK 1.31. Riprendi.» to atlas-shop, result ok as in the fixture; an unknown ref → ok false",
+        r66a and r66a["ok"] is True and r66a["text"] == RES[76]["text"] and not (state_dir / "needs-you" / "S-A.json").exists()
+        and T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha segnato «fatto» alle ") and "installa l'APK 1.31. Riprendi. --no-wait" in c for c in cm_calls()[n66:]), 10)
+        and r66b and r66b["ok"] is False and r66b["text"] == RES[77]["text"], str((r66a, r66b, cm_calls()[n66:])))
 n63 = len(cm_calls())
 r63 = send_cmd(dict(CMDS[32], id="6f1c2d3e-0370-4000-8000-000000000371"))   # un id nuovo: il bus non ripete un comando gia' fatto
 T.check("R63 (1.76) a task with no session: the ok is recorded and the answer is positive; only the master is told, nobody else",
@@ -2810,6 +2819,57 @@ T.check("R51 (1.65) prompt with reopen to a closed session → `talk … --no-wa
         and any(c.startswith("talk ") and c.endswith("pick up the pricing page --no-wait --reopen") for c in cm_calls()[n51:])
         and plain51 and plain51["ok"] is False and "is not running" in plain51["text"] and sum(1 for c in cm_calls()[n51:] if c.startswith("talk ")) == 1, str(res51) + str(plain51) + str(cm_calls()[n51:]))
 
+
+# R64 (1.80, 23/10): le richieste si chiudono da sole — condizione (--until), scadenza, sessione sparita
+NY = load("cm-needsyou")
+T.check("R64 needs-you parses --until and --expires (30m, 2h, 1d, 90s), refuses an unknown option, a bad duration or a missing value",
+        NY.parse_args(["Lancia", "pin", "set", "--until", "supervisor pin status --json | grep -q true", "--expires", "2h"])[:3] == (["Lancia", "pin", "set"], "supervisor pin status --json | grep -q true", 7200)
+        and NY.parse_duration("30m") == 1800 and NY.parse_duration("1d") == 86400 and NY.parse_duration("90s") == 90 and NY.parse_duration("2x") is None
+        and bool(NY.parse_args(["x", "--list"])[3]) and bool(NY.parse_args(["x", "--expires", "presto"])[3]) and bool(NY.parse_args(["x", "--until"])[3]), str(NY.parse_args(["x", "--list"])))
+ny64 = state_dir / "needs-you"
+ny64.mkdir(parents=True, exist_ok=True)
+for f64 in ny64.glob("*.json"):
+    f64.unlink()
+rows64 = [{"name": "atlas-shop", "tmux": "atlas-shop", "status": "idle", "session_id": "S-A"}, {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P"},
+          {"name": "field-notes", "tmux": "field-notes", "status": "idle", "session_id": "S-F"}]
+now64 = time.time()
+(ny64 / "S-A.json").write_text(json.dumps({"reason": "imposta il PIN", "at": int(now64) - 100, "name": "atlas-shop", "until": "test -f " + str(tmp / "pin-ok"), "cwd": str(tmp), "expires_at": int(now64) + 3600}))
+(ny64 / "S-P.json").write_text(json.dumps({"reason": "login su win", "at": int(now64) - 7200, "name": "pix-docs", "expires_at": int(now64) - 10}))
+(ny64 / "S-F.json").write_text(json.dumps({"reason": "ancora valida", "at": int(now64) - 100, "name": "field-notes", "expires_at": int(now64) + 3600}))
+(ny64 / "S-GONE.json").write_text(json.dumps({"reason": "sessione sparita", "at": int(now64) - 200000, "name": "old"}))
+os.utime(ny64 / "S-GONE.json", (now64 - 200000, now64 - 200000))
+(ny64 / "S-NEW-GONE.json").write_text(json.dumps({"reason": "sparita da poco", "at": int(now64), "name": "fresh"}))
+n64 = len(cm_calls())
+got64 = RL.needs_you_of(rows64, now64)
+T.check("R64 (1.80) needs_you_of: a request whose --until command still fails stays (checked_at, last_rc 1); an expired one goes with a talk to its session; a valid one stays; the file of a session gone for a day is pruned, a fresh one kept but not shown",
+        set(got64) == {"atlas-shop", "field-notes"} and json.loads((ny64 / "S-A.json").read_text()).get("last_rc") == 1 and not (ny64 / "S-P.json").exists()
+        and T.wait_until(lambda: any(c.startswith("talk pix-docs pix-docs: la richiesta «login su win» è scaduta alle ") and c.endswith(" --no-wait") for c in cm_calls()[n64:]), 10)
+        and not (ny64 / "S-GONE.json").exists() and (ny64 / "S-NEW-GONE.json").exists(), str((sorted(got64), cm_calls()[n64:], sorted(p.name for p in ny64.glob("*.json")))))
+(tmp / "pin-ok").write_text("x")
+got64b = RL.needs_you_of(rows64, now64 + 30)   # entro il minuto: non si riprova
+got64c = RL.needs_you_of(rows64, now64 + 61)   # dopo un minuto: il comando esce 0 → via, talk alla sessione
+T.check("R64 the condition is tried at most once a minute; when it exits 0 the request goes, with a ledger row (needs-you-done, check) and «fatto alle HH:MM … Riprendi» to the session",
+        "atlas-shop" in got64b and "atlas-shop" not in got64c and not (ny64 / "S-A.json").exists()
+        and T.wait_until(lambda: any(c.startswith("talk atlas-shop atlas-shop: fatto alle ") and "«imposta il PIN» si è verificata" in c for c in cm_calls()[n64:]), 10)
+        and any(r.get("event") == "needs-you-done" and r.get("how") == "check" for r in led_rows()), str((sorted(got64b), sorted(got64c), cm_calls()[n64:])))
+for f64 in ny64.glob("*.json"):
+    f64.unlink()
+
+# R65 (1.80): closes/expires_at nello stato; «Fatto» dall'app chiude il turn_blocking di quel turno
+row65 = {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P", "account": "work"}
+led65 = [{"event": "stop", "session_id": "S-P", "ts": iso(1789210000), "tail": "Ho preparato tutto.\nDa te:\n1. Fai il login su win e rimandami il codice.\n2. altro"}]
+ny65 = {"pix-docs": {"reason": "login su win", "at": 1789210100, "until": "test -f x", "expires_at": 1789296500}}
+n65 = S.build_session(row65, {"ledger": led65, "needs_you": ny65, "_now": 1789210800})
+st65 = S.build_state(dict(SRC1, rows=[row65], ledger=led65, questions={}, needs_you=ny65), 1789210800, fit=False)
+a65 = (st65.get("attention") or [{}])[0]
+st65b = S.build_state(dict(SRC1, rows=[row65], ledger=led65, questions={}, needs_you={}), 1789210800, fit=False)
+d65 = S.build_session(row65, {"ledger": led65, "attention_dismissed": {"pix-docs": 1789210000}, "_now": 1789210800})
+d65b = S.build_session(row65, {"ledger": led65, "attention_dismissed": {"pix-docs": 1789209000}, "_now": 1789210800})
+T.check("R65 (1.80) session.needs_you carries until and expires_at; the attention item says closes «check» and expires_at; a turn_blocking item says closes «prompt»",
+        n65.get("needs_you") == {"reason": "login su win", "at": 1789210100, "until": True, "expires_at": 1789296500} and a65.get("kind") == "needs_you" and a65.get("closes") == "check" and a65.get("expires_at") == 1789296500
+        and [(x["kind"], x.get("closes")) for x in st65b.get("attention") or []] == [("turn_blocking", "prompt")], str((n65.get("needs_you"), a65, st65b.get("attention"))))
+T.check("R65 «Fatto» from the app (attention_dismissed: since = the turn's at) hides turn_blocking for that turn; an older dismissal does not",
+        "turn_blocking" not in d65 and d65b.get("turn_blocking", {}).get("text") == "Fai il login su win e rimandami il codice.", str((d65.get("turn_blocking"), d65b.get("turn_blocking"))))
 
 # R52 (contratto 1.68, 14/10): «ferma per te», la fine turno bloccante, i promemoria
 row52 = {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P", "account": "work"}

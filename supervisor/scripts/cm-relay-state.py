@@ -460,12 +460,19 @@ def build_session(row, src):
     # bloccante («Prossimi:» con «!», o un elenco «Da te») e' una domanda aperta: {text, at}, finche' la sessione e' ferma
     if st == "idle" and out["outcome"]:
         block = next((x["text"] for x in steps if x.get("blocking")), "") or da_te(stops[-1].get("tail") or stops[-1].get("last") or "")
-        if block:
+        # 1.80 (23/10): «Fatto» dall'app (op attention_done) chiude la voce di questo turno; un turno nuovo la riapre
+        dismissed = int(((src.get("attention_dismissed") or {}).get(tmux)) or 0)
+        if block and not (dismissed and dismissed >= int(out["outcome"]["at"] or 0)):
             out["turn_blocking"] = {"text": one_line(block)[:200], "at": out["outcome"]["at"]}
     # 1.68: la sessione ha detto `supervisor needs-you "<motivo>"`: {reason, at}, finche' non riceve il prompt dopo
     if (src.get("needs_you") or {}).get(tmux) and st != "gone":
         nyu = src["needs_you"][tmux]
         out["needs_you"] = {"reason": one_line(nyu.get("reason") or "")[:200], "at": int(nyu.get("at") or 0)}
+        # 1.80 (23/10): come si chiude da sola — `until` (il relay prova un comando) e `expires_at`; assenti = solo il prompt dopo
+        if nyu.get("until"):
+            out["needs_you"]["until"] = True
+        if nyu.get("expires_at"):
+            out["needs_you"]["expires_at"] = int(nyu["expires_at"])
     # 1.54 (14/10): la modalita' dei permessi (default, acceptEdits, plan, bypassPermissions...), dall'ultima riga della
     # trascrizione che la dice. 1.55: la domanda risolta al PC negli ultimi minuti, {id, text, at, by: "terminal"}.
     # Assenti = non si sa / nessuna
@@ -604,14 +611,18 @@ def build_state(src, now, fit=True):
     # 1.66 (14/10): «Serve te», una lista sola dalla piu' vecchia: le domande aperte, i turni falliti, le sessioni ferme
     # per la quota, i task rossi. {kind: question|turn_failed|quota_limit|task_red, session, ref, title, since}. Per una
     # domanda ref = l'id della domanda e title la sua anteprima. Assente quando non c'e' niente
+    # 1.80 (23/10): ogni voce dice come si chiude (`closes`: answer, prompt, check, expires) e, se scade, quando
+    # (`expires_at`); «Fatto» dall'app (op attention_done) chiude needs_you, turn_blocking, turn_failed, quota_limit, task_red
     att = [{"kind": "question", "session": s["name"], "ref": s["question"]["id"],
-            "title": s["question"].get("preview") or s["question"]["text"][:200], "since": s["question"]["asked_at"]}
+            "title": s["question"].get("preview") or s["question"]["text"][:200], "since": s["question"]["asked_at"], "closes": "answer"}
            for s in sessions if s.get("question")]
-    att += [{"kind": "needs_you", "session": s["name"], "ref": s["name"], "title": redact_preview(s["needs_you"]["reason"]), "since": s["needs_you"]["at"]}
+    att += [dict({"kind": "needs_you", "session": s["name"], "ref": s["name"], "title": redact_preview(s["needs_you"]["reason"]), "since": s["needs_you"]["at"],
+                  "closes": "check" if s["needs_you"].get("until") else "prompt"},
+                 **({"expires_at": s["needs_you"]["expires_at"]} if s["needs_you"].get("expires_at") else {}))
             for s in sessions if s.get("needs_you")]
-    att += [{"kind": "turn_blocking", "session": s["name"], "ref": s["name"], "title": redact_preview(s["turn_blocking"]["text"]), "since": s["turn_blocking"]["at"]}
+    att += [{"kind": "turn_blocking", "session": s["name"], "ref": s["name"], "title": redact_preview(s["turn_blocking"]["text"]), "since": s["turn_blocking"]["at"], "closes": "prompt"}
             for s in sessions if s.get("turn_blocking") and not s.get("needs_you")]
-    att += [dict(x) for x in (src.get("attention") or [])]
+    att += [dict(x, closes="check" if x.get("kind") == "task_red" else "prompt") for x in (src.get("attention") or [])]
     if att:
         state["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
     # 1.64: le cartelle madri ammesse per un progetto nuovo dal telefono (op project_new); assente = relay precedente

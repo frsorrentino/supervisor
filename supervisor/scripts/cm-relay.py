@@ -73,7 +73,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1087,6 +1087,7 @@ def collect_sources(now=None):
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
         "attention": attention_open(rows, ledger), "needs_you": needs_you_of(rows),
+        "attention_dismissed": read_json(rdir() / "attention-dismissed.json", {}),   # 1.80: i turn_blocking chiusi dall'app
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         "changes": changes_pills(rows, ledger, now),   # 1.72
         "hosts_status": hosts_status(rows, now), "published_today": published_cached(now),   # 1.75
@@ -3808,6 +3809,8 @@ def execute(cmd):
             return slash_send(cmd, session, tm, arg)
         if op == "approve":
             return approve_task(cmd, arg)
+        if op == "attention_done":   # 1.80
+            return attention_done(cmd, arg)
         if op == "decision":
             return decision_send(cmd, arg)
         if op == "projects":
@@ -4641,19 +4644,108 @@ def quota_limit(tm):
     return 0
 
 
-def needs_you_of(rows):
-    """1.68: {tmux: {reason, at}} dai file <state_dir>/needs-you/<session_id>.json che scrive `supervisor needs-you`
-    (l'hook del prompt dopo li toglie)."""
+NEEDS_CHECK_EVERY_S = 60     # 1.80: la condizione di una richiesta si prova al massimo una volta al minuto
+NEEDS_CHECK_TIMEOUT_S = 10
+NEEDS_ORPHAN_S = 86400       # il file di una sessione sparita da piu' di un giorno va via
+
+
+def _wake(tm, text):
+    """Un `talk` staccato alla sessione (il bus non aspetta; chiusa → resta nella casella), come dopo «Approva»."""
+    try:
+        subprocess.Popen([CM_BIN, "talk", tm, text, "--no-wait"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def needs_check(cmd, cwd=None):
+    """Il comando di `needs-you --until`: 0 = fatto. Mai piu' di NEEDS_CHECK_TIMEOUT_S; un errore vale «non ancora»."""
+    try:
+        env = dict(os.environ)
+        env.pop("CLAUDECODE", None)
+        return subprocess.run(cmd, shell=True, cwd=cwd or None, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              timeout=NEEDS_CHECK_TIMEOUT_S, env=env).returncode
+    except (OSError, subprocess.SubprocessError):
+        return 1
+
+
+def needs_you_of(rows, now=None):
+    """1.68: {tmux: {reason, at, …}} dai file <state_dir>/needs-you/<session_id>.json che scrive `supervisor needs-you`
+    (l'hook del prompt dopo li toglie). 1.80 (23/10/2026, «le richieste in attesa … scompaiano quando non ci sono
+    piu'»): qui la vita della richiesta — scaduta (`expires_at`) → via, diario e avviso alla sessione; con `until` il
+    comando si prova una volta al minuto e a 0 → via, diario e avviso; il file di una sessione che non c'e' piu' da
+    un giorno → via."""
     d = Path(cm.expand(CFG["state_dir"])) / "needs-you"
     if not d.is_dir():
         return {}
+    now = float(now or time.time())
     by_sid = {r.get("session_id"): (r.get("tmux") or r.get("name")) for r in rows if r.get("session_id") and r.get("status") != "dead"}
     out = {}
     for f in d.glob("*.json"):
         tm = by_sid.get(f.stem)
-        if tm:
-            out[tm] = read_json(f, {})
+        if not tm:
+            try:
+                if now - f.stat().st_mtime > NEEDS_ORPHAN_S:
+                    f.unlink(missing_ok=True)
+                    ledger_write("needs-you-pruned", file=f.name)
+            except OSError:
+                pass
+            continue
+        rec = read_json(f, {})
+        if not isinstance(rec, dict):
+            continue
+        reason = S.one_line(str(rec.get("reason") or ""))[:200]
+        exp = float(rec.get("expires_at") or 0)
+        if exp and now >= exp:
+            f.unlink(missing_ok=True)
+            ledger_write("needs-you-expired", session=tm, reason=reason)
+            _wake(tm, M("relay.needs_you_expired", name=tm, reason=reason, when=time.strftime("%H:%M", time.localtime(now))))
+            continue
+        until = str(rec.get("until") or "")
+        if until and now - float(rec.get("checked_at") or 0) >= NEEDS_CHECK_EVERY_S:
+            rc = needs_check(until, rec.get("cwd"))
+            if rc == 0:
+                f.unlink(missing_ok=True)
+                ledger_write("needs-you-done", session=tm, reason=reason, how="check")
+                _wake(tm, M("relay.needs_you_done", name=tm, reason=reason, when=time.strftime("%H:%M", time.localtime(now))))
+                continue
+            rec["checked_at"], rec["last_rc"] = int(now), rc
+            write_json(f, rec)
+        out[tm] = rec
     return out
+
+
+def attention_done(cmd, arg):
+    """1.80 (23/10/2026): il tasto «Fatto» dell'app chiude una voce di «Serve te» che il relay non puo' verificare da
+    solo (l'APK installato, un invito accettato, una cosa fatta a voce). {kind, ref (= arg), since}: needs_you → il
+    file va via e la sessione riceve «fatto» in casella; turn_blocking → segnata chiusa (attention-dismissed.json,
+    sessione → since) finche' il turno non cambia; turn_failed, quota_limit, task_red → tolte da attention.json."""
+    kind = str(cmd.get("kind") or "").strip()
+    ref = S.one_line(str(arg or cmd.get("ref") or "")).strip()[:120]
+    when = time.strftime("%H:%M")
+    if kind == "needs_you" and ref:
+        rows = _json_cmd("sessions", "--json", "--no-screen") or []
+        row = next((r for r in rows if (r.get("tmux") or r.get("name")) == ref and r.get("session_id")), None)
+        f = Path(cm.expand(CFG["state_dir"])) / "needs-you" / f"{row['session_id']}.json" if row else None
+        if not f or not f.exists():
+            return False, M("relay.cmd_attention_unknown", kind=kind, ref=ref)
+        reason = S.one_line(str((read_json(f, {}) or {}).get("reason") or ""))[:200]
+        f.unlink(missing_ok=True)
+        ledger_write("needs-you-done", session=ref, reason=reason, how="app", by=from_device(cmd))
+        _wake(ref, M("relay.needs_you_app_done", person=M("tasks.person"), when=when, device=from_device(cmd), reason=reason))
+        return True, M("relay.cmd_attention_done", kind=kind, ref=ref)
+    if kind == "turn_blocking" and ref:
+        p = rdir() / "attention-dismissed.json"
+        d = read_json(p, {})
+        d = d if isinstance(d, dict) else {}
+        d[ref] = int(cmd.get("since") or time.time())
+        write_json(p, d)
+        ledger_write("attention-done", kind=kind, ref=ref, by=from_device(cmd))
+        return True, M("relay.cmd_attention_done", kind=kind, ref=ref)
+    if kind in ("turn_failed", "quota_limit", "task_red") and ref:
+        attention_mark(kind, ref, ref, "", remove=True)
+        ledger_write("attention-done", kind=kind, ref=ref, by=from_device(cmd))
+        return True, M("relay.cmd_attention_done", kind=kind, ref=ref)
+    return False, M("relay.cmd_attention_unknown", kind=kind or "?", ref=ref or "?")
 
 
 REMIND_AFTER_S = (600, 1800)   # 1.68: promemoria di una voce di «Serve te» ancora aperta dopo 10 e dopo 30 minuti

@@ -176,7 +176,7 @@
   "needs_you.saved": "{name} is now waiting for you: {reason}",
   "needs_you.cleared": "no longer waiting for you",
   "needs_you.unknown_option": "supervisor needs-you: unknown option {opt}",
-  "needs_you.usage": "usage: supervisor needs-you \"<what you need from the user>\" | --clear",
+  "needs_you.usage": "usage: supervisor needs-you \"<what you need from the user>\" [--until \"<command that exits 0 once done>\"] [--expires 2h] | --clear",
   "needs_you.no_session": "supervisor needs-you: run it from a session in tmux",
   "needs_you.to_master": "{name} is waiting for the user: {reason}",
   "tasks.turn_session": "{session}'s turn",
@@ -982,5 +982,13 @@
   "relay.stale_lock": "no push since {since}: the push lock has been held for {lock} min.",
   "relay.stale_ok": "The state is moving again.",
   "doctor.shim_shadowed": "`supervisor` on the PATH is {other}, not ours {path} (for example node-supervisor from npm)",
-  "doctor.fix_shim_shadowed": "put ~/.local/bin earlier in the PATH, or use the full path {path}"
+  "doctor.fix_shim_shadowed": "put ~/.local/bin earlier in the PATH, or use the full path {path}",
+  "needs_you.option_needs_value": "supervisor needs-you: {opt} needs a value",
+  "needs_you.bad_expires": "supervisor needs-you: --expires takes a duration like 30m, 2h, 1d (not «{value}»)",
+  "needs_you.saved_until": "  closes by itself once this exits 0: {cmd}",
+  "relay.needs_you_done": "{name}: done at {when} — «{reason}» came true (the command exited 0). Go on.",
+  "relay.needs_you_expired": "{name}: the request «{reason}» expired at {when} unanswered: ask again if you still need it.",
+  "relay.needs_you_app_done": "{person} marked it done at {when} ({device}): {reason}. Go on.",
+  "relay.cmd_attention_done": "closed: {kind} {ref}",
+  "relay.cmd_attention_unknown": "{kind} {ref}: nothing to close"
 }

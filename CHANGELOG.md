@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.51 — 2026-10-23: the requests in «Needs you» close by themselves (contract 1.80); the keys guard reads the command without its quoted text.**
+  - Asked by the maintainer at 18:39 («dobbiamo assicurarci che le richieste in attesa appaiano solo quando ci sono davvero e scompaiano quando non ci sono più»), ok from the phone at 19:35. Until now a `needs-you` request died only at the session's next prompt or with `--clear`: done elsewhere, it stayed (two files of 19/10 and 22/10 on disk); a turn ending with a «Da te» list stayed until someone wrote to that session.
+  - `supervisor needs-you "…" --until "<command>"`: the relay runs it once a minute (10 s, in the caller's folder) and, when it exits 0, removes the request, writes the ledger and tells the session in its inbox («fatto alle HH:MM … Riprendi»). `--expires 2h` (24 h without): the request lapses by itself, with a ledger row and a message to the session. Files of sessions gone for more than a day are pruned.
+  - New op `attention_done {kind, ref, since?}`: the app's «Done» button; `needs_you` → gone and the session hears it from the person; `turn_blocking` → closed for that turn (a new turn shows it again); `turn_failed`, `quota_limit`, `task_red` → removed. Every `attention` item carries `closes` (answer | prompt | check) and, for `needs_you`, `expires_at`; the session's `needs_you` carries `until` and `expires_at`.
+  - Kernel rule 11 names `--until` and `--expires` (H3 bound 3000).
+  - The keys guard of 0.8.50 blocked its own announcement at 19:26: it now reads the command without quoted strings and heredocs; a talk or commit message that mentions the blocked commands passes, the command is still denied.
+  - Tests: R64, R65 (relay), G12 adjusted.
 - **0.8.50 — 2026-10-23: every ok the person writes is valid, wherever they write it; send-keys blocked at the source.**
   - Asked by the maintainer from the phone at 18:53, after the PIN of 0.8.49: «riguardo l'ok, il vero problema è che a volte do ok da altra sessione o da terminale e vedo errori che lo dicono... se io scrivo un ok è sempre valido». Task registered by the master (ok-sempre-valido-23-10).
   - `task approve --inbox`: the session that received the ok records it, for any task, another session's too (no more «only the master or the task's session»); origins `terminal` (resolved from the transcript) and `relay` are both good again; a record still `unverified` is waited for up to fifteen seconds (`CM_INBOX_WAIT_S`), then the registry answers «try again» to the session, which retries: no error about an ok reaches the person. `cron`, `session` and a text the transcript attributes to another session stay refused. `--pin` stays as an option.

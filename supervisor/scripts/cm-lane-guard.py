@@ -106,10 +106,10 @@ KEYS_REASON = ("tmux send-keys/paste-buffer from a Claude session is blocked (23
 def decide(payload):
     """None = lascia passare; altrimenti il motivo del rifiuto."""
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
-    if KEYS.search(cmd):
-        return KEYS_REASON
     bare = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", "", cmd, flags=re.S | re.M)   # un heredoc non e' un comando
     bare = re.sub(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"", "''", bare)   # ne' il testo fra virgolette (messaggi di commit…)
+    if KEYS.search(bare):   # 19:26: un messaggio di `supervisor talk` che PARLA di send-keys passa; il comando no
+        return KEYS_REASON
     if not CLOSED.search(bare):   # il caso comune: nessun caricamento di config
         return None
     cm = _load("cm-config")

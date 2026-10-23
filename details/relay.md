@@ -337,6 +337,21 @@ until, short`; the master writes it), else derived from the title. Fixtures:
 derived), `cmd-result-sample.json` (…0386, …0470-…0474, …0760),
 `night-report-sample.json`.
 
+Contract 1.80 (23/10/2026, the maintainer: «le richieste in attesa appaiano
+solo quando ci sono davvero e scompaiano quando non ci sono più») gives every
+`attention` item a `closes` field — `answer` (a question), `prompt` (the
+session's next prompt, or its end), `check` (the relay verifies it: a
+`needs-you --until` command run once a minute, a red task) — and, for a
+`needs_you` item, `expires_at` (`--expires`, 24 h without); the session's
+`needs_you` carries `until: true` and `expires_at` too. A request that comes
+true, lapses, or belongs to a session gone for a day disappears by itself,
+with a ledger row and (for the first two) a message in the session's inbox.
+The new op `attention_done {kind, ref, since?}` is the app's «Done» button:
+`needs_you` → the file goes and the session hears «done» from the person;
+`turn_blocking` → closed for that turn (`attention-dismissed.json`), a new
+turn shows it again; `turn_failed`, `quota_limit`, `task_red` → removed.
+Without 1.80 the app works as before: the new fields are additive.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within
