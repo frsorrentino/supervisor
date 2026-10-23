@@ -107,8 +107,8 @@ T.check("H2 SessionStart triggers the registry", (tmp / "registry.json").exists(
 k = r.stdout
 # 2200 (02/10/2026): la regola 10, «Prossimi:» per i consigli toccabili del telefono, approvata dal maintainer
 # 14/10: 2400 caratteri, con la regola 11 (needs-you); 22/10: 2700 e 14 righe, con la regola 12 (l'ok scritto nella sessione);
-# 23/10: 2800, la regola 12 con il PIN
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2800 and len(k.strip().splitlines()) <= 14, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 23/10: 2800, la regola 12 con il PIN; 23/10 18:53: 2900, la regola 12 «un ok vale sempre, anche d'altra sessione»
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2900 and len(k.strip().splitlines()) <= 14, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto

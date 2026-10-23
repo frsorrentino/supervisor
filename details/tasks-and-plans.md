@@ -24,22 +24,25 @@ only as the command (`bash release.sh 1.0`, `./release.sh`), not as an argument
 (`grep … release.sh`). The hooks that block a push when the guard fails wait 30
 seconds, so a loaded machine does not block it by timeout.
 
-An ok on someone's behalf comes from the person, never from the model. From a
-Claude session there are two ways. With the person's PIN (since 23/10/2026
-17:14, «ok PIN fisso»): the person sets it once at a terminal with
-`supervisor pin set` (refused from a Claude session; on disk only salt and a
-PBKDF2 hash, 0600), then writes «ok 1234» in any terminal or chat, and the
-session that receives it runs `supervisor task approve ID --by NAME --pin
-1234`, from any session, a plain shell too: the PIN is the proof, not the
-terminal. Five wrong PINs in fifteen minutes lock it for fifteen, with a
-notice to the root session. Or with `--inbox MSG`, where `MSG` is a message
-of the person from the last hour, arrived from the relay (phone, watch, web
-app, the app's chat: origin `relay`) and addressed to the citing session, the
-root session or the task's own. A text typed in a terminal (origin
-`terminal`) is no longer enough: anyone can type into a pane (`tmux
-send-keys`), so the registry refuses it and asks for the PIN. The inbox masks
-a PIN in every text it stores («ok ••••»); the session's transcript, Claude
-Code's own file, keeps it: the declared limit of a fixed PIN. The
+An ok on someone's behalf comes from the person, never from the model. Since
+23/10/2026 18:53 («se io scrivo un ok è sempre valido») every ok the person
+writes is valid wherever they write it: the terminal of any session, the
+app's or the web's chat to any session, the root session. The session that
+receives it records it, for any task, with `supervisor task approve ID --by
+NAME --inbox MSG [--text NOTE]`, where `MSG` is a message of the person from
+the last hour in that session's own inbox: typed in its terminal (origin
+`terminal`, resolved from the transcript: Claude Code writes the prompt's
+`user` line after the hooks, so the registry waits up to fifteen seconds for
+a record still `unverified`, then answers «try again» to the session, never
+an error to the person) or arrived from the relay (phone, watch, web app, the
+app's chat: origin `relay`). Never a cron prompt, never another session's
+text, never a text the transcript attributes to another session. If the
+session cannot tell which task the ok is for, it asks the person which one.
+The hole of a text injected into a pane is closed at the source: the
+PreToolUse guard denies `tmux send-keys` and `paste-buffer` from Claude
+sessions, guard on or off (sessions reach each other with `supervisor talk`).
+The PIN of 0.8.49 (`supervisor pin set`, `--pin`) stays as an option, no
+longer required. The
 `UserPromptSubmit` hook saves every prompt in the session's inbox, delivered,
 pruned after a day (the rest of the box after seven, since 23/10/2026: «ok 7
 giorno per supervisor»), with the origin the transcript gives it. Claude Code

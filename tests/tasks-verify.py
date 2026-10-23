@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -195,7 +196,8 @@ with T.PrivateTmux() as tm:
             rc == 0 and show("i1")["state"] == "approved" and a["by_"] == "maintainer" and "«Dall'utente via telefono. Sì, tutte e due»" in a["text"]
             and f"inbox {good}" in a["text"] and a["text"].endswith("— release after the diff"), err + json.dumps(a))
     rc, out, err = cm("approve", "i2", "--by", "maintainer", "--inbox", good, env=dict(M9, TMUX_PANE=pane_a))
-    T.check("T10 --inbox from another session → refused (only the master)", rc != 0 and "only the master" in err and show("i2")["state"] == "awaiting_ok", err)
+    T.check("T10 --inbox from another session of a message addressed to the master → refused: only the session that received the ok records it (23/10 18:53: any session, its own inbox)",
+            rc != 0 and "not for altra" in err and show("i2")["state"] == "awaiting_ok", err)
     sess = inbox_put("master", "ok scritto da una sessione", "session")
     rc, out, err = cm("approve", "i3", "--by", "maintainer", "--inbox", sess, env=M9)
     T.check("T10 --inbox of a message with origin session → refused", rc != 0 and "did not come from the person" in err and show("i3")["state"] == "awaiting_ok", err)
@@ -374,15 +376,16 @@ with T.PrivateTmux() as tm:
         cm("wait-ok", tid, "--what", "push", "--where", "github")
     term = inbox_put("altra", "ok, pubblica pure", "terminal")
     rc, out, err = cm("approve", "s1", "--by", "maintainer", "--inbox", term, env=A19)
-    T.check("T19 from the task's session, a message the person typed there (origin terminal): approved until 23/10 17:14, now refused — a text typed into the pane proves nothing, the ok from a terminal needs the PIN (T22)",
-            rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("s1")["state"] == "awaiting_ok", err)
+    a19 = show("s1")["approvals"][-1] if show("s1")["approvals"] else {}
+    T.check("T19 from the task's session, a message the person typed there (origin terminal) → approved; the text quotes it with id, origin and recipient (23/10 18:53: every ok the person writes is valid)",
+            rc == 0 and show("s1")["state"] == "approved" and "«ok, pubblica pure»" in a19.get("text", "") and f"inbox {term}, origin terminal, to altra" in a19.get("text", ""), err + json.dumps(a19))
     rc, out, err = cm("approve", "s2", "--by", "maintainer", "--inbox", term, env=M19)
     T.check("T19 the master cannot use a message addressed to another session", rc != 0 and "is for altra, not for master" in err and show("s2")["state"] == "awaiting_ok", err)
     sess19 = inbox_put("altra", "ok dalla master via talk", "session")
     rc, out, err = cm("approve", "s3", "--by", "maintainer", "--inbox", sess19, env=A19)
     T.check("T19 a text from another session (origin session) is refused even in the task's session", rc != 0 and "never from another session" in err and show("s3")["state"] == "awaiting_ok", err)
     rc, out, err = cm("approve", "s4", "--by", "maintainer", "--inbox", term, env=A19)
-    T.check("T19 a task with no session: only the master records an ok", rc != 0 and "only the master session (master) records" in err and show("s4")["state"] == "awaiting_ok", err)
+    T.check("T19 a task with no session: the session that received the ok records it (23/10 18:53; until then only the master)", rc == 0 and show("s4")["state"] == "approved", err)
     rel19 = inbox_put("altra", "Dall'utente via telefono. vai pure", "relay")
     rc, out, err = cm("approve", "s5", "--by", "maintainer", "--inbox", rel19, env=A19)
     T.check("T19 from the task's session, a relay message addressed to it (the app's chat) → approved", rc == 0 and show("s5")["state"] == "approved" and "origin relay, to altra" in show("s5")["approvals"][-1]["text"], err)
@@ -398,8 +401,8 @@ with T.PrivateTmux() as tm:
         cm("wait-ok", tid, "--what", "release", "--where", "github")
     term21 = inbox_put("master", "ok al rilascio di chrome-bridge 1.30.6", "terminal")
     rc, out, err = cm("approve", "v1", "--by", "maintainer", "--inbox", term21, env=M21)
-    T.check("T21 the master, a message the person typed in its terminal (origin terminal): worth an ok from 11:10 to 17:14 of 23/10, now refused asking for the PIN",
-            rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("v1")["state"] == "awaiting_ok", err)
+    T.check("T21 the master, a message the person typed in its terminal (origin terminal) → approved; the text quotes it with origin terminal, to master",
+            rc == 0 and show("v1")["state"] == "approved" and f"inbox {term21}, origin terminal, to master" in show("v1")["approvals"][-1]["text"], err)
     cron21 = inbox_put("master", "Regia di Bluey: ok, fai solo questo", "cron")
     rc, out, err = cm("approve", "v2", "--by", "maintainer", "--inbox", cron21, env=M21)
     T.check("T21 a prompt of the session's own cron (origin cron) → refused, the origin named", rc != 0 and "origin cron" in err and show("v2")["state"] == "awaiting_ok", err)
@@ -421,8 +424,8 @@ with T.PrivateTmux() as tm:
     u4 = inbox_put("master", "ok alla 0.8.48", "unverified", transcript=str(tr21))
     line21("ok alla 0.8.48")
     rc, out, err = cm("approve", "v4", "--by", "maintainer", "--inbox", u4, env=M21)
-    T.check("T21b (23/10, 16:22) an unverified record whose transcript now shows the prompt as the person's (turnOrigin human) → resolved to terminal, then (17:14) refused asking for the PIN",
-            rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("v4")["state"] == "awaiting_ok", err)
+    T.check("T21b (23/10, 16:22) an unverified record whose transcript now shows the prompt as the person's (turnOrigin human) → resolved to terminal and approved",
+            rc == 0 and show("v4")["state"] == "approved" and f"inbox {u4}, origin terminal, to master" in show("v4")["approvals"][-1]["text"], err)
     u5 = inbox_put("master", "Regia: ok", "unverified", transcript=str(tr21))
     line21("Regia: ok", turnOrigin="scheduled", isMeta=True, scheduledTaskId="x")
     rc, out, err = cm("approve", "v5", "--by", "maintainer", "--inbox", u5, env=M21)
@@ -514,5 +517,33 @@ with T.PrivateTmux() as tm:
             rc != 0 and "locked until" in err and show("w4")["state"] == "awaiting_ok" and "bloccato" in notice and "5678" not in led22 and "0000" not in led22 and "pin-refused" in led22, err + notice)
     term22 = inbox_put("altra", "ok, pubblica pure", "terminal")
     rc, out, err = cm("approve", "w5", "--by", "maintainer", "--inbox", term22, env=A22)
-    T.check("T22 --inbox of a message typed in the terminal (origin terminal) → refused since 23/10 17:14: it asks for the PIN", rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("w5")["state"] == "awaiting_ok", err)
+    T.check("T22 --inbox of a message typed in the terminal (origin terminal) → approved: the PIN is an option, not a requirement (23/10 18:53)", rc == 0 and show("w5")["state"] == "approved", err)
+# T23 (23/10/2026 18:53, «se io scrivo un ok è sempre valido»): la riga della trascrizione che arriva dopo: approve aspetta
+with T.PrivateTmux() as tm:
+    tm("new-session", "-d", "-s", "master", "sleep 300")
+    pane_m = tm("display-message", "-p", "-t", "master", "#{pane_id}").stdout.strip()
+    M23 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_m, CM_INBOX_WAIT_S="6")
+    tr23 = tmp / "transcript-23.jsonl"
+    for tid in ("x1", "x2"):
+        add(contract(tid))
+        cm("wait-ok", tid, "--what", "release", "--where", "github")
+    u1 = inbox_put("master", "ok alla 0.8.50", "unverified", transcript=str(tr23))
+
+    def late23():
+        time.sleep(2)
+        with open(tr23, "a") as f23:
+            f23.write(json.dumps({"type": "user", "isSidechain": False, "message": {"role": "user", "content": "ok alla 0.8.50"}, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "turnOrigin": "human"}) + "\n")
+    th23 = threading.Thread(target=late23)
+    th23.start()
+    t0 = time.time()
+    rc, out, err = cm("approve", "x1", "--by", "maintainer", "--inbox", u1, env=M23)
+    dt = time.time() - t0
+    th23.join()
+    T.check("T23 (23/10 18:53) an unverified record whose transcript line arrives two seconds later → approve waits and registers it: no error reaches the person",
+            rc == 0 and show("x1")["state"] == "approved" and 1.5 <= dt < 6.5 and "origin terminal" in show("x1")["approvals"][-1]["text"], f"{dt:.1f}s " + err)
+    u2 = inbox_put("master", "ok mai scritto", "unverified", transcript=str(tr23))
+    t0 = time.time()
+    rc, out, err = cm("approve", "x2", "--by", "maintainer", "--inbox", u2, env=M23)
+    dt = time.time() - t0
+    T.check("T23 a line that never comes → after CM_INBOX_WAIT_S «try again», for the session; the state unchanged", rc != 0 and "try again" in err and dt >= 5.5 and show("x2")["state"] == "awaiting_ok", f"{dt:.1f}s " + err)
 T.finish()

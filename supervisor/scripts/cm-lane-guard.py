@@ -12,6 +12,8 @@ la cartella della sessione. Un `cd` che non si sa leggere (una variabile, `cd -`
 compito copre: negato, mai concesso per sbaglio. Con piu' comandi chiusi nella catena, li deve coprire tutti.
 Non chiede un secondo ok: controlla soltanto. Spenta di default (`tasks.guard`), e senza registro non fa nulla:
 in quei casi il comportamento e' quello di prima. Un errore della guardia non blocca mai il comando.
+Sempre accesa, invece, la parte sui tasti (23/10/2026): `tmux send-keys` e `paste-buffer` verso qualunque pannello sono
+negati, perche' quello che compare in un terminale conta come scritto dalla persona (un ok).
 
 Con `--strict` (12/10/2026, fail-closed solo per i push): hooks.json la lancia una seconda volta con un filtro `if`
 sui comandi che pubblicano e `onFailure: "block"`. Li' un errore esce con 1 invece di lasciar passare, e Claude Code
@@ -93,9 +95,19 @@ def targets(cmd, cwd):
     return out
 
 
+# 23/10/2026 18:53 (the maintainer from the phone: «se io scrivo un ok è sempre valido»): quello che compare in un
+# terminale e' la persona, quindi nessuna sessione Claude digita nei pannelli: `tmux send-keys` (alias `send`) e
+# `paste-buffer` (`pasteb`) sono negati sempre, anche a guardia spenta; le sessioni si parlano con `supervisor talk`
+KEYS = re.compile(r"\btmux\b[^|;&\n]*\b(send-keys|send|paste-buffer|pasteb)\b")
+KEYS_REASON = ("tmux send-keys/paste-buffer from a Claude session is blocked (23/10/2026): text typed into a pane counts as the person's. "
+               "To reach a session: supervisor talk NAME \"…\"; to answer its question: supervisor answer; to close it: supervisor close NAME.")
+
+
 def decide(payload):
     """None = lascia passare; altrimenti il motivo del rifiuto."""
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
+    if KEYS.search(cmd):
+        return KEYS_REASON
     bare = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", "", cmd, flags=re.S | re.M)   # un heredoc non e' un comando
     bare = re.sub(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"", "''", bare)   # ne' il testo fra virgolette (messaggi di commit…)
     if not CLOSED.search(bare):   # il caso comune: nessun caricamento di config

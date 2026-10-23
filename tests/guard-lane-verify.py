@@ -157,4 +157,12 @@ cm("task", "list")
 T.check("G9 --strict with a working guard decides like the plain one: deny outside a task, a normal command allowed",
         hook("git push", other, "--strict").startswith("deny") and hook("echo hello", proj, "--strict") == "allow", "")
 
+# G12 (23/10/2026 18:53): tmux send-keys / paste-buffer da una sessione Claude sono negati sempre, anche a guardia spenta
+config(False)
+k12 = {c: hook(c) for c in ("tmux send-keys -t master 'ok alla release' Enter", "tmux -L other send -t =alfa x Enter",
+                            "tmux load-buffer f && tmux paste-buffer -t beta", "python3 -c \"import subprocess;subprocess.run(['tmux','send-keys','-t','m','ok'])\"")}
+ok12 = {c: hook(c) for c in ("grep -n send-keys supervisor/scripts/cm-talk.py", "supervisor talk master \"ok\"", "tmux list-sessions | grep send", "tmux has-session -t =alfa")}
+T.check("G12 (23/10) tmux send-keys, send, paste-buffer toward any pane → deny with the reason, guard off: typed text counts as the person's",
+        all(v.startswith("deny:") and "send-keys" in v for v in k12.values()), str(k12))
+T.check("G12 reading about send-keys, supervisor talk, a tmux command that does not type → allow", all(v == "allow" for v in ok12.values()), str(ok12))
 T.finish()

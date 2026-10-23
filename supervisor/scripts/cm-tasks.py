@@ -12,16 +12,17 @@
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
   supervisor task wait-ok ID --what W --where D   attende ok (corsia chiusa fuori da un piano approvato)
   supervisor task approve ID --by B --text T [--what W] [--where D]
-  supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D]
-                                                (23/10 17:14) l'ok con il PIN della persona («ok 1234» in qualunque
-                                                terminale o chat): da ogni sessione e anche da una shell, la prova e'
-                                                il PIN (supervisor pin set); il PIN non si scrive da nessun'altra parte
   supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D]
-                                                da una sessione Claude l'ok a nome di una persona passa solo cosi':
-                                                dalla master o (22/10) dalla sessione del compito, citando un messaggio
-                                                della persona a lei dell'ultima ora arrivato dal relay (la chat
-                                                dell'app, origin relay); mai terminal (dal 23/10 17:14 serve il PIN:
-                                                chiunque digita nel pane, tmux send-keys), cron, unverified o session
+                                                da una sessione Claude l'ok a nome di una persona passa cosi': la
+                                                sessione che ha ricevuto l'ok (casella sua: supervisor inbox NOME --all)
+                                                lo registra per qualunque compito, anche di un'altra sessione (23/10
+                                                18:53: «se io scrivo un ok è sempre valido»); vale un messaggio
+                                                dell'ultima ora scritto nel suo terminale (origin terminal, dalla
+                                                trascrizione) o arrivato dal relay; mai cron o session; un record ancora
+                                                unverified si aspetta fino a 15 s, poi «try again» (la sessione riprova)
+  supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D]
+                                                facoltativo (23/10 17:14): con il PIN della persona (supervisor pin set)
+                                                l'ok vale anche da una shell; il PIN non si scrive da nessun'altra parte
   supervisor task auto-close [--hours 6] [--json]   chiude i compiti aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
@@ -322,6 +323,7 @@ def approve(con, tid, by, text, what=None, where=None):
 
 
 INBOX_MAX_AGE_S = 3600
+INBOX_WAIT_S = float(os.environ.get("CM_INBOX_WAIT_S") or 15)   # 23/10 18:53: attesa della riga della trascrizione
 AUTO_CLOSE_H = 6
 
 
@@ -346,43 +348,41 @@ def _load(name):
 
 
 def inbox_approval_text(by, rec_id, note=None, task_session=None):
-    """16/10/2026 (the maintainer from the phone, «Sì, tutte e due»): l'ok a nome di una persona registrato da una sessione vale solo se
-    cita un messaggio della persona arrivato nella casella nell'ultima ora; il testo dell'ok e' copiato da li', non
-    riscritto. Due vie: la master con un messaggio del relay (telefono, orologio, web) indirizzato a lei; dal 22/10
-    (the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli altri», quattro ok ripetuti
-    nell'app in un giorno) anche la sessione del compito con un messaggio indirizzato a lei, scritto dalla persona nel
-    terminale (origin «terminal», lo salva l'hook) o arrivato dal relay. Dal 23/10 (the maintainer in the master's
-    terminal at 11:10: «l'ok da terminale ha lo stesso valore di quello da app») anche la master accetta «terminal»;
-    l'hook distingue i prompt della persona da quelli del cron («cron») e da quelli che non sa attribuire
-    («unverified»): mai buoni. Mai un testo di un'altra sessione (origin «session»). Dal 23/10 17:14 (the maintainer
-    from the web: «ok PIN fisso») nemmeno «terminal» basta: chiunque digita nel pane (tmux send-keys); l'ok dal
-    terminale passa con --pin (pin_approval_text), qui resta solo «relay». Torna il testo o esce con il motivo."""
-    cm = _load("cm-config")
-    cfg = cm.load(warn=False)
-    master = str((cfg.get("workspace") or {}).get("root_session_name") or "master")
+    """L'ok a nome della persona registrato da una sessione Claude cita un messaggio della persona arrivato nella
+    casella della sessione stessa nell'ultima ora; il testo dell'ok e' copiato da li', non riscritto. Storia: 16/10
+    (the maintainer from the phone, «Sì, tutte e due») solo la master con un messaggio del relay; 22/10 anche la
+    sessione del compito, con un messaggio scritto nel suo terminale (origin «terminal», lo salva l'hook) o dal relay;
+    23/10 11:10 «terminal» anche per la master; 23/10 17:14 il PIN al posto di «terminal»; 23/10 18:53 (the maintainer
+    from the phone: «se io scrivo un ok è sempre valido») la regola di oggi: QUALUNQUE sessione registra un ok che ha
+    ricevuto (casella sua: `to` = chi chiama), per QUALUNQUE compito, anche di un'altra sessione; valgono «terminal»
+    (risolto dalla trascrizione: Claude Code la scrive dopo gli hook, quindi un record ancora «unverified» si aspetta
+    fino a INBOX_WAIT_S) e «relay»; mai «cron», mai «session» (il testo di un'altra sessione), mai un record che la
+    trascrizione attribuisce a un'altra sessione. Il buco del `tmux send-keys` lo chiude la guardia PreToolUse
+    (cm-lane-guard.py). Torna il testo o esce con il motivo; «try again» e' per la sessione, che riprova: alla persona
+    non arriva mai un errore sul suo ok."""
     caller = _caller_session()
-    allowed = {master} | ({task_session} if task_session else set())
-    if caller not in allowed:
-        who = f"only the master session ({master})" + (f" or the task's session ({task_session})" if task_session else "")
-        sys.exit(f"task approve --inbox: {who} records an ok on someone's behalf; this is {caller or 'not a tmux session'}")
     ib = _load("cm-inbox")
     rec = ib.load(rec_id)
     if not rec:
         sys.exit(f"task approve --inbox: no message {rec_id} in the inbox")
-    if rec.get("origin") == "unverified":
-        # 23/10 16:22: Claude Code scrive la riga `user` della trascrizione dopo gli hook; al momento dell'uso c'e'
+    if rec.get("to") != caller:
+        sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {caller or 'this shell'}: only the session that received an ok records it")
+    deadline = time.time() + INBOX_WAIT_S
+    while rec.get("origin") == "unverified":
+        # 23/10 16:22: Claude Code scrive la riga `user` della trascrizione dopo gli hook; di solito al momento
+        # dell'uso c'e' gia', altrimenti si aspetta un po' (18:53: mai un errore alla persona)
         rec = ib.resolve(rec)
         if rec is None:
             sys.exit(f"task approve --inbox: message {rec_id} did not come from the person (origin peer): the transcript shows it as another session's or the system's")
-    if rec.get("to") != caller:
-        sys.exit(f"task approve --inbox: message {rec_id} is for {rec.get('to')}, not for {caller}")
+        if rec.get("origin") != "unverified" or time.time() >= deadline:
+            break
+        time.sleep(1)
     origin = str(rec.get("origin") or "?")
-    if origin != "relay":
-        why = {"terminal": "a text typed in a terminal proves nothing (anyone can type into the pane: tmux send-keys); since 23/10 17:14 an ok from a terminal needs the PIN: ask them to write «ok <PIN>» and record it with --pin",
-               "cron": "a prompt of the session's own cron is not the person",
-               "unverified": "the transcript does not show the prompt (yet): try again in a few seconds, or ask them to write it again"}.get(
-            origin, "an ok comes from the person's device (the app), never from another session's text")
-        sys.exit(f"task approve --inbox: message {rec_id} did not come from the person's device (origin {origin}): {why}")
+    if origin not in ("relay", "terminal"):
+        why = {"cron": "a prompt of the session's own cron is not the person",
+               "unverified": f"the transcript does not show the prompt yet (waited {INBOX_WAIT_S:g} s): try again in a few seconds; if it keeps failing the record has no transcript (an older hook wrote it): ask the person to write the ok again"}.get(
+            origin, "an ok comes from the person (the terminal or their device), never from another session's text")
+        sys.exit(f"task approve --inbox: message {rec_id} did not come from the person (origin {origin}): {why}")
     age = time.time() - float(rec.get("created") or 0)
     if age > INBOX_MAX_AGE_S:
         sys.exit(f"task approve --inbox: message {rec_id} is {int(age // 60)} minutes old (at most {INBOX_MAX_AGE_S // 60})")
@@ -943,7 +943,7 @@ def main(argv):
         elif os.environ.get("CLAUDECODE") and os.environ.get("CM_APPROVE_VIA") != "relay":
             # una sessione Claude (anche la master) non scrive un ok a nome d'altri senza la prova: il PIN della persona
             # o il messaggio del relay; il relay eredita CLAUDECODE da chi l'ha avviato, e si dichiara con CM_APPROVE_VIA
-            sys.exit(f"task {verb}: from a Claude session an ok needs --pin P (the person's PIN) or --inbox MSG (a relay message from the last hour)")
+            sys.exit(f"task {verb}: from a Claude session an ok needs --inbox MSG (a message of the person from the last hour in this session's inbox) or --pin P")
         if verb == "confirm":
             # P1 (22/10): la conferma della persona («lo vedo sul telefono»), registrata con le regole dell'ok; `task
             # confirmed ID` la legge: e' un controllo valido per un esito install. Lo stato non cambia
