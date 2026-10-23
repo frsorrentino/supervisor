@@ -374,9 +374,8 @@ with T.PrivateTmux() as tm:
         cm("wait-ok", tid, "--what", "push", "--where", "github")
     term = inbox_put("altra", "ok, pubblica pure", "terminal")
     rc, out, err = cm("approve", "s1", "--by", "maintainer", "--inbox", term, env=A19)
-    a19 = show("s1")["approvals"][-1]
-    T.check("T19 from the task's session, a message the person typed there (origin terminal) → approved; the text quotes it with id, origin and recipient",
-            rc == 0 and show("s1")["state"] == "approved" and "«ok, pubblica pure»" in a19["text"] and f"inbox {term}, origin terminal, to altra" in a19["text"], err + json.dumps(a19))
+    T.check("T19 from the task's session, a message the person typed there (origin terminal): approved until 23/10 17:14, now refused — a text typed into the pane proves nothing, the ok from a terminal needs the PIN (T22)",
+            rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("s1")["state"] == "awaiting_ok", err)
     rc, out, err = cm("approve", "s2", "--by", "maintainer", "--inbox", term, env=M19)
     T.check("T19 the master cannot use a message addressed to another session", rc != 0 and "is for altra, not for master" in err and show("s2")["state"] == "awaiting_ok", err)
     sess19 = inbox_put("altra", "ok dalla master via talk", "session")
@@ -399,8 +398,8 @@ with T.PrivateTmux() as tm:
         cm("wait-ok", tid, "--what", "release", "--where", "github")
     term21 = inbox_put("master", "ok al rilascio di chrome-bridge 1.30.6", "terminal")
     rc, out, err = cm("approve", "v1", "--by", "maintainer", "--inbox", term21, env=M21)
-    T.check("T21 the master, a message the person typed in its terminal (origin terminal) → approved; the text quotes it with origin terminal, to master",
-            rc == 0 and show("v1")["state"] == "approved" and f"inbox {term21}, origin terminal, to master" in show("v1")["approvals"][-1]["text"], err)
+    T.check("T21 the master, a message the person typed in its terminal (origin terminal): worth an ok from 11:10 to 17:14 of 23/10, now refused asking for the PIN",
+            rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("v1")["state"] == "awaiting_ok", err)
     cron21 = inbox_put("master", "Regia di Bluey: ok, fai solo questo", "cron")
     rc, out, err = cm("approve", "v2", "--by", "maintainer", "--inbox", cron21, env=M21)
     T.check("T21 a prompt of the session's own cron (origin cron) → refused, the origin named", rc != 0 and "origin cron" in err and show("v2")["state"] == "awaiting_ok", err)
@@ -422,8 +421,8 @@ with T.PrivateTmux() as tm:
     u4 = inbox_put("master", "ok alla 0.8.48", "unverified", transcript=str(tr21))
     line21("ok alla 0.8.48")
     rc, out, err = cm("approve", "v4", "--by", "maintainer", "--inbox", u4, env=M21)
-    T.check("T21b (23/10, 16:22) an unverified record whose transcript now shows the prompt as the person's (turnOrigin human) → resolved to terminal and approved",
-            rc == 0 and show("v4")["state"] == "approved" and f"inbox {u4}, origin terminal, to master" in show("v4")["approvals"][-1]["text"], err)
+    T.check("T21b (23/10, 16:22) an unverified record whose transcript now shows the prompt as the person's (turnOrigin human) → resolved to terminal, then (17:14) refused asking for the PIN",
+            rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("v4")["state"] == "awaiting_ok", err)
     u5 = inbox_put("master", "Regia: ok", "unverified", transcript=str(tr21))
     line21("Regia: ok", turnOrigin="scheduled", isMeta=True, scheduledTaskId="x")
     rc, out, err = cm("approve", "v5", "--by", "maintainer", "--inbox", u5, env=M21)
@@ -465,4 +464,55 @@ rc, out, err = cm("short", "u3", "Docs site")
 cl = {x["task"]: x for x in json.loads(cm("closed", "--json")[1])["rows"]}
 T.check("T20 a closed task takes no short; `task closed` rows carry `short` too (derived here)", rc != 0 and "already cancelled" in err and cl["u3"]["short"] == imp["u3"]["short"] and list(cl["u3"])[:3] == ["task", "title", "short"], err + json.dumps(cl.get("u3")))
 
+# T22 (23/10/2026 17:14, the maintainer from the web: «ok PIN fisso», after «serve soluzione sicura»): l'ok con il PIN della
+# persona vale da qualunque sessione o shell; l'ok nudo dal terminale (origin terminal) non basta piu'
+P22 = {"CC_SUPERVISOR_CONFIG": str(cfg9)}
+
+
+def pin22(*a, stdin=None, env=None):
+    return subprocess.run([CLI, "pin", *a], input=stdin, capture_output=True, text=True, env=dict(ENV, **P22, **(env or {})), timeout=60)
+
+
+r = pin22("set", "--by", "maintainer", stdin="1234\n", env={"CLAUDECODE": "1"})
+T.check("T22 pin set from a Claude session (CLAUDECODE) → refused, nothing written", r.returncode != 0 and "never a Claude session" in r.stderr and not (state9 / "pin.json").exists(), r.stderr)
+r = pin22("set", "--by", "maintainer", stdin="1234\n")
+pf = state9 / "pin.json"
+st = pin22("status").stdout
+T.check("T22 pin set at a terminal (stdin without a tty: one line) → the file holds salt and hash only, mode 0600; status names the holder, never the hash",
+        r.returncode == 0 and pf.exists() and oct(pf.stat().st_mode & 0o777) == "0o600" and "1234" not in pf.read_text() and "maintainer" in st and json.loads(pf.read_text())["hash"] not in st, r.stdout + r.stderr + st)
+with T.PrivateTmux() as tm:
+    tm("new-session", "-d", "-s", "altra", "sleep 300")
+    pane_a = tm("display-message", "-p", "-t", "altra", "#{pane_id}").stdout.strip()
+    A22 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_a)
+    for tid in ("w1", "w2", "w3", "w4", "w5"):
+        add(contract(tid, where={"project": str(proj), "session": "altra", "host": "local", "account": None}))
+        cm("wait-ok", tid, "--what", "release", "--where", "github")
+    rc, out, err = cm("approve", "w1", "--by", "maintainer", "--pin", "1234", "--text", "ok alla 0.8.49", env=A22)
+    a22 = show("w1")["approvals"][-1]
+    T.check("T22 approve --pin with the right PIN from any session (not the master, not the task's) → approved; the text says PIN and the session, never the PIN itself",
+            rc == 0 and show("w1")["state"] == "approved" and a22["by_"] == "maintainer" and "PIN (via altra)" in a22["text"] and "ok alla 0.8.49" in a22["text"] and "1234" not in json.dumps(a22), err + json.dumps(a22))
+    rc, out, err = cm("approve", "w2", "--pin", "1234", env=P22)
+    T.check("T22 approve --pin from a plain shell (no tmux, no CLAUDECODE), --by omitted → approved as the PIN's holder, «via a terminal»",
+            rc == 0 and show("w2")["approvals"][-1]["by_"] == "maintainer" and "via a terminal" in show("w2")["approvals"][-1]["text"], err)
+    rc, out, err = cm("approve", "w3", "--by", "altri", "--pin", "1234", env=A22)
+    T.check("T22 --by another name than the holder → refused", rc != 0 and "belongs to maintainer" in err and show("w3")["state"] == "awaiting_ok", err)
+    rc, out, err = cm("approve", "w3", "--by", "maintainer", "--pin", "9999", env=A22)
+    T.check("T22 a wrong PIN → refused and counted, the PIN never echoed", rc != 0 and "wrong PIN (1 of 5" in err and "9999" not in err and show("w3")["state"] == "awaiting_ok", err)
+    r = pin22("set", stdin="1234\n5678\n")
+    rc, out, err = cm("approve", "w3", "--by", "maintainer", "--pin", "5678", env=A22)
+    T.check("T22 pin set again asks the current PIN first, then the new one; the new one works, the holder stays",
+            r.returncode == 0 and rc == 0 and show("w3")["state"] == "approved" and show("w3")["approvals"][-1]["by_"] == "maintainer", r.stderr + err)
+    r = pin22("set", stdin="0000\n1111\n")
+    T.check("T22 pin set with a wrong current PIN → refused", r.returncode != 0 and "wrong PIN" in r.stderr, r.stderr)
+    for _ in range(4):
+        cm("approve", "w4", "--by", "maintainer", "--pin", "0000", env=A22)
+    rc, out, err = cm("approve", "w4", "--by", "maintainer", "--pin", "5678", env=A22)
+    mbox = sorted((state9 / "inbox" / "master").glob("*.json"), key=lambda p: p.stat().st_mtime)
+    notice = json.loads(mbox[-1].read_text())["text"] if mbox else ""
+    led22 = (state9 / "ledger.jsonl").read_text() if (state9 / "ledger.jsonl").exists() else ""
+    T.check("T22 five wrong PINs in fifteen minutes → locked for fifteen, the right PIN refused meanwhile, a notice in the master's inbox, no PIN in the ledger",
+            rc != 0 and "locked until" in err and show("w4")["state"] == "awaiting_ok" and "bloccato" in notice and "5678" not in led22 and "0000" not in led22 and "pin-refused" in led22, err + notice)
+    term22 = inbox_put("altra", "ok, pubblica pure", "terminal")
+    rc, out, err = cm("approve", "w5", "--by", "maintainer", "--inbox", term22, env=A22)
+    T.check("T22 --inbox of a message typed in the terminal (origin terminal) → refused since 23/10 17:14: it asks for the PIN", rc != 0 and "origin terminal" in err and "needs the PIN" in err and show("w5")["state"] == "awaiting_ok", err)
 T.finish()

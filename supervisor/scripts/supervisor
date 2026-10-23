@@ -86,6 +86,7 @@ case "$cmd" in
   permissions|permessi)   exec python3 "$S/cm-tune.py" permissions "$@" ;;
   screen|schermo)         exec python3 "$S/cm-screen.py" "$@" ;;
   inbox|casella)          exec python3 "$S/cm-inbox.py" "$@" ;;
+  pin)                    exec python3 "$S/cm-pin.py" "$@" ;;   # 23/10: il PIN degli ok
   host|macchina)          exec python3 "$S/cm-hosts.py" "$@" ;;
   hosts|macchine)         case "${1:-}" in poll|install|uninstall) exec python3 "$S/cm-hosts.py" "$@" ;; esac
                           exec python3 "$S/cm-hosts.py" list "$@" ;;

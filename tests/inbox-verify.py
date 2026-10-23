@@ -237,4 +237,7 @@ got12 = {r["text"]: r for r in recs("eta")}
 T.check("IB12 resolve_box: human → terminal, scheduled → cron (from cron), peer → the record goes; a prompt the transcript never shows, or shows 15 minutes away, stays unverified; the line is found beyond the first 256 KB tail",
         n12 == "3" and got12["ok, vai"]["origin"] == "terminal" and got12["Regia: fai"]["origin"] == "cron" and got12["Regia: fai"]["from"] == "cron"
         and "Another: ok" not in got12 and got12["mai scritto"]["origin"] == "unverified" and got12["vecchio"]["origin"] == "unverified", n12 + " " + str({k: v["origin"] for k, v in got12.items()}))
+# IB13 (23/10/2026, 17:14): la maschera del PIN
+m13 = py(f"r=I.put('theta','ok 1234 alla release','terminal',{str(work)!r});r2=I.put('theta','PIN 123456','terminal',{str(work)!r});r3=I.put('theta','ok 123 e ok alla 0.8.48','terminal',{str(work)!r});print(r['text'],'|',r2['text'],'|',r3['text'])").stdout.strip()
+T.check("IB13 (23/10, 17:14) put masks a PIN after «ok» or «pin» (4-8 digits): «ok ••••»; three digits or a version stay", m13 == "ok •••• alla release | PIN •••• | ok 123 e ok alla 0.8.48", m13)
 T.finish()

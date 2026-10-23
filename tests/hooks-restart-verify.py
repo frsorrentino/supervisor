@@ -106,8 +106,9 @@ T.check("H2 SessionStart triggers the registry", (tmp / "registry.json").exists(
 # H3
 k = r.stdout
 # 2200 (02/10/2026): la regola 10, «Prossimi:» per i consigli toccabili del telefono, approvata dal maintainer
-# 14/10: 2400 caratteri, con la regola 11 (needs-you); 22/10: 2700 e 14 righe, con la regola 12 (l'ok scritto nella sessione)
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2700 and len(k.strip().splitlines()) <= 14, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 14/10: 2400 caratteri, con la regola 11 (needs-you); 22/10: 2700 e 14 righe, con la regola 12 (l'ok scritto nella sessione);
+# 23/10: 2800, la regola 12 con il PIN
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 2800 and len(k.strip().splitlines()) <= 14, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
@@ -319,6 +320,11 @@ T.check("H8 terminal and cron records older than a day are pruned at the next pr
         not IB8._path_of(old8["id"]) and not IB8._path_of(oldc8["id"]) and len(recs8("terminal")) == 5 and len(recs8("cron")) == 1, str([r["text"] for r in recs8()]))
 T.check("H8f (23/10, «ok 7 giorno per supervisor») the same prune keeps the box to seven days: a talk and a record without origin of eight days ago go, a talk and a relay message of six days ago stay",
         not IB8._path_of(olds8["id"]) and not IB8._path_of(oldn8["id"]) and IB8._path_of(keeps8["id"]) and IB8._path_of(keepr8["id"]), str([r["text"] for r in recs8()]))
+prompt8("ok 4321 alla 0.8.49")
+stop8()
+pin8 = [r for r in recs8() if "0.8.49" in r["text"]]
+T.check("H8g (23/10, 17:14) a PIN typed with the ok is masked in the inbox record («ok ••••»), and the record still resolves to terminal (the transcript keeps the real text)",
+        len(pin8) == 1 and pin8[0]["text"] == "ok •••• alla 0.8.49" and pin8[0]["origin"] == "terminal", str(pin8))
 hooks8 = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
 T.check("H8e (23/10, 10:47) the UserPromptSubmit hook has 10 seconds: at 5 a loaded machine cancelled it before the record was written and the prompt was lost",
         all(h["timeout"] >= 10 for m in hooks8["UserPromptSubmit"] for h in m["hooks"] if "cm-hook.py" in h["command"]), str(hooks8["UserPromptSubmit"]))

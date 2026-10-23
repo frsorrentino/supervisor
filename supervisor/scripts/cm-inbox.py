@@ -123,6 +123,7 @@ def put(to, text, sender, to_cwd="", origin="session", quiet=False, transcript=N
             origin = _take_claim(to, text) or origin
         except OSError:
             pass
+    text = mask_pin(text)
     d = box(to)
     d.mkdir(parents=True, exist_ok=True)
     now = time.time()
@@ -163,6 +164,15 @@ def prune(to, ages=None, default_s=None):
             continue
 
 
+PIN_MASK_RE = re.compile(r"\b(ok|pin)(\s+)\d{4,8}\b", re.IGNORECASE)
+
+
+def mask_pin(text):
+    """23/10/2026 17:14 (ok con PIN fisso): «ok 1234» diventa «ok ••••» in ogni record della casella; la trascrizione di
+    Claude Code resta com'e' (limite dichiarato del PIN fisso)."""
+    return PIN_MASK_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}••••", str(text or ""))
+
+
 TRANSCRIPT_TAILS = (262144, 4194304, 67108864)   # la coda della trascrizione: prima poca, poi di piu' (la master supera i 30 MB)
 RESOLVE_WINDOW_S = 180   # la riga user del prompt e il record dell'hook distano secondi, mai minuti
 RESOLVE_RECENT_S = 86400
@@ -178,7 +188,7 @@ def _iso_epoch(ts):
 def find_prompt_line(path, text, created, window_s=RESOLVE_WINDOW_S):
     """La riga `user` della trascrizione che porta il prompt `text` entro `window_s` da `created` (quella con l'ora piu'
     vicina); None se non c'e'. Niente tool_result ne' sidechain. Legge code via via piu' lunghe, mai tutto il file."""
-    mine = " ".join(str(text).split())
+    mine = " ".join(mask_pin(text).split())   # il record e' mascherato, la trascrizione no
     if not mine:
         return None
     best = None
@@ -208,7 +218,7 @@ def find_prompt_line(path, text, created, window_s=RESOLVE_WINDOW_S):
                 got = " ".join(str(x.get("text") or "") for x in parts if x.get("type") == "text")
             else:
                 got = str(c or "")
-            if " ".join(got.split()) != mine:
+            if " ".join(mask_pin(got).split()) != mine:
                 continue
             at = _iso_epoch(r.get("timestamp"))
             gap = abs(at - float(created)) if at is not None else window_s

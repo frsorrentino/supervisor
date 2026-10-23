@@ -25,13 +25,21 @@ only as the command (`bash release.sh 1.0`, `./release.sh`), not as an argument
 seconds, so a loaded machine does not block it by timeout.
 
 An ok on someone's behalf comes from the person, never from the model. From a
-Claude session, `supervisor task approve ID --by NAME --inbox MSG [--text
-NOTE]` is the only way, and `MSG` must be a message of the person from the
-last hour addressed to the citing session: the root session or (since
-22/10/2026) the task's own session, with a message either typed by the person
-in that terminal (origin `terminal`; since 23/10/2026 the root session too:
-«an ok from the terminal is worth the same as one from the app») or arrived
-from the relay (phone, watch, web app, the app's chat: origin `relay`). The
+Claude session there are two ways. With the person's PIN (since 23/10/2026
+17:14, «ok PIN fisso»): the person sets it once at a terminal with
+`supervisor pin set` (refused from a Claude session; on disk only salt and a
+PBKDF2 hash, 0600), then writes «ok 1234» in any terminal or chat, and the
+session that receives it runs `supervisor task approve ID --by NAME --pin
+1234`, from any session, a plain shell too: the PIN is the proof, not the
+terminal. Five wrong PINs in fifteen minutes lock it for fifteen, with a
+notice to the root session. Or with `--inbox MSG`, where `MSG` is a message
+of the person from the last hour, arrived from the relay (phone, watch, web
+app, the app's chat: origin `relay`) and addressed to the citing session, the
+root session or the task's own. A text typed in a terminal (origin
+`terminal`) is no longer enough: anyone can type into a pane (`tmux
+send-keys`), so the registry refuses it and asks for the PIN. The inbox masks
+a PIN in every text it stores («ok ••••»); the session's transcript, Claude
+Code's own file, keeps it: the declared limit of a fixed PIN. The
 `UserPromptSubmit` hook saves every prompt in the session's inbox, delivered,
 pruned after a day (the rest of the box after seven, since 23/10/2026: «ok 7
 giorno per supervisor»), with the origin the transcript gives it. Claude Code

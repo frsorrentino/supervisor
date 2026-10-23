@@ -257,7 +257,7 @@ def record_person_prompt(p):
     try:
         ib = inbox()
         now = time.time()
-        mine = " ".join(text.split())
+        mine = " ".join(ib.mask_pin(text).split())   # i record sono mascherati («ok ••••»)
         d = ib.box(name)
         stale = []   # i prompt precedenti ancora «unverified»: la loro riga user ormai c'e'
         for f in d.glob("*.json"):
