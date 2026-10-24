@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.60 — 2026-10-24: the questions of MCP servers reach the phone (contract 1.83).**
+  - Approved by the maintainer at 15:28 (proposal of 24/10 on MCP Tasks and Elicitation, part 1): a session that gets a question from an MCP server (elicitation) stayed stuck until someone came back to the terminal.
+  - A new `Elicitation` hook, on every server: with a paired phone and `hooks.elicitation.enabled` (on by default) the question goes to the app and the hook waits up to `hooks.elicitation.wait_s` (120 s, at most 140); the answer from the phone goes back to the server. The fields come from the schema: an `enum` (or `oneOf` with `const`) is one button per value, a boolean Yes/No, text and numbers a field to type in. No paired phone, the setting off, a schema the phone cannot show (arrays, objects, more than 8 fields) or no answer in time → the hook prints nothing and the dialog appears in the terminal as before. Nothing answers by itself: only an answer from a paired device, through the relay (origin `relay`), checked against the fields. A sign-in link (mode `url`) shows on the phone with the link; the dialog stays in the terminal. `ElicitationResult` (an answer given in the terminal) removes the card.
+  - Contract 1.83: `/state.elicitations` (`{id, session, server, message, mode, url | fields, asked_at, expires_at}`, absent when empty), the event `elicitation`, the op `elicit {arg: id, action, content}` with its results and refusals. Fixtures: `state-*` (ops), `state-2-idle.json` (a form with the four kinds and a link), `events-sample.json`, `cmd-result-sample.json` (one accepted, two refused), `local-api.json` (the event in `/api/events`).
+  - Tried live on Claude Code 2.1.310 with a fake MCP server: form answered through the op `elicit` (a wrong value refused first), the server got the values; the url card written while the terminal showed the dialog.
+  - Tests: elicit-verify E1-E5 (new), R70; R3, R60, R61, R64 adjusted.
 - **0.8.59 — 2026-10-24: one transcript, one night job.**
   - Found regenerating the night report of 24/10 for supervisor-app: two jobs in a row in the same folder (02:33-02:43 and 02:43:21-02:43:33) both got the second one's conversation as `session_id`, through the 2-minute slack that ties a `claude -p` transcript to its job. Each transcript now goes to the job that fits it best; a job without its own transcript has no `session_id`. Test NR-S2.
 - **0.8.58 — 2026-10-24: `relay pair --revoke UID`.**

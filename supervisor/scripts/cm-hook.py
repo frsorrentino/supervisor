@@ -2,6 +2,7 @@
 """Hook di sessione di supervisor: un solo script, un evento per invocazione.
 
     cm-hook.py SessionStart | SessionEnd | UserPromptSubmit | Stop | StopFailure | PermissionRequest
+               | Elicitation | ElicitationResult
 
 Legge il payload JSON dell'hook da stdin (session_id, cwd, transcript_path, ...)
 e fa POCO, in fretta: ogni evento e' un processo in piu' per ogni turno di ogni
@@ -23,6 +24,9 @@ sessione. Tutto cio' che scrive sta in `state_dir`:
   UNA con {"decision":"block","reason":...} (E5) — con tetto per turno e scadenza,
   mai un loop.
 - StopFailure: ledger + il riavvio armato resta visibile come fallito.
+- Elicitation (24/10/2026, contratto 1.83): la domanda di un server MCP va al telefono (cm-elicit.py) e l'hook aspetta
+  la risposta fino a `hooks.elicitation.wait_s`; senza telefono, spenta o senza risposta → niente in uscita e il
+  dialogo nel terminale. ElicitationResult (risposta data al terminale) toglie la scheda.
 
 Windows nativo (test del 27/09/2026): niente tmux, niente /proc, i .sh non si eseguono da Python. Ogni evento esce
 subito con 0 PRIMA di caricare la config; solo il primo SessionStart su quella macchina dice, in una riga, che serve
@@ -414,6 +418,13 @@ def inbox():
     return mod
 
 
+def elicit_mod():
+    spec = importlib.util.spec_from_file_location("cm_elicit", HERE / "cm-elicit.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def main(argv):
     ev = argv[0] if argv else ""
     p = payload()
@@ -476,6 +487,15 @@ def main(argv):
         ledger("waiting", p, tool=p.get("tool_name", ""))
         ask_notify(p)
         relay_push()
+    elif ev == "Elicitation":
+        el = elicit_mod()
+        out, outcome = el.hook(p, STATE, CFG["hooks"].get("elicitation") or {}, CFG.get("relay") or {}, my_tmux_name(), relay_push)
+        ledger("elicitation", p, server=str(p.get("mcp_server_name") or "")[:80], mode=p.get("mode") or "form", outcome=outcome)
+        if out:
+            sys.stdout.write(out + "\n")
+    elif ev == "ElicitationResult":
+        if sid and elicit_mod().clear_session(STATE, sid):
+            relay_push()
     elif ev == "PostToolUse":
         # il tool e' partito: la domanda o il permesso hanno avuto risposta (tastiera, telefono o polso) → via il flag e
         # un push, cosi' l'orologio chiude la domanda in pochi secondi (14/09, dall'app: restava aperta fino a fine turno).

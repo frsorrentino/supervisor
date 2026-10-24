@@ -374,6 +374,10 @@
       "synth_model": "haiku",
       "synth_max_chars": 88,
       "synth_timeout_s": 20
+    },
+    "elicitation": {
+      "enabled": true,
+      "wait_s": 120
     }
   },
   "shell": {

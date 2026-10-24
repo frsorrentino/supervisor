@@ -25,6 +25,7 @@ R6   relay serve: SSE su /cmd, i sette op del contratto eseguiti via dispatcher 
      RTDB giù → riconnessione; status/ensure/install/uninstall/off; install e pair rifiutati senza crontab (esce 5)
 R7   cm-hook.py: waiting/<sid> in JSON con tool_input; PermissionRequest/Stop/SessionStart/SessionEnd → push
      --async (relay abilitata); disabilitata → niente; bot follow/unfollow → push
+R70  (1.83) le domande dei server MCP: /state.elicitations, l'evento elicitation, l'op elicit (il resto in elicit-verify)
 """
 import base64
 import fcntl
@@ -366,6 +367,7 @@ SRC2["commitments"] = F2["commitments"]   # 1.76
 # 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
 SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
                       "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"]}]
+SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP passano a /state cosi' come sono
 st2 = S.build_state(SRC2, 1789214400)
 T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
 SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "ledger": [], "questions": {},
@@ -463,7 +465,7 @@ ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
 ev, seq = S.events_between(F2, F1, 1789210800, 1)
 T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
 ev2, _ = S.events_between(F1, F2, 1789214400, 1)
-T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone)", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes")] and ev2[1]["title"] == "ledger-api", str(ev2))
+T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone); 1.83: the two MCP questions of state-2", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes"), ("elicitation", "atlas-shop"), ("elicitation", "atlas-shop")] and ev2[1]["title"] == "ledger-api", str(ev2))
 q_prev = {"sessions": [F1["sessions"][0]], "quota": {"personal": {"h5": 90, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
 q_cur = {"sessions": [dict(F1["sessions"][0], question=None)], "quota": {"personal": {"h5": 96, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
 ev3, _ = S.events_between(q_prev, q_cur, 1789210900, 7)
@@ -1570,6 +1572,38 @@ T.check("R69 (1.82) night-report-sample: session_id on a closed session (atlas-s
         {(t["kind"], t["id"]): t.get("session_id") for t in _nr69["timeline"] if "session_id" in t} == {("session", "atlas-shop"): CMDS[80]["sid"], ("night_job", "e5f6a7b8"): "7d2a9e14-58c3-4b6f-8e01-3a9c4f2b6d18"}
         and all(t.get("session_id", "x") is not None for t in _nr69["timeline"]), "")
 (_d69 / f"{CMDS[80]['sid']}.jsonl").unlink()   # la ricerca e la cronologia (R25, R27) leggono tutte le trascrizioni
+# R70 (1.83, 24/10, le domande dei server MCP sul telefono): /state.elicitations, l'evento elicitation, l'op elicit
+_prev70 = {k: v for k, v in st2.items() if k != "elicitations"}
+_ev70, _ = S.events_between(_prev70, st2, 1789214300)
+_fx70 = [e for e in json.loads((FIX / "events-sample.json").read_text()) if e["kind"] == "elicitation"]
+T.check("R70 (1.83) a new question of an MCP server → one elicitation event each (title the server, body the question, ref its id), the first as in events-sample; no event when it was already there",
+        [e for e in _ev70 if e["kind"] == "elicitation"][:1] == _fx70 and [e["ref"] for e in _ev70] == ["e-4f1c2a9b7d30", "e-9a0b1c2d3e4f"]
+        and S.events_between(st2, st2, 1789214400)[0] == [], str(_ev70))
+T.check("R70 (1.83) without questions there is no elicitations field; fit_state never drops them; ops carries elicit",
+        "elicitations" not in S.build_state(dict(SRC2, elicitations=[]), 1789214400) and S.build_state(dict(SRC2, state_max_kb=1), 1789214400)["elicitations"] == F2["elicitations"]
+        and "elicit" in R_OPS and "elicit" not in RL.PASSIVE_OPS, "")
+_eld70 = state_dir / "elicit"
+_eld70.mkdir(parents=True, exist_ok=True)
+_now70 = int(time.time())
+for _e70 in F2["elicitations"]:
+    _r70 = dict(_e70, session="atlas-shop", session_id="sid-unknown", asked_at=_now70, expires_at=_now70 + 120)
+    (_eld70 / f"{_e70['id']}.json").write_text(json.dumps(_r70))
+(_eld70 / "e-0ld000000000.json").write_text(json.dumps(dict(_r70, id="e-0ld000000000", expires_at=_now70 - 5)))
+_d70 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R70 (1.83) push: the open questions from state/elicit, oldest first, with the state's session name and without session_id; an expired one is deleted",
+        [(e["id"], e["session"], e["mode"]) for e in _d70.get("elicitations") or []] == [("e-4f1c2a9b7d30", "atlas-shop", "form"), ("e-9a0b1c2d3e4f", "atlas-shop", "url")]
+        and all("session_id" not in e for e in _d70["elicitations"]) and (_d70["elicitations"] or [{}])[0].get("fields") == F2["elicitations"][0]["fields"]
+        and not (_eld70 / "e-0ld000000000.json").exists(), str(_d70.get("elicitations")))
+r70b = send_cmd(CMDS[83])
+r70a = send_cmd(CMDS[82])
+r70c = send_cmd(CMDS[84])
+_ans70 = json.loads((_eld70 / "e-4f1c2a9b7d30.answer.json").read_text()) if (_eld70 / "e-4f1c2a9b7d30.answer.json").exists() else {}
+T.check("R70 (1.83) elicit accept with valid values → «answered <server> (<id>)» as in the fixture and the answer file with origin relay for the hook; a value not among the options and a link → refused as in the fixture",
+        r70a and r70a["ok"] is True and r70a["text"] == RES[82]["text"] and r70b and r70b["ok"] is False and r70b["text"] == RES[83]["text"]
+        and r70c and r70c["ok"] is False and r70c["text"] == RES[84]["text"]
+        and _ans70.get("origin") == "relay" and _ans70.get("action") == "accept" and _ans70.get("content") == CMDS[82]["content"] and _ans70.get("by") == "phone-pixel8",
+        str((r70a, r70b, r70c, _ans70)))
+shutil.rmtree(_eld70)
 rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"started_at": 1789200000000}})
 _two31 = json.loads(alive.read_text())
 _two31.append(dict(_two31[2], pid=10, name="field-notes-2", tmux="field-notes-2", started_at=1789210000000, link=""))
@@ -3328,7 +3362,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-2] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-3] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3355,9 +3389,9 @@ try:
     _cut64 = json.loads(RL.done_list(None)[1])
 finally:
     RL.run_cm = _rc64
-T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, last in ops, absent from /state; the fixtures carry it last",
+T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops (1.83: elicit after it), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-1] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-1] == "done" for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-2] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-2:] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -3457,7 +3491,7 @@ finally:
 T.check("R61 (1.75) published_cached: a fresh copy of today is served as is with no recount; one from another day gives [] and one detached `published-refresh`, not two at once",
         _c1 == _it61 and _n1 == 0 and _c2 == [] and _c3 == [] and len(_spawn61) == 1 and _spawn61[0][-1] == "published-refresh", str((_c1, _c2, _spawn61)))
 _pub61 = F2["published_today"]
-_big61 = S.build_state(dict(SRC2, published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
+_big61 = S.build_state(dict(SRC2, elicitations=[], published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
 T.check("R61 (1.75) /state carries at most 30 published items, and fit_state cuts them to the 10 most recent before touching projects or sessions",
         len(S.build_state(dict(SRC2, published_today=[_pub61[0]] * 40), 1789214400, fit=False)["published_today"]) == 30
         and [x["at"] for x in _big61["published_today"]] == [1789214000 - i for i in range(10)] and _big61["sessions"] == st2["sessions"]
@@ -3481,9 +3515,9 @@ _ev62 = [e for e in EV if e["kind"] == "task_stalled"]
 T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
 _small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
-_big62 = S.build_state(dict(SRC2, approvals=[], commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
+_big62 = S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
-        len(S.build_state(dict(SRC2, approvals=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
+        len(S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
         and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == st2["sessions"] and _big62["projects"] == st2["projects"]
         and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
 # R68 (23/10 23:42, supervisor-app: «win:bluey» nello stato, «win-bluey» nel registro): dentro lo stato vale il nome dello stato

@@ -160,7 +160,8 @@
     "diff",
     "studio",
     "nights",
-    "done"
+    "done",
+    "elicit"
   ],
   "slash": [
     "compact",
@@ -341,6 +342,73 @@
       "check": null,
       "paused": null,
       "stalled": false
+    }
+  ],
+  "elicitations": [
+    {
+      "id": "e-4f1c2a9b7d30",
+      "session": "atlas-shop",
+      "server": "issue-tracker",
+      "message": "Which project should the issue go to?",
+      "mode": "form",
+      "asked_at": 1789214300,
+      "expires_at": 1789214420,
+      "fields": [
+        {
+          "key": "project",
+          "title": "Project",
+          "required": true,
+          "kind": "choice",
+          "options": [
+            {
+              "value": "DOCS",
+              "label": "Documentation"
+            },
+            {
+              "value": "SHOP",
+              "label": "Shop"
+            },
+            {
+              "value": "OPS",
+              "label": "Operations"
+            }
+          ]
+        },
+        {
+          "key": "urgent",
+          "title": "Urgent",
+          "required": false,
+          "kind": "boolean",
+          "default": false
+        },
+        {
+          "key": "title",
+          "title": "Title",
+          "required": true,
+          "description": "One line for the issue list",
+          "kind": "text",
+          "min_length": 3,
+          "max_length": 80
+        },
+        {
+          "key": "estimate",
+          "title": "Estimate (points)",
+          "required": false,
+          "kind": "integer",
+          "min": 1,
+          "max": 13
+        }
+      ]
+    },
+    {
+      "id": "e-9a0b1c2d3e4f",
+      "session": "atlas-shop",
+      "server": "figma",
+      "message": "Sign in to Figma to read the checkout frames",
+      "mode": "url",
+      "asked_at": 1789214350,
+      "expires_at": 1789214470,
+      "url": "https://www.figma.com/oauth?client_id=demo"
     }
   ]
 }

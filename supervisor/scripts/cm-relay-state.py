@@ -638,6 +638,11 @@ def build_state(src, now, fit=True):
     att += [dict(x, session=canon_session(x.get("session"), src.get("rows")), closes="check" if x.get("kind") == "task_red" else "prompt") for x in (src.get("attention") or [])]
     if att:
         state["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
+    # 1.83 (24/10): le domande dei server MCP che aspettano il telefono ({id, session, server, message, mode, url |
+    # fields, asked_at, expires_at}), dalla piu' vecchia; l'app risponde con l'op elicit. Assente quando non ce ne sono;
+    # fit_state non le tocca mai, come la domanda di una sessione
+    if src.get("elicitations"):
+        state["elicitations"] = [dict(e, session=canon_session(e.get("session"), src.get("rows"))) for e in src["elicitations"]]
     # 1.64: le cartelle madri ammesse per un progetto nuovo dal telefono (op project_new); assente = relay precedente
     if src.get("project_parents"):
         state["project_parents"] = list(src["project_parents"])
@@ -786,7 +791,7 @@ def _hm(ts):
 
 def events_between(prev, cur, now, seq=1, warn_pct=95):
     """Gli eventi dal diff di due stati (forma di events-sample.json): question (domanda nuova), answered
-    (domanda sparita), outcome (esito nuovo o cambiato), gone (sessione sparita o passata a gone), launched
+    (domanda sparita), elicitation (1.83: domanda nuova di un server MCP), outcome (esito nuovo o cambiato), gone (sessione sparita o passata a gone), launched
     (sessione nuova non gone), quota (soglia warn_pct attraversata). Torna (eventi, prossimo seq)."""
     out = []
     pv, cv = _by_name(prev), _by_name(cur)
@@ -820,6 +825,11 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
     for name, p in pv.items():
         if name not in cv and p["state"] != "gone":
             add("gone", p, name, "")
+    # 1.83: una domanda di un server MCP nuova → l'avviso (titolo il server, testo la domanda, ref il suo id)
+    old_el = {e.get("id") for e in (prev or {}).get("elicitations") or []}
+    for e in (cur or {}).get("elicitations") or []:
+        if e.get("id") not in old_el:
+            add("elicitation", cv.get(e.get("session")), e.get("server") or "?", e.get("message") or (e.get("url") or ""), e.get("id"))
     for acc, q in (cur or {}).get("quota", {}).items():
         pq = ((prev or {}).get("quota") or {}).get(acc) or {}
         for k, label in (("h5", "5 h"), ("w7", "settimana")):

@@ -243,6 +243,9 @@ DEFAULTS = {
         "restart_stop": {"enabled": True},
         "session_kernel": {"enabled": True},
         "ask_notify": {"enabled": True, "delay_s": 1.5, "synth_model": "haiku", "synth_max_chars": 88, "synth_timeout_s": 20},
+        # 24/10/2026 (contratto 1.83): le domande dei server MCP sul telefono; vale solo con un telefono accoppiato.
+        # wait_s = quanto l'hook aspetta la risposta prima di lasciare la domanda al terminale (l'hook ha 150 s)
+        "elicitation": {"enabled": True, "wait_s": 120},
     },
     "shell": {
         "wrappers": {"claude": "default"},

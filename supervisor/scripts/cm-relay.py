@@ -73,7 +73,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1092,6 +1092,7 @@ def collect_sources(now=None):
         "changes": changes_pills(rows, ledger, now),   # 1.72
         "hosts_status": hosts_status(rows, now), "published_today": published_cached(now),   # 1.75
         "commitments": commitments_list(),   # 1.76
+        "elicitations": elicitations_list(rows, now),   # 1.83
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1202,6 +1203,26 @@ def approvals_list():
             a["options"] = [S.one_line(str(o))[:24] for o in opts[:4]]
         out.append(a)
     return sorted(out, key=lambda a: (a["requested_at"] or 0, a["task"] or ""))
+
+
+def elicitations_list(rows, now):
+    """1.83 (24/10): le domande aperte dei server MCP (cm-elicit.py, scritte dall'hook Elicitation), con il nome della
+    sessione dello stato: dal session_id del registro, altrimenti il nome tmux scritto dall'hook."""
+    el = _load("cm-elicit")
+    name = lambda r: S.short_name(r.get("name") or r.get("tmux") or "", prefixes())  # noqa: E731 — come build_session
+    by_sid = {r.get("session_id"): name(r) for r in rows or [] if r.get("session_id")}
+    by_tm = {r.get("tmux"): name(r) for r in rows or [] if r.get("tmux")}
+    return [el.for_state(r, by_sid.get(r.get("session_id")) or by_tm.get(r.get("session")) or r.get("session") or None)
+            for r in el.pending(cm.expand(CFG["state_dir"]), int(now))]
+
+
+def elicit_answer(cmd, arg):
+    """1.83 (24/10): la risposta del telefono a una domanda di un server MCP — `arg` = l'id, `action` accept|decline|
+    cancel, `content` i valori per chiave. Solo dai dispositivi accoppiati e dalla web app locale, come ogni op: il
+    file di risposta porta origine «relay» e l'hook della sessione la passa al server."""
+    ok, key, kw = _load("cm-elicit").answer(cm.expand(CFG["state_dir"]), arg, cmd.get("action"), cmd.get("content"),
+                                            cmd.get("by"), cmd.get("device"), int(time.time()))
+    return ok, M("relay." + key, **kw)
 
 
 def commitments_list():
@@ -3859,6 +3880,8 @@ def execute(cmd):
             return slash_send(cmd, session, tm, arg)
         if op == "approve":
             return approve_task(cmd, arg)
+        if op == "elicit":   # 1.83
+            return elicit_answer(cmd, arg)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

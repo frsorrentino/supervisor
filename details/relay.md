@@ -389,6 +389,43 @@ Fixtures: `night-report-sample.json` (a closed session and a night job with
 `session_id`), `cmd-result-sample.json` (a `transcript` with `sid`, one
 refused).
 
+Contract 1.83 (24/10/2026, the maintainer approved the proposal of 24/10:
+«le domande dei server MCP sul telefono»): an MCP server that asks for input in
+the middle of a tool call (elicitation) reaches the phone. The plugin's
+`Elicitation` hook (every server) writes the question to
+`<state_dir>/elicit/<id>.json` and waits up to `hooks.elicitation.wait_s`
+(120 s, at most 140; the hook has 150): `/state.elicitations` lists the open
+ones, oldest first — `{id, session, server, message, mode, asked_at,
+expires_at}` plus `url` (mode `url`) or `fields` (mode `form`) — and the event
+`elicitation` (title the server, body the question, ref the id) rings the
+phone. A field is `{key, title, required, kind}` with `kind` one of `choice`
+(`options` `[{value, label}]`, one button each: from `enum`, `enumNames` or
+`oneOf` with `const`), `boolean` (Yes/No), `text` (`min_length`,
+`max_length`, `format` email | uri | date | date-time), `number` or `integer`
+(`min`, `max`); `description` and `default` when the schema has them. The new
+op `elicit {arg: id, action: accept | decline | cancel, content: {key:
+value}}` answers: the relay checks the values against the fields and writes
+`<id>.answer.json` with origin `relay`; the hook passes it to Claude Code
+(`hookSpecificOutput` with the action and the content). Results: «answered
+<server> (<id>)», «declined …», «cancelled …»; refused: «<id>: no question
+waiting» (unknown, expired or answered), «<id>: <server> asks to open a link,
+answer in the terminal», «<id>: <key> is required», «<id>: <key> must be one
+of A, B», «… must be true or false», «… must be a number», «… must be a
+whole number», «… must be between X and Y», «… must be X to Y characters»,
+«<id>: no field <key>», «<id>: already answered». Nothing answers by itself:
+no standing ok, no default filled in. The question stays in the terminal —
+no output from the hook — without a paired device, with
+`hooks.elicitation.enabled` false, with a schema the phone cannot show (an
+array, an object, more than 8 fields, more than 12 options) and when nobody
+answers in time; then the card disappears. Mode `url` (a sign-in in the
+browser): the card shows the link, the hook does not wait and the dialog
+stays; `ElicitationResult` (an answer given in the terminal) removes the
+session's cards, otherwise they lapse at `expires_at`. Fixtures:
+`state-2-idle.json` (a form with the four kinds and a link),
+`events-sample.json` (an `elicitation` event), `cmd-result-sample.json` (an
+`elicit` accepted, two refused). Without 1.83 the app works as before: the
+field and the event are additive.
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

@@ -77,8 +77,9 @@ hooks = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
 cmds = [h["command"] for groups in hooks.values() for g in groups for h in g["hooks"]]
 cm = [c for c in cmds if "cm-hook.py" in c]
 # SessionEnd passa da detach.sh, che lancia py.sh staccato (2.1.287: 1,5 s per tutti gli hook di session.end)
+# 24/10/2026 (1.83): nove con Elicitation ed ElicitationResult
 T.check("P5 every cm-hook.py hook runs through scripts/py.sh (SessionEnd through detach.sh, which runs py.sh)",
-        len(cm) == 7 and all(c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" ')
+        len(cm) == 9 and all(c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" ')
                              or (c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/detach.sh" ') and c.endswith(" SessionEnd"))
                              for c in cm)
         and 'py.sh' in (T.SCRIPTS / "detach.sh").read_text(), json.dumps(cm)[:400])

@@ -741,6 +741,46 @@
       "arg": "20",
       "issued": 1789211810,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0830-4000-8000-000000000830",
+      "op": "elicit",
+      "session": "atlas-shop",
+      "arg": "e-4f1c2a9b7d30",
+      "action": "accept",
+      "content": {
+        "project": "SHOP",
+        "urgent": true,
+        "title": "Checkout total ignores the gift card",
+        "estimate": 3
+      },
+      "device": "phone",
+      "issued": 1789214360,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0831-4000-8000-000000000831",
+      "op": "elicit",
+      "session": "atlas-shop",
+      "arg": "e-4f1c2a9b7d30",
+      "action": "accept",
+      "content": {
+        "project": "BLOG",
+        "title": "Checkout total ignores the gift card"
+      },
+      "device": "phone",
+      "issued": 1789214355,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0832-4000-8000-000000000832",
+      "op": "elicit",
+      "session": "atlas-shop",
+      "arg": "e-9a0b1c2d3e4f",
+      "action": "decline",
+      "device": "phone",
+      "issued": 1789214365,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1240,6 +1280,24 @@
       "ok": false,
       "text": "no transcript for ffffffff-0000-4000-8000-000000000000",
       "at": 1789211811
+    },
+    {
+      "id": "6f1c2d3e-0830-4000-8000-000000000830",
+      "ok": true,
+      "text": "answered issue-tracker (e-4f1c2a9b7d30)",
+      "at": 1789214361
+    },
+    {
+      "id": "6f1c2d3e-0831-4000-8000-000000000831",
+      "ok": false,
+      "text": "e-4f1c2a9b7d30: project must be one of Documentation, Shop, Operations",
+      "at": 1789214356
+    },
+    {
+      "id": "6f1c2d3e-0832-4000-8000-000000000832",
+      "ok": false,
+      "text": "e-9a0b1c2d3e4f: figma asks to open a link, answer in the terminal",
+      "at": 1789214366
     }
   ]
 }
