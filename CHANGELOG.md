@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.59 — 2026-10-24: one transcript, one night job.**
+  - Found regenerating the night report of 24/10 for supervisor-app: two jobs in a row in the same folder (02:33-02:43 and 02:43:21-02:43:33) both got the second one's conversation as `session_id`, through the 2-minute slack that ties a `claude -p` transcript to its job. Each transcript now goes to the job that fits it best; a job without its own transcript has no `session_id`. Test NR-S2.
 - **0.8.58 — 2026-10-24: `relay pair --revoke UID`.**
   - Asked by the master at 09:46 (the device «Studio» no longer needed its key): a paired device could be removed only from the app (op `unpair`). `supervisor relay pair --revoke UID` does the same from the PC: the uid out of `/allowed` (the database stops answering it), `/seen` and `devices.json`; never the last device; an unknown uid exits 1. Test R33b.
 - **0.8.57 — 2026-10-24: every card of the night report opens its conversation (contract 1.82).**

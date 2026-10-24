@@ -469,4 +469,15 @@ _s2 = NR.scan(_pn, EVE, NOW)
 T.check("NR-N scan: five api-request lines with timestamps 40 minutes apart add no span (they are not the session's activity)",
         _s1["spans"] == _s2["spans"] and len(_s1["spans"]) == 1, str((_s1["spans"], _s2["spans"])))
 
+# NR-S2 (24/10, dal rapporto vero): due lavori di fila nella stessa cartella, ogni trascrizione a UN lavoro, il piu' vicino
+_j = [{"kind": "night_job", "id": "a", "project": os.path.realpath(nova), "start": 1000, "end": 1565},
+      {"kind": "night_job", "id": "b", "project": os.path.realpath(nova), "start": 1565, "end": 1577}]
+_r = [{"sid": "S-B", "project": str(nova), "spans": [[1571, 1575]], "events": []}, {"sid": "S-A", "project": str(nova), "spans": [[1010, 1560]], "events": []}]
+NR.job_sids(_r, _j)
+T.check("NR-S2 two jobs in a row in the same folder (the second starts when the first ends): each gets its own conversation, not the nearest one twice",
+        [x.get("session_id") for x in _j] == ["S-A", "S-B"], str(_j))
+_j2 = [{k: v for k, v in x.items() if k != "session_id"} for x in _j]
+NR.job_sids(_r[:1], _j2)
+T.check("NR-S2 only the second job's transcript exists → the first job has no session_id (never the neighbour's)", "session_id" not in _j2[0] and _j2[1].get("session_id") == "S-B", str(_j2))
+
 T.finish()

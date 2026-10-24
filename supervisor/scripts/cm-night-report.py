@@ -626,11 +626,21 @@ def session_items(rows, jobs, end):
 
 def job_sids(rows, jobs):
     """1.82: a ogni lavoro della coda l'id della conversazione del suo `claude -p` (la trascrizione della stessa
-    cartella dentro il suo intervallo, come of_job), se c'e'. Assente altrimenti, mai null."""
-    for j in jobs:
-        hit = [r for r in rows if r.get("sid") and of_job(r, [j])]
-        if hit:
-            j["session_id"] = max(hit, key=lambda r: (r.get("spans") or [[0, 0]])[-1][1])["sid"]
+    cartella dentro il suo intervallo, come of_job), se c'e'. Assente altrimenti, mai null. Ogni trascrizione va a UN
+    lavoro solo, quello che le sta piu' vicino: 24/10 due lavori di fila nella stessa cartella (02:33-02:43 e
+    02:43:21-02:43:33) prendevano entrambi la trascrizione del secondo, per la tolleranza di 2 minuti di of_job."""
+    best = {}
+    for r in rows:
+        if not r.get("sid") or not r.get("spans"):
+            continue
+        begin, end = r["spans"][0][0], r["spans"][-1][1]
+        fit = [(abs(j["start"] - begin) + abs((j["end"] or end) - end), i) for i, j in enumerate(jobs) if of_job(r, [j])]
+        if fit:
+            d, i = min(fit)
+            if i not in best or d < best[i][0]:
+                best[i] = (d, r["sid"])
+    for i, (_, sid) in best.items():
+        jobs[i]["session_id"] = sid
 
 
 # ------------------------------------------------------------------ schede
