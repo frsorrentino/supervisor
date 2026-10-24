@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.61 — 2026-10-24: the tasks waiting for an ok survive the cut of the state.**
+  - Seen by the maintainer on the phone at 18:22: two tasks waiting for an ok sat in the app's Lavori list instead of the card of their session. `task impegni` had 9 entries and `/state.commitments` 5: `fit_state` kept the first 5, stalled first, and five tasks paused or stalled for days pushed out the two waiting for an ok, so the app could not tie their approvals to a session.
+  - `fit_state` now keeps first the commitments with an ok in `approvals`, then the others, and drops the paused ones first; the kept ones stay in the registry's order (`keep_commitments`). No contract change.
+  - Test R71.
 - **0.8.60 — 2026-10-24: the questions of MCP servers reach the phone (contract 1.83).**
   - Approved by the maintainer at 15:28 (proposal of 24/10 on MCP Tasks and Elicitation, part 1): a session that gets a question from an MCP server (elicitation) stayed stuck until someone came back to the terminal.
   - A new `Elicitation` hook, on every server: with a paired phone and `hooks.elicitation.enabled` (on by default) the question goes to the app and the hook waits up to `hooks.elicitation.wait_s` (120 s, at most 140); the answer from the phone goes back to the server. The fields come from the schema: an `enum` (or `oneOf` with `const`) is one button per value, a boolean Yes/No, text and numbers a field to type in. No paired phone, the setting off, a schema the phone cannot show (arrays, objects, more than 8 fields) or no answer in time → the hook prints nothing and the dialog appears in the terminal as before. Nothing answers by itself: only an answer from a paired device, through the relay (origin `relay`), checked against the fields. A sign-in link (mode `url`) shows on the phone with the link; the dialog stays in the terminal. `ElicitationResult` (an answer given in the terminal) removes the card.

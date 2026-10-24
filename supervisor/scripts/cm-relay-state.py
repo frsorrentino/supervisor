@@ -690,6 +690,20 @@ def most_recent(projects, n):
     return [p for p in projects if id(p) in keep]
 
 
+def keep_commitments(state, n):
+    """Gli impegni che restano quando fit_state li taglia a n, nell'ordine del registro (fermi prima, poi per
+    inattivita'). 24/10 (dal telefono del maintainer: due ok in Lavori invece che nella scheda della loro sessione): il taglio
+    teneva i primi n, e cinque compiti in pausa o fermi da giorni spingevano fuori i due che aspettavano un ok,
+    cosi' approvalsOf dell'app non trovava la loro sessione. Ora restano prima quelli con un ok in `approvals`, poi gli
+    altri; i pausati cadono per primi."""
+    cms = state.get("commitments") or []
+    if len(cms) <= n:
+        return
+    asked = {a.get("task") for a in state.get("approvals") or []}
+    rank = lambda i: (0 if cms[i].get("task") in asked else 2 if cms[i].get("paused") else 1, i)
+    state["commitments"] = [cms[i] for i in sorted(sorted(range(len(cms)), key=rank)[:n])]
+
+
 def fit_state(state, max_kb=8):
     """Sotto il tetto, togliendo in ordine: le sessioni finite piu' vecchie (restano le KEEP_GONE piu' recenti);
     i progetti oltre i primi dieci; `done` e `next` del recap a RECAP_CUT caratteri, a fine parola; `full` degli
@@ -714,8 +728,8 @@ def fit_state(state, max_kb=8):
         state["published_today"] = state["published_today"][:PUBLISHED_FIT]
         if fits():
             return state
-    if len(state.get("commitments") or []) > COMMITMENTS_FIT:   # 1.76: i fermi e i piu' fermi restano
-        state["commitments"] = state["commitments"][:COMMITMENTS_FIT]
+    if len(state.get("commitments") or []) > COMMITMENTS_FIT:   # 1.76; 24/10: prima quelli con un ok da dare
+        keep_commitments(state, COMMITMENTS_FIT)
         if fits():
             return state
     state["projects"] = most_recent(state["projects"], 10)
@@ -750,7 +764,7 @@ def fit_state(state, max_kb=8):
         if fits():
             return state
     if state.get("commitments"):
-        state["commitments"] = state["commitments"][:5]
+        keep_commitments(state, 5)
         if fits():
             return state
     while not fits() and len(items) > 1:

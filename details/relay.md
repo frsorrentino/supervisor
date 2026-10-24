@@ -255,7 +255,8 @@ carries `commitments`, the task registry's view (`supervisor task impegni
 --json`): every open task with a recorded ok or an approved plan, plus the
 ones waiting for an ok, stalled first, then by idle time; absent with an older
 relay, `[]` when there is nothing, cut to 10 then 5 by `fit_state` before
-projects and sessions. Each entry: `task`, `title`, `project` (as
+projects and sessions; the cut keeps first the tasks with an ok in
+`approvals`, drops the paused ones first and leaves the rest in this order. Each entry: `task`, `title`, `project` (as
 `sessions[].project`), `session` (who works on it, or null), `state`
 (`proposed|assigned|running|awaiting_ok|approved`), `lane`, `plan`,
 `approved`, `approved_at`, `approved_by`, `age_s` (since the ok, or since the

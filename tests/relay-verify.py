@@ -3565,4 +3565,16 @@ T.check("R65 (1.79) agenda rows carry `short`: column 8 when written, else deriv
         [r["short"] for r in _rows65] == ["Client ids to confirm", "Move the docs site"] and _set65[0] is True and json.loads(_set65[1])["row"]["short"] == "Client ids to confirm"
         and _ag65.read_text().splitlines()[1].endswith("\tClient ids to confirm"), str(_rows65) + str(_set65))
 
+# R71 (24/10, dal telefono del maintainer: due ok in Lavori invece che nella scheda della loro sessione): nel taglio restano prima
+# gli impegni con un ok da dare, poi gli altri; i pausati cadono per primi; l'ordine resta quello del registro
+_p71 = {"at": 1789210000, "reason": "r"}
+_cm71 = [dict(_small62, task=f"p-{i}", paused=_p71) for i in range(4)] + [dict(_small62, task=t) for t in ("run-1", "ok-a", "run-2", "ok-b")]
+_st71 = {"commitments": [dict(x) for x in _cm71], "approvals": [{"task": "ok-b"}, {"task": "ok-a"}]}
+S.keep_commitments(_st71, 5)
+_st71b = {"commitments": [dict(x) for x in _cm71], "approvals": []}
+S.keep_commitments(_st71b, 3)
+T.check("R71 (24/10) the cut keeps first the commitments with an ok to give, then the others; the paused ones fall first; the registry's order stays",
+        [x["task"] for x in _st71["commitments"]] == ["p-0", "run-1", "ok-a", "run-2", "ok-b"] and [x["task"] for x in _st71b["commitments"]] == ["run-1", "ok-a", "run-2"],
+        str(([x["task"] for x in _st71["commitments"]], [x["task"] for x in _st71b["commitments"]])))
+
 T.finish()
