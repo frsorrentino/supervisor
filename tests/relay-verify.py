@@ -3749,6 +3749,8 @@ try:
     RL._children = lambda pid: [(4243, "node")]
     _ok73 = RL.slash_send({"by": "phone-pixel8"}, "field-notes", "field-notes", "exit")
     _cl73 = RL.close_check("field-notes", [_row73])[0]
+    RL.last_sessions = lambda: {"field-notes": {"state": "idle", "outcome": {"short": "README rewritten"}, "next": "an old recap line", "next_steps": [{"text": "open the PR", "blocking": False}]}}
+    _cs73 = RL.close_check("field-notes", [dict(_row73, attached=False)])[0]
 finally:
     RL._json_cmd, RL.relay_talk, RL.slash_allowed, RL._children, RL.closed_dir, RL.last_sessions, RL.run_cm = (
         _sv73["json"], _sv73["talk"], _sv73["allowed"], _sv73["kids"], _sv73["cdir"], _sv73["last"], _sv73["run"])
@@ -3757,6 +3759,11 @@ T.check("R73 (1.84) /exit from the app: a shell among the claude process's child
         _bg73 == (False, "field-notes not closed: a job is running in the background") and _typed_bg73 == [] and _ok73[0] is True
         and [a[1] for a in _typed73] == ["/exit"] and _svf73.get("outcome") == "README rewritten" and _svf73.get("next") == "Open the PR" and _svf73.get("session_id") == "S-F"
         and _cl73["blocked_by"] == "attached" and _cl73["closable"] is False, str((_bg73, _ok73, _typed73, _svf73)))
+T.check("R73 (1.84) the save's next is the first step of the last outcome when there is one, else the recap's next",
+        _cs73["save"]["next"] == "open the PR" and _svf73.get("next") == "Open the PR", str(_cs73))
+_oc73 = S._outcome([{"event": "stop", "ts": iso(1789210000), "tail": "Release 0.8.62 published.\nProssimi: deposit · live test", "esito": ""}])
+T.check("R73 (24/10) without a Watch or Esito line the short outcome is the message's last line, never the «Prossimi:» line",
+        _oc73["short"] == "Release 0.8.62 published." and "Prossimi:" in _oc73["full"], str(_oc73))
 # needs-you --task: la richiesta va sulla sessione del compito, con task e from; senza sessione viva resta su chi chiede
 _db73 = tmp / "tasks73.db"
 os.environ["CM_TASKS_DB"] = str(_db73)

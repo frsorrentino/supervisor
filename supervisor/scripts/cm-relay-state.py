@@ -310,6 +310,9 @@ def _unbang(text):
     return "\n".join(re.sub(r"((?:^|·|:)\s*\**\s*`?)!+", r"\1", l) if NEXT_RE.match(strip_markdown(l)) else l for l in str(text).split("\n"))
 
 
+PROSSIMI_RE = re.compile(r"(?i)^\s*\W*\s*prossimi\s*:")
+
+
 def _outcome(events):
     stops = [r for r in events if r.get("event") == "stop"]
     if not stops:
@@ -319,7 +322,10 @@ def _outcome(events):
     esito = str(r.get("esito") or "")
     full_src = tail if esito and esito.splitlines()[0] in tail else (esito + ("\n" if esito and tail else "") + tail)
     full = _unbang(strip_markdown(without_watch(full_src)))[:600]
-    short = watch_line(str(r.get("watch") or "")) or watch_line(tail) or esito_line(esito) or esito_line(tail) or (full.splitlines() or [""])[-1]
+    # 24/10 (supervisor-app, prova della 1.84: lo stato salvato alla chiusura diceva «Prossimi: …»): senza riga Watch ne'
+    # Esito l'ultima riga del messaggio, ma mai quella dei seguiti
+    body = [ln for ln in full.splitlines() if ln.strip() and not PROSSIMI_RE.match(ln)]
+    short = watch_line(str(r.get("watch") or "")) or watch_line(tail) or esito_line(esito) or esito_line(tail) or (body or [""])[-1]
     out = {"short": short_of(short, SHORT_MAX), "full": full, "at": epoch(r.get("ts"))}
     # 1.60 (14/10, chiesto dall'app per la 1.56): l'esito e' l'ultimo messaggio della sessione e puo' contenere un segreto;
     # la notifica dell'esito usa preview {short, full}, presente solo quando c'era qualcosa da nascondere

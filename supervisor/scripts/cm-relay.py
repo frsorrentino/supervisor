@@ -1451,7 +1451,10 @@ def close_check(name, rows, allow_attached=False):
     out = {"name": name, "closable": why is None, "blocked_by": why}
     if why is None:
         n, dirty = git_dirty(row.get("cwd")) if not row.get("host") or row.get("host") == "local" else (None, None)
-        out["save"] = {"outcome": ((info.get("outcome") or {}).get("short")) or None, "next": info.get("next") or None,
+        # next: il primo seguito dell'ultimo esito (next_steps), altrimenti il prossimo del recap — 24/10: quello del
+        # recap poteva essere di giorni prima
+        steps = [x.get("text") for x in info.get("next_steps") or [] if x.get("text")]
+        out["save"] = {"outcome": ((info.get("outcome") or {}).get("short")) or None, "next": (steps[0] if steps else info.get("next")) or None,
                        "session_id": row.get("session_id") or None, "dirty_n": n, "dirty": dirty}
     else:
         out["save"] = None

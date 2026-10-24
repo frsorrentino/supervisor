@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.63 — 2026-10-24: the short outcome never is the «Prossimi:» line; the state saved at closing takes the outcome's next step.**
+  - Seen by supervisor-app in the live test of contract 1.84 at 21:24: `close_preview` would have saved as outcome «Prossimi: …» and as next an old line of the folder's recap. Without a Watch or Esito line the short outcome took the message's last line, which was the line of next steps; now it takes the last line that is not. The save's `next` is the first of the last outcome's next steps (`next_steps`) when there is one, else the recap's next as before.
+  - Tests R73.
 - **0.8.62 — 2026-10-24: the master's suggestions, today's quota per session, closing with the state saved (contract 1.84).**
   - Asked by supervisor-app after the maintainer chose «Tutto» at 19:46 on the mockup of the home page, with «bisogna accertarsi che quando si chiude una sessione l'ultimo stato sia stato salvato».
   - `supervisor suggest add|list|clear`: the master's suggestions (kinds recurring, cleanup, deadline, quota) in `/state.suggestions`, at most 6, newest first; the op `suggestion {arg: id, action: accept | later | never}` sends the prompt to the master («[dai suggerimenti]»), hides the item until the next round, or never proposes its key again.
