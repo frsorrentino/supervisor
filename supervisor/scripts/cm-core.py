@@ -228,14 +228,17 @@ def remote_events(row, window=1024 * 1024):
     return sorted(out, key=lambda e: e["ts"])
 
 
-def reopen(name, run=None):
+def reopen(name, run=None, saved=None):
     """Rilancia una sessione sparita (✗) nella sua cartella, con il suo account e senza finestra (dal telefono o dal
     polso non serve; 15/09, dall'orologio: una sessione chiusa non si poteva riprendere). La conversazione: `--resume
     <id>` se la fotografia del registro ha l'id e il suo transcript esiste (con un id inesistente claude apre una
     conversazione VUOTA senza errore); altrimenti `--continue`, ma solo se nella cartella non c'e' un'altra sessione
     viva, perche' -c prende l'ultima conversazione della cartella, che puo' essere quella dell'altra. Rifiuta se una
     sessione viva ha gia' quel nome. Torna (ok, codice, campi): i testi li sceglie chi chiama (bot.reopen_*,
-    relay.cmd_reopen_*). `run` e' il dispatcher di chi chiama: il relay ha il suo (CM_RELAY_CM)."""
+    relay.cmd_reopen_*). `run` e' il dispatcher di chi chiama: il relay ha il suo (CM_RELAY_CM). 24/10 (contratto 1.84):
+    `saved` e' il salvataggio della chiusura dall'app ({cwd, account, session_id}): vale anche fuori dalla fotografia
+    (`close` ne toglie la sessione), il suo session_id vince su quello del registro, e senza la sua trascrizione si
+    rifiuta (no_transcript) — mai --continue, che con due sessioni nella stessa cartella prende l'altra."""
     run = run or run_cm
 
     def _j(*args, expect):
@@ -251,9 +254,11 @@ def reopen(name, run=None):
     if any((r.get("tmux") or r.get("name")) == name for r in live):
         return False, "alive", {}
     s = next((x for x in (_j("registry", "--good", expect="{") or {}).get("sessioni", []) if x.get("nome") == name), None)
+    if not s and saved:
+        s = {"cartella": saved.get("cwd") or "", "account": saved.get("account") or ""}
     if not s:
         return False, "unknown", {}
-    cwd, acct, sid = s.get("cartella") or "", s.get("account") or "", s.get("session_id") or ""
+    cwd, acct, sid = s.get("cartella") or "", s.get("account") or "", (saved or {}).get("session_id") or s.get("session_id") or ""
     if not cwd or not os.path.isdir(cwd):
         return False, "no_dir", {"path": cwd or "?"}
     # --window esplicito (15/09, prova dal polso: la sessione ripartiva ma sul desktop non c'era): launch recupera il
@@ -261,6 +266,8 @@ def reopen(name, run=None):
     args = ["launch", cwd, "--window"] + (["--account", acct] if acct else [])
     if sid and transcript_of({"session_id": sid, "cwd": cwd, "account": acct}):
         args += ["--resume", sid]; code = "done"
+    elif saved:
+        return False, "no_transcript", {"sid": (sid or "?")[:8]}
     else:
         same = [r for r in live if _here(r)]
         if same:

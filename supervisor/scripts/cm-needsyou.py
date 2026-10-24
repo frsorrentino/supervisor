@@ -3,6 +3,7 @@
 
   supervisor needs-you "<cosa serve>" [--until "<comando>"] [--expires 2h]
                                           questa sessione e' ferma per te: login, un codice, un tasto, un file
+  supervisor needs-you "<cosa>" --task ID  la richiesta va sulla sessione del compito (24/10, contratto 1.84)
   supervisor needs-you --clear            non serve piu' (lo fa anche il prompt dopo, da solo)
 
 Per una cosa che solo la persona puo' fare. La sessione passa a «ferma per te» con il motivo: il relay la mette in
@@ -15,6 +16,11 @@ davvero e scompaiano quando non ci sono piu'»): con `--until "<comando>"` il re
 massimo una volta al minuto, 10 s di tempo, nella cartella di chi ha chiesto) e quando esce 0 toglie la voce e avvisa
 la sessione in casella; con `--expires 2h` (s, m, h, d; senza: 24 h) la voce scade da sola, con un avviso alla
 sessione. Dall'app il tasto «Fatto» (op attention_done) la chiude e avvisa la sessione.
+
+Legata a un compito (24/10/2026, contratto 1.84: la master chiede il codice di accoppiamento per un compito di
+win:ads-widget, ed e' win:ads-widget che deve passare in «Aspettano te»): con `--task ID` la voce va sulla sessione del
+compito (la sessione del registro, o `where.session` del contratto), con `task` e `from` (chi l'ha chiesta). Se il
+compito non ha una sessione viva resta su chi chiede, come prima, sempre con `task`.
 """
 import importlib.util
 import json
@@ -49,26 +55,28 @@ def parse_duration(text):
 
 
 def parse_args(argv):
-    """(parole del motivo, until, expires_s, errore). 17/10/2026: un'opzione sconosciuta e' un errore, non un motivo."""
-    words, until, expires, i = [], None, None, 0
+    """(parole del motivo, until, expires_s, task, errore). 17/10/2026: un'opzione sconosciuta e' un errore, non un motivo."""
+    words, until, expires, task, i = [], None, None, None, 0
     while i < len(argv):
         a = argv[i]
-        if a in ("--until", "--expires"):
+        if a in ("--until", "--expires", "--task"):
             if i + 1 >= len(argv):
-                return words, until, expires, M("needs_you.option_needs_value", opt=a)
+                return words, until, expires, task, M("needs_you.option_needs_value", opt=a)
             if a == "--until":
                 until = argv[i + 1].strip()
+            elif a == "--task":
+                task = argv[i + 1].strip()
             else:
                 expires = parse_duration(argv[i + 1])
                 if expires is None:
-                    return words, until, expires, M("needs_you.bad_expires", value=argv[i + 1])
+                    return words, until, expires, task, M("needs_you.bad_expires", value=argv[i + 1])
             i += 2
             continue
         if a.startswith("-") and a != "--clear":
-            return words, until, expires, M("needs_you.unknown_option", opt=a)
+            return words, until, expires, task, M("needs_you.unknown_option", opt=a)
         words.append(a)
         i += 1
-    return words, until, expires, None
+    return words, until, expires, task, None
 
 
 def own_row():
@@ -81,8 +89,38 @@ def own_row():
     return next((r for r in sessions.collect(read_screen=False) if (r.get("tmux") or r.get("name")) == name and r.get("session_id")), None)
 
 
+def task_session(tid):
+    """La sessione di un compito del registro (la colonna session, altrimenti where.session del contratto), o None;
+    False se il compito non c'e'."""
+    try:
+        tasks = _load("cm-tasks")
+        con = tasks.connect(create=False)
+    except Exception:   # noqa: BLE001 — registro rotto: come un compito sconosciuto
+        return False
+    if con is None:
+        return False
+    r = con.execute("SELECT session, contract FROM tasks WHERE id=?", (tid,)).fetchone()
+    if not r:
+        return False
+    try:
+        where = json.loads(r["contract"])["task"].get("where") or {}
+    except (ValueError, KeyError, TypeError):
+        where = {}
+    return r["session"] or where.get("session") or None
+
+
+def session_row(name):
+    """La riga viva (con session_id) di una sessione per nome tmux, nome o nome corto («win:x» e «win-x» valgono uguale)."""
+    sessions = _load("cm-sessions")
+    want = {name, name.replace(":", "-")}
+    for r in sessions.collect(read_screen=False):
+        if r.get("session_id") and r.get("status") != "dead" and ({r.get("tmux"), r.get("name"), str(r.get("tmux") or "").replace(":", "-")} & want):
+            return r
+    return None
+
+
 def main(argv):
-    words, until, expires, err = parse_args(argv)
+    words, until, expires, task, err = parse_args(argv)
     if err:
         print(err, file=sys.stderr)
         print(M("needs_you.usage"), file=sys.stderr)
@@ -99,13 +137,24 @@ def main(argv):
     if not reason:
         print(M("needs_you.usage"), file=sys.stderr)
         return 2
+    if task:
+        sess = task_session(task)
+        if sess is False:
+            print(M("needs_you.no_task", task=task), file=sys.stderr)
+            return 2
+        target = session_row(sess) if sess else None
+        asker = row.get("tmux") or row.get("name")
+        if target and (target.get("tmux") or target.get("name")) != asker:
+            return mark(target, reason, until=until, expires_s=expires, cwd=os.getcwd(), task=task, from_=asker)
+        return mark(row, reason, until=until, expires_s=expires, cwd=os.getcwd(), task=task)
     return mark(row, reason, until=until, expires_s=expires, cwd=os.getcwd())
 
 
-def mark(row, reason, until=None, expires_s=None, cwd=None):
+def mark(row, reason, until=None, expires_s=None, cwd=None, task=None, from_=None):
     """La sessione della riga e' ferma per la persona: il file, la casella della master e la push. Anche da fuori
     (21/10/2026: cm-resume-quota.py, per una sessione senza finestra ferma sull'avviso di ripresa). 23/10: `until`
-    (il comando che dice «fatto», lo prova il relay), `expires_s` (senza: un giorno), `cwd` (dove provarlo)."""
+    (il comando che dice «fatto», lo prova il relay), `expires_s` (senza: un giorno), `cwd` (dove provarlo). 24/10:
+    `task` (il compito a cui e' legata) e `from_` (la sessione che l'ha chiesta, quando non e' questa)."""
     d = Path(cm.expand(CFG["state_dir"])) / "needs-you"
     f = d / f"{row['session_id']}.json"
     d.mkdir(parents=True, exist_ok=True)
@@ -115,6 +164,10 @@ def mark(row, reason, until=None, expires_s=None, cwd=None):
     if until:
         rec["until"] = str(until)[:500]
         rec["cwd"] = str(cwd or "")
+    if task:
+        rec["task"] = str(task)[:120]
+    if from_:
+        rec["from"] = str(from_)[:120]
     f.write_text(json.dumps(rec, ensure_ascii=False))
     # la master lo sa in silenzio: un record gia' consegnato nella sua casella, e la riga del suo hook a ogni prompt
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
@@ -134,7 +187,7 @@ def mark(row, reason, until=None, expires_s=None, cwd=None):
             (rd / "hook").touch()
         except OSError:
             pass
-    print(M("needs_you.saved", name=name, reason=reason))
+    print(M("needs_you.saved", name=name, reason=reason) + (" " + M("needs_you.saved_for", task=task, by=from_) if from_ else ""))
     if until:
         print(M("needs_you.saved_until", cmd=rec["until"]))
     return 0

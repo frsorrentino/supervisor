@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.61-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.62-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -539,6 +539,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor timeline [NAME] [--since 6h] [--json] [--limit N]` | per session, in time order: prompts, tests with their summary, commits, «Esito:» lines, registry outcomes |
 | `supervisor render FILE.md\|- [--title T] [--meta M] [--out F]` | a Markdown summary as one HTML page with a fixed template, shown in the phone's chat under the command |
 | `supervisor recurring list\|add ID --label L --prompt P [--param]\|remove ID\|used ID` | the master's recurring actions, shown in the app's «Recurring» box, last used first |
+| `supervisor suggest add --kind K --key KEY --text T --prompt P [--ttl 12h]\|list\|clear [--kind K]` | the master's suggestions for the app's home page (recurring, cleanup, deadline, quota); «Never» from the app skips that key for good |
 
 ## Details
 

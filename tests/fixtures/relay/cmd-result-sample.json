@@ -781,6 +781,62 @@
       "device": "phone",
       "issued": 1789214365,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0840-4000-8000-000000000840",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-a41c7e2b90",
+      "action": "accept",
+      "device": "phone",
+      "issued": 1789214370,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0841-4000-8000-000000000841",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-0000000000",
+      "action": "later",
+      "device": "phone",
+      "issued": 1789214375,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0842-4000-8000-000000000842",
+      "op": "close_preview",
+      "session": null,
+      "arg": "field-notes,atlas-shop,ledger-api",
+      "device": "phone",
+      "issued": 1789214380,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0843-4000-8000-000000000843",
+      "op": "close",
+      "session": null,
+      "arg": "field-notes,atlas-shop",
+      "device": "phone",
+      "issued": 1789214385,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0844-4000-8000-000000000844",
+      "op": "close_preview",
+      "session": null,
+      "arg": "",
+      "device": "phone",
+      "issued": 1789214390,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0845-4000-8000-000000000845",
+      "op": "close",
+      "session": null,
+      "arg": "atlas-shop",
+      "device": "phone",
+      "issued": 1789214395,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1298,6 +1354,42 @@
       "ok": false,
       "text": "e-9a0b1c2d3e4f: figma asks to open a link, answer in the terminal",
       "at": 1789214366
+    },
+    {
+      "id": "6f1c2d3e-0840-4000-8000-000000000840",
+      "ok": true,
+      "text": "sent to master",
+      "at": 1789214371
+    },
+    {
+      "id": "6f1c2d3e-0841-4000-8000-000000000841",
+      "ok": false,
+      "text": "unknown suggestion",
+      "at": 1789214376
+    },
+    {
+      "id": "6f1c2d3e-0842-4000-8000-000000000842",
+      "ok": true,
+      "text": "{\"sessions\": [{\"name\": \"field-notes\", \"closable\": true, \"blocked_by\": null, \"save\": {\"outcome\": null, \"next\": null, \"session_id\": \"S-F\", \"dirty_n\": 3, \"dirty\": [\"docs/\", \"draft.txt\", \"notes.md\"]}}, {\"name\": \"atlas-shop\", \"closable\": false, \"blocked_by\": \"busy\", \"save\": null}, {\"name\": \"ledger-api\", \"closable\": false, \"blocked_by\": \"question\", \"save\": null}]}",
+      "at": 1789214381
+    },
+    {
+      "id": "6f1c2d3e-0843-4000-8000-000000000843",
+      "ok": true,
+      "text": "closed: field-notes\natlas-shop not closed: it is working",
+      "at": 1789214386
+    },
+    {
+      "id": "6f1c2d3e-0844-4000-8000-000000000844",
+      "ok": false,
+      "text": "close: no session given",
+      "at": 1789214391
+    },
+    {
+      "id": "6f1c2d3e-0845-4000-8000-000000000845",
+      "ok": false,
+      "text": "atlas-shop not closed: it is working",
+      "at": 1789214396
     }
   ]
 }

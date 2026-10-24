@@ -40,7 +40,14 @@
       "goal": null,
       "handoff": null,
       "finished": true,
-      "changes": null
+      "changes": null,
+      "needs_you": {
+        "reason": "Type the pairing code shown on the TV",
+        "at": 1789214200,
+        "expires_at": 1789221400,
+        "task": "atlas-tv-pairing",
+        "from": "master"
+      }
     }
   ],
   "quota": {
@@ -161,7 +168,10 @@
     "studio",
     "nights",
     "done",
-    "elicit"
+    "elicit",
+    "suggestion",
+    "close_preview",
+    "close"
   ],
   "slash": [
     "compact",
@@ -409,6 +419,72 @@
       "asked_at": 1789214350,
       "expires_at": 1789214470,
       "url": "https://www.figma.com/oauth?client_id=demo"
+    }
+  ],
+  "attention": [
+    {
+      "kind": "needs_you",
+      "session": "atlas-shop",
+      "ref": "atlas-shop",
+      "title": "Type the pairing code shown on the TV",
+      "since": 1789214200,
+      "closes": "prompt",
+      "expires_at": 1789221400
+    }
+  ],
+  "suggestions": [
+    {
+      "id": "s-a41c7e2b90",
+      "kind": "recurring",
+      "key": "recurring:night-report",
+      "text": "Last night's report is ready: 3 projects done, 1 in part",
+      "prompt": "Read me last night's report and tell me what is left",
+      "at": 1789207200,
+      "expires_at": 1789250400
+    },
+    {
+      "id": "s-5d0e2f9c13",
+      "kind": "cleanup",
+      "key": "cleanup:paused:orbit-docs-*",
+      "text": "Two orbit-docs tasks paused for 5 days: close them?",
+      "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone",
+      "at": 1789207190,
+      "expires_at": 1789250390
+    },
+    {
+      "id": "s-8b3f6a1d47",
+      "kind": "deadline",
+      "key": "deadline:ledger-invoice-2026-09",
+      "text": "The ledger-api invoice is due on Friday",
+      "prompt": "Prepare the September invoice for ledger-api",
+      "at": 1789207180,
+      "expires_at": 1789250380
+    }
+  ],
+  "usage_today": [
+    {
+      "session": "atlas-shop",
+      "account": "personal",
+      "tokens": 1840000,
+      "share": 0.62
+    },
+    {
+      "session": "master",
+      "account": "personal",
+      "tokens": 1130000,
+      "share": 0.38
+    },
+    {
+      "session": "ledger-api",
+      "account": "work",
+      "tokens": 960000,
+      "share": 0.97
+    },
+    {
+      "session": "orbit-docs",
+      "account": "work",
+      "tokens": 30000,
+      "share": 0.03
     }
   ]
 }

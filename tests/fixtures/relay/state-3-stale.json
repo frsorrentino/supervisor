@@ -3,7 +3,49 @@
   "ts": 1789200000,
   "published_at": 1789200001.5,
   "host": "crostini-demo",
-  "sessions": [],
+  "sessions": [
+    {
+      "id": "3d1b2c4e-0000-4000-8000-000000000004",
+      "name": "orbit-docs",
+      "account": "work",
+      "account_kind": "work",
+      "project": "work/own/orbit-docs",
+      "state": "gone",
+      "since": 1789199000,
+      "turn_started": null,
+      "tool": null,
+      "tool_note": null,
+      "link": "",
+      "attached": false,
+      "followed": false,
+      "question": null,
+      "outcome": null,
+      "next": null,
+      "next_at": null,
+      "model": null,
+      "effort": null,
+      "context": null,
+      "fallback": null,
+      "icon": null,
+      "color": null,
+      "low_priority": null,
+      "suggestion": null,
+      "goal": null,
+      "handoff": null,
+      "changes": null,
+      "closed": {
+        "at": 1789199000,
+        "session_id": "3d1b2c4e-0000-4000-8000-000000000004",
+        "outcome": "Pricing page draft ready for review",
+        "next": "Pick up the pricing page",
+        "dirty_n": 2,
+        "dirty": [
+          "src/pages/pricing.md",
+          "docs/notes.md"
+        ]
+      }
+    }
+  ],
   "quota": {
     "personal": {
       "h5": 0,
@@ -106,7 +148,10 @@
     "studio",
     "nights",
     "done",
-    "elicit"
+    "elicit",
+    "suggestion",
+    "close_preview",
+    "close"
   ],
   "slash": [
     "compact",

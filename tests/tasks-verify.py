@@ -360,6 +360,13 @@ c18b = json.loads(cm("closed", "--json", env=IT)[1])
 T.check("T18 days: the days before with at least one closed task, newest first, with the count; a day asked for explicitly lists its rows",
         [(d["date"], d["n"]) for d in c18b["days"]] == [(time.strftime("%Y-%m-%d", time.localtime(y18)), 1), (time.strftime("%Y-%m-%d", time.localtime(y18 - 86400)), 1)]
         and [x["task"] for x in json.loads(cm("closed", time.strftime("%Y-%m-%d", time.localtime(y18)), "--json", env=IT)[1])["rows"]] == ["n1"], json.dumps(c18b["days"]))
+# 24/10 (dall'app: «release v» col link a releases/tag/v): il tag in una variabile, la versione dall'esito o dal motivo
+_t18 = lambda cmd, exp: {"check": {"cmd": cmd}, "outcome": {"expected": exp}, "where": {"project": str(tmp)}}  # noqa: E731
+T.check("T18 a tag without digits (gh release view \"v$V\"): the version from the expected outcome or the result's reason, v kept; none → commit or check, never «v»",
+        mod.proof_of(_t18('gh release view "v$V" --json tagName', "la 0.8.62 pubblicata"), None) == {"kind": "release", "value": "v0.8.62", "url": None}
+        and mod.proof_of(_t18('gh release view "v$V"', "release pubblicata"), {"reason": "v1.4.0 out, assets ok"})["value"] == "v1.4.0"
+        and mod.proof_of(_t18('gh release view "v$V"', "release pubblicata"), {"reason": "commit 9f8e7d6 pushato"}) == {"kind": "commit", "value": "9f8e7d6", "url": None}
+        and mod.proof_of(_t18('gh release view "v$V"', "release pubblicata"), None) == {"kind": "check", "value": 'gh release view "v$V"', "url": None}, "")
 T.check("T18 a bad date → usage; no registry → exit 3 «no task registry» and no database created",
         cm("closed", "ieri")[0] != 0 and cm("closed", "--json", env={"CM_TASKS_DB": str(tmp / "no" / "tasks.db")})[0] == 3 and not (tmp / "no" / "tasks.db").exists(), "")
 

@@ -270,7 +270,8 @@ SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-
 # 1.72: la pillola della testata su atlas-shop (i totali di changes-sample.json); le altre sessioni non ce l'hanno
 SRC1["changes"] = {"atlas-shop": {"files": 4, "added": 8, "removed": 2, "at": 1792100000}}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
-SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Checkout refactor across many files: Fable 5.1 high; switch after the current task",
+SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Checkout refactor across many files: Fable 5.1 high",   # 24/10: piu' corto, state-1 sta negli 8 KB con published_at
+                                
                                  "switch_cost_tokens": 36000, "at": 1789210700, "source": "fable-director", "when": "next_task", "differs": True}}
 SRC1["approvals"] = [{"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main",
                       "where": "production (shop.example.com)", "deploy": True, "requested_at": 1789210600}]
@@ -289,6 +290,7 @@ DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on 
                         {"id": "release-changelog", "label": "Changelog of a release", "prompt": "Write the changelog of release", "param": True},
                         {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Check what the competing plugins shipped this week and sum it up", "param": False}]
 SRC1.update(DEV_SRC)
+SRC1["suggestions"] = []   # 1.84: nessun suggerimento; orbit-docs chiusa dal PC porta closed {at, session_id}
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC1["hosts_status"], SRC1["published_today"] = F1["hosts_status"], F1["published_today"]
 SRC1["commitments"] = F1["commitments"]   # 1.76
@@ -368,6 +370,21 @@ SRC2["commitments"] = F2["commitments"]   # 1.76
 SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
                       "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"]}]
 SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP passano a /state cosi' come sono
+# 1.84 (24/10): tre suggerimenti della master di tipo diverso, i token di oggi su due account, e una richiesta per la persona
+# che la master ha legato a un compito di atlas-shop (needs-you --task)
+SRC2["suggestions"] = [
+    {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "The ledger-api invoice is due on Friday",
+     "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380},
+    {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Last night's report is ready: 3 projects done, 1 in part",
+     "prompt": "Read me last night's report and tell me what is left", "at": 1789207200, "expires_at": 1789250400},
+    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Two orbit-docs tasks paused for 5 days: close them?",
+     "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone", "at": 1789207190, "expires_at": 1789250390}]
+SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
+                       {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
+                       {"session": "master", "account": "personal", "tokens": 1130000, "share": 0.38},
+                       {"session": "orbit-docs", "account": "work", "tokens": 30000, "share": 0.03}]
+SRC2["needs_you"] = {"atlas-shop": {"reason": "Type the pairing code shown on the TV", "at": 1789214200, "expires_at": 1789221400,
+                                    "name": "atlas-shop", "task": "atlas-tv-pairing", "from": "master"}}
 st2 = S.build_state(SRC2, 1789214400)
 T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
 SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "ledger": [], "questions": {},
@@ -378,6 +395,14 @@ SRC3.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
 SRC3["commitments"] = F3["commitments"]   # 1.76
+# 1.84 (24/10): orbit-docs chiusa dall'app prima che il PC si fermasse — lo stato salvato, con due file non committati
+SRC3["rows"] = [{"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs",
+                 "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789199000}]
+SRC3["prefixes"] = ["work-"]
+SRC3["closed"] = {"work-orbit-docs": {"name": "orbit-docs", "tmux": "work-orbit-docs", "cwd": ROOT_WS + "/work/own/orbit-docs", "account": "work",
+                                      "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
+                                      "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"],
+                                      "closed_at": 1789199000, "by": "phone-pixel8"}}
 st3 = S.build_state(SRC3, 1789200000)
 T.check("R2 build_state(src) == state-3-stale.json", st3 == _np(F3), diff(st3, _np(F3)) or "equal")
 T.check("R2 (1.33) no recurring list → no `recurring` field (the app shows no box)", "recurring" not in S.build_state(dict(SRC3, recurring=[]), 1789200000), "")
@@ -394,7 +419,8 @@ T.check("R2 over 8 KB → fit_state trims (old gone sessions, projects past 10, 
 live = dict(SRC1, devices={}, seen={}, recurring=[], approvals=[], advice={}, project_parents=[])   # 1.32 (e 1.37): questi casi misurano i tagli delle sessioni, senza dispositivi ne approvazioni
 # 15/10 (1.72): * 6 invece di * 9 — `changes` e `diff` in ops e `changes` in ogni sessione allungano lo stato di 107 byte,
 # e il caso stava a 12 byte dal tetto; con sei ripetizioni il full resta ben oltre i 300 caratteri che il controllo vuole
-long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 6
+# 24/10 (1.84): * 5 — ogni sessione gone porta closed {at, session_id}; con cinque il full resta oltre i 300 caratteri
+long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 5
 live["rows"] = [{"name": f"job-{i}", "tmux": f"job-{i}", "account": "personal", "cwd": ROOT_WS + f"/personal/job-{i}", "status": "idle", "waiting": False, "session_id": f"sid-job-{i}", "link": "https://claude.ai/code/session_" + "x" * 24, "attached": False, "started_at": 1789200000000} for i in range(3)] + \
     [{"name": f"old-{i:02d}", "tmux": f"old-{i:02d}", "account": "personal", "cwd": ROOT_WS + f"/personal/old-progetto-{i:02d}", "status": "dead", "session_id": f"0000000{i:02d}-aaaa-bbbb-cccc-dddddddddddd", "link": "https://claude.ai/code/session_" + "y" * 24, "visto_ts": 1789100000 + i, "started_at": 1789000000000} for i in range(10)]
 # 14/10: senza «on both suites» (la 1.58 allunga ops di 15 byte e lo stato stava a un byte dal tetto)
@@ -465,7 +491,7 @@ ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
 ev, seq = S.events_between(F2, F1, 1789210800, 1)
 T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
 ev2, _ = S.events_between(F1, F2, 1789214400, 1)
-T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone); 1.83: the two MCP questions of state-2", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes"), ("elicitation", "atlas-shop"), ("elicitation", "atlas-shop")] and ev2[1]["title"] == "ledger-api", str(ev2))
+T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone); 1.83: the two MCP questions of state-2; 1.84: atlas-shop's needs_you", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("needs_you", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes"), ("elicitation", "atlas-shop"), ("elicitation", "atlas-shop")] and ev2[2]["title"] == "ledger-api", str(ev2))
 q_prev = {"sessions": [F1["sessions"][0]], "quota": {"personal": {"h5": 90, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
 q_cur = {"sessions": [dict(F1["sessions"][0], question=None)], "quota": {"personal": {"h5": 96, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
 ev3, _ = S.events_between(q_prev, q_cur, 1789210900, 7)
@@ -1604,6 +1630,83 @@ T.check("R70 (1.83) elicit accept with valid values → «answered <server> (<id
         and _ans70.get("origin") == "relay" and _ans70.get("action") == "accept" and _ans70.get("content") == CMDS[82]["content"] and _ans70.get("by") == "phone-pixel8",
         str((r70a, r70b, r70c, _ans70)))
 shutil.rmtree(_eld70)
+# R72 (contratto 1.84, 24/10): i suggerimenti della master, la chiusura con lo stato salvato e «Riprendi» con --resume
+CM184 = [c for c in CMDS if c["id"].startswith("6f1c2d3e-084")]
+RS184 = {r["id"]: r for r in RES if r["id"].startswith("6f1c2d3e-084")}
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+_last72 = (rdir2 / "last-state.json").read_bytes() if (rdir2 / "last-state.json").exists() else None   # rimesso alla fine: i test dopo leggono i nomi
+_sg72 = tmp / "suggestions.json"   # accanto alla config, come la lista dei ricorrenti
+_now72 = int(time.time())
+_sg72.write_text(json.dumps({"items": [dict(x, at=_now72 - i, expires_at=_now72 + 3600) for i, x in enumerate(F2["suggestions"])]
+                             + [dict(F2["suggestions"][0], id="s-old0000000", key="old", at=_now72 - 99, expires_at=_now72 - 1)], "never": []}))
+_d72 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
+        [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-3:] == ["suggestion", "close_preview", "close"] and all(s["ops"][-3:] == R_OPS[-3:] for s in (F1, F2, F3))
+        and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
+_n72 = len(cm_calls())
+r72a = send_cmd(CM184[0])
+r72u = send_cmd(CM184[1])
+_left72 = json.loads(_sg72.read_text())["items"]
+T.check("R72 (1.84) suggestion accept → its prompt to master as a prompt from the phone, labelled «[dai suggerimenti]», «sent to master» as in the fixture, the item gone; an unknown id → «unknown suggestion» as in the fixture",
+        r72a and r72a["ok"] is True and r72a["text"] == RS184[CM184[0]["id"]]["text"] == "sent to master" and r72u and r72u["ok"] is False and r72u["text"] == RS184[CM184[1]["id"]]["text"] == "unknown suggestion"
+        and any(c.startswith("talk master Dall'utente via telefono.") and c.endswith("[dai suggerimenti] " + F2["suggestions"][0]["prompt"] + " --no-wait") for c in cm_calls()[_n72:])
+        and [x["id"] for x in _left72 if x["expires_at"] > _now72] == [x["id"] for x in F2["suggestions"][1:]], str((r72a, r72u, cm_calls()[_n72:])))
+_fn72 = ws / "personal" / "field-notes"
+_fn72.mkdir(parents=True, exist_ok=True)
+subprocess.run(["git", "init", "-q", str(_fn72)], check=True)
+(_fn72 / "notes.md").write_text("x")
+(_fn72 / "draft.txt").write_text("y")
+_dirty72 = sorted(ln[3:] for ln in subprocess.run(["git", "-C", str(_fn72), "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines())
+_n72 = len(cm_calls())
+r72p = send_cmd(CM184[2])
+_pv72 = json.loads(r72p["text"]) if r72p and r72p["ok"] else {"sessions": []}
+T.check("R72 (1.84) close_preview: field-notes closable with what will be saved (session_id, git status of its folder), atlas-shop blocked busy, ledger-api blocked by its question; the text as in the fixture; nothing closed",
+        [(x["name"], x["closable"], x["blocked_by"]) for x in _pv72["sessions"]] == [("field-notes", True, None), ("atlas-shop", False, "busy"), ("ledger-api", False, "question")]
+        and _pv72["sessions"][0]["save"]["session_id"] == "S-F" and _pv72["sessions"][0]["save"]["dirty_n"] == len(_dirty72) and sorted(_pv72["sessions"][0]["save"]["dirty"]) == _dirty72
+        and [x["save"] for x in _pv72["sessions"][1:]] == [None, None] and r72p["text"] == RS184[CM184[2]["id"]]["text"]
+        and not any(c.startswith("close ") for c in cm_calls()[_n72:]), str(r72p))
+r72c = send_cmd(CM184[3])
+_sv72 = json.loads((state_dir / "closed" / "field-notes.json").read_text()) if (state_dir / "closed" / "field-notes.json").exists() else {}
+T.check("R72 (1.84) close: only the closable one is closed (`close field-notes`), its state saved first (session_id, dirty, outcome, next, closed_at, by); the busy one stays with its reason; the text as in the fixture",
+        r72c and r72c["ok"] is True and r72c["text"] == RS184[CM184[3]["id"]]["text"] == "closed: field-notes\natlas-shop not closed: it is working"
+        and "close field-notes" in cm_calls()[_n72:] and "close atlas-shop" not in cm_calls()[_n72:]
+        and _sv72.get("session_id") == "S-F" and _sv72.get("dirty_n") == len(_dirty72) and _sv72.get("tmux") == "field-notes" and isinstance(_sv72.get("closed_at"), int)
+        and _sv72.get("by") == "phone-pixel8" and {"outcome", "next", "cwd", "account"} <= set(_sv72), str((r72c, _sv72)))
+_n72 = len(cm_calls())
+r72e = send_cmd(CM184[4])
+r72b = send_cmd(CM184[5])
+T.check("R72 (1.84) refused as in the fixture: close_preview with no session; close of a busy session only → ok false with its reason, nothing closed",
+        r72e and r72e["ok"] is False and r72e["text"] == RS184[CM184[4]["id"]]["text"] and r72b and r72b["ok"] is False and r72b["text"] == RS184[CM184[5]["id"]]["text"]
+        and not any(c.startswith("close ") for c in cm_calls()[_n72:]), str((r72e, r72b)))
+shutil.rmtree(_fn72 / ".git")
+rows_alive("ledger-api", "atlas-shop")
+_g72 = next((x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"] if x["name"] == "field-notes"), {})
+T.check("R72 (1.84) a session closed from the app leaves the registry's snapshot but stays gone in the state, with closed {at, session_id, outcome, next, dirty_n, dirty} from its save",
+        _g72.get("state") == "gone" and _g72.get("closed", {}).get("session_id") == "S-F" and _g72["closed"]["at"] == _sv72["closed_at"] and _g72["closed"]["dirty_n"] == len(_dirty72)
+        and sorted(_g72["closed"]["dirty"]) == _dirty72 and list(_g72["closed"]) == ["at", "session_id", "outcome", "next", "dirty_n", "dirty"], str(_g72))
+_orb72 = next((x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"] if x["name"] == "orbit-docs"), {})
+T.check("R72 (1.84) a session closed at the PC carries closed {at, session_id} only: what the relay knows",
+        _orb72.get("closed") == {"at": _orb72.get("since"), "session_id": None}, str(_orb72.get("closed")))
+_tr72 = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(_fn72)) / "S-F.jsonl"
+_trb72 = _tr72.read_bytes() if _tr72.exists() else None   # una trascrizione dei test prima: via per la prova senza
+_tr72.unlink(missing_ok=True)
+_n72 = len(cm_calls())
+r72n = send_cmd(dict(CMDS[8], id="6f1c2d3e-0849-4000-8000-000000000849", session="field-notes"))
+_tr72.parent.mkdir(parents=True, exist_ok=True)
+_tr72.write_bytes(_trb72 or b'{"type":"user","sessionId":"S-F"}\n')
+r72r = send_cmd(dict(CMDS[8], id="6f1c2d3e-0850-4000-8000-000000000850", session="field-notes"))
+_l72 = [c for c in cm_calls()[_n72:] if c.startswith("launch ")]
+T.check("R72 (1.84) reopen of a session closed from the app: without its saved conversation on disk → refused, never --continue; with it → `launch <folder> --window --account personal --resume S-F` and the save goes",
+        r72n and r72n["ok"] is False and "S-F" in r72n["text"] and r72r and r72r["ok"] is True and r72r["text"] == "reopened field-notes (personal): same conversation"
+        and _l72 == [f"launch {_fn72} --window --account personal --resume S-F"] and not (state_dir / "closed" / "field-notes.json").exists(), str((r72n, r72r, _l72)))
+if _trb72 is None:
+    _tr72.unlink()
+for _f72 in ("notes.md", "draft.txt"):
+    (_fn72 / _f72).unlink()
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+if _last72 is not None:
+    (rdir2 / "last-state.json").write_bytes(_last72)
 rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"started_at": 1789200000000}})
 _two31 = json.loads(alive.read_text())
 _two31.append(dict(_two31[2], pid=10, name="field-notes-2", tmux="field-notes-2", started_at=1789210000000, link=""))
@@ -2906,7 +3009,7 @@ NY = load("cm-needsyou")
 T.check("R64 needs-you parses --until and --expires (30m, 2h, 1d, 90s), refuses an unknown option, a bad duration or a missing value",
         NY.parse_args(["Lancia", "pin", "set", "--until", "supervisor pin status --json | grep -q true", "--expires", "2h"])[:3] == (["Lancia", "pin", "set"], "supervisor pin status --json | grep -q true", 7200)
         and NY.parse_duration("30m") == 1800 and NY.parse_duration("1d") == 86400 and NY.parse_duration("90s") == 90 and NY.parse_duration("2x") is None
-        and bool(NY.parse_args(["x", "--list"])[3]) and bool(NY.parse_args(["x", "--expires", "presto"])[3]) and bool(NY.parse_args(["x", "--until"])[3]), str(NY.parse_args(["x", "--list"])))
+        and bool(NY.parse_args(["x", "--list"])[4]) and bool(NY.parse_args(["x", "--expires", "presto"])[4]) and bool(NY.parse_args(["x", "--until"])[4]), str(NY.parse_args(["x", "--list"])))
 ny64 = state_dir / "needs-you"
 ny64.mkdir(parents=True, exist_ok=True)
 for f64 in ny64.glob("*.json"):
@@ -3362,7 +3465,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-3] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-6] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3389,9 +3492,9 @@ try:
     _cut64 = json.loads(RL.done_list(None)[1])
 finally:
     RL.run_cm = _rc64
-T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops (1.83: elicit after it), absent from /state; the fixtures carry it there",
+T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-2] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-2:] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-5] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-5:-3] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -3491,10 +3594,11 @@ finally:
 T.check("R61 (1.75) published_cached: a fresh copy of today is served as is with no recount; one from another day gives [] and one detached `published-refresh`, not two at once",
         _c1 == _it61 and _n1 == 0 and _c2 == [] and _c3 == [] and len(_spawn61) == 1 and _spawn61[0][-1] == "published-refresh", str((_c1, _c2, _spawn61)))
 _pub61 = F2["published_today"]
-_big61 = S.build_state(dict(SRC2, elicitations=[], published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
+_st2n = S.build_state(dict(SRC2, needs_you={}), 1789214400)   # 1.84: le sessioni di state-2 senza la richiesta per la persona, tolta qui per il peso
+_big61 = S.build_state(dict(SRC2, elicitations=[], suggestions=[], usage_today=[], needs_you={}, published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
 T.check("R61 (1.75) /state carries at most 30 published items, and fit_state cuts them to the 10 most recent before touching projects or sessions",
         len(S.build_state(dict(SRC2, published_today=[_pub61[0]] * 40), 1789214400, fit=False)["published_today"]) == 30
-        and [x["at"] for x in _big61["published_today"]] == [1789214000 - i for i in range(10)] and _big61["sessions"] == st2["sessions"]
+        and [x["at"] for x in _big61["published_today"]] == [1789214000 - i for i in range(10)] and _big61["sessions"] == _st2n["sessions"]
         and _big61["projects"] == st2["projects"] and S.size_of(_big61) <= 8192, str(S.size_of(_big61)))
 T.check("R61 (1.75) the fixtures: state-2-idle with win up and one publication of each kind, newest first; state-1-question with both lists empty; state-3-stale with win down («ssh: timeout», numbers null)",
         [x["kind"] for x in _pub61] == ["deploy", "release", "push"] and [x["at"] for x in _pub61] == sorted((x["at"] for x in _pub61), reverse=True)
@@ -3515,10 +3619,11 @@ _ev62 = [e for e in EV if e["kind"] == "task_stalled"]
 T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
 _small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
-_big62 = S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
+# 24/10: senza i ricorrenti — fit_state tiene il posto di published_at e il taglio a 10 non entrava piu'
+_big62 = S.build_state(dict(SRC2, recurring=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
         len(S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
-        and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == st2["sessions"] and _big62["projects"] == st2["projects"]
+        and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == _st2n["sessions"] and _big62["projects"] == st2["projects"]
         and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
 # R68 (23/10 23:42, supervisor-app: «win:bluey» nello stato, «win-bluey» nel registro): dentro lo stato vale il nome dello stato
 _row68 = {"name": "win:bluey", "tmux": "", "host": "win", "remote_name": "win-bluey", "account": "personal", "cwd": "D:/cm-sessions/personali/bluey", "status": "idle", "waiting": False,
@@ -3576,5 +3681,130 @@ S.keep_commitments(_st71b, 3)
 T.check("R71 (24/10) the cut keeps first the commitments with an ok to give, then the others; the paused ones fall first; the registry's order stays",
         [x["task"] for x in _st71["commitments"]] == ["p-0", "run-1", "ok-a", "run-2", "ok-b"] and [x["task"] for x in _st71b["commitments"]] == ["run-1", "ok-a", "run-2"],
         str(([x["task"] for x in _st71["commitments"]], [x["task"] for x in _st71b["commitments"]])))
+
+# R73 (contratto 1.84, 24/10): le fixture, il taglio, la quota di oggi, /exit dall'app, needs-you --task, suggest
+_by73 = {x["name"]: x for x in F1["sessions"] + F2["sessions"] + F3["sessions"]}
+T.check("R73 (1.84) fixtures: state-2 three suggestions of different kinds, newest first, one line, never «…»; four usage rows on two accounts, biggest first, share 0..1; atlas-shop's needs_you tied to a task, asked by master, also in attention; state-1 suggestions []",
+        len({x["kind"] for x in F2["suggestions"]}) == 3 and [x["at"] for x in F2["suggestions"]] == sorted((x["at"] for x in F2["suggestions"]), reverse=True)
+        and all("…" not in x["text"] and "\n" not in x["text"] for x in F2["suggestions"]) and F1["suggestions"] == []
+        and len(F2["usage_today"]) == 4 and len({x["account"] for x in F2["usage_today"]}) == 2 and [x["tokens"] for x in F2["usage_today"]] == sorted((x["tokens"] for x in F2["usage_today"]), reverse=True)
+        and all(0 <= x["share"] <= 1 for x in F2["usage_today"]) and F2["sessions"][0]["needs_you"]["task"] == "atlas-tv-pairing" and F2["sessions"][0]["needs_you"]["from"] == "master"
+        and [x["kind"] for x in F2["attention"]] == ["needs_you"], "")
+T.check("R73 (1.84) fixtures: state-3 orbit-docs closed from the app with two uncommitted files and its session_id; state-1 orbit-docs closed at the PC with {at, session_id}; no closed on live sessions",
+        F3["sessions"][0]["closed"] == {"at": 1789199000, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
+                                        "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"]}
+        and _by73["orbit-docs"]["state"] == "gone" and F1["sessions"][3]["closed"] == {"at": F1["sessions"][3]["since"], "session_id": F1["sessions"][3]["id"]}
+        and all("closed" not in x for s in (F1, F2) for x in s["sessions"] if x["state"] != "gone"), str(F3["sessions"][0].get("closed")))
+_big73 = S.build_state(dict(SRC2, suggestions=[dict(F2["suggestions"][0], id=f"s-{i:010d}", at=1789207200 - i) for i in range(9)],
+                            usage_today=[dict(F2["usage_today"][0], session=f"s{i}", tokens=1000 - i) for i in range(20)]), 1789214400, fit=False)
+_fit73 = S.fit_state(json.loads(json.dumps(_big73)), 1)
+T.check("R73 (1.84) /state carries at most 6 suggestions and 12 usage rows; fit_state cuts usage to the 5 biggest and suggestions to the 3 newest, never further; the live session stays",
+        len(_big73["suggestions"]) == 6 and len(_big73["usage_today"]) == 12 and [x["session"] for x in _fit73["usage_today"]] == [f"s{i}" for i in range(5)]
+        and [x["id"] for x in _fit73["suggestions"]] == [f"s-{i:010d}" for i in range(3)] and [x["name"] for x in _fit73["sessions"]] == ["atlas-shop"], str(S.size_of(_fit73)))
+# la quota di oggi dalle trascrizioni: dalla mezzanotte, un messaggio una volta, i subagenti con la loro sessione, la quota per account
+_u73 = tmp / "usage73"
+_now73 = int(time.time())
+_mid73 = RL._midnight(_now73)
+_iso73 = lambda t: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(t))  # noqa: E731
+_ln73 = lambda t, mid, n, cwd="/w/alpha": json.dumps({"type": "assistant", "cwd": cwd, "timestamp": _iso73(t), "message": {"id": mid, "usage": {"input_tokens": n, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})  # noqa: E731
+for _acc73, _sid73, _lines73 in (("personal", "sid-a", [_ln73(_mid73 - 60, "m0", 500), _ln73(_mid73 + 60, "m1", 100), _ln73(_mid73 + 61, "m1", 100), _ln73(_mid73 + 70, "m2", 50)]),
+                                 ("personal", "sid-b", [_ln73(_mid73 + 80, "m3", 50, "/w/beta")]),
+                                 ("work", "sid-c", [_ln73(_mid73 + 90, "m4", 30, "/w/gamma")])):
+    _p73 = _u73 / _acc73 / "projects" / "-w-x" / f"{_sid73}.jsonl"
+    _p73.parent.mkdir(parents=True, exist_ok=True)
+    _p73.write_text("\n".join(_lines73) + "\n")
+_sa73 = _u73 / "personal" / "projects" / "-w-x" / "sid-a" / "subagents" / "agent-1.jsonl"
+_sa73.parent.mkdir(parents=True, exist_ok=True)
+_sa73.write_text(_ln73(_mid73 + 100, "m5", 50) + "\n" + _ln73(_mid73 + 101, "m6", 7))   # l'ultima riga senza a capo: ancora in scrittura
+_acc73s, _rd73 = RL.CFG["accounts"], RL.rdir
+try:
+    RL.CFG["accounts"] = {"personal": {"config_dir": str(_u73 / "personal")}, "work": {"config_dir": str(_u73 / "work")}}
+    RL.rdir = lambda: _u73
+    _o73 = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73)
+    with open(_sa73, "a") as _fh73:
+        _fh73.write("\n")
+    _o73b = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73 + 1)
+    _o73c = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73 + RL.USAGE_CACHE_S + 1)
+finally:
+    RL.CFG["accounts"], RL.rdir = _acc73s, _rd73
+T.check("R73 (1.84) usage_today: tokens since local midnight, one message counted once, subagents with their session, the name from the state (else the folder), share of the account; biggest first",
+        _o73 == [{"session": "alpha-shop", "account": "personal", "tokens": 200, "share": 0.8}, {"session": "beta", "account": "personal", "tokens": 50, "share": 0.2},
+                 {"session": "gamma", "account": "work", "tokens": 30, "share": 1.0}], str(_o73))
+T.check("R73 (1.84) usage_today: within USAGE_CACHE_S the cached list as is; after it only the new bytes are read (the line that was still being written)",
+        _o73b == _o73 and _o73c[0] == {"session": "alpha-shop", "account": "personal", "tokens": 207, "share": round(207 / 257, 3)}, str(_o73c))
+# /exit dall'app: i controlli di close (anche il lavoro in sottofondo), lo stato salvato, poi il comando digitato
+_row73 = {"tmux": "field-notes", "name": "field-notes", "status": "idle", "waiting": False, "attached": True, "pid": 4242, "cwd": str(tmp), "account": "personal", "session_id": "S-F"}
+_sv73 = dict(json=RL._json_cmd, talk=RL.relay_talk, allowed=RL.slash_allowed, kids=RL._children, cdir=RL.closed_dir, last=RL.last_sessions, run=RL.run_cm)
+_typed73 = []
+try:
+    RL._json_cmd = lambda *a, **k: [_row73]
+    RL.relay_talk = lambda *a: (_typed73.append(a), (0, "consegnato"))[1]
+    RL.slash_allowed = lambda: ["exit", "compact"]
+    RL.closed_dir = lambda: tmp / "closed73"
+    RL.last_sessions = lambda: {"field-notes": {"state": "idle", "outcome": {"short": "README rewritten"}, "next": "Open the PR"}}
+    RL.run_cm = lambda *a, **k: (1, "")
+    RL._children = lambda pid: [(4243, "node"), (4244, "bash")]
+    _bg73 = RL.slash_send({"by": "phone-pixel8"}, "field-notes", "field-notes", "exit")
+    _typed_bg73 = list(_typed73)
+    RL._children = lambda pid: [(4243, "node")]
+    _ok73 = RL.slash_send({"by": "phone-pixel8"}, "field-notes", "field-notes", "exit")
+    _cl73 = RL.close_check("field-notes", [_row73])[0]
+finally:
+    RL._json_cmd, RL.relay_talk, RL.slash_allowed, RL._children, RL.closed_dir, RL.last_sessions, RL.run_cm = (
+        _sv73["json"], _sv73["talk"], _sv73["allowed"], _sv73["kids"], _sv73["cdir"], _sv73["last"], _sv73["run"])
+_svf73 = json.loads((tmp / "closed73" / "field-notes.json").read_text()) if (tmp / "closed73" / "field-notes.json").exists() else {}
+T.check("R73 (1.84) /exit from the app: a shell among the claude process's children → refused «a job is running in the background», nothing typed; without it the state is saved (attached is fine: it is typed in the pane) and /exit typed",
+        _bg73 == (False, "field-notes not closed: a job is running in the background") and _typed_bg73 == [] and _ok73[0] is True
+        and [a[1] for a in _typed73] == ["/exit"] and _svf73.get("outcome") == "README rewritten" and _svf73.get("next") == "Open the PR" and _svf73.get("session_id") == "S-F"
+        and _cl73["blocked_by"] == "attached" and _cl73["closable"] is False, str((_bg73, _ok73, _typed73, _svf73)))
+# needs-you --task: la richiesta va sulla sessione del compito, con task e from; senza sessione viva resta su chi chiede
+_db73 = tmp / "tasks73.db"
+os.environ["CM_TASKS_DB"] = str(_db73)
+NY = load("cm-needsyou")
+_con73 = load("cm-tasks").connect()
+for _tid73, _ses73 in (("atlas-tv-pairing", "atlas-shop"), ("solo-master", None)):
+    _con73.execute("INSERT INTO tasks (id, session, contract, state, created_at) VALUES (?, ?, ?, 'approved', 1)",
+                   (_tid73, _ses73, json.dumps({"task": {"where": {"project": str(tmp), "session": _ses73}}})))
+_con73.commit()
+_m73 = {"tmux": "master", "name": "master", "session_id": "S-M"}
+_t73 = {"tmux": "atlas-shop", "name": "atlas-shop", "session_id": "S-A73"}
+NY.own_row = lambda: _m73
+NY.session_row = lambda name: _t73 if name == "atlas-shop" else None
+_nyd73 = Path(NY.cm.expand(NY.CFG["state_dir"])) / "needs-you"
+_rc73 = NY.main(["Type", "the", "pairing", "code", "--task", "atlas-tv-pairing"])
+_rec73 = json.loads((_nyd73 / "S-A73.json").read_text()) if (_nyd73 / "S-A73.json").exists() else {}
+_rc73b = NY.main(["a login", "--task", "solo-master"])
+_rec73b = json.loads((_nyd73 / "S-M.json").read_text()) if (_nyd73 / "S-M.json").exists() else {}
+_rc73c = NY.main(["x", "--task", "no-such-task"])
+del os.environ["CM_TASKS_DB"]
+T.check("R73 (1.84) needs-you --task: on the task's session with task and from (who asked); a task without a live session stays on the asker with task only; an unknown task → exit 2, nothing written",
+        _rc73 == 0 and _rec73.get("reason") == "Type the pairing code" and _rec73.get("task") == "atlas-tv-pairing" and _rec73.get("from") == "master" and _rec73.get("name") == "atlas-shop"
+        and _rc73b == 0 and _rec73b.get("task") == "solo-master" and "from" not in _rec73b and _rc73c == 2, str((_rec73, _rec73b)))
+for _f73 in ("S-A73.json", "S-M.json"):
+    (_nyd73 / _f73).unlink(missing_ok=True)
+# supervisor suggest: add, never (saltato in silenzio), later (nascosto fino al giro dopo), clear --kind, i rifiuti
+_sgp73 = tmp / "suggest73.json"
+_env73 = dict(ENV, CM_SUGGESTIONS=str(_sgp73))
+_sg73 = lambda *a: subprocess.run([str(T.SCRIPTS / "supervisor"), "suggest", *a], capture_output=True, text=True, env=_env73, timeout=20)  # noqa: E731
+_a73 = _sg73("add", "--kind", "cleanup", "--key", "cleanup:x", "--text", "Close the paused tasks", "--prompt", "close them")
+_b73 = _sg73("add", "--kind", "quota", "--key", "quota:y", "--text", "Weekly quota at 80 %", "--prompt", "plan the week", "--ttl", "2h")
+os.environ["CM_SUGGESTIONS"] = str(_sgp73)
+SG = load("cm-suggest")
+_later73 = SG.act(_b73.stdout.strip(), "later")[0]
+_vis73 = [x["key"] for x in SG.for_state()]
+_never73 = SG.act(_a73.stdout.strip(), "never")[0]
+_again73 = _sg73("add", "--kind", "cleanup", "--key", "cleanup:x", "--text", "Close the paused tasks", "--prompt", "close them")
+_round73 = _sg73("add", "--kind", "quota", "--key", "quota:y", "--text", "Weekly quota at 85 %", "--prompt", "plan the week")
+_vis73b = [(x["key"], x["text"]) for x in SG.for_state()]
+_bad73 = [_sg73("add", "--kind", "other", "--key", "k", "--text", "t", "--prompt", "p").returncode, _sg73("add", "--kind", "quota", "--key", "k", "--text", "cut…", "--prompt", "p").returncode,
+          _sg73("add", "--kind", "quota", "--key", "k", "--text", "t", "--prompt", "p", "--ttl", "soon").returncode]
+_clr73 = _sg73("clear", "--kind", "quota")
+_vis73c = SG.for_state()
+_unk73 = SG.act("s-nope", "accept")[0]
+del os.environ["CM_SUGGESTIONS"]
+T.check("R73 (1.84) suggest: add prints the id; later hides it until the same key comes back (with the new text); never makes add skip the key silently (exit 0, no output); bad kind, «…» and a bad ttl refused; clear --kind empties that kind; unknown id",
+        _a73.returncode == 0 and _a73.stdout.strip().startswith("s-") and _later73 == "hidden" and _vis73 == ["cleanup:x"] and _never73 == "never"
+        and _again73.returncode == 0 and _again73.stdout == "" and _vis73b == [("quota:y", "Weekly quota at 85 %")] and all(rc != 0 for rc in _bad73)
+        and _clr73.returncode == 0 and _vis73c == [] and _unk73 == "unknown" and json.loads(_sgp73.read_text())["never"] == ["cleanup:x"], str((_vis73, _vis73b, _again73.stdout, _bad73)))
 
 T.finish()

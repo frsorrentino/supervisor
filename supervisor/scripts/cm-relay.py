@@ -73,7 +73,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -980,6 +980,14 @@ def collect_sources(now=None):
             rows.append({"tmux": s["nome"], "name": s["nome"], "status": "dead", "cwd": s.get("cartella", ""), "account": s.get("account", ""),
                          "waiting": False, "session_id": s.get("session_id") or "", "link": "", "attached": False,
                          "visto_ts": S.epoch(s.get("visto", "")) if s.get("visto") else 0})
+    # 1.84 (24/10): una sessione chiusa dall'app esce dalla fotografia del registro (`close` → registry --closed), ma
+    # resta nello stato come gone, con il suo salvataggio, per «Riprendi»
+    listed = {r.get("tmux") for r in rows}
+    for tm_, rec in closed_saved(now).items():
+        if tm_ not in listed and os.path.isdir(rec.get("cwd") or "") and S.short_name(tm_, prefixes()) not in alive_short:
+            rows.append({"tmux": tm_, "name": tm_, "status": "dead", "cwd": rec.get("cwd", ""), "account": rec.get("account", ""),
+                         "waiting": False, "session_id": rec.get("session_id") or "", "link": "", "attached": False,
+                         "visto_ts": int(rec.get("closed_at") or 0)})
     # 16/10: mai due sessioni con lo stesso nome nello stato (l'app le indicizza per nome), prima delle chiavi qui sotto
     S.unique_names(rows, prefixes())
     ledger = core.ledger_rows()
@@ -1093,6 +1101,7 @@ def collect_sources(now=None):
         "hosts_status": hosts_status(rows, now), "published_today": published_cached(now),   # 1.75
         "commitments": commitments_list(),   # 1.76
         "elicitations": elicitations_list(rows, now),   # 1.83
+        "suggestions": suggestions_list(now), "usage_today": usage_today(rows, now), "closed": closed_saved(now),   # 1.84
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1223,6 +1232,282 @@ def elicit_answer(cmd, arg):
     ok, key, kw = _load("cm-elicit").answer(cm.expand(CFG["state_dir"]), arg, cmd.get("action"), cmd.get("content"),
                                             cmd.get("by"), cmd.get("device"), int(time.time()))
     return ok, M("relay." + key, **kw)
+
+
+# ------------------------------------------------------------------ 1.84 (24/10): suggerimenti, quota di oggi, chiusure
+def suggestions_list(now):
+    """1.84: i suggerimenti della master (cm-suggest.py) per /state.suggestions; [] se non ce ne sono."""
+    try:
+        return _load("cm-suggest").for_state(int(now))
+    except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
+        return []
+
+
+def suggestion_act(cmd, arg):
+    """1.84 (24/10, scheda «Suggerimenti della master»): `arg` = l'id, `action` accept | later | never. accept manda il
+    prompt della voce alla master come un prompt dall'app, con l'etichetta «dai suggerimenti», e toglie la voce; later
+    la nasconde fino al giro dopo della master; never non la ripropone piu'."""
+    code, hit = _load("cm-suggest").act(str(arg or "").strip(), str(cmd.get("action") or "").strip())
+    if code == "bad_action":
+        return False, M("relay.cmd_suggestion_bad_action", action=str(cmd.get("action") or "?"))
+    if code == "unknown":
+        return False, M("relay.cmd_suggestion_unknown")
+    ledger_write("suggestion", id=hit["id"], key=hit.get("key"), action=code, by=cmd.get("by"))
+    if code == "hidden":
+        return True, M("relay.cmd_suggestion_later")
+    if code == "never":
+        return True, M("relay.cmd_suggestion_never")
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    rc, out = relay_talk(master, prefix_for(cmd, master) + " " + M("relay.suggestion_label") + " " + str(hit.get("prompt") or ""), "--no-wait")
+    if rc != 0:
+        return False, (out.splitlines() or ["talk failed"])[0]
+    if saved_in_inbox(out):
+        return True, M("relay.cmd_suggestion_inbox")
+    aw = read_json(rdir() / "awaiting.json", {}); aw[master] = int(time.time()); write_json(rdir() / "awaiting.json", aw)
+    return True, M("relay.cmd_suggestion_sent")
+
+
+USAGE_CACHE_S = 180
+
+
+def _midnight(now):
+    t = time.localtime(now)
+    return int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1)))
+
+
+def usage_today(rows, now):
+    """1.84 (24/10, B5): [{session, account, tokens, share}] — i token di oggi (dalla mezzanotte locale) di ogni
+    sessione, letti dalle trascrizioni di ogni account (anche le sessioni chiuse oggi, la master e i loro subagenti), e
+    la loro quota sul totale dell'account (0..1). Conta input, output e cache come li scrive l'API (usage di ogni
+    messaggio, un messaggio una volta sola). Incrementale: rdir()/usage-today.json tiene per ogni file dove si era
+    arrivati, e il conto si rifà al piu' ogni USAGE_CACHE_S; dal giorno dopo si riparte. Non e' esatto al token: le
+    sessioni su un altro host non ci sono."""
+    now = int(now)
+    day0 = _midnight(now)
+    cpath = rdir() / "usage-today.json"
+    cache = read_json(cpath, {}) or {}
+    if cache.get("day") != day0:
+        cache = {"day": day0, "files": {}}
+    if now - int(cache.get("at") or 0) >= USAGE_CACHE_S or not cache.get("out"):
+        since = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(day0))
+        files = cache["files"]
+        for acc, a in (CFG.get("accounts") or {}).items():
+            base = Path(cm.expand(a.get("config_dir") or "~/.claude")) / "projects"
+            try:
+                found = [p for p in base.glob("*/*.jsonl")] + [p for p in base.glob("*/*/subagents/*.jsonl")]
+            except OSError:
+                continue
+            for p in found:
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                if st.st_mtime < day0:
+                    continue
+                k = str(p)
+                f = files.get(k) or {"acc": acc, "off": 0, "tokens": 0, "last": "", "cwd": "",
+                                     "sid": p.parent.parent.name if p.parent.name == "subagents" else p.stem}
+                if st.st_size < f["off"]:
+                    f.update(off=0, tokens=0, last="")
+                if st.st_size > f["off"]:
+                    try:
+                        with open(p, "rb") as fh:
+                            fh.seek(f["off"])
+                            chunk = fh.read()
+                    except OSError:
+                        continue
+                    end = chunk.rfind(b"\n") + 1
+                    for line in chunk[:end].splitlines():
+                        if not f["cwd"] and b'"cwd"' in line:
+                            try:
+                                f["cwd"] = str(json.loads(line).get("cwd") or "")
+                            except ValueError:
+                                pass
+                        if b'"usage"' not in line:
+                            continue
+                        try:
+                            d = json.loads(line)
+                        except ValueError:
+                            continue
+                        if str(d.get("timestamp") or "") < since:
+                            continue
+                        msg = d.get("message") or {}
+                        u = msg.get("usage") if isinstance(msg, dict) else None
+                        if not isinstance(u, dict):
+                            continue
+                        mid = str(msg.get("id") or d.get("requestId") or "")
+                        if mid and mid == f["last"]:
+                            continue   # lo stesso messaggio scritto a pezzi: un blocco per riga, lo stesso usage
+                        f["last"] = mid
+                        f["tokens"] += sum(int(u.get(x) or 0) for x in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+                    f["off"] += end
+                files[k] = f
+        by_sid = {r.get("session_id"): S.short_name(r.get("name") or r.get("tmux") or "", prefixes()) for r in rows or [] if r.get("session_id")}
+        tot, per = {}, {}
+        for f in files.values():
+            if not f.get("tokens"):
+                continue
+            name = by_sid.get(f["sid"]) or (os.path.basename(f["cwd"].rstrip("/")) if f.get("cwd") else "") or f["sid"][:8]
+            per[(name, f["acc"])] = per.get((name, f["acc"]), 0) + f["tokens"]
+            tot[f["acc"]] = tot.get(f["acc"], 0) + f["tokens"]
+        cache["out"] = [{"session": n, "account": acc, "tokens": t, "share": round(t / tot[acc], 3) if tot.get(acc) else 0}
+                        for (n, acc), t in sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))]
+        cache["at"] = now
+        write_json(cpath, cache)
+    return list(cache.get("out") or [])
+
+
+CLOSED_KEEP_S = 7 * 86400   # 1.84: per quanto resta il salvataggio di una sessione chiusa dall'app
+BG_SHELLS = ("bash", "sh", "zsh", "dash", "fish")
+
+
+def closed_dir():
+    return Path(cm.expand(CFG["state_dir"])) / "closed"
+
+
+def closed_file(tm):
+    return closed_dir() / f"{re.sub(r'[^A-Za-z0-9_.:-]', '_', tm)}.json"
+
+
+def closed_saved(now=None):
+    """1.84: {tmux: salvataggio} delle sessioni chiuse dall'app (op close, /exit) negli ultimi CLOSED_KEEP_S; i piu'
+    vecchi vanno via."""
+    now = float(now or time.time())
+    out = {}
+    d = closed_dir()
+    if not d.is_dir():
+        return out
+    for f in d.glob("*.json"):
+        rec = read_json(f, None)
+        if not isinstance(rec, dict) or now - float(rec.get("closed_at") or 0) > CLOSED_KEEP_S:
+            f.unlink(missing_ok=True)
+            continue
+        if rec.get("tmux"):
+            out[rec["tmux"]] = rec
+    return out
+
+
+def git_dirty(cwd):
+    """(dirty_n, i primi DIRTY_MAX percorsi) da `git status --porcelain`; (None, None) fuori da git o se git non risponde."""
+    if not cwd or not os.path.isdir(cwd):
+        return None, None
+    try:
+        r = subprocess.run(["git", "-C", cwd, "status", "--porcelain"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    if r.returncode != 0:
+        return None, None
+    paths = [ln[3:].strip() for ln in r.stdout.splitlines() if len(ln) > 3]
+    return len(paths), paths[:S.DIRTY_MAX]
+
+
+def _children(pid):
+    """I processi figli di pid: [(pid, nome del comando)]; [] se /proc non risponde."""
+    out = []
+    try:
+        for d in os.listdir("/proc"):
+            if not d.isdigit():
+                continue
+            try:
+                stat = Path(f"/proc/{d}/stat").read_text()
+            except OSError:
+                continue
+            rest = stat[stat.rfind(")") + 2:].split()
+            if len(rest) > 1 and rest[1] == str(pid):
+                out.append((int(d), stat[stat.find("(") + 1:stat.rfind(")")]))
+    except OSError:
+        pass
+    return out
+
+
+def background_of(row):
+    """1.84: la sessione ha un lavoro in sottofondo — un Bash in background o un processo figlio di una shell: fra i
+    figli del processo claude una shell (i server MCP sono node o python, non shell). Solo per le sessioni di qui."""
+    pid = row.get("pid")
+    if not pid or (row.get("host") and row.get("host") != "local"):
+        return False
+    return any(name in BG_SHELLS for _, name in _children(pid))
+
+
+def close_check(name, rows, allow_attached=False):
+    """1.84: {name, closable, blocked_by, save} per una sessione (nome dello stato). blocked_by: busy, question,
+    background, attached, gone (non e' viva) o null. save: {outcome, next, session_id, dirty_n, dirty}, solo per una
+    chiudibile. allow_attached: /exit si digita nel riquadro e vale come la persona al terminale, anche se attaccata."""
+    tm = tmux_of(name)
+    row = next((r for r in rows if (r.get("tmux") or r.get("name")) == tm), None)
+    if not row:
+        return {"name": name, "closable": False, "blocked_by": "gone", "save": None}, None
+    info = last_sessions().get(name) or {}
+    if row.get("waiting") or row.get("status") == "waiting":
+        why = "question"
+    elif row.get("status") == "busy" or info.get("state") in ("busy", "awaiting"):
+        why = "busy"
+    elif background_of(row):
+        why = "background"
+    elif row.get("attached") and not allow_attached:
+        why = "attached"
+    else:
+        why = None
+    out = {"name": name, "closable": why is None, "blocked_by": why}
+    if why is None:
+        n, dirty = git_dirty(row.get("cwd")) if not row.get("host") or row.get("host") == "local" else (None, None)
+        out["save"] = {"outcome": ((info.get("outcome") or {}).get("short")) or None, "next": info.get("next") or None,
+                       "session_id": row.get("session_id") or None, "dirty_n": n, "dirty": dirty}
+    else:
+        out["save"] = None
+    return out, row
+
+
+def close_names(arg, session):
+    names = [S.one_line(x).strip() for x in str(arg or session or "").split(",")]
+    return [x for x in dict.fromkeys(names) if x][:20]
+
+
+def close_preview(cmd, arg, session=""):
+    """1.84 (24/10, B4): op close_preview, solo lettura — per ogni sessione di `arg` («nome1,nome2») cosa verra'
+    salvato e cosa impedisce la chiusura. Il testo e' il JSON {sessions: [...]}."""
+    names = close_names(arg, session)
+    if not names:
+        return False, M("relay.cmd_close_none")
+    rows = _json_cmd("sessions", "--json") or []
+    return True, json.dumps({"sessions": [close_check(n, rows)[0] for n in names]}, ensure_ascii=False)
+
+
+def save_closed(chk, row, by):
+    """Il salvataggio di una sessione prima di chiuderla: <state_dir>/closed/<tmux>.json."""
+    tm = row.get("tmux") or row.get("name")
+    rec = dict(chk["save"] or {}, name=chk["name"], tmux=tm, cwd=row.get("cwd") or "", account=row.get("account") or "",
+               closed_at=int(time.time()), by=by or None)
+    write_json(closed_file(tm), rec)
+    return rec
+
+
+def close_sessions(cmd, arg, session=""):
+    """1.84 (24/10, B4 e ogni chiusura dall'app): op close — chiude solo le sessioni chiudibili, rifacendo i controlli
+    adesso; prima di chiuderne una ne salva lo stato (esito, prossimo passo, file non committati, session_id, ora).
+    Risponde con chi e' chiusa e chi no, col motivo. ok se almeno una e' chiusa."""
+    names = close_names(arg, session)
+    if not names:
+        return False, M("relay.cmd_close_none")
+    rows = _json_cmd("sessions", "--json") or []
+    done, kept = [], []
+    for n in names:
+        chk, row = close_check(n, rows)
+        if not chk["closable"]:
+            kept.append(M("relay.cmd_close_kept", name=n, why=M(f"relay.close_why_{chk['blocked_by']}")))
+            continue
+        rec = save_closed(chk, row, cmd.get("by"))
+        rc, out = run_cm("close", row.get("tmux") or row.get("name"))
+        if rc != 0:
+            closed_file(rec["tmux"]).unlink(missing_ok=True)
+            kept.append(M("relay.cmd_close_kept", name=n, why=(out.strip().splitlines() or ["close failed"])[0].strip()))
+            continue
+        ledger_write("closed-from-app", session=rec["tmux"], session_id=rec.get("session_id") or "", by=cmd.get("by"), dirty_n=rec.get("dirty_n"))
+        done.append(n)
+    if done:
+        push_async()
+    lines = ([M("relay.cmd_close_done", names=", ".join(done))] if done else []) + kept
+    return bool(done), "\n".join(lines)
 
 
 def commitments_list():
@@ -2652,7 +2937,17 @@ def slash_send(cmd, session, tm, arg):
     if row.get("status") in ("busy", "waiting") or row.get("waiting"):
         return False, M("relay.cmd_slash_busy", name=session)
     text = " ".join(str(cmd.get("text") or "").split())[:SLASH_TEXT_MAX]
+    saved = None
+    if name == "exit":
+        # 1.84 (24/10): /exit dall'app fa la strada di close — i controlli (anche il lavoro in sottofondo), lo stato
+        # salvato, poi la chiusura; se il comando non parte il salvataggio va via
+        chk, _ = close_check(session, [row], allow_attached=True)
+        if not chk["closable"]:
+            return False, M("relay.cmd_close_kept", name=session, why=M(f"relay.close_why_{chk['blocked_by']}"))
+        saved = save_closed(chk, row, cmd.get("by"))
     rc, out = relay_talk(row["tmux"], f"/{name} {text}".rstrip(), "--via", "tmux", "--no-wait")
+    if saved and rc != 0:
+        closed_file(saved["tmux"]).unlink(missing_ok=True)
     if rc == 4:
         return False, M("relay.cmd_slash_typed", name=session)
     if rc != 0:
@@ -3810,7 +4105,11 @@ def execute(cmd):
             return True, M("relay.cmd_resumed", name=session)
         if op == "reopen":
             # 1.9 (15/09): una sessione gone rilanciata nella sua cartella (la logica e' una sola, anche per il bot)
-            ok, code, f = core.reopen(tm, run_cm)
+            # 1.84 (24/10): una sessione chiusa dall'app riparte con --resume del session_id salvato, mai --continue
+            saved = closed_saved().get(tm)
+            ok, code, f = core.reopen(tm, run_cm, saved=saved)
+            if ok and saved:
+                closed_file(tm).unlink(missing_ok=True)
             return ok, M(f"relay.cmd_reopen_{code}", name=session, **f)
         if op in ("model", "effort"):
             # 1.12 (16/09): dal selettore della sessione, SOLO per quella sessione — mai il default delle sessioni nuove.
@@ -3882,6 +4181,12 @@ def execute(cmd):
             return approve_task(cmd, arg)
         if op == "elicit":   # 1.83
             return elicit_answer(cmd, arg)
+        if op == "suggestion":   # 1.84
+            return suggestion_act(cmd, arg)
+        if op == "close_preview":   # 1.84
+            return close_preview(cmd, arg, session)
+        if op == "close":   # 1.84
+            return close_sessions(cmd, arg, session)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":
@@ -4029,7 +4334,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):

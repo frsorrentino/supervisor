@@ -2,6 +2,15 @@
 
 ## 0.3.x
 
+- **0.8.62 — 2026-10-24: the master's suggestions, today's quota per session, closing with the state saved (contract 1.84).**
+  - Asked by supervisor-app after the maintainer chose «Tutto» at 19:46 on the mockup of the home page, with «bisogna accertarsi che quando si chiude una sessione l'ultimo stato sia stato salvato».
+  - `supervisor suggest add|list|clear`: the master's suggestions (kinds recurring, cleanup, deadline, quota) in `/state.suggestions`, at most 6, newest first; the op `suggestion {arg: id, action: accept | later | never}` sends the prompt to the master («[dai suggerimenti]»), hides the item until the next round, or never proposes its key again.
+  - `/state.usage_today`: each session's tokens since local midnight from the transcripts of every account (closed sessions, the master and subagents included) and its share of the account; incremental, redone at most every 3 minutes.
+  - `supervisor needs-you "<what>" --task ID`: the request goes on the task's session, with `task` and `from`; without a live session it stays on the asker.
+  - The ops `close_preview` (what will be saved, what blocks: busy, question, background, attached) and `close` (several sessions, only the closable ones, the state saved first to `<state_dir>/closed/`); `/exit` from the app takes the same road. Gone sessions carry `closed {at, session_id}` plus, from a save, outcome, next and the uncommitted files; `reopen` of a saved session uses `--resume <session_id>` and refuses without its conversation, never `--continue`. A session closed from the app stays in the state for 7 days.
+  - The proof of a closed task: a check like `gh release view "v$V"` gave the release «v» with a link to `releases/tag/v`; a tag without digits now takes the version from the expected outcome or the result's reason, else the proof falls back to the commit or the check.
+  - `fit_state` keeps room for `published_at`, which `_push` adds after the cut: the published `/state` stays within `relay.state_max_kb` (supervisor-app measured state-1 at 8203 bytes).
+  - Tests: R72, R73 (new), T18; R2, R3, R60, R61, R62, R64 adjusted. Fixtures: `state-*`, `cmd-result-sample.json`.
 - **0.8.61 — 2026-10-24: the tasks waiting for an ok survive the cut of the state.**
   - Seen by the maintainer on the phone at 18:22: two tasks waiting for an ok sat in the app's Lavori list instead of the card of their session. `task impegni` had 9 entries and `/state.commitments` 5: `fit_state` kept the first 5, stalled first, and five tasks paused or stalled for days pushed out the two waiting for an ok, so the app could not tie their approvals to a session.
   - `fit_state` now keeps first the commitments with an ok in `approvals`, then the others, and drops the paused ones first; the kept ones stay in the registry's order (`keep_commitments`). No contract change.

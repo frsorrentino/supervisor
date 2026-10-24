@@ -98,6 +98,7 @@ case "$cmd" in
   timeline|cronologia)    exec python3 "$S/cm-timeline.py" "$@" ;;   # 03/10: cosa hanno fatto le sessioni (fase 2)
   render|rendi)           exec python3 "$S/cm-render.py" "$@" ;;     # 03/10: un riepilogo Markdown diventa una pagina HTML
   recurring|ricorrenti)   exec python3 "$S/cm-recurring.py" "$@" ;;  # 04/10: le azioni ricorrenti della master (1.33)
+  suggest|suggerisci)     exec python3 "$S/cm-suggest.py" "$@" ;;   # 24/10 (1.84): i suggerimenti della master per la home dell'app
   observe|osserva)        exec python3 "$S/../observe/observe.py" "$@" ;;   # copia di claude-observe (sync.py)
   *)
     python3 "$S/cm-config.py" --msg cli.unknown "cmd=$cmd" >&2

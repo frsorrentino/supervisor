@@ -100,7 +100,7 @@
       "advice": {
         "model": "claude-fable-5-1",
         "effort": "high",
-        "reason": "Checkout refactor across many files: Fable 5.1 high; switch after the current task",
+        "reason": "Checkout refactor across many files: Fable 5.1 high",
         "switch_cost_tokens": 36000,
         "at": 1789210700,
         "source": "fable-director",
@@ -208,7 +208,11 @@
       "suggestion": null,
       "goal": null,
       "handoff": null,
-      "changes": null
+      "changes": null,
+      "closed": {
+        "at": 1789200000,
+        "session_id": "3d1b2c4e-0000-4000-8000-000000000004"
+      }
     }
   ],
   "quota": {
@@ -360,7 +364,10 @@
     "studio",
     "nights",
     "done",
-    "elicit"
+    "elicit",
+    "suggestion",
+    "close_preview",
+    "close"
   ],
   "slash": [
     "compact",
@@ -454,5 +461,6 @@
   ],
   "hosts_status": [],
   "published_today": [],
-  "commitments": []
+  "commitments": [],
+  "suggestions": []
 }

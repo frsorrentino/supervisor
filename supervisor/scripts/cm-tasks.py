@@ -638,6 +638,7 @@ def repo_url(project):
 _TAG_RE = re.compile(r"(?:git tag (?:-l|--list)\s+|gh release (?:view|create)\s+|tags/)[\"']?([A-Za-z0-9][\w.-]*)")   # anche impegni-2026-10-22-b
 _HASH_RE = re.compile(r"(?<![\w/])([0-9a-f]{7,40})(?![\w/])")
 _FILE_RE = re.compile(r"(?<![\w/])((?:docs|details)/[\w./-]+\.md)\b")
+_VER_RE = re.compile(r"(?<![\w.])v?(\d+\.\d+(?:\.\d+)*)(?![\w.]*\d)")
 
 
 def proof_of(task, result):
@@ -648,8 +649,14 @@ def proof_of(task, result):
     texts = [cmd, str((task.get("outcome") or {}).get("expected") or ""), str((result or {}).get("reason") or ""), str(((result or {}).get("proof") or {}).get("value") or "")]
     repo = repo_url(task["where"]["project"])
     m = _TAG_RE.search(cmd)
-    if m:
-        return {"kind": "release", "value": m.group(1), "url": f"{repo}/releases/tag/{m.group(1)}" if repo else None}
+    tag = m.group(1) if m else None
+    if tag and not any(c.isdigit() for c in tag):
+        # 24/10 (dall'app: «release v» col link a releases/tag/v): `gh release view "v$V"` da' solo «v», la versione sta
+        # in una variabile. Si cerca nell'esito atteso o nel motivo del risultato; senza, si passa al commit o al controllo
+        v = next((x.group(1) for t in texts[1:3] for x in [_VER_RE.search(t)] if x), None)
+        tag = (tag + v if tag == "v" else v) if v else None
+    if tag:
+        return {"kind": "release", "value": tag, "url": f"{repo}/releases/tag/{tag}" if repo else None}
     for t in texts:
         m = _HASH_RE.search(t)
         if m and not m.group(1).isdigit():

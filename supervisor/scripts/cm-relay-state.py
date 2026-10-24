@@ -36,6 +36,12 @@ PUBLISHED_MAX = 30   # 1.75: le pubblicazioni di oggi in /state; fit_state le sc
 PUBLISHED_FIT = 10
 COMMITMENTS_MAX = 30   # 1.76: gli impegni in /state; fit_state li scende a COMMITMENTS_FIT, poi a 5
 COMMITMENTS_FIT = 10
+SUGGESTIONS_MAX = 6   # 1.84: i suggerimenti della master in /state (l'app ne mostra 3); fit_state li scende a 3
+SUGGESTIONS_FIT = 3
+USAGE_MAX = 12   # 1.84: le righe di usage_today; fit_state le scende a USAGE_FIT
+USAGE_FIT = 5
+DIRTY_MAX = 20   # 1.84: i file non committati in closed.dirty (il totale in dirty_n)
+PUBLISHED_AT_BYTES = len(',"published_at":1789210801.123')   # il campo che _push aggiunge dopo fit_state
 RECAP_CUT = 80    # 1.7 fit_state: `done` e `next` del recap accorciati a fine parola invece di sparire per primi
 HIGH_WORDS = ["rm -rf", "git push", "deploy", "DROP", "ssh", "sudo", "--force", "git reset --hard"]
 LOW_TOOLS = {"Read", "Grep", "Glob", "WebFetch", "WebSearch", "LS", "TodoWrite"}
@@ -473,6 +479,23 @@ def build_session(row, src):
             out["needs_you"]["until"] = True
         if nyu.get("expires_at"):
             out["needs_you"]["expires_at"] = int(nyu["expires_at"])
+        # 1.84 (24/10): legata a un compito (`needs-you --task`): `task` e, se l'ha chiesta un'altra sessione, `from`
+        if nyu.get("task"):
+            out["needs_you"]["task"] = str(nyu["task"])
+        if nyu.get("from"):
+            out["needs_you"]["from"] = short_name(str(nyu["from"]), src.get("prefixes") or ())
+    # 1.84 (24/10): una sessione chiusa dice com'era alla chiusura. Sempre {at, session_id} (l'id che «Riprendi» passa
+    # a --resume; null se non si sa); dal salvataggio della chiusura dall'app (op close, /exit) anche outcome, next,
+    # dirty_n e dirty (al massimo DIRTY_MAX percorsi; null fuori da git). Chiusa dal PC: solo quello che il relay sa,
+    # cioe' at e session_id, mentre esito e prossimo restano in outcome e next della sessione (lo stato sta in 8 KB)
+    if st == "gone":
+        sv = (src.get("closed") or {}).get(tmux) or {}
+        out["closed"] = {"at": int(sv.get("closed_at") or 0) or since or None, "session_id": sv.get("session_id") or row.get("session_id") or None}
+        if sv:
+            dirty = sv.get("dirty") if isinstance(sv.get("dirty"), list) else None
+            out["closed"].update(outcome=one_line(sv.get("outcome") or "")[:200] or None, next=one_line(sv.get("next") or "")[:200] or None,
+                                 dirty_n=int(sv["dirty_n"]) if isinstance(sv.get("dirty_n"), int) else None,
+                                 dirty=[str(x) for x in dirty[:DIRTY_MAX]] if dirty is not None else None)
     # 1.54 (14/10): la modalita' dei permessi (default, acceptEdits, plan, bypassPermissions...), dall'ultima riga della
     # trascrizione che la dice. 1.55: la domanda risolta al PC negli ultimi minuti, {id, text, at, by: "terminal"}.
     # Assenti = non si sa / nessuna
@@ -662,6 +685,14 @@ def build_state(src, now, fit=True):
                 x["waits"] = {k: canon_session(v, src.get("rows")) for k, v in x["waits"].items()}
             cms.append(x)
         state["commitments"] = cms
+    # 1.84 (24/10): i suggerimenti della master ({id, kind, key, text, prompt, at, expires_at}, dal piu' recente, al
+    # massimo 6) e i token di oggi per sessione ({session, account, tokens, share}, dal piu' grande); [] quando non c'e'
+    # niente, assenti con un relay vecchio
+    if "suggestions" in src:
+        state["suggestions"] = [dict(x) for x in sorted(src.get("suggestions") or [], key=lambda x: -int(x.get("at") or 0))][:SUGGESTIONS_MAX]
+    if "usage_today" in src:
+        state["usage_today"] = [dict(x, session=canon_session(x.get("session"), src.get("rows")))
+                                for x in sorted(src.get("usage_today") or [], key=lambda x: -int(x.get("tokens") or 0))][:USAGE_MAX]
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state
@@ -713,7 +744,9 @@ def fit_state(state, max_kb=8):
     10 progetti il polso non aveva mai il recap («Ascolta il recap» assente). Prima ancora `full` cadeva per
     primo: con dieci sessioni finite ogni esito era la sola riga corta. Una sessione finita che esce dallo stato
     non genera eventi (events_between ignora le gone sparite e le gone ricomparse)."""
-    cap = max_kb * 1024
+    # 24/10 (supervisor-app: state-1 a 8203 B col suo conto): published_at lo aggiunge _push dopo il taglio, il suo
+    # posto si tiene qui
+    cap = max_kb * 1024 - PUBLISHED_AT_BYTES
 
     def fits():
         return size_of(state) <= cap
@@ -732,6 +765,21 @@ def fit_state(state, max_kb=8):
         keep_commitments(state, COMMITMENTS_FIT)
         if fits():
             return state
+    # 1.84: le righe piu' piccole di usage_today (l'app le raggruppa comunque in «altre N»), i suggerimenti oltre i tre
+    # che l'app mostra, poi l'elenco dei file non committati delle sessioni chiuse (dirty_n resta)
+    if len(state.get("usage_today") or []) > USAGE_FIT:
+        state["usage_today"] = state["usage_today"][:USAGE_FIT]
+        if fits():
+            return state
+    if len(state.get("suggestions") or []) > SUGGESTIONS_FIT:
+        state["suggestions"] = state["suggestions"][:SUGGESTIONS_FIT]
+        if fits():
+            return state
+    for s in state["sessions"]:
+        if (s.get("closed") or {}).get("dirty"):
+            s["closed"]["dirty"] = []
+    if fits():
+        return state
     state["projects"] = most_recent(state["projects"], 10)
     if fits():
         return state

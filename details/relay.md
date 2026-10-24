@@ -427,6 +427,67 @@ session's cards, otherwise they lapse at `expires_at`. Fixtures:
 `elicit` accepted, two refused). Without 1.83 the app works as before: the
 field and the event are additive.
 
+Contract 1.84 (24/10/2026, asked by the app after the maintainer chose «Tutto» on
+the mockup of the home page: the master's suggestions, true states, closing with the
+state saved, today's quota per session). All additive, `v` stays 1.
+
+- **Suggestions.** `supervisor suggest add --kind K --key KEY --text T --prompt P
+  [--ttl 12h]`, `suggest list [--json]`, `suggest clear [--kind K]`. The master
+  writes them twice a day (8:00 and 19:00, from the registry and the diary). `kind`
+  is `recurring`, `cleanup`, `deadline` or `quota`; `key` is stable for the same
+  suggestion and is what «Never» remembers; `text` is one line and never carries
+  «…»; `prompt` is what the master receives. `/state.suggestions` lists
+  `{id, kind, key, text, prompt, at, expires_at}`, newest first, at most 6 (`[]`
+  when there are none; fit_state cuts them to 3). The op `suggestion {arg: id,
+  action: accept | later | never}`: accept sends `prompt` to the master like a
+  prompt from the app, labelled «[dai suggerimenti]», and drops the item; later
+  hides it until the next round (an `add` with the same key brings it back, with
+  the new text); never drops it and puts its key on a list `add` then skips
+  silently (exit 0, no output). Results «sent to master», «hidden until the next
+  round», «never again», «unknown suggestion». The file is `suggestions.json` next
+  to the config.
+- **Today's quota per session.** `/state.usage_today` lists `{session, account,
+  tokens, share}`, biggest first, at most 12 (fit_state: 5). `tokens` are the
+  tokens since local midnight from the transcripts of every account (input,
+  output, cache, each message once; sessions closed today, the master and the
+  subagents included), `share` their part of the account's total (0..1). The count
+  is incremental (`usage-today.json` in the relay folder keeps where each file was
+  read up to) and redone at most every 3 minutes; sessions on another host are not
+  in it.
+- **needs-you tied to a task.** `supervisor needs-you "<what>" --task ID`: when the
+  task has a live session (its registry session, else `where.session`), the
+  request goes on that session's `needs_you`, with `task` and `from` (who asked);
+  otherwise it stays on the asker, with `task`. Both fields are optional.
+- **Closing with the state saved.** The op `close_preview {arg: "a,b"}` (a passive
+  read) answers `{sessions: [{name, closable, blocked_by, save}]}`: `blocked_by` is
+  `busy`, `question`, `background` (a shell among the claude process's children: a
+  Bash in the background or a job it started), `attached`, `gone` (not running) or
+  null; `save` (only when closable) is `{outcome, next, session_id, dirty_n,
+  dirty}`, with `dirty` the first 20 paths of `git status --porcelain` and null
+  outside git. The op `close {arg: "a,b"}` checks again, saves each closable
+  session to `<state_dir>/closed/<tmux>.json` (outcome, next, dirty, session_id,
+  closed_at, by), then runs `supervisor close`; the text says who is closed and who
+  is not, with the reason; ok when at least one is closed. `/exit` from the app (op
+  `slash`) takes the same road: the checks (an attached session is fine there: the
+  command is typed in its pane), the save, then the command.
+- **Closed sessions and «Resume».** Every `gone` session carries `closed`: always
+  `{at, session_id}`; from a save also `outcome`, `next`, `dirty_n`, `dirty`
+  (fit_state empties `dirty` before cutting sessions, `dirty_n` stays). A session
+  closed at the PC carries only what the relay knows, `at` and `session_id`, while
+  its outcome and next stay in the session's own fields. A save keeps the session
+  in the state for 7 days even after `close` drops it from the registry. `reopen`
+  of a saved session runs `launch --resume <closed.session_id>`; without that
+  conversation on disk it refuses («the saved conversation … is not on disk: use
+  launch»), never `--continue`.
+
+Fixtures: `state-1-question.json` (`suggestions` empty, the gone `orbit-docs` with
+`closed {at, session_id}`), `state-2-idle.json` (three suggestions of different
+kinds, four `usage_today` rows on two accounts, a `needs_you` with `task` and
+`from`), `state-3-stale.json` (a gone session closed from the app with two
+uncommitted files), `cmd-result-sample.json` (a suggestion accepted, an unknown
+one; a `close_preview` and one with no session; a `close` with one session kept
+and one of a busy session only, refused).
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within
