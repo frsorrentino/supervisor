@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.58 — 2026-10-24: `relay pair --revoke UID`.**
+  - Asked by the master at 09:46 (the device «Studio» no longer needed its key): a paired device could be removed only from the app (op `unpair`). `supervisor relay pair --revoke UID` does the same from the PC: the uid out of `/allowed` (the database stops answering it), `/seen` and `devices.json`; never the last device; an unknown uid exits 1. Test R33b.
 - **0.8.57 — 2026-10-24: every card of the night report opens its conversation (contract 1.82).**
   - Asked by supervisor-app for the maintainer's request of 08:42 («Nel riepilogo della notte, ogni scheda deve essere cliccabile e portarmi alla sessione che ha lavorato»).
   - The night report: every `timeline` item carries `session_id` when known — a session's last conversation (its transcript file name, local copies of remote sessions included), a night job's `claude -p` conversation — absent otherwise, never null.

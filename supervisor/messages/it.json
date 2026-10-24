@@ -406,7 +406,7 @@
   "relay.pair_ok": "accoppiato: {devices}; chiave in {path}",
   "relay.pair_failed": "pairing FALLITO: {n} tentativi con il codice sbagliato",
   "relay.pair_timeout": "pairing scaduto: nessun orologio in {s} s",
-  "relay.pair_usage": "uso: supervisor relay pair [--add] [--text] [--timeout S]\n  --add      un dispositivo IN PIÙ: la chiave resta, quelli già accoppiati restano (al massimo 4)\n  --text     il JSON del QR su una riga invece del disegno\n  --timeout  secondi di validità del codice (default relay.pair_ttl_s)\nSenza --add il pairing nuovo sostituisce chiave e dispositivi di prima.",
+  "relay.pair_usage": "uso: supervisor relay pair [--add] [--text] [--timeout S] | --revoke UID\n  --add      un dispositivo IN PIÙ: la chiave resta, quelli già accoppiati restano (al massimo 4)\n  --text     il JSON del QR su una riga invece del disegno\n  --timeout  secondi di validità del codice (default relay.pair_ttl_s)\n  --revoke UID  toglie un dispositivo accoppiato (uid da devices.json): non legge più niente; mai l'ultimo\nSenza --add il pairing nuovo sostituisce chiave e dispositivi di prima.",
   "relay.pair_add_no_key": "pair --add: nessuna chiave salvata, niente a cui aggiungersi — usa `relay pair`",
   "relay.pair_add_full": "pair --add RIFIUTATO: sarebbero {n} dispositivi, al massimo {max}; togline uno da devices.json e /allowed, o rifai `relay pair`",
   "relay.pair_ok_add": "aggiunto: {devices}; dispositivi accoppiati: {n}, chiave invariata",

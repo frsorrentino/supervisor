@@ -406,7 +406,7 @@
   "relay.pair_ok": "paired: {devices}; key in {path}",
   "relay.pair_failed": "pairing FAILED: {n} attempts with a wrong code",
   "relay.pair_timeout": "pairing timed out: no watch in {s} s",
-  "relay.pair_usage": "usage: supervisor relay pair [--add] [--text] [--timeout S]\n  --add      one MORE device: the key stays, the paired ones stay (at most 4)\n  --text     the QR's JSON on one line instead of the drawing\n  --timeout  seconds the code is valid (default relay.pair_ttl_s)\nWithout --add a new pairing replaces the key and the devices of before.",
+  "relay.pair_usage": "usage: supervisor relay pair [--add] [--text] [--timeout S] | --revoke UID\n  --add      one MORE device: the key stays, the paired ones stay (at most 4)\n  --text     the QR's JSON on one line instead of the drawing\n  --timeout  seconds the code is valid (default relay.pair_ttl_s)\n  --revoke UID  removes a paired device (uid from devices.json): it reads nothing any more; never the last one\nWithout --add a new pairing replaces the key and the devices of before.",
   "relay.pair_add_no_key": "pair --add: no saved key, nothing to add to — use `relay pair`",
   "relay.pair_add_full": "pair --add REFUSED: that would be {n} devices, {max} at most; remove one from devices.json and /allowed, or run `relay pair` again",
   "relay.pair_ok_add": "added: {devices}; paired devices: {n}, key unchanged",

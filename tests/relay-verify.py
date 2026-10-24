@@ -1601,6 +1601,16 @@ T.check("R33 (1.39) unpair: an unknown uid refused as in the fixture; the browse
         and list(STORE.get("allowed") or {}) == ["phoneUid00000000000000000000"] and "webUid000000000000000000000" not in (STORE.get("seen") or {})
         and list(_left33) == ["phoneUid00000000000000000000"] and r33c and r33c["ok"] is False and r33c["text"] == "cannot remove the last device"
         and list(STORE.get("allowed") or {}) == ["phoneUid00000000000000000000"], str([r33a, r33b, r33c, STORE.get("allowed")]))
+# R33b (24/10, la master: «revoca dal relay il dispositivo Studio»): la stessa revoca dalla riga di comando
+(rdir2 / "devices.json").write_text(json.dumps({"phoneUid00000000000000000000": {"name": "Pixel 9", "paired_at": 1, "kind": "phone"},
+                                                "studioUid0000000000000000000": {"name": "Studio", "paired_at": 3, "kind": "web"}}))
+http("PUT", "/allowed.json", {"phoneUid00000000000000000000": True, "studioUid0000000000000000000": True})
+_rv = lambda *a: subprocess.run([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", *a], capture_output=True, text=True, env=ENV, timeout=30)  # noqa: E731
+_r33d, _r33e, _r33f, _r33g = _rv("--revoke", "studioUid0000000000000000000"), _rv("--revoke", "nobody"), _rv("--revoke", "phoneUid00000000000000000000"), _rv("--revoke")
+T.check("R33b relay pair --revoke UID: «removed Studio», out of /allowed and devices.json, exit 0; an unknown uid exit 1; the last device refused, exit 1; no uid → usage, exit 2; never a pairing",
+        _r33d.returncode == 0 and "removed Studio" in _r33d.stdout and list(STORE.get("allowed") or {}) == ["phoneUid00000000000000000000"]
+        and list(json.loads((rdir2 / "devices.json").read_text())) == ["phoneUid00000000000000000000"] and _r33e.returncode == 1 and _r33f.returncode == 1
+        and "cannot remove the last device" in _r33f.stderr and _r33g.returncode == 2 and "--revoke UID" in _r33g.stderr, str([(x.returncode, x.stdout, x.stderr[-200:]) for x in (_r33d, _r33e, _r33f, _r33g)]))
 (rdir2 / "devices.json").write_text(_dev33)
 http("PUT", "/allowed.json", _all33 or None) if _all33 else http("DELETE", "/allowed.json")
 T.check("R33 (1.39) eight places (PAIR_MAX_DEVICES) and kind web: a browser's pairing answer keeps its kind; state.devices shows it",

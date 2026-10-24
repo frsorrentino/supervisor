@@ -5094,6 +5094,17 @@ def main(argv):
         return task_check(rest[0]) if rest and R.get("enabled") else 0
     if cmd == "setup":   # il progetto Firebase, guidato (R2, 24/09): la sua CLI, non cryptography ne' crontab
         return _load("cm-relay-setup").main(rest)
+    if cmd == "pair" and "--revoke" in rest:
+        # 24/10 (la master, per il dispositivo «Studio»): la revoca dal PC, la stessa dell'op unpair dell'app
+        i = rest.index("--revoke")
+        if i + 1 >= len(rest) or len(rest) != 2:
+            print(M("relay.pair_usage"), file=sys.stderr); return 2
+        try:
+            ok, text = unpair(rest[i + 1])
+        except (RelayError, urllib.error.URLError, OSError, ValueError) as e:
+            print(f"relay pair --revoke: {e}", file=sys.stderr); return 1
+        print(text, file=sys.stdout if ok else sys.stderr)
+        return 0 if ok else 1
     if cmd == "pair":
         # 04/10 (dall'app): `pair --help` avviava un pairing vero. L'aiuto, e un argomento sconosciuto, prima di tutto
         known, i = {"--text", "--add"}, 0

@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.57-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.58-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -131,7 +131,7 @@ and no tester group. On the PC you need `python3-cryptography`, `crontab` and th
 ```bash
 supervisor relay setup     # your own Firebase project, guided; --dry-run shows the steps
 supervisor relay install   # keeps the relay running
-supervisor relay pair      # a QR for the first device; later ones: relay pair --add
+supervisor relay pair      # a QR for the first device; later ones: relay pair --add; remove one: relay pair --revoke UID
 ```
 
 On the phone, open [supervisor.francescosorrentino.com](https://supervisor.francescosorrentino.com).
