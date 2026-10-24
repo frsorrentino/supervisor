@@ -15,6 +15,8 @@ TU9  mai Invio in un selettore: il default per le sessioni nuove non viene salva
 TU10 sessione inesistente → uscita 1
 TU11 riquadro stretto (34 colonne, come una sessione lanciata senza finestra): le frasi vanno a capo DENTRO, e il
      cambio riesce lo stesso (dal vivo il 16/09 alle 11:50 non trovava «s to use this session only»)
+TU13 (24/10/2026, 2.1.309-310) in una conversazione in cache «s» apre «Switch model?»: si preme «1», mai Invio, e la
+     conferma arriva → uscita 0; se dopo «1» la conferma non arriva → «2», uscita 4, il default mai salvato
 TU12 (16/10/2026, 2.1.301) il riassunto prima di un cambio verso una finestra piu' piccola: mai Esc mentre lo schermo
      mostra «Compacting conversation»; la conferma arriva dopo tune.timeout_s → uscita 0; oltre compact_timeout_s →
      uscita 4, e il riassunto continua
@@ -158,4 +160,18 @@ with T.PrivateTmux() as tm:
     T.check("TU12 a summary past tune.compact_timeout_s: exit 4 «riassume la conversazione», still no Esc, the summary goes on",
             r.returncode == 4 and "riassume la conversazione" in r.stdout and time.time() - t0 < 30 and "Compacting conversation" in pane(tm, "iota")
             and not (keys_log.exists() and "Esc" in keys_log.read_text()), r.stdout + pane(tm, "iota"))
+
+    # TU13 (24/10/2026, 2.1.309-310, dal telefono su una sessione al limite di Fable): il dialogo «Switch model?» dopo «s»
+    ask_log, def_log = tmp / "ask.log", tmp / "default-ask.log"
+    start(tm, "kappa", "model-ask", extra=(f"FAKE_CLAUDE_KEYS_LOG={ask_log}", f"FAKE_CLAUDE_DEFAULT_LOG={def_log}"))
+    r = tune(tm, "model", "kappa", "claude-opus-5-5[1m]")
+    T.check("TU13 «Switch model?» after «s» (a cached conversation) → «1», never Enter; «Set model to Opus 5.5 for this session only», exit 0, no default saved",
+            r.returncode == 0 and "Opus 5.5" in r.stdout and "Set model to Opus 5.5 for this session only" in pane(tm, "kappa")
+            and ask_log.exists() and ask_log.read_text().splitlines() == ["switch-ask: 1"] and not def_log.exists(), r.stdout + pane(tm, "kappa") + (ask_log.read_text() if ask_log.exists() else ""))
+    ask_log.unlink(missing_ok=True)
+    start(tm, "lambda", "model-ask-noconfirm", extra=(f"FAKE_CLAUDE_KEYS_LOG={ask_log}", f"FAKE_CLAUDE_DEFAULT_LOG={def_log}"))
+    r = tune(tm, "model", "lambda", "claude-opus-5-5[1m]")
+    T.check("TU13 «1» pressed and no confirmation → «2» (go back), exit 4 «conferma non arrivata», never Enter, no default saved",
+            r.returncode == 4 and "conferma non arrivata" in r.stdout and ask_log.exists() and ask_log.read_text().splitlines() == ["switch-ask: 1", "switch-ask: 2"]
+            and not def_log.exists(), r.stdout + pane(tm, "lambda") + (ask_log.read_text() if ask_log.exists() else ""))
 T.finish()

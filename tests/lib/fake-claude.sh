@@ -244,6 +244,21 @@ model_picker() {
              fi
            done ;;
          esac
+         # model-ask (2.1.309-310, 24/10/2026): in una conversazione in cache «s» apre «Switch model?»; «1» cambia, «2» torna
+         # indietro, Esc chiude con «Kept model as …», Invio si annota (non deve mai arrivare)
+         case "$SCEN" in *,model-ask*,*)
+           printf '\033[2J\033[H❯ /model\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Switch model?\n   Your next response will be slower and use more tokens\n   This conversation is cached for the current model. Switching to %s means the full history gets re-read on your next message.\n   ❯ 1. Yes, switch to %s\n     2. No, go back\n' "${names[$sel]}" "${names[$sel]}"
+           local k4
+           while IFS= read -rsn1 k4; do
+             [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "switch-ask: ${k4:-Enter}" >> "$FAKE_CLAUDE_KEYS_LOG"
+             case "$k4" in
+               1) case "$SCEN" in *,model-ask-noconfirm,*) continue ;; esac; break ;;
+               2) printf '\033[2J\033[H  ⎿  Kept model as Fable 5.1\n'; return ;;
+               $'\x1b') read -rsn2 -t 0.2 _ 2>/dev/null || true; printf '\033[2J\033[H  ⎿  Kept model as Fable 5.1\n'; return ;;
+               "") continue ;;
+             esac
+           done ;;
+         esac
          if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '\033[2J\033[H  ⎿  Set model to %s for\n     this session only\n' "${names[$sel]}"
          else printf '\033[2J\033[H  ⎿  Set model to %s for this session only\n' "${names[$sel]}"; fi; return ;;
       "") [ -n "${FAKE_CLAUDE_DEFAULT_LOG:-}" ] && echo "model ${names[$sel]}" >> "$FAKE_CLAUDE_DEFAULT_LOG"

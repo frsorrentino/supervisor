@@ -33,12 +33,20 @@ modello di prima, con lo spinner «Compacting conversation»: la conferma arriva
 riassunto non si preme Esc, che lo interromperebbe, e si aspetta fino a tune.compact_timeout_s; scaduto quel tempo,
 uscita 4 e niente Esc: il cambio resta in corso.
 
+Dalla 2.1.309-310 (24/10/2026, dal telefono: «il cambio modello non sembra applicarsi», su una sessione ferma al
+limite di Fable), in una conversazione che ha gia' dei turni «s» non cambia subito: apre un secondo dialogo, «Switch
+model? … This conversation is cached for the current model» con «1. Yes, switch to <modello>» e «2. No, go back».
+Lo strumento aspettava la conferma, non arrivava, e l'Esc finale chiudeva tutto con «Kept model as …». Ora, se il
+dialogo compare, si preme «1» (mai Invio) e si aspetta la conferma di sempre; se poi la conferma non arriva, «2» e
+Esc. In una conversazione senza turni il dialogo non c'e' e non cambia niente.
+
 Uscite: 0 fatto; 1 sessione assente; 2 valore o uso non validi; 3 sessione non ferma al prompt (per i permessi: un
 dialogo aperto); 4 selettore, conferma o piè non arrivati, riassunto del cambio ancora in corso, o modalita' fuori dal
 giro; 5 sessione su un altro host (solo permessi). La prima riga dell'output e' il testo per chi chiama (il relay la
 gira al polso).
 """
 import importlib.util
+import os
 import re
 import sys
 import time
@@ -62,6 +70,8 @@ T = CFG.get("tune") or {}
 WAIT_S = float(T.get("timeout_s") or 8)
 COMPACT_WAIT_S = float(T.get("compact_timeout_s") or 300)
 COMPACTING = "Compacting conversation"   # lo spinner del riassunto (Claude Code 2.1.301), anche prima di un cambio di modello
+SWITCH_WAIT_S = float(T.get("switch_timeout_s") or 30)   # dopo «1» nel dialogo «Switch model?»: hook e ridisegno
+SWITCH_ASK, SWITCH_YES = "Switch model?", "Yes, switch to"   # 2.1.309-310: il dialogo dopo «s» in una conversazione in cache
 ORDER =["low", "medium", "high", "xhigh", "max", "ultracode"]   # le posizioni del cursore, da sinistra
 # Claude Code 2.1.283 (dal vivo il 26/09/2026): la lista di /model scorre — sette voci a schermo su undici, «↑ n.» sulla
 # prima riga visibile e «↓ n.» sull'ultima quando ce ne sono altre, «… +4 models» in coda; sulla riga del cursore la
@@ -293,6 +303,63 @@ def cancel(name, marker=None):
         time.sleep(0.25)
 
 
+def switch_dialog(scr):
+    """True se in fondo allo schermo c'e' il dialogo «Switch model?» (2.1.309-310): il riquadro sotto l'ultimo bordo
+    «▔▔▔». Solo li': la conversazione sopra puo' contenere le stesse parole."""
+    lines = str(scr or "").splitlines()
+    top = max((i for i, l in enumerate(lines) if "▔▔▔▔" in l), default=-1)
+    block = flat("\n".join(lines[top + 1:])) if top >= 0 else flat("\n".join(lines[-12:]))
+    return SWITCH_ASK in block and SWITCH_YES in block
+
+
+def picker_open(scr):
+    """True se in fondo allo schermo c'e' ancora il selettore di /model o il dialogo «Switch model?»."""
+    lines = str(scr or "").splitlines()
+    top = max((i for i, l in enumerate(lines) if "▔▔▔▔" in l), default=-1)
+    block = flat("\n".join(lines[top + 1:])) if top >= 0 else ""
+    return "Select model" in block or switch_dialog(scr) or "to use this session only" in below_prompt(scr)
+
+
+def model_confirmed(scr, choice):
+    """L'esito del cambio letto per POSIZIONE, non contando: selettore e dialogo chiusi, l'ultima «Set model to … for
+    this session only» a schermo nomina il modello scelto e dopo di lei non c'e' «Kept model as». 24/10/2026 dal vivo
+    (2.1.310): dopo il dialogo Claude Code ridisegna e spinge righe nella cronologia; contare le conferme prima e dopo
+    dava esiti sbagliati in tutti e due i versi (un cambio riuscito dato per fallito, il modello di prima stampato)."""
+    if picker_open(scr):
+        return None
+    text = flat(scr)
+    found = list(re.finditer(r"Set model to (.+?) for this session only", text))
+    if not found:
+        return None
+    last = found[-1]
+    if text.rfind("Kept model as") > last.start() or not any(last.group(1).startswith(p) for p in picks(choice)):
+        return None
+    return last.group(1)
+
+
+def wait_model(name, choice, timeout=None):
+    """La conferma del cambio (model_confirmed). Se compare il dialogo «Switch model?» (2.1.309-310) si preme «1» una
+    volta, mai Invio, e si aspetta fino a SWITCH_WAIT_S: Claude Code esegue gli hook PreModelSwitch e ridisegna. None
+    allo scadere, o subito se parte il riassunto (lo gestisce chi chiama, con `timeout`)."""
+    end, pressed, t1 = time.time() + (timeout or WAIT_S), False, time.time()
+    time.sleep(0.5)   # il selettore si chiude: prima di allora lo schermo mostra ancora la conferma del cambio precedente
+    while time.time() < end:
+        scr = screen(name)
+        got = model_confirmed(scr, choice)
+        if got:
+            if os.environ.get("CM_TUNE_DEBUG"):
+                print(f"[debug] conferma dopo {time.time() - t1:.1f} s" + (" (dialogo)" if pressed else ""), file=sys.stderr)
+            return got
+        if COMPACTING in flat(scr) and not timeout:
+            return None
+        if switch_dialog(scr) and not pressed:
+            keys(name, "1", pause=0.3)
+            pressed = True
+            end = time.time() + max(timeout or WAIT_S, SWITCH_WAIT_S)
+        time.sleep(0.25)
+    return None
+
+
 def _set_model(name, wanted):
     choice = next((m for m in models() if wanted in (m["id"], m.get("label")) or wanted in picks(m)), None)
     if not choice:
@@ -326,17 +393,17 @@ def _set_model(name, wanted):
         cancel(name, "to use this session only")
         print(M("tune.no_option", name=name, label=picks(choice)[0]))
         return 4
-    pat = r"Set model to (.+?) for this session only"
-    before = len(re.findall(pat, flat(screen(name))))
     keys(name, "s", pause=0.3)
-    line = wait_new(name, pat, before)
+    line = wait_model(name, choice)
     if not line and COMPACTING in flat(screen(name)):
         # il modello nuovo ha la finestra piu' piccola: la conversazione si riassume prima del cambio, ed Esc la fermerebbe
-        line = wait_new(name, pat, before, timeout=COMPACT_WAIT_S)
+        line = wait_model(name, choice, timeout=COMPACT_WAIT_S)
         if not line and COMPACTING in flat(screen(name)):
             print(M("tune.compacting", name=name))
             return 4
     if not line:
+        if switch_dialog(screen(name)):   # il dialogo «Switch model?» ancora aperto: «2. No, go back», poi Esc sul selettore
+            keys(name, "2", pause=0.5)
         cancel(name, "to use this session only")
         print(M("tune.no_confirm", name=name))
         return 4

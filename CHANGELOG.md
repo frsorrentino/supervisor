@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.56 — 2026-10-24: the model change from the phone works again (Claude Code 2.1.309-310).**
+  - Reported by the maintainer from the phone at 08:49: on a session stopped at the Fable limit, «Opus 5.5» from the app did nothing («conferma non arrivata», then «Kept model as Fable 5.1»). Reproduced live on a probe session: in a conversation that has a cached turn, «s» in the `/model` picker now opens a second dialog, «Switch model? … This conversation is cached for the current model» with «1. Yes, switch to …» and «2. No, go back»; the tool waited for a confirmation that never came, and its final Esc closed everything.
+  - `supervisor model`: when that dialog appears it presses «1» (never Enter) and waits up to `tune.switch_timeout_s` (30 s) while the PreModelSwitch hooks run; if the confirmation still does not come, «2» and Esc. The confirmation is now read by position — picker and dialog closed, the last «Set model to … for this session only» on screen names the chosen model, no «Kept model as» after it — instead of counting confirmations before and after: Claude Code's redraw after the dialog pushes lines into the pane's history, and the count gave wrong results both ways (a switch that happened reported as failed, the previous model printed). The default for new sessions is never touched (checked live: `settings.json` unchanged). `supervisor effort` has no such dialog and is unchanged.
+  - Tests: TU13 (a fake `Switch model?` dialog: «1», never Enter; «1» without confirmation → «2», exit 4).
 - **0.8.55 — 2026-10-24: kernel rule 13, every mockup reaches the chat as files.**
   - Asked by the maintainer at 00:40 (task anteprime-in-app): a mockup or canvas shown only as a link is unreadable on the phone; the app shows attached files inside the chat.
   - Rule 13 for every session: a mockup or canvas (HTML, SVG, an image) goes in the chat as files too — a real-size PNG and, when there is one, the standalone HTML — attached with `SendUserFile` in the same message as the link; never the link alone. H3 bound 3400 characters, 15 lines.
