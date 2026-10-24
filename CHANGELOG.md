@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.57 — 2026-10-24: every card of the night report opens its conversation (contract 1.82).**
+  - Asked by supervisor-app for the maintainer's request of 08:42 («Nel riepilogo della notte, ogni scheda deve essere cliccabile e portarmi alla sessione che ha lavorato»).
+  - The night report: every `timeline` item carries `session_id` when known — a session's last conversation (its transcript file name, local copies of remote sessions included), a night job's `claude -p` conversation — absent otherwise, never null.
+  - The op `transcript` reads a closed conversation too: `session` null and `sid`; the relay looks for `<sid>.jsonl` under `projects/` of every account, then among the local copies of remote sessions; same answer `{entries, more}`; unknown → «no transcript for <sid>». Read only.
+  - Tests: NR-S, R69; the …0383 result of `cmd-result-sample.json` follows the night report fixture.
 - **0.8.56 — 2026-10-24: the model change from the phone works again (Claude Code 2.1.309-310).**
   - Reported by the maintainer from the phone at 08:49: on a session stopped at the Fable limit, «Opus 5.5» from the app did nothing («conferma non arrivata», then «Kept model as Fable 5.1»). Reproduced live on a probe session: in a conversation that has a cached turn, «s» in the `/model` picker now opens a second dialog, «Switch model? … This conversation is cached for the current model» with «1. Yes, switch to …» and «2. No, go back»; the tool waited for a confirmation that never came, and its final Esc closed everything.
   - `supervisor model`: when that dialog appears it presses «1» (never Enter) and waits up to `tune.switch_timeout_s` (30 s) while the PreModelSwitch hooks run; if the confirmation still does not come, «2» and Esc. The confirmation is now read by position — picker and dialog closed, the last «Set model to … for this session only» on screen names the chosen model, no «Kept model as» after it — instead of counting confirmations before and after: Claude Code's redraw after the dialog pushes lines into the pane's history, and the count gave wrong results both ways (a switch that happened reported as failed, the previous model printed). The default for new sessions is never touched (checked live: `settings.json` unchanged). `supervisor effort` has no such dialog and is unchanged.

@@ -179,7 +179,8 @@
         "prompts": 0,
         "tests": 2,
         "commits": 3
-      }
+      },
+      "session_id": "0b6e3c52-1f4a-4d7e-9a21-6c8d2e5f7a90"
     },
     {
       "kind": "session",
@@ -269,7 +270,8 @@
       "detail": "dati fatti e verificati, 3 commit sul ramo notte/registro.",
       "report": "/w/ledger-api-notte/docs/notte/2026-10-07-e5f6a7b8.md",
       "rc": 0,
-      "prompt": "Dati del registro dei pagamenti per la pagina mensile."
+      "prompt": "Dati del registro dei pagamenti per la pagina mensile.",
+      "session_id": "7d2a9e14-58c3-4b6f-8e01-3a9c4f2b6d18"
     },
     {
       "kind": "night_job",

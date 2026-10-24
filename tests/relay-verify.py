@@ -1556,6 +1556,20 @@ T.check("R67 (1.81) approve with a choice among the options → `task approve �
         and len([c for c in cm_calls()[n67:] if c.startswith("task approve")]) == 1, str((r67a, r67b, r67c, cm_calls()[n67:])))
 tasks31.unlink()
 (tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
+# R69 (1.82, 24/10, «ogni scheda cliccabile» del rapporto della notte): transcript di una conversazione chiusa, dal suo id
+_d69 = home / ".claude" / "projects" / "-closed-demo"
+_d69.mkdir(parents=True, exist_ok=True)
+(_d69 / f"{CMDS[80]['sid']}.jsonl").write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+r69a, r69b = send_cmd(CMDS[80]), send_cmd(CMDS[81])
+r69c = send_cmd(dict(CMDS[80], id="6f1c2d3e-0802-4000-8000-000000000802", sid="../../etc/passwd"))
+T.check("R69 (1.82) transcript with session null and sid → that conversation's page as in the fixture (closed: no live session needed); an unknown sid or one that is not a file name → «no transcript for …»",
+        r69a and r69a["ok"] is True and r69a["text"] == RES[80]["text"] and r69b and r69b["ok"] is False and r69b["text"] == RES[81]["text"]
+        and r69c and r69c["ok"] is False and r69c["text"].startswith("no transcript for "), str((r69a and r69a["text"][:120], r69b, r69c)))
+_nr69 = json.loads((FIX / "night-report-sample.json").read_text())
+T.check("R69 (1.82) night-report-sample: session_id on a closed session (atlas-shop) and on a night_job (e5f6a7b8), the same id as the transcript fixture; absent elsewhere, never null",
+        {(t["kind"], t["id"]): t.get("session_id") for t in _nr69["timeline"] if "session_id" in t} == {("session", "atlas-shop"): CMDS[80]["sid"], ("night_job", "e5f6a7b8"): "7d2a9e14-58c3-4b6f-8e01-3a9c4f2b6d18"}
+        and all(t.get("session_id", "x") is not None for t in _nr69["timeline"]), "")
+(_d69 / f"{CMDS[80]['sid']}.jsonl").unlink()   # la ricerca e la cronologia (R25, R27) leggono tutte le trascrizioni
 rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"started_at": 1789200000000}})
 _two31 = json.loads(alive.read_text())
 _two31.append(dict(_two31[2], pid=10, name="field-notes-2", tmux="field-notes-2", started_at=1789210000000, link=""))

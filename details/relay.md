@@ -374,6 +374,21 @@ Inside `/state` the first one holds: `commitments[].session`, `waits` and the
 `attention` items from the registry carry the state's name, so the app joins
 on `sessions[].name` and nothing else.
 
+Contract 1.82 (24/10/2026, the maintainer: «Nel riepilogo della notte, ogni
+scheda deve essere cliccabile e portarmi alla sessione che ha lavorato»):
+every `timeline` item of the night report carries `session_id` when it is
+known — for a `session`, the id of the conversation that worked last (the
+transcript's file name, a remote one's local copy too); for a `night_job`,
+the id of its `claude -p` conversation (same folder, inside the job's
+interval) — absent otherwise, never null. The op `transcript` also reads a
+closed conversation: `session` null and `sid` = that id; the relay looks for
+`<sid>.jsonl` under `projects/` of every account, then among the local copies
+of the remote sessions, and answers as always (`{entries, more}`, same `arg`);
+unknown → «no transcript for <sid>». Read only: nothing can be prompted.
+Fixtures: `night-report-sample.json` (a closed session and a night job with
+`session_id`), `cmd-result-sample.json` (a `transcript` with `sid`, one
+refused).
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

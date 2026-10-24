@@ -189,6 +189,12 @@ win = r.get("window", {})
 T.check("NR6 window from the person's last prompt (23:30 in atlas, typed); the master's `claude -p` prompt at 01:00 does not count",
         win.get("start") == EVE + 3 * H + 1800 and win.get("start_source") == "last_message" and (win.get("last_message") or {}).get("session") == "atlas"
         and (win.get("last_message") or {}).get("origin") == "pc", json.dumps(win))
+# NR-S (1.82, 24/10): ogni voce di cronologia porta l'id della conversazione che ha lavorato, se noto
+_tl = {(x["kind"], x["id"]): x for x in r.get("timeline", [])}
+T.check("NR-S timeline items carry session_id: the session atlas its transcript's id (S-A), the night job n1 its `claude -p` conversation (S-N); n2 and the running n3 without a transcript have no key (never null)",
+        (_tl.get(("session", "atlas")) or {}).get("session_id") == "S-A" and (_tl.get(("night_job", "n1")) or {}).get("session_id") == "S-N"
+        and "session_id" not in (_tl.get(("night_job", "n2")) or {"session_id": 1}) and all(x.get("session_id", "x") is not None for x in r.get("timeline", [])),
+        json.dumps({f"{k[0]}:{k[1]}": v.get("session_id") for k, v in _tl.items()}))
 att = r.get("attention", {})
 T.check("NR7 on top: the question with its id and options, the registry's ok with what and where, the «!» step only",
         [(q["session"], q["id"], len(q["options"]), q["project"]) for q in att.get("questions", [])] == [("atlas", "q-1-1", 2, os.path.realpath(atlas))]

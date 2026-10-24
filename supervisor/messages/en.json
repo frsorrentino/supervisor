@@ -508,6 +508,7 @@
   "relay.cmd_pair_add_busy": "a pairing is already open on the PC",
   "relay.cmd_pair_add_failed": "pairing not started: {why}",
   "relay.cmd_transcript_none": "{name}: no transcript",
+  "relay.cmd_transcript_no_sid": "no transcript for {sid}",
   "relay.cmd_transcript_unknown": "no entry {id} in the transcript",
   "relay.cmd_stopped": "{name}: stopped",
   "relay.cmd_nothing_to_stop": "{name}: nothing to stop",

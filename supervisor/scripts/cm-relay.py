@@ -3271,14 +3271,39 @@ def live_row(tm):
     return dict(hit) if hit else None
 
 
-def transcript_page(session, tm, arg):
+SID_RE = re.compile(r"[A-Za-z0-9-]{1,80}")
+
+
+def transcript_by_sid(sid):
+    """1.82 (24/10, «Nel riepilogo della notte, ogni scheda deve essere cliccabile e portarmi alla sessione che ha
+    lavorato»): la trascrizione di una conversazione anche chiusa, dal suo id — in projects/ di ogni account, poi
+    nelle copie locali delle sessioni sugli altri host. None se non c'e'."""
+    if not SID_RE.fullmatch(sid or ""):
+        return None
+    dirs = [Path(cm.expand(a.get("config_dir") or "~/.claude")) / "projects" for a in (CFG.get("accounts") or {}).values()] or [Path(cm.expand("~/.claude")) / "projects"]
+    for d in dirs:
+        hit = next(iter(sorted(d.glob(f"*/{sid}.jsonl"))), None) if d.is_dir() else None
+        if hit:
+            return str(hit)
+    mirror = Path(cm.expand(CFG["state_dir"])) / "hosts" / "transcripts"
+    hit = next(iter(sorted(mirror.glob(f"*/{sid}.jsonl"))), None) if mirror.is_dir() else None
+    return str(hit) if hit else None
+
+
+def transcript_page(session, tm, arg, sid=None):
     """1.22 (30/09): la chat di una sessione per il telefono. arg «n» = le ultime n voci; «n:before=<id>» = le n
     prima di quella voce; «n:after=<id>» = le prime n dopo (il telefono lo ripete a scheda aperta, e costa poco:
-    basta la coda del file). text = JSON {entries, more}."""
+    basta la coda del file). text = JSON {entries, more}. 1.82: con `sid` (session null) la conversazione di quell'id,
+    anche chiusa, in sola lettura."""
     m = re.fullmatch(r"\s*(\d{1,4})\s*(?::\s*(before|after)=([A-Za-z0-9._-]{1,80}))?\s*", str(arg or "50"))
     if not m or not int(m.group(1)):
         return False, M("relay.cmd_transcript_bad_arg", arg=str(arg or ""))
     n, mode, ref = min(int(m.group(1)), TRANSCRIPT_MAX_N), m.group(2), m.group(3)
+    if sid is not None:
+        path = transcript_by_sid(sid)
+        if not path:
+            return False, M("relay.cmd_transcript_no_sid", sid=S.one_line(str(sid))[:80] or "?")
+        return transcript_read(path, n, mode, ref)
     row = live_row(tm)
     if not row:
         return False, M("relay.cmd_interrupt_gone", name=session)
@@ -3293,6 +3318,11 @@ def transcript_page(session, tm, arg):
     path = core.transcript_of(row)
     if not path:
         return False, M("relay.cmd_transcript_none", name=session)
+    return transcript_read(path, n, mode, ref)
+
+
+def transcript_read(path, n, mode, ref):
+    """La pagina di voci di una trascrizione (vedi transcript_page)."""
     size = os.path.getsize(path)
     for window in TRANSCRIPT_WINDOWS:
         start = 0 if window is None or window >= size else size - window
@@ -3816,6 +3846,8 @@ def execute(cmd):
         if op == "report":
             return share_report(cmd, tm, session)
         if op == "transcript":
+            if not session and cmd.get("sid"):   # 1.82: una conversazione chiusa, dal rapporto della notte
+                return transcript_page(None, None, arg, sid=str(cmd.get("sid")))
             return transcript_page(session, tm, arg)
         if op == "diff":
             return diff_op(session, tm, arg)

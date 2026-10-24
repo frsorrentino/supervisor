@@ -281,6 +281,16 @@ def remote_sessions(start, sources):
     return rows, docs
 
 
+SID_RE = re.compile(r"[A-Za-z0-9-]{1,80}")
+
+
+def sid_of(path):
+    """1.82 (24/10, «ogni scheda cliccabile»): l'id della conversazione Claude, il nome del file della trascrizione
+    (anche nella copia locale di una sessione su un altro host); None se non ha quella forma."""
+    stem = Path(str(path or "")).stem
+    return stem if SID_RE.fullmatch(stem) else None
+
+
 def night_rows(start, end, live, sources, remote=True):
     """Una riga per trascrizione con lavoro nella finestra: {session, live, project, events, spans, assigned, host,
     path}. Anche senza prompt della persona; mai quelle degli scratchpad; le remote dopo le locali."""
@@ -300,7 +310,7 @@ def night_rows(start, end, live, sources, remote=True):
             continue
         ev = [e for e in TL.transcript_events(path, start) if e["at"] <= end]
         out.append({"session": nm if host == "local" else (sc["name"] or nm), "live": lv, "project": cwd, "events": ev,
-                    "spans": sc["spans"], "assigned": sc["assigned"], "host": host, "path": path})
+                    "spans": sc["spans"], "assigned": sc["assigned"], "host": host, "path": path, "sid": sid_of(path)})
     by = {}
     for r in out:
         by.setdefault(real(r["project"]), []).append(r)
@@ -524,6 +534,8 @@ def merge_rows(rows, jobs):
             continue
         if k in by:
             m = by[k]
+            if (r.get("spans") or [[0, 0]])[-1][1] >= (m.get("spans") or [[0, 0]])[-1][1] and r.get("sid"):
+                m["sid"] = r["sid"]   # 1.82: la conversazione che ha lavorato per ultima
             m["events"] = sorted({(e["at"], e["kind"], e["text"]): e for e in m["events"] + r["events"]}.values(), key=lambda e: e["at"])
             m["live"] = m["live"] or r["live"]
             m["spans"] = norm_spans(m.get("spans", []) + r.get("spans", []))
@@ -607,8 +619,18 @@ def session_items(rows, jobs, end):
                       "detail": outs[-1] if outs else one_line(ev[-1]["text"]) if ev else (asg["text"] if asg else None),
                       "report": None, "live": bool(r["live"]), "assigned": asg["text"] if asg else None,
                       "prompt": prompt_of(first or (asg["text"] if asg else None)),
-                      "counts": {k: sum(1 for e in ev if e["kind"] == k[:-1]) for k in ("prompts", "tests", "commits")}})
+                      "counts": {k: sum(1 for e in ev if e["kind"] == k[:-1]) for k in ("prompts", "tests", "commits")},
+                      **({"session_id": r["sid"]} if r.get("sid") else {})})   # 1.82: assente se non noto, mai null
     return items
+
+
+def job_sids(rows, jobs):
+    """1.82: a ogni lavoro della coda l'id della conversazione del suo `claude -p` (la trascrizione della stessa
+    cartella dentro il suo intervallo, come of_job), se c'e'. Assente altrimenti, mai null."""
+    for j in jobs:
+        hit = [r for r in rows if r.get("sid") and of_job(r, [j])]
+        if hit:
+            j["session_id"] = max(hit, key=lambda r: (r.get("spans") or [[0, 0]])[-1][1])["sid"]
 
 
 # ------------------------------------------------------------------ schede
@@ -958,7 +980,9 @@ def build(now=None, remote=True):
     remote_docs = {}
     try:
         rows, remote_docs = night_rows(start, end, live, sources, remote)
-        rows = assign_commits(merge_rows(rows, jobs), start, end)
+        rows = merge_rows(rows, jobs)
+        job_sids(rows, jobs)   # 1.82: prima di assign_commits, che scarta le righe senza eventi
+        rows = assign_commits(rows, start, end)
         sources["timeline"] = "ok"
     except Exception as e:   # noqa: BLE001
         rows, sources["timeline"] = [], f"error: {one_line(e, 120)}"
