@@ -1,0 +1,13 @@
+{
+  "_doc": "Le automazioni concordate che scrivono alla master: supervisor quota --master le riconosce dal testo del messaggio che le avvia (match, una regex; per un messaggio di un'altra sessione il testo dentro la busta) e ne pesa il consumo. origin (facoltativo) e' il turnOrigin della trascrizione. Un file automations.json accanto alla config aggiunge voci o corregge queste per nome (disabled: true la toglie).",
+  "automations": [
+    {"name": "giro dei suggerimenti", "match": "^Giro dei suggerimenti", "since": "2026-10-24", "agreed_by": "l'utente",
+     "what": "alle 8 e alle 19 la master pubblica i suggerimenti della home dell'app (cron, supervisor talk master)"},
+    {"name": "notifiche delle sessioni", "match": "^\\[Cross-session idle notice\\]", "origin": "system", "since": "2026-09-08", "agreed_by": "l'utente",
+     "what": "una sessione a cui la master ha scritto con notify_when_idle si e' fermata"},
+    {"name": "impegni fermi", "match": "^\\d+ impegn[oi] ferm[oi] da più di", "since": "2026-10-22", "agreed_by": "l'utente",
+     "what": "la guardia dei compiti segnala gli impegni senza passi da piu' di tasks.stall_hours"},
+    {"name": "compattazioni", "builtin": "compact", "since": "2026-09-08", "agreed_by": "Claude Code",
+     "what": "il riassunto automatico del contesto (stimato: il contesto di prima letto dalla cache e il riassunto) e la prima risposta dopo"}
+  ]
+}

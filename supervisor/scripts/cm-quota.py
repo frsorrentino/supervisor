@@ -19,6 +19,7 @@ Per questo l'eta' della lettura sta in tabella accanto al numero, e una
 finestra gia' scaduta viene detta a chiare lettere.
 
 Uso: cm-quota.py [--json] [--no-screen]   (--no-screen: non legge gli schermi tmux per la bassa priorita')
+     cm-quota.py --master [--json] [--days N] [--suggest]   (il consumo della master per origine: cm-master-usage.py)
 """
 import hashlib
 import importlib.util
@@ -139,6 +140,11 @@ def unisci_remote(nome, q):
 
 
 def main():
+    if "--master" in sys.argv:   # 25/10/2026: il consumo della master per ora e per origine
+        import runpy
+        sys.argv = [str(Path(__file__).with_name("cm-master-usage.py"))] + [a for a in sys.argv[1:] if a != "--master"]
+        runpy.run_path(sys.argv[0], run_name="__main__")
+        return 0
     letture = [(name, unisci_remote(name, leggi(cm.expand(a["config_dir"])))) for name, a in CFG["accounts"].items()]
     lente = {} if "--no-screen" in sys.argv else bassa_priorita()
     for n, q in letture:

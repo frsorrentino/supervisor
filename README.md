@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.65-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.66-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -534,6 +534,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor desk [start\|stop\|status]` | a Remote Control desk in the workspace root (optional, off by default); the sessions it spawns run without Claude in Chrome, which `claude remote-control` turns on only with `--chrome` |
 | `supervisor tile [names] [--rows\|--grid] [--on PLACE] [--dry-run] [--where]` · `supervisor merge` · `supervisor move PLACE` · `supervisor layout save\|restore\|list NAME` | windows side by side, as tabs, on another monitor, or by saved layout (ChromeOS) |
 | `supervisor attach <name>` · `supervisor color <name>` · `supervisor quota` | attach a terminal; the tab's shape and colour; how full each account's quota is |
+| `supervisor quota --master [--json] [--days N] [--suggest]` | the master's usage by hour and by origin: each agreed automation (listed in `automations.json`), the user's requests, the other sessions; `--suggest` turns the alerts into quota suggestions |
 | `supervisor statusline [--wrap <command>]` | a minimal status line that records each account's quota from what Claude Code already passes it, no network; set it as `statusLine` when fable-director is not installed, or wrap your own |
 | `supervisor needs-you "<what you need>" [--until "<cmd>"] [--expires 2h]` | from a session: it is waiting for something only you can do (a login, a code, a key); it goes to the top of «Needs you» on the phone and the watch, and the master hears of it; with `--until` the relay runs the command once a minute and closes the request when it exits 0, with `--expires` it lapses by itself (24 h without) |
 | `supervisor guard run` · `install\|uninstall\|status` | quota guard: one warning per window above `guard.warn_pct` with the reset time, on Telegram when no watch is receiving; at the reset, the sessions that hit the wall get «resume where you were» and a pending night queue runs | |

@@ -264,3 +264,7 @@ vissuto, «oggi» nel calendario. Di' l'ora, non il giorno.
   di `sessions.idle_hours` ore) o ripeti con `--force` se l'utente lo vuole davvero.
 - `supervisor quota` mostra quanto è pieno il serbatoio di ciascun account con l'età della
   lettura: un numero vecchio creduto fresco fa decidere sulla cosa sbagliata.
+- `supervisor quota --master [--json] [--days N] [--suggest]` divide il consumo della master per
+  origine: le automazioni concordate (elenco in `automations.json` del plugin, completato da quello
+  accanto alla config), le richieste dell'utente (telefono, web app, segnalazioni, terminale), le
+  altre sessioni. Nei giri delle 8 e delle 19, `--suggest` pubblica gli avvisi come suggerimenti quota.
