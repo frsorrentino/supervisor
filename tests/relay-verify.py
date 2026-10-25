@@ -486,7 +486,7 @@ T.check("R2 awaiting state: a session with a wrist prompt pending is «awaiting�
 # R3: eventi dal diff
 EV = json.loads((FIX / "events-sample.json").read_text())
 # 1.56-1.58: preview (quando qualcosa e' nascosto) e i campi di quota_limit sono facoltativi; gli altri sempre
-EV_OPT = {"preview", "reset_at", "window", "other_account", "actions", "reason", "continue_text", "quiet", "ok"}
+EV_OPT = {"preview", "reset_at", "window", "other_account", "other_model", "actions", "reason", "continue_text", "quiet", "ok"}
 ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
 ev, seq = S.events_between(F2, F1, 1789210800, 1)
 T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
@@ -2867,8 +2867,72 @@ RL.rdir, RL._json_cmd = _rd, _jc
 RL.CFG["state_dir"] = _cfgsd
 T.check("R44 (1.58) quota_route at_reset → the guard resumes this session at the 5-hour reset (guard.json resume_at, resume_names), said with the time; an unknown route → the contract's text; other_account picks the other configured account",
         ok58[0] is True and g58["work"]["resume_at"] == 1789220000 and g58["work"]["resume_names"] == ["work-ledger-api"] and win58 == ("5h", 1789220000)
-        and bad58 == (False, "quota_route later: expected other_account, at_reset or pass:<session>") and RL.other_account("work") == "personal", str(ok58) + str(g58) + str(bad58))
+        and bad58 == (False, "quota_route later: expected other_model, other_account, at_reset or pass:<session>") and RL.other_account("work") == "personal", str(ok58) + str(g58) + str(bad58))
 T.check("R44 (1.58) quota_route is a command in ops", "quota_route" in RL.OPS and "quota_route" not in RL.PASSIVE_OPS, "")
+# 1.85 (25/10/2026): il limite di un modello → «continua con Opus 5.5»; nessuna quota finita propone piu' «pass»
+q85 = tmp / "q85"
+q85.mkdir()
+_tr85 = q85 / "t.jsonl"
+_now85 = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+_syn85 = lambda txt: json.dumps({"type": "assistant", "timestamp": _now85, "message": {"model": "<synthetic>", "role": "assistant", "content": [{"type": "text", "text": txt}]}})  # noqa: E731
+_tr85.write_text(json.dumps({"type": "assistant", "timestamp": _now85, "message": {"model": "claude-fable-5-1", "content": [{"type": "text", "text": "You've reached your Fable limit earlier"}]}}) + "\n"
+                 + json.dumps({"type": "user", "timestamp": _now85, "message": {"content": "go"}}) + "\n"
+                 + _syn85("You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.") + "\n")
+_rd, _jc, _em, _am = RL.rdir, RL._json_cmd, RL.emit, RL.attention_mark
+got85, att85 = [], []
+_acc85 = {"v": "work"}
+RL.rdir = lambda: q85
+RL._json_cmd = lambda *a, **kw: ([{"name": "work-ledger-api", "tmux": "work-ledger-api", "account": _acc85["v"], "cwd": str(ws), "status": "idle", "session_id": "sid85"}]
+                                 if a[0] == "sessions" else {"work": {"cinque_ore_pct": 1, "settimana_pct": 3, "reset_cinque_ore": 1789220000, "reset_settimanale": 1789600000}})
+RL.emit = lambda kind, title, body, **kw: got85.append((kind, title, kw))
+RL.attention_mark = lambda *a, **kw: att85.append(a)
+_429 = "rate_limit: 429 This request would exceed your account's rate limit. Please try again later."
+RL.quota_limit("work-ledger-api", _429, str(_tr85))
+RL.quota_limit("work-ledger-api", _429, str(_tr85))   # lo stesso limite: nessun secondo evento
+(q85 / "quota-limits.json").unlink()
+RL.quota_limit("work-ledger-api", "You've reached your Opus 5.5 limit · resets 11:10pm (Europe/Rome)", "")
+(q85 / "quota-limits.json").unlink()
+RL.quota_limit("work-ledger-api", _429, str(q85 / "missing.jsonl"))   # nessun modello nel testo ne' nella trascrizione → 5 ore
+RL.rdir, RL._json_cmd, RL.emit, RL.attention_mark = _rd, _jc, _em, _am
+x85 = [g[2]["extra"] for g in got85]
+_om85 = RL.other_model()   # Opus dalla lista tune.models della config di prova
+_t85 = RL.M("relay.event_quota_model", name="ledger-api", model="Fable")
+T.check("R85 (1.85) quota_limit: the hook's 429 says no model, the transcript's last <synthetic> message does («reached your Fable limit») → window model, title «Fable limit reached», other_model «Opus 5.5» first, no at_reset without a time, no pass; once per limit",
+        len(got85) == 3 and got85[0][1] == _t85 and "Fable" in _t85 and x85[0] == {"reset_at": None, "window": "model", "other_account": "personal", "other_model": _om85[1], "actions": ["other_model", "other_account"]}
+        and _om85[0].startswith("claude-opus") and att85 and att85[0][3] == _t85, str(got85))
+_r85 = x85[1]["reset_at"] if len(x85) > 1 else None
+T.check("R85b (1.85) the limit of Opus itself → no other_model; the time in the message → reset_at and at_reset, said in the title",
+        len(x85) > 1 and x85[1]["window"] == "model" and x85[1]["other_model"] is None and x85[1]["actions"] == ["other_account", "at_reset"]
+        and time.strftime("%H:%M", time.localtime(_r85)) == "23:10" and got85[1][1] == RL.M("relay.event_quota_model_reset", name="ledger-api", model="Opus 5.5", t="23:10"), str(got85[1:2]))
+T.check("R85c (1.85) a quota stop without a model limit → the window from the quota (five hours), actions other_account and at_reset: «pass» is never proposed",
+        len(x85) > 2 and x85[2]["window"] == "5h" and x85[2]["actions"] == ["other_account", "at_reset"] and x85[2]["other_model"] is None, str(x85[2:]))
+_n85 = time.mktime((2026, 10, 25, 20, 0, 0, 0, 0, -1))
+T.check("R85d (1.85) reset_from_text: «resets 3:10pm» today, «resets 4am» tomorrow, «resets at 23:10» in 24 h, none → None",
+        time.localtime(RL.reset_from_text("resets 3:10pm", _n85 - 6 * 3600)).tm_hour == 15 and RL.reset_from_text("resets 4am", _n85) == time.mktime((2026, 10, 26, 4, 0, 0, 0, 0, -1))
+        and RL.reset_from_text("resets at 23:10", _n85) == time.mktime((2026, 10, 25, 23, 10, 0, 0, 0, -1)) and RL.reset_from_text("Run /usage-credits to continue", _n85) is None
+        and RL.LIMIT_MODEL.search("would exceed your account's rate limit") is None, "")
+_old85 = q85 / "old.jsonl"
+_old85.write_text(json.dumps({"type": "assistant", "timestamp": "2026-01-01T00:00:00.000Z", "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "You've reached your Fable limit."}]}}) + "\n")
+T.check("R85e (1.85) limit_text: an old <synthetic> limit (hours ago) does not count; the hook's own text with the model wins without reading",
+        RL.limit_text(_429, str(_old85), tries=1) == _429 and RL.limit_text("reached your Fable limit", "/nonexistent") == "reached your Fable limit", "")
+# quota_route other_model: `supervisor model` poi «continua»; un rifiuto del cambio → la sua prima riga, nessun talk
+_rc85, _tk85, _pa85 = RL.run_cm, RL.relay_talk, RL.push_async
+calls85 = []
+_model_rc = {"v": 0}
+RL._json_cmd = lambda *a, **kw: [{"name": "work-ledger-api", "tmux": "work-ledger-api", "account": "work", "cwd": str(ws), "status": "idle"}]
+RL.run_cm = lambda *a, **kw: (calls85.append(("cm",) + a), (_model_rc["v"], "work-ledger-api: model claude-opus-5-5[1m]" if _model_rc["v"] == 0 else "work-ledger-api is busy\nmore"))[1]
+RL.relay_talk = lambda name, text, *o: (calls85.append(("talk", name, text)), (0, "sent"))[1]
+RL.push_async = lambda *a, **kw: None
+ok85 = RL.quota_route({}, "ledger-api", "work-ledger-api", "other_model")
+_model_rc["v"] = 3
+no85 = RL.quota_route({}, "ledger-api", "work-ledger-api", "other_model")
+bad85 = RL.quota_route({}, "ledger-api", "work-ledger-api", "later")
+RL.run_cm, RL.relay_talk, RL.push_async, RL._json_cmd = _rc85, _tk85, _pa85, _jc
+T.check("R85f (1.85) quota_route other_model: `supervisor model <session> claude-opus-5-5[1m]`, then «continue» to the session → «ledger-api continues with Opus 5.5»; a refused switch → its first line and no talk",
+        ok85 == (True, RL.M("relay.cmd_quota_model", name="ledger-api", model=_om85[1])) and calls85[0] == ("cm", "model", "work-ledger-api", _om85[0])
+        and calls85[1][0] == "talk" and calls85[1][1] == "work-ledger-api" and calls85[1][2].endswith(" " + RL.M("relay.quota_model_prompt"))
+        and no85 == (False, "work-ledger-api is busy") and [c[0] for c in calls85] == ["cm", "talk", "cm"]
+        and bad85 == (False, "quota_route later: expected other_model, other_account, at_reset or pass:<session>"), str((ok85, no85, calls85)))
 
 # R45 (contratto 1.59, 14/10, il manutentore: «quando cambio una chat vedo per qualche secondo il testo vecchio»): /tail/<id>
 rows_alive("ledger-api", "atlas-shop", "field-notes")

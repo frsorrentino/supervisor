@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.65 — 2026-10-25: at the limit of one model the phone offers «go on with Opus 5.5»; no quota stop offers «another session» any more (contract 1.85).**
+  - On 25/10 at 20:24 a session on Fable 5.1 stopped on «You've reached your Fable limit» with the five hours at 1 %, and the phone said «five hours limit reached, reset at 23:10» with «another account», «resume at 23:10» and «another session». The StopFailure hook only gets the generic 429 («would exceed your account's rate limit»), and with no window at 99 % the relay fell back to the five hours. The model's message is in the transcript, as a `<synthetic>` assistant line.
+  - The hook passes the error text and the transcript path to `quota-limit`; the relay reads the last assistant message when the text names no model (only a recent one, up to three reads: the hook can come before the line is on disk). A model limit → `window: "model"`, title «<name>: Fable limit reached», the new field `other_model` («Opus 5.5», null when the stopped model is Opus) and the action `other_model` first; `at_reset` and the reset time only when the message says it.
+  - `quota_route other_model`: the session goes to `claude-opus-5-5[1m]` through `supervisor model` (prompt check, picker, confirmation), then receives «continua»; the result says «<name> continues with Opus 5.5» or the refusal.
+  - `pass` (hand the work to another session) is no longer proposed by any quota stop; the op still accepts it from an older app.
+  - Tests R85 (relay-verify); `events-sample.json` gains a model-limit event and loses `pass`.
 - **0.8.64 — 2026-10-25: cm-relay.py split under 256 KiB for the plugin directory; the README explains `bin/`.**
   - The directory's validator does not read a file over 256 KiB, and `scripts/cm-relay.py` was 276,638 bytes. The section that runs the phone's commands (the allow-list of `OPS`) moves unchanged to `scripts/cm-relay-cmds.py` (97 KB); `cm-relay.py` (180 KB) runs it in its own namespace at the same point, so the names and the tests' patches stay where they were. The daemon's code print (`CODE_FILES`) includes the new file.
   - README: «For the plugin directory reviewer» — what `bin/supervisor` is and why it is on the PATH, every file readable text, nothing downloaded or built at install.

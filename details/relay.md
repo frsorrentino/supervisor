@@ -488,6 +488,33 @@ uncommitted files), `cmd-result-sample.json` (a suggestion accepted, an unknown
 one; a `close_preview` and one with no session; a `close` with one session kept
 and one of a busy session only, refused).
 
+Contract 1.85 (25/10/2026, asked by the maintainer from the phone: at the limit of
+one model the quota stop offered «another session», not «go on with Opus»).
+Additive, `v` stays 1.
+
+- **The limit of a model.** Claude Code writes it in the transcript as a
+  `<synthetic>` message («You've reached your Fable limit. Run /usage-credits to
+  continue or switch models with /model.»); the StopFailure hook only gets the
+  generic 429. The hook now passes the error text and the transcript path, and the
+  relay reads the last assistant message when the text names no model. Then the
+  `quota_limit` event has `window: "model"`, the title «<name>: Fable limit
+  reached» (with «, reset at HH:MM» only when the message says the time), and the
+  new field `other_model`: the label of the model to go on with («Opus 5.5»),
+  null when the stopped model is already Opus. `actions` is `other_model` first,
+  then `other_account` when there is one, then `at_reset` only with a time.
+- **The op `quota_route {arg: "other_model"}`** switches the session to
+  `claude-opus-5-5[1m]` the way `supervisor model` does (stopped at the prompt,
+  the picker, the confirmation in the pane), then sends it «continua»; result
+  «<name> continues with Opus 5.5», or the first line of the refusal.
+- **No more `pass`.** No `quota_limit` proposes `pass` any more (another session
+  does not help when the quota is over): the 5-hour and weekly windows offer
+  `other_account` and `at_reset`. The op still accepts `pass:<session>` from an
+  older app.
+
+Fixture: `events-sample.json` (the 5-hour `quota_limit` without `pass`; a new
+one with `window: "model"`, `other_model: "Opus 5.5"`, `actions: ["other_model",
+"other_account"]`, `reset_at: null`).
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

@@ -557,9 +557,15 @@ def main(argv):
         # 1.58 (14/10): un turno fermato dal limite della quota → il telefono propone le tre strade
         err = (str(p.get("error", "")) + (": " + details if details else "")).strip()
         name = my_tmux_name() if (CFG.get("relay") or {}).get("enabled") else ""
-        if name and re.search(r"rate.?limit|usage.?limit|limit reached|quota", err, re.I):
-            subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name], stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        # 1.85 (25/10/2026): il testo dell'errore e la trascrizione al relay. Il limite di un modello («You've reached your
+        # Fable limit») sta nel messaggio <synthetic> della trascrizione: qui arriva solo il 429 generico
+        # (l'ultimo messaggio dell'assistente conta solo con la frase del limite: puo' essere la risposta di prima)
+        last = " ".join(str(p.get("last_assistant_message") or "").split())[:300]
+        last = last if re.search(r"(reached|hit) your .{1,40} limit", last) else ""
+        said = (err + (" " + last if last and last not in err else "")).strip()
+        if name and re.search(r"rate.?limit|usage.?limit|limit reached|(reached|hit) your .{1,40} limit|quota", said, re.I):
+            subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name, said[:500], str(p.get("transcript_path") or "")],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         elif name:
             # 1.61 (14/10): ogni altro turno fallito (529 overloaded, 500, accesso) al telefono, con il motivo e «continua»
             subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "turn-failed", name, err[:500]], stdin=subprocess.DEVNULL,

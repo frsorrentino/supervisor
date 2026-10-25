@@ -29,6 +29,7 @@ principale non si toccano (test R5c); cosi' le prove dell'app non scollegano l'o
 import base64
 import binascii
 import fcntl
+import glob
 import copy
 import datetime as dt
 import hashlib
@@ -3134,30 +3135,124 @@ def quota_window(acc):
     return "week", q.get("reset_settimanale")
 
 
-def quota_limit(tm):
+# 1.85 (25/10/2026): il limite di un modello. Claude Code lo scrive nella trascrizione come messaggio <synthetic>
+# («You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.»); il payload di
+# StopFailure porta solo il 429 generico («would exceed your account's rate limit»). Il nome comincia con la maiuscola:
+# «reached your account's …» non e' un modello.
+LIMIT_MODEL = re.compile(r"reached your ([A-Z][\w.\-]*(?: [\w.\-]+){0,2}) limit")
+LIMIT_RESET = re.compile(r"\bresets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*([ap]m)?\b", re.I)
+OTHER_MODEL_ID, OTHER_MODEL_LABEL = "claude-opus-5-5[1m]", "Opus 5.5"
+
+
+def other_model():
+    """1.85: (id, etichetta) del modello su cui proseguire al limite di un altro: Opus dalla lista di tune.models."""
+    m = next((m for m in ((CFG.get("tune") or {}).get("models") or []) if str(m.get("id") or "").startswith("claude-opus")), None)
+    return (m["id"], m.get("label") or OTHER_MODEL_LABEL) if m else (OTHER_MODEL_ID, OTHER_MODEL_LABEL)
+
+
+def reset_from_text(text, now=None):
+    """1.85: l'istante del reset scritto nel messaggio del limite («resets 3:10pm», «resets at 23:10»), il prossimo nel
+    futuro in ora locale; None se il messaggio non dice l'ora."""
+    m = LIMIT_RESET.search(text or "")
+    if not m:
+        return None
+    h, mi, ap = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+    if ap == "pm" and h < 12:
+        h += 12
+    elif ap == "am" and h == 12:
+        h = 0
+    if h > 23 or mi > 59:
+        return None
+    now = time.time() if now is None else now
+    lt = time.localtime(now)
+    for d in (0, 1):
+        t = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + d, h, mi, 0, 0, 0, -1))
+        if t > now:
+            return int(t)
+    return None
+
+
+def limit_text(text, transcript="", session_id="", tries=3, pause=1.0):
+    """1.85: il testo del limite. Dal testo dell'hook se dice gia' il modello; altrimenti dall'ultimo messaggio
+    dell'assistente nella trascrizione (`transcript`, o cercata per session_id), se e' <synthetic> e recente: l'hook
+    puo' arrivare prima che la riga sia sul disco, quindi fino a `tries` letture."""
+    if LIMIT_MODEL.search(text or ""):
+        return text
+    path = transcript
+    if not path and session_id:
+        hits = glob.glob(os.path.expanduser(f"~/.claude*/projects/*/{session_id}.jsonl"))
+        path = hits[0] if hits else ""
+    if not path:
+        return text or ""
+    for i in range(max(1, tries)):
+        last = None
+        try:
+            with open(path, "rb") as f:
+                f.seek(max(0, os.path.getsize(path) - 256 * 1024))
+                for raw in f.read().decode("utf-8", "replace").splitlines():
+                    if '"assistant"' not in raw:
+                        continue
+                    try:
+                        d = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if d.get("type") == "assistant":
+                        last = d
+        except OSError:
+            return text or ""
+        msg = (last or {}).get("message") or {}
+        if msg.get("model") == "<synthetic>":
+            t = " ".join(str(x.get("text") or "") for x in (msg.get("content") or []) if isinstance(x, dict))
+            try:
+                age = time.time() - dt.datetime.fromisoformat(str(last.get("timestamp")).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                age = 0
+            if LIMIT_MODEL.search(t) and age < 600:
+                return t
+        if i + 1 < tries:
+            time.sleep(pause)
+    return text or ""
+
+
+def quota_limit(tm, text="", transcript=""):
     """1.58 (14/10, dagli spunti della valutazione di Kaya): la sessione `tm` ha toccato il limite della quota (l'hook di
-    StopFailure). Un evento quota_limit al telefono con l'ora del reset e le tre strade, una per tasto, che l'op
-    quota_route esegue: other_account (handoff sull'altro account), at_reset (riprende da sola al reset),
-    pass (il compito a un'altra sessione). Uno per sessione e finestra di reset."""
+    StopFailure). Un evento quota_limit al telefono con l'ora del reset e le strade, una per tasto, che l'op
+    quota_route esegue: other_account (handoff sull'altro account), at_reset (riprende da sola al reset).
+    1.85 (25/10/2026): il limite di un modello («reached your Fable limit», dal testo dell'hook o dalla trascrizione)
+    → window «model», other_model per primo (Opus, se il modello fermo non e' gia' Opus), at_reset solo se il messaggio
+    dice l'ora; «pass» non si propone piu' (inutile al limite della quota, detto dal telefono). Uno per sessione e finestra di reset."""
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
     if not row:
         return 0
     acc = row.get("account") or ""
-    window, reset = quota_window(acc)
+    mm = LIMIT_MODEL.search(limit_text(text, transcript, row.get("session_id") or ""))
+    model = mm.group(1).strip() if mm else None
+    if model:
+        window, reset = "model", reset_from_text(mm.string)
+        key = f"model:{model}:{reset or time.strftime('%Y-%m-%d %H')}"
+    else:
+        window, reset = quota_window(acc)
+        key = reset
     p = rdir() / "quota-limits.json"
     seen = read_json(p, {})
-    if seen.get(tm) == reset:
+    if seen.get(tm) == key:
         return 0
-    seen[tm] = reset
+    seen[tm] = key
     write_json(p, seen)
     other = other_account(acc)
+    alt = other_model() if model and not model.lower().startswith("opus") else None
     name = S.short_name(tm, prefixes())
     when = time.strftime("%H:%M", time.localtime(float(reset))) if reset else "?"
-    actions = (["other_account"] if other else []) + ["at_reset", "pass"]
-    attention_mark("quota_limit", name, name, M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when))
-    emit("quota_limit", M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when),
-         "", ref=name, account=acc, session=name,
-         extra={"reset_at": int(reset) if reset else None, "window": window, "other_account": other, "actions": actions})
+    if model:
+        title = M("relay.event_quota_model_reset" if reset else "relay.event_quota_model", name=name, model=model, t=when)
+        actions = (["other_model"] if alt else []) + (["other_account"] if other else []) + (["at_reset"] if reset else [])
+    else:
+        title = M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when)
+        actions = (["other_account"] if other else []) + ["at_reset"]
+    attention_mark("quota_limit", name, name, title)
+    emit("quota_limit", title, "", ref=name, account=acc, session=name,
+         extra={"reset_at": int(reset) if reset else None, "window": window, "other_account": other,
+                "other_model": alt[1] if alt else None, "actions": actions})
     # 14/10 (cambio automatico al limite): di notte, per un account in auto_switch.accounts, la strada «altro account»
     # parte da sola; di giorno resta la scelta col tasto
     A = CFG.get("auto_switch") or {}
@@ -3459,12 +3554,24 @@ def quick_handoff(row):
 
 
 def quota_route(cmd, session, tm, arg):
-    """1.58: una delle tre strade proposte da quota_limit. arg: «other_account» | «at_reset» | «pass:<sessione>»."""
+    """1.58: una delle strade proposte da quota_limit. arg: «other_model» (1.85) | «other_account» | «at_reset» |
+    «pass:<sessione>» (non piu' proposta dalla 1.85, accettata ancora)."""
     a = str(arg or "").strip()
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
     if not row:
         return False, M("relay.cmd_not_running", name=session)
     acc = row.get("account") or ""
+    if a == "other_model":
+        # 1.85: lo stesso percorso di `supervisor model` (ferma al prompt, selettore, conferma nel riquadro), poi «continua»
+        mid, label = other_model()
+        rc, out = run_cm("model", tm, mid)
+        if rc != 0:
+            return False, (out.splitlines() or ["model failed"])[0]
+        push_async()
+        rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + M("relay.quota_model_prompt"), "--no-wait")
+        if rc != 0:
+            return False, (out.splitlines() or ["talk failed"])[0]
+        return True, M("relay.cmd_quota_model", name=session, model=label)
     if a == "at_reset":
         window, reset = quota_window(acc)
         if not reset:
@@ -3564,7 +3671,7 @@ def main(argv):
     if cmd == "turn-failed":   # 1.61: lanciato dall'hook di StopFailure, in background
         return turn_failed(rest[0], rest[1] if len(rest) > 1 else "") if rest and R.get("enabled") else 0
     if cmd == "quota-limit":   # 1.58: lanciato dall'hook di StopFailure, in background
-        return quota_limit(rest[0]) if rest and R.get("enabled") else 0
+        return quota_limit(rest[0], rest[1] if len(rest) > 1 else "", rest[2] if len(rest) > 2 else "") if rest and R.get("enabled") else 0
     if cmd == "task-check":   # 1.57: lanciato dall'hook di Stop, in background
         return task_check(rest[0]) if rest and R.get("enabled") else 0
     if cmd == "setup":   # il progetto Firebase, guidato (R2, 24/09): la sua CLI, non cryptography ne' crontab
