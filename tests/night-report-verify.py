@@ -38,9 +38,17 @@ ENV = dict(os.environ, CC_SUPERVISOR_CONFIG=str(cfg), CM_BIN=str(Path(__file__).
            FAKE_CM_DIR=str(fake), CM_TASKS_DB=str(tmp / "tasks.db"), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
 os.environ.update({k: ENV[k] for k in ("CC_SUPERVISOR_CONFIG", "CM_BIN", "FAKE_CM_DIR", "CM_TASKS_DB")})
 
-# la notte di prova: «adesso» sono le 03:00 di oggi; la sera e' cominciata alle 20:00 di ieri (7 ore fa)
-NOW = int(dt.datetime.now().replace(hour=3, minute=0, second=0, microsecond=0).timestamp())
+# la notte di prova: «adesso» sono le 03:00 di oggi; la sera e' cominciata alle 20:00 di ieri (7 ore fa).
+# 25/10/2026: nella notte del cambio d'ora le 20:00 di ieri sono 8 ore fa (o 6): si prende il giorno prima, finche'
+# da ieri alle 20:00 a oggi alle 12:00 non ci sono 16 ore esatte (i conti del test vanno a ore fisse da NOW)
 H = 3600
+_day = dt.date.today()
+while True:
+    NOW = int(dt.datetime.combine(_day, dt.time(3)).timestamp())
+    if (int(dt.datetime.combine(_day - dt.timedelta(days=1), dt.time(20)).timestamp()) == NOW - 7 * H
+            and int(dt.datetime.combine(_day, dt.time(12)).timestamp()) == NOW + 9 * H):
+        break
+    _day -= dt.timedelta(days=1)
 EVE = NOW - 7 * H
 
 

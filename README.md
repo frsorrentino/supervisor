@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.63-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.64-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -389,6 +389,21 @@ The full text of every card: [details/features.md](details/features.md).
 In full: [details/trust.md](details/trust.md). Each session is a Claude Code
 process (a few hundred MB each); the only process the plugin adds is the relay's
 daemon.
+
+## For the plugin directory reviewer
+
+- **`bin/supervisor`** is a five-line bash script that runs
+  `scripts/supervisor`, the dispatcher. It sits in `bin/` so that, while the
+  plugin is enabled, `supervisor …` is on the PATH of Claude's Bash tool and the
+  skills can call it by name.
+- **Every file is readable text**: bash and Python 3 scripts, JSON, Markdown.
+  There is no compiled program, no bundled binary and no minified code; each
+  script stays under 256 KiB (`scripts/cm-relay.py` keeps its phone commands in
+  `scripts/cm-relay-cmds.py`, which it runs in its own namespace).
+- **Installing downloads nothing and builds nothing.** The plugin only uses
+  what is already on the machine (see [Requirements](#requirements));
+  `supervisor doctor` prints the install command of a missing tool, and runs
+  none.
 
 ## Data handling
 

@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.64 — 2026-10-25: cm-relay.py split under 256 KiB for the plugin directory; the README explains `bin/`.**
+  - The directory's validator does not read a file over 256 KiB, and `scripts/cm-relay.py` was 276,638 bytes. The section that runs the phone's commands (the allow-list of `OPS`) moves unchanged to `scripts/cm-relay-cmds.py` (97 KB); `cm-relay.py` (180 KB) runs it in its own namespace at the same point, so the names and the tests' patches stay where they were. The daemon's code print (`CODE_FILES`) includes the new file.
+  - README: «For the plugin directory reviewer» — what `bin/supervisor` is and why it is on the PATH, every file readable text, nothing downloaded or built at install.
+  - Tests: night-report-verify no longer fails on the night the clock changes (25/10: from 20:00 to 03:00 there were 8 hours); it takes the last day whose night has the usual hours.
 - **0.8.63 — 2026-10-24: the short outcome never is the «Prossimi:» line; the state saved at closing takes the outcome's next step.**
   - Seen by supervisor-app in the live test of contract 1.84 at 21:24: `close_preview` would have saved as outcome «Prossimi: …» and as next an old line of the folder's recap. Without a Watch or Esito line the short outcome took the message's last line, which was the line of next steps; now it takes the last line that is not. The save's `next` is the first of the last outcome's next steps (`next_steps`) when there is one, else the recap's next as before.
   - Tests R73.
