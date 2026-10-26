@@ -357,7 +357,12 @@ T.check("R2 rules: order waiting/busy/idle/gone then alphabetical, short ≤ 200
 SRC2 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"],
         "rows": [{"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "off", "goal_status": None, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "idle", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_018CKZ1Pum1Qs7DX5hbRLQ6X", "attached": False, "started_at": 1789214000000}],
         "ledger": [{"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789213900), "last": "x", "esito": "Esito: seeds and admin page reviewed, 42 tests green.", "tail": "Esito: seeds and admin page reviewed, 42 tests green.\nWatch: Seeds and admin page reviewed", "watch": "Watch: Seeds and admin page reviewed"}],
-        "questions": {}, "quota": {"personal": {"cinque_ore_pct": 24, "settimana_pct": 38, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False}, "work": {"cinque_ore_pct": 3, "settimana_pct": 75, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": False}},
+        "questions": {}, "quota": {"personal": {"cinque_ore_pct": 24, "settimana_pct": 38, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False,
+                                                 # 1.86: campioni orari dal rinnovo (start = 1789005600) e origini a lettura finita
+                                                 "settimana_punti": [[1789007400, 1.6], [1789012860, 4.0], [1789016700, 5.4], [1789094400, 30.2], [1789097000, 38.0]],
+                                                 "settimana_origini": {"sessioni": 20.1, "automazioni": 6.5, "richieste": 11.4, "completo": True}},
+                                    "work": {"cinque_ore_pct": 3, "settimana_pct": 75, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": False,
+                                             "settimana_punti": [], "settimana_origini": {"sessioni": 50.0, "automazioni": 5.0, "richieste": 20.0, "completo": False}}},
         "projects": [{"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789213900}], "night": {"queued": 1, "running": None, "master": True, "items": [{"id": "c41d9e07", "dir": ROOT_WS, "name": "master", "prompt": "Do this agenda item: Move the docs site to the new host (orbit-docs)", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789213000)}]}, "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": []},
         "follow": set(), "awaiting": set(), "next": {"atlas-shop": "Test deploy on staging"}, "tools": {}, "icons": {"atlas-shop": "🟢"}, "next_at": {"atlas-shop": 1789171200}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]},
         "runtime": {"atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18}}}
@@ -3877,5 +3882,22 @@ T.check("R73 (1.84) suggest: add prints the id; later hides it until the same ke
         _a73.returncode == 0 and _a73.stdout.strip().startswith("s-") and _later73 == "hidden" and _vis73 == ["cleanup:x"] and _never73 == "never"
         and _again73.returncode == 0 and _again73.stdout == "" and _vis73b == [("quota:y", "Weekly quota at 85 %")] and all(rc != 0 for rc in _bad73)
         and _clr73.returncode == 0 and _vis73c == [] and _unk73 == "unknown" and json.loads(_sgp73.read_text())["never"] == ["cleanup:x"], str((_vis73, _vis73b, _again73.stdout, _bad73)))
+
+# R86 (contratto 1.86, 26/10, grafici 2A e 2B di Utilizzo): la settimana dal rinnovo nello stato
+_q86 = S.build_quota({"a": {"settimana_pct": 30, "reset_settimanale": 1789610400,
+                            "settimana_punti": [[1789005600, 0.4], [1789005601 + 3599, 2.6], [1789005600 + 2 * 3600, 3.2], [1789005600 + 3 * 3600 + 10, 7.5], [1789005000, 99], [1789610401, 99], "x"],
+                            "settimana_origini": {"sessioni": 12.0, "automazioni": 3.0, "richieste": 15.0, "completo": True, "eq": {}}},
+                      "b": {"settimana_pct": 10, "reset_settimanale": 1789610400, "settimana_punti": [],
+                            "settimana_origini": {"sessioni": 5.0, "automazioni": 1.0, "richieste": 4.0, "completo": False}},
+                      "c": {"settimana_pct": 10, "reset_settimanale": None, "settimana_punti": [[1789005600, 3]]}})
+T.check("R86 (1.86) build_quota: w7_points {start = reset_w7 - 7 days, steps [[hour from start, pct]] only when the pct changes, samples outside the week ignored}; w7_origins only when the count is complete; no reset or no samples → both absent",
+        _q86["a"]["w7_points"] == {"start": 1789005600, "steps": [[0, 0], [1, 3], [3, 8]]} and _q86["a"]["w7_origins"] == {"sessions": 12.0, "automations": 3.0, "requests": 15.0}
+        and "w7_points" not in _q86["b"] and "w7_origins" not in _q86["b"] and "w7_points" not in _q86["c"] and "w7_origins" not in _q86["c"], json.dumps(_q86))
+_st86 = {"v": 1, "ts": 1, "host": "", "sessions": [], "quota": json.loads(json.dumps(_q86)), "projects": [dict(p) for p in _many[:10]],
+         "night": {"queued": 0, "running": None, "items": []}, "recap": {"date": "", "items": [{"project": "p", "done": "d" * 900, "next": ""}]},
+         "choices": None, "share": {"max_bytes": 1}, "ops": [], "slash": []}
+_fit86 = S.fit_state(json.loads(json.dumps(_st86)), 0.1)
+T.check("R86 (1.86) fit_state never drops the week: w7_points and w7_origins stay in a state that stays over its cap",
+        _fit86["quota"]["a"].get("w7_points") == _q86["a"]["w7_points"] and _fit86["quota"]["a"]["w7_origins"] == _q86["a"]["w7_origins"], json.dumps(_fit86["quota"]))
 
 T.finish()

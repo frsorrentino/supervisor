@@ -515,6 +515,36 @@ Fixture: `events-sample.json` (the 5-hour `quota_limit` without `pass`; a new
 one with `window: "model"`, `other_model: "Opus 5.5"`, `actions: ["other_model",
 "other_account"]`, `reset_at: null`).
 
+Contract 1.86 (26/10/2026, for the charts 2A and 2B of the app's Usage page,
+chosen by the maintainer on the mockups of 25/10). Additive, `v` stays 1.
+
+- **The week's hourly samples.** `quota.<account>.w7_points` is `{start, steps}`:
+  `start` = `reset_w7` minus 7 days (epoch s); `steps` = `[[hour, pct], …]`, the
+  hour counted from `start` and the weekly percentage (integer) at the last
+  reading of that hour, an entry only when the percentage changes: it holds until
+  the next entry (an hour with no reading is an hour the quota did not move, as
+  far as this PC knows). A reading's time is the time the status line wrote it,
+  not the time the relay looked: an idle account adds nothing. Samples start with
+  this version: no history before it. The week before drops at the reset. At most
+  168 entries; fit_state never drops it. Absent without a reset or without
+  samples.
+- **Where the week came from.** `quota.<account>.w7_origins` is `{sessions,
+  automations, requests}` in points of `w7` (one decimal, the sum is `w7`): every
+  transcript of the account since the reset, each turn given its origin with the
+  classification of `supervisor quota --master` — `requests` the maintainer's
+  (phone, web app, terminal, reports, accepted suggestions), `automations` the
+  agreed ones of `automations.json` (the evening recap included), the scheduled
+  turns not in the list and the compactions, `sessions` a message of another
+  session and the scripted runs (`claude -p`); the results of background work stay
+  with the turn that started them. Weighed in input-equivalent tokens like the
+  fable-director receipts. Absent until the first reading of the week's
+  transcripts is complete (it is split over several collections, at most 4 s
+  each), and without a reset. Sessions on another host are not counted.
+
+Fixture: `state-2-idle.json` (`personal` with `w7_points` — steps at hours 0, 2,
+3, 24 and 25 — and `w7_origins`; `work` with neither: no samples, the count not
+complete).
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

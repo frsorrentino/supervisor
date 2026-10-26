@@ -547,6 +547,9 @@ def kinds_of(accounts, default_account=""):
     return out
 
 
+W7_S = 7 * 86400
+
+
 def build_quota(quota, kinds=None):
     out = {}
     for acc, q in (quota or {}).items():
@@ -560,6 +563,28 @@ def build_quota(quota, kinds=None):
                     "stale": bool(q.get("vecchia", q.get("stale"))),
                     # 1.8: personale o di lavoro, senza dover conoscere il nome dell'account
                     "kind": (kinds or {}).get(acc) or None}
+        # 1.86 (26/10, grafici 2A e 2B di Utilizzo): la settimana dal rinnovo. w7_points = {start, steps}: start =
+        # reset_w7 - 7 giorni; steps = [[ora, pct], ...], l'ora contata da start e la percentuale settimanale all'ultima
+        # lettura di quell'ora, una voce solo quando la percentuale cambia (vale fino alla voce dopo). A gradini e non
+        # un valore per ora: lo stato vivo sta gia' sopra il tetto, e 168 valori con i null delle ore ferme pesavano.
+        # w7_origins = da dove viene w7, in punti (somma = w7): solo a lettura delle trascrizioni finita. Assenti = non
+        # si sa
+        pts, reset = q.get("settimana_punti"), out[acc]["reset_w7"]
+        if reset and isinstance(pts, list) and pts:
+            start = reset - W7_S
+            hours = {}
+            for x in pts:
+                if isinstance(x, list) and len(x) == 2 and isinstance(x[0], (int, float)) and start <= x[0] <= reset and _int_or_none(x[1]) is not None:
+                    hours[int((x[0] - start) // 3600)] = _int_or_none(x[1])
+            steps = []
+            for h in sorted(hours):
+                if not steps or steps[-1][1] != hours[h]:
+                    steps.append([h, hours[h]])
+            if steps:
+                out[acc]["w7_points"] = {"start": start, "steps": steps}
+        o = q.get("settimana_origini")
+        if isinstance(o, dict) and o.get("completo"):
+            out[acc]["w7_origins"] = {"sessions": o.get("sessioni"), "automations": o.get("automazioni"), "requests": o.get("richieste")}
     return out
 
 

@@ -57,7 +57,37 @@
       "reset_w7": 1789610400,
       "reset_h5": 1789228800,
       "stale": false,
-      "kind": "personal"
+      "kind": "personal",
+      "w7_points": {
+        "start": 1789005600,
+        "steps": [
+          [
+            0,
+            2
+          ],
+          [
+            2,
+            4
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            24,
+            30
+          ],
+          [
+            25,
+            38
+          ]
+        ]
+      },
+      "w7_origins": {
+        "sessions": 20.1,
+        "automations": 6.5,
+        "requests": 11.4
+      }
     },
     "work": {
       "h5": 3,

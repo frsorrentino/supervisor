@@ -316,6 +316,194 @@ def scan(now=None, cache=None):
     return cache
 
 
+# ------------------------------------------------------------------ la settimana di un account (26/10/2026)
+# Per il grafico 2A di Utilizzo: da dove viene la quota della settimana, in punti della percentuale settimanale. La
+# stessa classificazione dei turni della master, su tutte le trascrizioni dell'account dal rinnovo, ridotta a tre
+# voci: automazioni (in elenco, non in elenco, compattazioni), richieste (telefono, web app, terminale, segnalazioni,
+# suggerimenti accettati) e sessioni (i messaggi di un'altra sessione e i lanci da script, `claude -p`). I risultati
+# dei lavori in sottofondo e gli avvisi di sistema non in elenco non aprono un turno: il consumo resta a quello che li
+# ha avviati.
+WEEK_KEYS = {"automazione": "automazioni", "richiesta": "richieste", "sessione": "sessioni", "altro": "sessioni"}
+WEEK_BUDGET_S = 4.0       # per chiamata: la prima lettura della settimana (centinaia di MB) si spezza su piu' chiamate
+WEEK_CHUNK = 8 << 20      # byte letti per volta da un file, fra un controllo del tempo e l'altro
+WEEK_REDO_S = 300         # a lettura finita, si rilegge al piu' ogni 5 minuti
+WEEK_S = 7 * 86400
+
+
+def week_path():
+    return Path(cm.expand(CFG.get("state_dir") or "~/.local/state/cc-supervisor")) / "week-usage.json"
+
+
+def _epoch(ts):
+    try:
+        return dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _week_files(config_dir, start):
+    base = Path(cm.expand(config_dir or "~/.claude")) / "projects"
+    mains, subs = [], []
+    try:
+        mains = [p for p in base.glob("*/*.jsonl")]
+        subs = [p for p in base.glob("*/*/subagents/*.jsonl")]
+    except OSError:
+        pass
+    out = []
+    for p in mains + subs:   # i file principali prima: i subagenti prendono l'origine del turno che li ha avviati
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        if st.st_mtime >= start:
+            out.append((p, st.st_size))
+    return out
+
+
+def _week_read(path, f, size, start, autos, turns, hours, deadline):
+    """Legge `path` da f["off"] fino alla fine o alla scadenza; True se e' arrivato alla fine. Le righe prima di
+    `start` servono solo a sapere l'origine del turno in corso."""
+    sub = path.parent.name == "subagents"
+    sid = path.parent.parent.name if sub else path.stem
+    while f["off"] < size:
+        if time.time() > deadline:
+            return False
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(f["off"])
+                chunk = fh.read(WEEK_CHUNK)
+        except OSError:
+            return True
+        end = chunk.rfind(b"\n") + 1
+        if not end:
+            return True   # una riga ancora a meta' (o piu' lunga del pezzo): si riprende alla prossima lettura
+        for line in chunk[:end].splitlines():
+            if b'"user"' not in line and b'"usage"' not in line and b'compact_boundary' not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            t = _epoch(row.get("timestamp"))
+            i = str(int((t - start) // 3600)) if t is not None and t >= start else None
+            typ = row.get("type")
+            if typ == "system" and row.get("subtype") == "compact_boundary":
+                if i is not None:
+                    h = hours.setdefault(i, {})
+                    h["automazioni"] = h.get("automazioni", 0) + int(int((row.get("compactMetadata") or {}).get("preTokens") or 0) * mult(f["model"])["cache_read"])
+                f["after_compact"] = True
+                continue
+            if typ == "user" and not sub:
+                if row.get("isCompactSummary"):
+                    if i is not None:
+                        h = hours.setdefault(i, {})
+                        h["automazioni"] = h.get("automazioni", 0) + int(len(_text(row["message"].get("content")) or "") / 4 * mult(f["model"])["output"])
+                    continue
+                text = _text((row.get("message") or {}).get("content"))
+                if text is None:
+                    continue
+                c = classify(row, text, autos)
+                if not c or (c[0] == "altro" and row.get("turnOrigin") in ("task_notification", "system")):
+                    continue
+                f["cur"] = WEEK_KEYS[c[0]]
+                if t is not None:
+                    turns.setdefault(sid, []).append([int(t), f["cur"]])
+                continue
+            if typ != "assistant":
+                continue
+            msg = row.get("message") or {}
+            u = msg.get("usage") if isinstance(msg, dict) else None
+            if not isinstance(u, dict):
+                continue
+            mid = str(msg.get("id") or row.get("requestId") or "")
+            if mid and mid == f["last"]:
+                continue   # lo stesso messaggio scritto a pezzi
+            f["last"] = mid
+            model = str(msg.get("model") or "")
+            if model and not model.startswith("<"):
+                f["model"] = model
+            if f.get("after_compact") and not sub:
+                f["after_compact"] = False
+                key = "automazioni"
+            else:
+                key = f["cur"]
+                if sub and not key:
+                    key = next((x[1] for x in reversed(turns.get(sid) or []) if t is None or x[0] <= t), None)
+                    f["cur"] = key
+                key = key or "sessioni"
+            if i is not None:
+                h = hours.setdefault(i, {})
+                h[key] = h.get(key, 0) + eq_of(u, model or f["model"])
+        f["off"] += end
+    return True
+
+
+def week_origins(accounts, now=None, budget=WEEK_BUDGET_S):
+    """{account: {automazioni, richieste, sessioni} in token eq dal rinnovo, completo} per gli account dati come
+    {nome: (config_dir, reset_settimanale)}. Incrementale in <state_dir>/week-usage.json: un account il cui rinnovo
+    cambia riparte da capo; la lettura si ferma dopo `budget` secondi e riprende alla chiamata dopo (completo False)."""
+    now = time.time() if now is None else now
+    deadline = time.time() + budget
+    p = week_path()
+    try:
+        cache = json.loads(p.read_text())
+    except (OSError, ValueError):
+        cache = {}
+    autos = automations()
+    sig = hashlib.sha1(json.dumps(autos, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:12]
+    if cache.get("autos") != sig:
+        cache = {"autos": sig}
+    accs = cache.setdefault("accounts", {})
+    out, dirty = {}, False
+    for name, (config_dir, reset) in accounts.items():
+        if not reset:
+            continue
+        start = int(reset) - WEEK_S
+        a = accs.get(name)
+        if not a or a.get("start") != start or a.get("dir") != str(config_dir):
+            a = accs[name] = {"start": start, "dir": str(config_dir), "files": {}, "turns": {}, "hours": {}, "done": False, "at": 0}
+            dirty = True
+        if not (a["done"] and now - a["at"] < WEEK_REDO_S):
+            complete, dirty = True, True
+            for path, size in _week_files(config_dir, start):
+                k = str(path)
+                f = a["files"].get(k) or {"off": 0, "last": "", "cur": None, "model": "", "after_compact": False}
+                if size < f["off"]:
+                    continue   # un file accorciato: quello che aveva dato resta contato
+                if size > f["off"]:
+                    complete = _week_read(path, f, size, start, autos, a["turns"], a["hours"], deadline) and complete
+                    a["files"][k] = f
+                if not complete:
+                    break
+            a["turns"] = {s: v[-200:] for s, v in a["turns"].items() if v}
+            a["done"] = complete
+            if complete:
+                a["at"] = int(now)
+        tot = {k: 0 for k in ("automazioni", "richieste", "sessioni")}
+        for h in a["hours"].values():
+            for k, v in h.items():
+                tot[k] = tot.get(k, 0) + v
+        out[name] = dict(tot, completo=bool(a["done"]), inizio=start)
+    if dirty:
+        cache["accounts"] = {n: v for n, v in accs.items() if n in accounts}
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text(json.dumps(cache, ensure_ascii=False))
+            tmp.replace(p)
+        except OSError:
+            pass
+    return out
+
+
+def week_points(eq, pct):
+    """Le tre voci in punti della quota settimanale (la loro somma e' `pct`), a un decimale; None senza consumo."""
+    tot = sum(eq.get(k, 0) for k in ("automazioni", "richieste", "sessioni"))
+    if not tot or pct is None:
+        return None
+    return {k: round(float(pct) * eq.get(k, 0) / tot, 1) for k in ("sessioni", "automazioni", "richieste")}
+
+
 # ------------------------------------------------------------------ resoconto
 def report(cache, days=7, now=None):
     now = time.time() if now is None else now
