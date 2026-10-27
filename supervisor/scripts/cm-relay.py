@@ -1247,25 +1247,38 @@ def suggestions_list(now):
 def suggestion_act(cmd, arg):
     """1.84 (24/10, scheda «Suggerimenti della master»): `arg` = l'id, `action` accept | later | never. accept manda il
     prompt della voce alla master come un prompt dall'app, con l'etichetta «dai suggerimenti», e toglie la voce; later
-    la nasconde fino al giro dopo della master; never non la ripropone piu'."""
-    code, hit = _load("cm-suggest").act(str(arg or "").strip(), str(cmd.get("action") or "").strip())
+    la nasconde fino al giro dopo della master; never non la ripropone piu'. 1.88 (27/10): choose con `choice`, una
+    delle `options` della voce, manda il prompt con la scelta ({choice} nel prompt, o «Scelta: …» in fondo) e toglie la
+    voce; discuss manda «Parliamone, senza farlo: <testo>» e la voce resta."""
+    action, choice = str(cmd.get("action") or "").strip(), cmd.get("choice")
+    code, hit = _load("cm-suggest").act(str(arg or "").strip(), action, choice=None if choice is None else str(choice))
     if code == "bad_action":
-        return False, M("relay.cmd_suggestion_bad_action", action=str(cmd.get("action") or "?"))
+        return False, M("relay.cmd_suggestion_bad_action", action=action or "?")
     if code == "gone":   # 1.87 (27/10): tolto con suggest clear o scaduto mentre la scheda era sul telefono
         return True, M("relay.cmd_suggestion_gone")
-    ledger_write("suggestion", id=hit["id"], key=hit.get("key"), action=code, by=cmd.get("by"))
+    if code == "bad_choice":
+        return False, M("relay.cmd_suggestion_bad_choice", choice=str(choice or ""))
+    row = {"id": hit["id"], "key": hit.get("key"), "kind": hit.get("kind"), "source": hit.get("source") or "master", "action": code, "by": cmd.get("by")}
+    if code == "chosen":
+        row["choice"] = choice
+    ledger_write("suggestion", **row)
     if code == "hidden":
         return True, M("relay.cmd_suggestion_later")
     if code == "never":
         return True, M("relay.cmd_suggestion_never")
+    prompt = str(hit.get("prompt") or "")
+    if code == "chosen":
+        prompt = prompt.replace("{choice}", str(choice)) if "{choice}" in prompt else prompt + " " + M("relay.suggestion_choice", choice=choice)
+    elif code == "discussed":
+        prompt = M("relay.suggestion_discuss") + " " + str(hit.get("text") or "")
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
-    rc, out = relay_talk(master, prefix_for(cmd, master) + " " + M("relay.suggestion_label") + " " + str(hit.get("prompt") or ""), "--no-wait")
+    rc, out = relay_talk(master, prefix_for(cmd, master) + " " + M("relay.suggestion_label") + " " + prompt, "--no-wait")
     if rc != 0:
         return False, (out.splitlines() or ["talk failed"])[0]
     if saved_in_inbox(out):
         return True, M("relay.cmd_suggestion_inbox")
     aw = read_json(rdir() / "awaiting.json", {}); aw[master] = int(time.time()); write_json(rdir() / "awaiting.json", aw)
-    return True, M("relay.cmd_suggestion_sent")
+    return True, M({"chosen": "relay.cmd_suggestion_chosen", "discussed": "relay.cmd_suggestion_discussed"}.get(code, "relay.cmd_suggestion_sent"))
 
 
 USAGE_CACHE_S = 180

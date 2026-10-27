@@ -269,5 +269,71 @@
       },
       "stalled": false
     }
+  ],
+  "suggestions": [
+    {
+      "id": "s-1c0a7e5f21",
+      "kind": "choice",
+      "key": "choice:pricing-copy",
+      "text": "Pricing page copy: the short one or the full one?",
+      "at": 1789199500,
+      "expires_at": 1789242700,
+      "rank": 2,
+      "source": "master",
+      "options": [
+        "Short",
+        "Full"
+      ]
+    },
+    {
+      "id": "s-2d9b4c7e30",
+      "kind": "followup",
+      "key": "followup:atlas-shop:5e1f0a2b",
+      "text": "atlas-shop is idle, next step offered: Open the PR for the checkout fix",
+      "at": 1789199400,
+      "expires_at": 1789293000,
+      "rank": 4,
+      "source": "script"
+    },
+    {
+      "id": "s-3e8c5d6f49",
+      "kind": "unsaved",
+      "key": "unsaved:orbit-docs:3d1b2c4e-0000-4000-8000-000000000004",
+      "text": "orbit-docs: 2 files not committed when it closed",
+      "at": 1789199300,
+      "expires_at": 1789292900,
+      "rank": 4,
+      "source": "script"
+    },
+    {
+      "id": "s-4f7d6e8a58",
+      "kind": "waiting",
+      "key": "waiting:task:ledger-vendor-ticket",
+      "text": "Check again: the vendor's answer on ticket 4411",
+      "at": 1789199200,
+      "expires_at": 1789292800,
+      "rank": 5,
+      "source": "script"
+    },
+    {
+      "id": "s-5a6e7f9b67",
+      "kind": "idea",
+      "key": "idea:field-notes-on-phone",
+      "text": "Try field-notes on the phone, as planned after the 12th",
+      "at": 1789199100,
+      "expires_at": 1789242300,
+      "rank": 6,
+      "source": "master"
+    },
+    {
+      "id": "s-6b5f8a0c76",
+      "kind": "proposal",
+      "key": "proposal:release-notes-script",
+      "text": "The release notes were written by hand three times this week: make them a script?",
+      "at": 1789199000,
+      "expires_at": 1789242200,
+      "rank": 6,
+      "source": "master"
+    }
   ]
 }

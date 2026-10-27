@@ -837,6 +837,38 @@
       "device": "phone",
       "issued": 1789214395,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0880-4000-8000-000000000880",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-1c0a7e5f21",
+      "action": "choose",
+      "choice": "Maybe",
+      "device": "phone",
+      "issued": 1789214380,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0881-4000-8000-000000000881",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-6b5f8a0c76",
+      "action": "discuss",
+      "device": "phone",
+      "issued": 1789214385,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0882-4000-8000-000000000882",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-1c0a7e5f21",
+      "action": "choose",
+      "choice": "Full",
+      "device": "phone",
+      "issued": 1789214390,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1390,6 +1422,24 @@
       "ok": false,
       "text": "atlas-shop not closed: it is working",
       "at": 1789214396
+    },
+    {
+      "id": "6f1c2d3e-0880-4000-8000-000000000880",
+      "ok": false,
+      "text": "suggestion: «Maybe» is not one of its options",
+      "at": 1789214381
+    },
+    {
+      "id": "6f1c2d3e-0881-4000-8000-000000000881",
+      "ok": true,
+      "text": "sent to master to talk it over",
+      "at": 1789214386
+    },
+    {
+      "id": "6f1c2d3e-0882-4000-8000-000000000882",
+      "ok": true,
+      "text": "sent to master with the choice",
+      "at": 1789214391
     }
   ]
 }

@@ -239,6 +239,9 @@ DEFAULTS = {
     # 03/10: registro dei compiti. guard = la guardia della corsia chiusa (push, release, publish) nega quei comandi
     # fuori da un compito approvato: spenta di default, perche' vale per ogni sessione della macchina
     "tasks": {"guard": False, "notify": "master", "stall_hours": 2, "commitments_prompt": True, "commitments_max_lines": 8, "quiet_hours": [23, 7]},
+    # 27/10 (1.88): `suggest fill`, lo script orario della coda dei suggerimenti — una sessione e' ferma da stall_h ore
+    # (e non oltre followup_max_h), al massimo script_max voci sue
+    "suggest": {"stall_h": 4, "followup_max_h": 72, "script_max": 8},
     "hooks": {
         "local_time": {"enabled": True, "format": "%A %Y-%m-%d %H:%M", "prefix": "[local time]"},
         "restart_stop": {"enabled": True},

@@ -36,8 +36,9 @@ PUBLISHED_MAX = 30   # 1.75: le pubblicazioni di oggi in /state; fit_state le sc
 PUBLISHED_FIT = 10
 COMMITMENTS_MAX = 30   # 1.76: gli impegni in /state; fit_state li scende a COMMITMENTS_FIT, poi a 5
 COMMITMENTS_FIT = 10
-SUGGESTIONS_MAX = 6   # 1.84: i suggerimenti della master in /state (l'app ne mostra 3); fit_state li scende a 3
-SUGGESTIONS_FIT = 3
+SUGGESTIONS_MAX = 12   # 1.84: i suggerimenti in /state (l'app ne mostra 3); 1.88 (27/10): la coda, 12, fit_state a 6
+SUGGESTIONS_FIT = 6
+SUGGESTION_FIELDS = ("id", "kind", "key", "text", "at", "expires_at", "rank", "source", "options")   # 1.88: mai il prompt
 USAGE_MAX = 12   # 1.84: le righe di usage_today; fit_state le scende a USAGE_FIT
 USAGE_FIT = 5
 DIRTY_MAX = 20   # 1.84: i file non committati in closed.dirty (il totale in dirty_n)
@@ -269,6 +270,16 @@ def _events_of(ledger, sid):
 
 NEXT_RE = re.compile(r"^\s*\W*\s*prossimi\s*:\s*(.*)$", re.I)
 NEXT_MAX = 3
+
+
+def suggestion_of(x):
+    """1.88: una voce di state.suggestions — i campi del contratto, rank 5 e source master se mancano."""
+    y = {k: x.get(k) for k in SUGGESTION_FIELDS if k != "options"}
+    y["rank"] = x["rank"] if isinstance(x.get("rank"), int) else 5
+    y["source"] = x.get("source") if x.get("source") in ("script", "master") else "master"
+    if x.get("options"):
+        y["options"] = list(x["options"])
+    return y
 
 
 def next_steps(text):
@@ -719,8 +730,11 @@ def build_state(src, now, fit=True):
     # 1.84 (24/10): i suggerimenti della master ({id, kind, key, text, prompt, at, expires_at}, dal piu' recente, al
     # massimo 6) e i token di oggi per sessione ({session, account, tokens, share}, dal piu' grande); [] quando non c'e'
     # niente, assenti con un relay vecchio
+    # 1.88 (27/10): la coda — per rank (0 in cima; senza, 5) e poi dalla piu' recente, al massimo 12, con rank e source
+    # sempre presenti, options solo sulle scelte, mai il prompt (lo legge il relay dal file quando arriva la risposta)
     if "suggestions" in src:
-        state["suggestions"] = [dict(x) for x in sorted(src.get("suggestions") or [], key=lambda x: -int(x.get("at") or 0))][:SUGGESTIONS_MAX]
+        state["suggestions"] = [suggestion_of(x) for x in sorted(src.get("suggestions") or [],
+                                key=lambda x: (x.get("rank") if isinstance(x.get("rank"), int) else 5, -int(x.get("at") or 0), str(x.get("id"))))][:SUGGESTIONS_MAX]
     if "usage_today" in src:
         state["usage_today"] = [dict(x, session=canon_session(x.get("session"), src.get("rows")))
                                 for x in sorted(src.get("usage_today") or [], key=lambda x: -int(x.get("tokens") or 0))][:USAGE_MAX]

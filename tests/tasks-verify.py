@@ -336,6 +336,20 @@ T.check("T17 --waits takes only person; --since wants an epoch or an ISO time", 
 cm("pause", "ok9", "--reason", "pausa normale", "--since", "1700000000", env=IT)
 T.check("T17 --since as an epoch; a pause without --waits leaves waits as it was", {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["paused"]["at"] == 1700000000
         and {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["waits"]["on"] == "master", "")
+# T17b (27/10/2026, contratto 1.88): un'attesa esterna (un ticket, la risposta di un cliente) con la data di ricontrollo
+t17b = int(time.time())
+r17b = cm("pause", "ok9", "--reason", "ticket 4411 del fornitore", "--waits", "external", "--recheck", "2d", env=IT)
+p17b = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]
+T.check("T17b pause --waits external --recheck 2d: paused carries waits external and recheck two days on; the turn stays the session's (not «Per te»)",
+        r17b[0] == 0 and p17b["paused"]["waits"] == "external" and t17b + 172800 <= p17b["paused"]["recheck"] <= t17b + 172805 and p17b["waits"]["on"] == "master", json.dumps(p17b.get("paused")) + r17b[2])
+cm("pause", "ok9", "--reason", "ticket", "--waits", "external", "--recheck", "2026-11-02T09:00", env=IT)
+p17c = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["paused"]
+T.check("T17b --recheck as an ISO time; --recheck without --waits external is refused; a person pause has recheck null",
+        p17c["recheck"] == int(time.mktime(time.strptime("2026-11-02T09:00", "%Y-%m-%dT%H:%M")))
+        and cm("pause", "ok9", "--reason", "x", "--recheck", "2d")[0] != 0 and cm("pause", "ok9", "--reason", "x", "--waits", "external", "--recheck", "domani")[0] != 0
+        and cm("pause", "ok9", "--reason", "y", "--waits", "person", env=IT)[0] == 0
+        and {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["paused"]["recheck"] is None, json.dumps(p17c))
+cm("pause", "ok9", "--reason", "pausa normale", "--since", "1700000000", env=IT)
 
 # T18 (1.77): task closed — i compiti chiusi per giorno con la prova (release, commit, file, controllo) e i giorni prima
 add(contract("z2", cmd="git fetch -q --tags origin && git tag -l v1.2.3 | grep -q '^v1.2.3$'", outcome={"expected": "la 1.2.3 pubblicata", "kind": "release"}))

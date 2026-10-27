@@ -379,11 +379,11 @@ SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP pa
 # che la master ha legato a un compito di atlas-shop (needs-you --task)
 SRC2["suggestions"] = [
     {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "The ledger-api invoice is due on Friday",
-     "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380},
+     "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
     {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Last night's report is ready: 3 projects done, 1 in part",
-     "prompt": "Read me last night's report and tell me what is left", "at": 1789207200, "expires_at": 1789250400},
+     "prompt": "Read me last night's report and tell me what is left", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
     {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Two orbit-docs tasks paused for 5 days: close them?",
-     "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone", "at": 1789207190, "expires_at": 1789250390}]
+     "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
 SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
                        {"session": "master", "account": "personal", "tokens": 1130000, "share": 0.38},
@@ -408,6 +408,20 @@ SRC3["closed"] = {"work-orbit-docs": {"name": "orbit-docs", "tmux": "work-orbit-
                                       "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
                                       "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"],
                                       "closed_at": 1789199000, "by": "phone-pixel8"}}
+# 1.88 (27/10): la coda dei suggerimenti — una voce per ciascuno dei sei tipi nuovi (state-2 e' gia' vicino agli 8 KB)
+SRC3["suggestions"] = [
+    {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing page copy: the short one or the full one?",
+     "prompt": "For the pricing page the maintainer picks {choice}: go ahead", "at": 1789199500, "expires_at": 1789242700, "rank": 2, "source": "master", "options": ["Short", "Full"]},
+    {"id": "s-2d9b4c7e30", "kind": "followup", "key": "followup:atlas-shop:5e1f0a2b", "text": "atlas-shop is idle, next step offered: Open the PR for the checkout fix",
+     "prompt": "A next step left halfway in session atlas-shop", "at": 1789199400, "expires_at": 1789293000, "rank": 4, "source": "script"},
+    {"id": "s-3e8c5d6f49", "kind": "unsaved", "key": "unsaved:orbit-docs:3d1b2c4e-0000-4000-8000-000000000004", "text": "orbit-docs: 2 files not committed when it closed",
+     "prompt": "Session orbit-docs closed with 2 uncommitted files", "at": 1789199300, "expires_at": 1789292900, "rank": 4, "source": "script"},
+    {"id": "s-4f7d6e8a58", "kind": "waiting", "key": "waiting:task:ledger-vendor-ticket", "text": "Check again: the vendor's answer on ticket 4411",
+     "prompt": "Time to check again the external wait of task ledger-vendor-ticket", "at": 1789199200, "expires_at": 1789292800, "rank": 5, "source": "script"},
+    {"id": "s-5a6e7f9b67", "kind": "idea", "key": "idea:field-notes-on-phone", "text": "Try field-notes on the phone, as planned after the 12th",
+     "prompt": "Set up field-notes on the phone", "at": 1789199100, "expires_at": 1789242300, "rank": 6, "source": "master"},
+    {"id": "s-6b5f8a0c76", "kind": "proposal", "key": "proposal:release-notes-script", "text": "The release notes were written by hand three times this week: make them a script?",
+     "prompt": "Propose a script for the release notes", "at": 1789199000, "expires_at": 1789242200, "rank": 6, "source": "master"}]
 st3 = S.build_state(SRC3, 1789200000)
 T.check("R2 build_state(src) == state-3-stale.json", st3 == _np(F3), diff(st3, _np(F3)) or "equal")
 T.check("R2 (1.33) no recurring list → no `recurring` field (the app shows no box)", "recurring" not in S.build_state(dict(SRC3, recurring=[]), 1789200000), "")
@@ -1642,8 +1656,9 @@ rows_alive("ledger-api", "atlas-shop", "field-notes")
 _last72 = (rdir2 / "last-state.json").read_bytes() if (rdir2 / "last-state.json").exists() else None   # rimesso alla fine: i test dopo leggono i nomi
 _sg72 = tmp / "suggestions.json"   # accanto alla config, come la lista dei ricorrenti
 _now72 = int(time.time())
-_sg72.write_text(json.dumps({"items": [dict(x, at=_now72 - i, expires_at=_now72 + 3600) for i, x in enumerate(F2["suggestions"])]
-                             + [dict(F2["suggestions"][0], id="s-old0000000", key="old", at=_now72 - 99, expires_at=_now72 - 1)], "never": []}))
+_pr72 = {x["id"]: x["prompt"] for x in SRC2["suggestions"]}   # 1.88: il prompt sta nel file, non nello stato
+_sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 - i, expires_at=_now72 + 3600) for i, x in enumerate(F2["suggestions"])]
+                             + [dict(F2["suggestions"][0], prompt="x", id="s-old0000000", key="old", at=_now72 - 99, expires_at=_now72 - 1)], "never": []}))
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
@@ -1655,8 +1670,24 @@ r72u = send_cmd(CM184[1])
 _left72 = json.loads(_sg72.read_text())["items"]
 T.check("R72 (1.84, 1.87) suggest_unknown_is_gone: accept → its prompt to master as a prompt from the phone, labelled «[dai suggerimenti]», «sent to master» as in the fixture, the item gone; an id no longer there → ok «already gone» as in the fixture, so the app drops the card",
         r72a and r72a["ok"] is True and r72a["text"] == RS184[CM184[0]["id"]]["text"] == "sent to master" and r72u and r72u["ok"] is True and r72u["text"] == RS184[CM184[1]["id"]]["text"] == "already gone"
-        and any(c.startswith("talk master Dall'utente via telefono.") and c.endswith("[dai suggerimenti] " + F2["suggestions"][0]["prompt"] + " --no-wait") for c in cm_calls()[_n72:])
-        and [x["id"] for x in _left72 if x["expires_at"] > _now72] == [x["id"] for x in F2["suggestions"][1:]], str((r72a, r72u, cm_calls()[_n72:])))
+        and any(c.startswith("talk master Dall'utente via telefono.") and c.endswith("[dai suggerimenti] " + _pr72[CM184[0]["arg"]] + " --no-wait") for c in cm_calls()[_n72:])
+        and [x["id"] for x in _left72 if x["expires_at"] > _now72] == [x["id"] for x in F2["suggestions"] if x["id"] != CM184[0]["arg"]], str((r72a, r72u, cm_calls()[_n72:])))
+# R74 (contratto 1.88, 27/10): choose con una delle options, discuss che lascia la voce, una scelta che non c'e'
+CM188 = {c["id"]: c for c in CMDS if c["id"].startswith("6f1c2d3e-088")}
+RS188 = {r["id"]: r for r in RES if r["id"].startswith("6f1c2d3e-088")}
+_sg72.write_text(json.dumps({"items": [dict(x, at=_now72 - i, expires_at=_now72 + 3600) for i, x in enumerate(SRC3["suggestions"])], "never": []}))
+_n74, _l74 = len(cm_calls()), len(led_rows())
+_r74 = [send_cmd(c) for c in CM188.values()]
+_left74 = {x["id"] for x in json.loads(_sg72.read_text())["items"]}
+_talk74 = [c for c in cm_calls()[_n74:] if c.startswith("talk master ")]
+T.check("R74 (1.88) suggest_queue_refill choose and discuss: results as in the fixture; a label outside options → ok false and the item stays; discuss sends «talk it over» with the text and the item stays; choose sends the prompt with the choice in place of {choice} and drops the item",
+        [(r["ok"], r["text"]) for r in _r74] == [(RS188[c]["ok"], RS188[c]["text"]) for c in CM188] and len(_talk74) == 2
+        and _talk74[0].endswith("[dai suggerimenti] " + RL.M("relay.suggestion_discuss") + " " + SRC3["suggestions"][5]["text"] + " --no-wait")
+        and _talk74[1].endswith("[dai suggerimenti] For the pricing page the maintainer picks Full: go ahead --no-wait")
+        and "s-6b5f8a0c76" in _left74 and "s-1c0a7e5f21" not in _left74, str((_r74, _talk74)))
+_led74 = [r for r in led_rows()[_l74:] if r.get("event") == "suggestion"]
+T.check("R74 (1.88) the ledger rows carry kind, source and the choice (the 14-day rate per kind comes from them)",
+        [(r["action"], r.get("kind"), r.get("source"), r.get("choice")) for r in _led74] == [("discussed", "proposal", "master", None), ("chosen", "choice", "master", "Full")], str(_led74))
 os.environ["CM_SUGGESTIONS"] = str(_sg72)   # come il relay vero: il file accanto alla sua config
 _fp72a = RL.sources_print()
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-suggest.py"), "clear", "--kind", "quota"], env=dict(os.environ), capture_output=True)
@@ -3763,8 +3794,8 @@ T.check("R71 (24/10) the cut keeps first the commitments with an ok to give, the
 
 # R73 (contratto 1.84, 24/10): le fixture, il taglio, la quota di oggi, /exit dall'app, needs-you --task, suggest
 _by73 = {x["name"]: x for x in F1["sessions"] + F2["sessions"] + F3["sessions"]}
-T.check("R73 (1.84) fixtures: state-2 three suggestions of different kinds, newest first, one line, never «…»; four usage rows on two accounts, biggest first, share 0..1; atlas-shop's needs_you tied to a task, asked by master, also in attention; state-1 suggestions []",
-        len({x["kind"] for x in F2["suggestions"]}) == 3 and [x["at"] for x in F2["suggestions"]] == sorted((x["at"] for x in F2["suggestions"]), reverse=True)
+T.check("R73 (1.84, 1.88) fixtures: state-2 three suggestions of different kinds, by rank then newest, one line, never «…»; four usage rows on two accounts, biggest first, share 0..1; atlas-shop's needs_you tied to a task, asked by master, also in attention; state-1 suggestions []",
+        len({x["kind"] for x in F2["suggestions"]}) == 3 and [(x["rank"], -x["at"]) for x in F2["suggestions"]] == sorted((x["rank"], -x["at"]) for x in F2["suggestions"])
         and all("…" not in x["text"] and "\n" not in x["text"] for x in F2["suggestions"]) and F1["suggestions"] == []
         and len(F2["usage_today"]) == 4 and len({x["account"] for x in F2["usage_today"]}) == 2 and [x["tokens"] for x in F2["usage_today"]] == sorted((x["tokens"] for x in F2["usage_today"]), reverse=True)
         and all(0 <= x["share"] <= 1 for x in F2["usage_today"]) and F2["sessions"][0]["needs_you"]["task"] == "atlas-tv-pairing" and F2["sessions"][0]["needs_you"]["from"] == "master"
@@ -3774,12 +3805,12 @@ T.check("R73 (1.84) fixtures: state-3 orbit-docs closed from the app with two un
                                         "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"]}
         and _by73["orbit-docs"]["state"] == "gone" and F1["sessions"][3]["closed"] == {"at": F1["sessions"][3]["since"], "session_id": F1["sessions"][3]["id"]}
         and all("closed" not in x for s in (F1, F2) for x in s["sessions"] if x["state"] != "gone"), str(F3["sessions"][0].get("closed")))
-_big73 = S.build_state(dict(SRC2, suggestions=[dict(F2["suggestions"][0], id=f"s-{i:010d}", at=1789207200 - i) for i in range(9)],
+_big73 = S.build_state(dict(SRC2, suggestions=[dict(SRC2["suggestions"][0], id=f"s-{i:010d}", at=1789207200 - i) for i in range(15)],
                             usage_today=[dict(F2["usage_today"][0], session=f"s{i}", tokens=1000 - i) for i in range(20)]), 1789214400, fit=False)
 _fit73 = S.fit_state(json.loads(json.dumps(_big73)), 1)
-T.check("R73 (1.84) /state carries at most 6 suggestions and 12 usage rows; fit_state cuts usage to the 5 biggest and suggestions to the 3 newest, never further; the live session stays",
-        len(_big73["suggestions"]) == 6 and len(_big73["usage_today"]) == 12 and [x["session"] for x in _fit73["usage_today"]] == [f"s{i}" for i in range(5)]
-        and [x["id"] for x in _fit73["suggestions"]] == [f"s-{i:010d}" for i in range(3)] and [x["name"] for x in _fit73["sessions"]] == ["atlas-shop"], str(S.size_of(_fit73)))
+T.check("R73 (1.84, 1.88) /state carries at most 12 suggestions, never the prompt, and 12 usage rows; fit_state cuts usage to the 5 biggest and suggestions to the 6 first, never further; the live session stays",
+        len(_big73["suggestions"]) == 12 and all("prompt" not in x for x in _big73["suggestions"]) and len(_big73["usage_today"]) == 12 and [x["session"] for x in _fit73["usage_today"]] == [f"s{i}" for i in range(5)]
+        and [x["id"] for x in _fit73["suggestions"]] == [f"s-{i:010d}" for i in range(6)] and [x["name"] for x in _fit73["sessions"]] == ["atlas-shop"], str(S.size_of(_fit73)))
 # la quota di oggi dalle trascrizioni: dalla mezzanotte, un messaggio una volta, i subagenti con la loro sessione, la quota per account
 _u73 = tmp / "usage73"
 _now73 = int(time.time())

@@ -438,7 +438,8 @@ state saved, today's quota per session). All additive, `v` stays 1.
   suggestion and is what «Never» remembers; `text` is one line and never carries
   «…»; `prompt` is what the master receives. `/state.suggestions` lists
   `{id, kind, key, text, prompt, at, expires_at}`, newest first, at most 6 (`[]`
-  when there are none; fit_state cuts them to 3). The op `suggestion {arg: id,
+  when there are none; fit_state cuts them to 3; since 1.88 a queue of 12 without
+  `prompt`, see below). The op `suggestion {arg: id,
   action: accept | later | never}`: accept sends `prompt` to the master like a
   prompt from the app, labelled «[dai suggerimenti]», and drops the item; later
   hides it until the next round (an `add` with the same key brings it back, with
@@ -567,6 +568,54 @@ suggestion»). `v` stays 1.
 
 Fixture: `cmd-result-sample.json` (the suggestion answered «later» on an id no
 longer there: `ok: true`, «already gone»).
+
+Contract 1.88 (27/10/2026, the suggestions queue, approved by the maintainer from
+the phone on the design of 26/10: three suggestions at a time, the next one as soon
+as one is used, new kinds, the master's own proposals). Additive, `v` stays 1.
+
+- **New kinds.** `kind` adds `choice` (a choice waiting outside the registry, with
+  `options`), `followup` (a next step left halfway in an idle session), `unsaved`
+  (files a closed session did not commit), `waiting` (an external wait past its
+  recheck), `idea` (an idea with a date) and `proposal` (something new the master
+  proposes). An app that does not know a kind shows it with a neutral icon and the
+  label «Suggestion», never as `quota`.
+- **The queue.** `/state.suggestions` lists up to 12 items (fit_state: 6), ordered
+  by `rank` (0-9, 0 on top) then newest first. Every item is `{id, kind, key, text,
+  at, expires_at, rank, source}` plus `options` (2 to 4 labels) on a `choice`;
+  `source` is `script` or `master`; an item written before 1.88 has rank 5 and
+  source master. `prompt` is no longer in the state: the relay reads it from
+  `suggestions.json` when the answer comes. The app keeps showing three (the
+  variety rule, at most two of the same kind among the three, is the app's); when
+  one is used the next push brings the next one of the queue. An item with a date
+  (`suggest add --after`) is not in the state before that day.
+- **The op `suggestion`** adds `action: choose` with `choice: <label>` (one of the
+  item's `options`; the master gets the prompt with the choice: «sent to master with
+  the choice»; a label outside them answers `ok: false`, «suggestion: «X» is not one
+  of its options», and the item stays) and `action: discuss` (the master gets «Let's
+  talk it over, without doing it: <text>», labelled «[dai suggerimenti]», «sent to
+  master to talk it over»; the item stays). The app sends `discuss` instead of the
+  prompt «Parliamone» it composed itself, so the ledger sees it.
+- **«Not now» and the hourly script.** `suggest fill` runs every hour: it refreshes
+  its own items in place (same id, same `at`), so an item in «Not now» stays hidden
+  until the master's round (`suggest reshow`), as before. Its items last 26 hours and
+  are renewed while the condition holds; when the condition is gone the item leaves
+  as `resolved`.
+- **The ledger.** Every `suggestion` row carries `kind` and `source` (and `choice`
+  on `chosen`); `action` is `accepted`, `hidden`, `never`, `chosen`, `discussed`, or
+  from the script `expired` (gone untouched) and `resolved`. The 14-day acceptance
+  rate per kind (accepted and chosen over accepted, chosen, never and expired) is in
+  the master's digest (`suggest digest`); the KPI field is not in 1.88.
+- **CLI.** `suggest add --rank --source --options --after`, `suggest fill`,
+  `suggest reshow`, `suggest kind on|off K`, `suggest digest`; `task pause ID
+  --waits external --recheck 2d|ISO` (an external wait; `impegni --json` carries
+  `paused.waits` and `paused.recheck`).
+
+Fixtures: `state-3-stale.json` (one item for each new kind: the `choice` with
+`options`, the three of the script with `source: "script"`; state-2 is already
+close to its 8 KB, so the new kinds live in state-3), `state-2-idle.json` (the
+three items with `rank` and `source`, without `prompt`, by rank),
+`cmd-result-sample.json` (a `choose` outside the options refused, a `discuss`, a
+`choose` accepted).
 
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)

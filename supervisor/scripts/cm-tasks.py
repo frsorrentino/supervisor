@@ -36,9 +36,11 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
   supervisor task impegni [--json] [--stalled] [--brief]   gli approvati non compiuti (e chi aspetta un ok), con eta',
                                                 ultimo passo, prossimo passo, chi aspetta chi, pausa; --brief per l'hook
   supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
-  supervisor task pause ID --reason R [--by B] [--waits person] [--since EPOCH|ISO]
+  supervisor task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]
                                                 «salvo altre priorita'», visibile, mai in allarme; --waits person = la pausa
   supervisor task resume ID                     aspetta l'utente (waits.on = person), --since = l'inizio vero (contratto 1.77)
+                                                --waits external = aspetta fuori (un ticket, un cliente) fino a --recheck,
+                                                poi `suggest fill` lo ripropone (1.88)
   supervisor task closed [AAAA-MM-GG] [--json]  i compiti chiusi quel giorno (oggi) con la prova (release, commit, file o
                                                 controllo) e i sei giorni prima con un conteggio; exit 3 senza registro
   supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P]
@@ -215,6 +217,9 @@ def connect(create=True):
     if "waits" not in cols:
         con.execute("ALTER TABLE pauses ADD COLUMN waits TEXT")
         con.execute("ALTER TABLE pauses ADD COLUMN since INTEGER")
+        con.commit()
+    if "recheck" not in cols:   # 1.88 (27/10): un'attesa esterna e quando ricontrollarla
+        con.execute("ALTER TABLE pauses ADD COLUMN recheck INTEGER")
         con.commit()
     cols = {r[1] for r in con.execute("PRAGMA table_info(approvals)")}   # 1.81 (23/10): le opzioni di una scelta e quella presa
     if "options" not in cols:
@@ -588,7 +593,7 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
         st = con.execute("SELECT at, kind, text, next FROM steps WHERE task=? ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
         if st:
             steps.append({"at": int(st["at"]), "kind": st["kind"] or "step", "text": st["text"]})
-        pz = con.execute("SELECT at, by_, reason, waits, since FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+        pz = con.execute("SELECT at, by_, reason, waits, since, recheck FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
         if pz:
             steps.append({"at": int(pz["at"]), "kind": "pause", "text": pz["reason"]})
         last = max(steps, key=lambda s: (s["at"], STEP_RANK.get(s["kind"], 3)))
@@ -610,7 +615,8 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
                     "next": nxt, "waits": waits,
                     "expected": (task.get("outcome") or {}).get("expected"), "outcome_kind": (task.get("outcome") or {}).get("kind"),
                     "check": {"outcome": res["outcome"], "at": int(res["at"])} if res else None,
-                    "paused": {"reason": pz["reason"], "at": int(pz["since"] or pz["at"]), "by": pz["by_"]} if pz else None,
+                    "paused": {"reason": pz["reason"], "at": int(pz["since"] or pz["at"]), "by": pz["by_"], "waits": pz["waits"],
+                               "recheck": pz["recheck"]} if pz else None,   # 1.88: waits person | external | null
                     "stalled": bool(approved and not pz and idle >= stall_s)})
     out.sort(key=lambda x: (not x["stalled"], -x["idle_s"], x["task"]))
     return out
@@ -922,22 +928,32 @@ def main(argv):
         return 0
     if verb == "pause":
         reason, by, waits, since = _opt(args, "--reason"), _opt(args, "--by"), _opt(args, "--waits"), _opt(args, "--since")
+        recheck = _opt(args, "--recheck")
         if not args or not reason:
-            sys.exit("usage: task pause ID --reason R [--by B] [--waits person] [--since EPOCH|ISO]")
-        if waits not in (None, "person", "user"):
-            sys.exit("task pause: --waits takes person")
-        since_at = None
+            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]")
+        if waits not in (None, "person", "user", "external"):
+            sys.exit("task pause: --waits takes person or external")
+        if recheck is not None and waits != "external":
+            sys.exit("task pause: --recheck goes with --waits external")
+        since_at = recheck_at = None
         if since:
             try:
                 since_at = int(since) if since.isdigit() else int(__import__("datetime").datetime.fromisoformat(since).timestamp())
             except ValueError:
                 sys.exit("task pause: --since wants an epoch or an ISO time (2026-10-18T09:00)")
+        if recheck:
+            m = re.match(r"^(\d+)([mhd])$", recheck.strip())
+            try:
+                recheck_at = (now() + int(m.group(1)) * {"m": 60, "h": 3600, "d": 86400}[m.group(2)] if m
+                              else int(__import__("datetime").datetime.fromisoformat(recheck).timestamp()))
+            except ValueError:
+                sys.exit("task pause: --recheck wants a duration (30m, 6h, 2d) or an ISO time (2026-11-02T09:00)")
         row = get_task(con, args[0])
         if row["state"] not in OPEN_STATES:
             sys.exit(f"task {args[0]}: already {row['state']}")
         con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
-        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since) VALUES (?,?,?,?,NULL,?,?)",
-                    (args[0], now(), by, reason[:300], "person" if waits else None, since_at))
+        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since, recheck) VALUES (?,?,?,?,NULL,?,?,?)",
+                    (args[0], now(), by, reason[:300], waits if waits == "external" else ("person" if waits else None), since_at, recheck_at))
         con.commit()
         return 0
     if verb == "closed":

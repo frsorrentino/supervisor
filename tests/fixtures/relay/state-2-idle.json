@@ -464,31 +464,34 @@
   ],
   "suggestions": [
     {
-      "id": "s-a41c7e2b90",
-      "kind": "recurring",
-      "key": "recurring:night-report",
-      "text": "Last night's report is ready: 3 projects done, 1 in part",
-      "prompt": "Read me last night's report and tell me what is left",
-      "at": 1789207200,
-      "expires_at": 1789250400
+      "id": "s-8b3f6a1d47",
+      "kind": "deadline",
+      "key": "deadline:ledger-invoice-2026-09",
+      "text": "The ledger-api invoice is due on Friday",
+      "at": 1789207180,
+      "expires_at": 1789250380,
+      "rank": 2,
+      "source": "master"
     },
     {
       "id": "s-5d0e2f9c13",
       "kind": "cleanup",
       "key": "cleanup:paused:orbit-docs-*",
       "text": "Two orbit-docs tasks paused for 5 days: close them?",
-      "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone",
       "at": 1789207190,
-      "expires_at": 1789250390
+      "expires_at": 1789250390,
+      "rank": 5,
+      "source": "master"
     },
     {
-      "id": "s-8b3f6a1d47",
-      "kind": "deadline",
-      "key": "deadline:ledger-invoice-2026-09",
-      "text": "The ledger-api invoice is due on Friday",
-      "prompt": "Prepare the September invoice for ledger-api",
-      "at": 1789207180,
-      "expires_at": 1789250380
+      "id": "s-a41c7e2b90",
+      "kind": "recurring",
+      "key": "recurring:night-report",
+      "text": "Last night's report is ready: 3 projects done, 1 in part",
+      "at": 1789207200,
+      "expires_at": 1789250400,
+      "rank": 6,
+      "source": "master"
     }
   ],
   "usage_today": [

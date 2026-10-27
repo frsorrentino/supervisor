@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.69-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.70-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -556,7 +556,8 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor timeline [NAME] [--since 6h] [--json] [--limit N]` | per session, in time order: prompts, tests with their summary, commits, «Esito:» lines, registry outcomes |
 | `supervisor render FILE.md\|- [--title T] [--meta M] [--out F]` | a Markdown summary as one HTML page with a fixed template, shown in the phone's chat under the command |
 | `supervisor recurring list\|add ID --label L --prompt P [--param]\|remove ID\|used ID` | the master's recurring actions, shown in the app's «Recurring» box, last used first |
-| `supervisor suggest add --kind K --key KEY --text T --prompt P [--ttl 12h]\|list\|clear [--kind K]` | the master's suggestions for the app's home page (recurring, cleanup, deadline, quota); «Never» from the app skips that key for good |
+| `supervisor suggest add --kind K --key KEY --text T --prompt P [--ttl 12h] [--rank 0-9] [--source script\|master] [--options "A\|B"] [--after AAAA-MM-GG]\|list\|clear [--kind K]\|reshow\|kind on\|off K` | the suggestions for the app's home page, a queue of up to 12 shown three at a time: the master's (recurring, cleanup, deadline, quota, choice, idea, proposal) and the script's; «Not now» lasts until the master's next round (`reshow`); «Never» skips that key for good; a kind never accepted switches off |
+| `supervisor suggest fill\|digest` | `fill`, hourly from crontab with `nice -n 19`: queues what was left open — the next step of a session idle for 4 to 72 hours, the files a closed session did not commit, an external wait past its recheck — and drops each when it is gone; zero model tokens, no git, no network. `digest`: the short summary the master's rounds read (queue by kind, 14-day acceptance rate, kinds off, recent «Never») |
 
 ## Details
 

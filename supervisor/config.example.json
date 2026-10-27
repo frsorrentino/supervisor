@@ -357,6 +357,11 @@
       7
     ]
   },
+  "suggest": {
+    "stall_h": 4,
+    "followup_max_h": 72,
+    "script_max": 8
+  },
   "hooks": {
     "local_time": {
       "enabled": true,
