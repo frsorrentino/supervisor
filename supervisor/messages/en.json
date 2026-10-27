@@ -482,7 +482,7 @@
   "relay.cmd_suggestion_inbox": "saved in master's inbox: it reads it when it opens",
   "relay.cmd_suggestion_later": "hidden until the next round",
   "relay.cmd_suggestion_never": "never again",
-  "relay.cmd_suggestion_unknown": "unknown suggestion",
+  "relay.cmd_suggestion_gone": "already gone",
   "relay.cmd_suggestion_bad_action": "suggestion: the action is accept, later or never (not {action})",
   "relay.suggestion_label": "[from the suggestions]",
   "relay.cmd_close_none": "close: no session given",

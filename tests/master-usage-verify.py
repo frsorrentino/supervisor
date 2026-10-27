@@ -10,7 +10,9 @@ MU4 compattazione: la stima della chiamata (contesto di prima dalla cache, riass
 MU5 un subagente pesa sul turno che l'ha avviato
 MU6 incrementale: una seconda lettura conta solo le righe nuove; l'elenco cambiato rifà il conto
 MU7 avvisi: automazioni oltre un quarto, un'automazione raddoppiata nelle ultime 24 ore, una non in elenco
-MU8 --json: hours[] e origins[] con name, kind, runs, share; --suggest pubblica gli avvisi come suggerimenti quota
+MU8 --json: hours[] e origins[] con name, kind, runs, share
+MU9 --notify (e il vecchio --suggest): gli avvisi come notifica «week_pace» del relay, non come suggerimenti; la
+    stessa automazione al massimo una volta ogni 24 ore
 """
 import json
 import os
@@ -34,7 +36,7 @@ proj = home / ".claude" / "projects" / slug
 proj.mkdir(parents=True)
 (home / ".claude-work").mkdir()
 cfg = tmp / "config.json"
-cfg.write_text(json.dumps({"language": "it", "state_dir": str(state), "workspace": {"root": str(ws)},
+cfg.write_text(json.dumps({"language": "it", "state_dir": str(state), "workspace": {"root": str(ws)}, "relay": {"enabled": True, "dir": str(tmp / "relay")},
                            "accounts": {"personal": {"config_dir": str(home / ".claude")}, "work": {"config_dir": str(home / ".claude-work")}}}))
 local = tmp / "automations.json"
 sugg = tmp / "suggestions.json"
@@ -155,8 +157,28 @@ T.check("MU7 automations over a quarter of the period → «quota:master-automaz
         and all("…" not in a["text"] and "\n" not in a["text"] and len(a["text"]) <= 200 for a in d4["alerts"]), str(d4["alerts"]))
 r5 = run("--suggest")
 items = json.loads(sugg.read_text())["items"] if sugg.exists() else []
-T.check("MU8 --suggest: each alert becomes a «quota» suggestion with its key (supervisor suggest add); the text says how many were published",
-        sorted(x["key"] for x in items) == sorted(keys) and all(x["kind"] == "quota" for x in items) and f"suggerimenti pubblicati: {len(keys)}" in r5.stdout, r5.stdout + str(items))
+evp = tmp / "relay" / "local" / "events.json"
+
+
+def quota_events():
+    return sorted((e for e in (json.loads(evp.read_text()) if evp.exists() else {}).values() if e.get("kind") == "week_pace"), key=lambda e: e["key"])
+
+
+ev5 = quota_events()
+T.check("MU9 quota_alert_not_suggestion: --suggest no longer writes «quota» suggestions (no Accept, Not now, Never for an alert); the alerts go as one «week_pace» notification of the relay (quiet, no buttons): the title counts them, the body lists them; the text says how many were sent",
+        r5.returncode == 0 and not [x for x in items if x.get("kind") == "quota"] and len(ev5) == 1 and ev5[0]["title"] == f"Consumo della master: {len(keys)} avvisi"
+        and ev5[0]["body"].splitlines() == [a["text"] for a in d4["alerts"]] + ["supervisor quota --master"] and f"avvisi mandati: {len(keys)}" in r5.stdout,
+        r5.stdout + r5.stderr + str(items) + str(ev5))
+r5b = run("--notify")
+apath = state / "master-usage-alerts.json"
+sent = json.loads(apath.read_text()) if apath.exists() else {}
+T.check("MU9 quota_alert_not_suggestion: the same automation at most once every 24 hours — a second run sends nothing",
+        r5b.returncode == 0 and len(quota_events()) == len(ev5) and "avvisi mandati: 0" in r5b.stdout and sorted(sent) == sorted(keys), r5b.stdout + str(sent))
+apath.write_text(json.dumps({k: (v - 25 * 3600 if k == "quota:master-automazioni" else v) for k, v in sent.items()}))
+r5c = run("--notify")
+T.check("MU9 quota_alert_not_suggestion: after 24 hours the same alert goes out again, only that one, its text as the title",
+        r5c.returncode == 0 and len(quota_events()) == 2 and quota_events()[-1]["title"] == next(a["text"] for a in d4["alerts"] if a["key"] == "quota:master-automazioni")
+        and "avvisi mandati: 1" in r5c.stdout, r5c.stdout + str(quota_events()))
 r6 = run()
 T.check("MU8 the text report: the period, the automations with since and who agreed, the requests, the sessions, the alerts",
         r6.returncode == 0 and "Master, ultimi 7 giorni" in r6.stdout and "Automazioni concordate" in r6.stdout and "(dal 2026-10-24, maintainer)" in r6.stdout

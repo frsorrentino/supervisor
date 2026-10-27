@@ -1653,10 +1653,20 @@ _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
 r72u = send_cmd(CM184[1])
 _left72 = json.loads(_sg72.read_text())["items"]
-T.check("R72 (1.84) suggestion accept → its prompt to master as a prompt from the phone, labelled «[dai suggerimenti]», «sent to master» as in the fixture, the item gone; an unknown id → «unknown suggestion» as in the fixture",
-        r72a and r72a["ok"] is True and r72a["text"] == RS184[CM184[0]["id"]]["text"] == "sent to master" and r72u and r72u["ok"] is False and r72u["text"] == RS184[CM184[1]["id"]]["text"] == "unknown suggestion"
+T.check("R72 (1.84, 1.87) suggest_unknown_is_gone: accept → its prompt to master as a prompt from the phone, labelled «[dai suggerimenti]», «sent to master» as in the fixture, the item gone; an id no longer there → ok «already gone» as in the fixture, so the app drops the card",
+        r72a and r72a["ok"] is True and r72a["text"] == RS184[CM184[0]["id"]]["text"] == "sent to master" and r72u and r72u["ok"] is True and r72u["text"] == RS184[CM184[1]["id"]]["text"] == "already gone"
         and any(c.startswith("talk master Dall'utente via telefono.") and c.endswith("[dai suggerimenti] " + F2["suggestions"][0]["prompt"] + " --no-wait") for c in cm_calls()[_n72:])
         and [x["id"] for x in _left72 if x["expires_at"] > _now72] == [x["id"] for x in F2["suggestions"][1:]], str((r72a, r72u, cm_calls()[_n72:])))
+os.environ["CM_SUGGESTIONS"] = str(_sg72)   # come il relay vero: il file accanto alla sua config
+_fp72a = RL.sources_print()
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-suggest.py"), "clear", "--kind", "quota"], env=dict(os.environ), capture_output=True)
+_fp72b = RL.sources_print()
+_sg72.write_text(json.dumps({"items": [dict(F2["suggestions"][0], at=int(time.time()), expires_at=int(time.time()) + 1)], "never": []}))
+_fp72c = RL.sources_print()
+time.sleep(2.1)
+T.check("R72 (1.87) suggest_unknown_is_gone: suggestions.json is in the push fingerprint — after suggest clear and when a suggestion expires the light beat does not republish the old state",
+        _fp72a != _fp72b and RL.sources_print() != _fp72c and "suggestions.json:" in _fp72a, str((_fp72a[-80:], _fp72b[-80:], _fp72c[-80:])))
+del os.environ["CM_SUGGESTIONS"]
 _fn72 = ws / "personal" / "field-notes"
 _fn72.mkdir(parents=True, exist_ok=True)
 subprocess.run(["git", "init", "-q", str(_fn72)], check=True)
@@ -3878,10 +3888,10 @@ _clr73 = _sg73("clear", "--kind", "quota")
 _vis73c = SG.for_state()
 _unk73 = SG.act("s-nope", "accept")[0]
 del os.environ["CM_SUGGESTIONS"]
-T.check("R73 (1.84) suggest: add prints the id; later hides it until the same key comes back (with the new text); never makes add skip the key silently (exit 0, no output); bad kind, «…» and a bad ttl refused; clear --kind empties that kind; unknown id",
+T.check("R73 (1.84) suggest: add prints the id; later hides it until the same key comes back (with the new text); never makes add skip the key silently (exit 0, no output); bad kind, «…» and a bad ttl refused; clear --kind empties that kind; an id no longer there is «gone» (1.87)",
         _a73.returncode == 0 and _a73.stdout.strip().startswith("s-") and _later73 == "hidden" and _vis73 == ["cleanup:x"] and _never73 == "never"
         and _again73.returncode == 0 and _again73.stdout == "" and _vis73b == [("quota:y", "Weekly quota at 85 %")] and all(rc != 0 for rc in _bad73)
-        and _clr73.returncode == 0 and _vis73c == [] and _unk73 == "unknown" and json.loads(_sgp73.read_text())["never"] == ["cleanup:x"], str((_vis73, _vis73b, _again73.stdout, _bad73)))
+        and _clr73.returncode == 0 and _vis73c == [] and _unk73 == "gone" and json.loads(_sgp73.read_text())["never"] == ["cleanup:x"], str((_vis73, _vis73b, _again73.stdout, _bad73)))
 
 # R86 (contratto 1.86, 26/10, grafici 2A e 2B di Utilizzo): la settimana dal rinnovo nello stato
 _q86 = S.build_quota({"a": {"settimana_pct": 30, "reset_settimanale": 1789610400,

@@ -13,7 +13,8 @@ recurring | cleanup | deadline | quota. key: stabile per lo stesso suggerimento 
 Il relay li pubblica come state.suggestions [{id, kind, key, text, prompt, at, expires_at}], dal piu' recente, al
 massimo 6. L'app risponde con l'op suggestion {arg: id, action}: accept manda il prompt alla master e toglie la voce;
 later la nasconde fino al giro dopo (un `add` con la stessa key la rimette, con il testo nuovo); never mette la key in
-una lista che `add` poi salta in silenzio (esce 0, niente scritto).
+una lista che `add` poi salta in silenzio (esce 0, niente scritto). Un id che non c'e' piu' risponde ok «already gone»
+(1.87): la scheda era rimasta sull'app, e l'app la toglie.
 
 Il file sta accanto alla config (suggestions.json; CM_SUGGESTIONS per i test).
 """
@@ -75,15 +76,16 @@ def for_state(now=None):
 
 
 def act(sid, action, now=None):
-    """L'op suggestion: (codice, voce). codice: accepted | hidden | never | unknown | bad_action. accept toglie la voce
-    (chi chiama manda il prompt), later la nasconde, never la toglie e mette la sua key fra quelle da saltare."""
+    """L'op suggestion: (codice, voce). codice: accepted | hidden | never | gone | bad_action. accept toglie la voce
+    (chi chiama manda il prompt), later la nasconde, never la toglie e mette la sua key fra quelle da saltare. gone
+    (1.87, 27/10): l'id non c'e' piu' (tolto con clear, scaduto, gia' toccato) — per l'app e' gia' fatto."""
     if action not in ("accept", "later", "never"):
         return "bad_action", None
     now = int(now or time.time())
     d = load()
     hit = next((x for x in live(d["items"], now) if x["id"] == sid and not x.get("hidden")), None)
     if not hit:
-        return "unknown", None
+        return "gone", None
     if action == "later":
         hit["hidden"] = now
     else:

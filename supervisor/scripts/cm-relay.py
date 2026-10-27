@@ -1251,8 +1251,8 @@ def suggestion_act(cmd, arg):
     code, hit = _load("cm-suggest").act(str(arg or "").strip(), str(cmd.get("action") or "").strip())
     if code == "bad_action":
         return False, M("relay.cmd_suggestion_bad_action", action=str(cmd.get("action") or "?"))
-    if code == "unknown":
-        return False, M("relay.cmd_suggestion_unknown")
+    if code == "gone":   # 1.87 (27/10): tolto con suggest clear o scaduto mentre la scheda era sul telefono
+        return True, M("relay.cmd_suggestion_gone")
     ledger_write("suggestion", id=hit["id"], key=hit.get("key"), action=code, by=cmd.get("by"))
     if code == "hidden":
         return True, M("relay.cmd_suggestion_later")
@@ -1592,7 +1592,9 @@ _TASKS_DB = None
 
 def sources_print():
     """L'impronta delle sorgenti dello stato che cambiano senza un hook che chieda la push: date e dimensioni di
-    attese, registro delle sessioni, coda della notte, compiti, rapporti della notte e file del relay. Il ledger no:
+    attese, registro delle sessioni, coda della notte, compiti, rapporti della notte, file del relay e suggerimenti
+    (27/10: senza, un suggest clear restava sull'app fino alla push completa, e «Non ora» dava «unknown suggestion»;
+    con gli id vivi anche uno scaduto esce subito). Il ledger no:
     cambia di continuo (ogni lettura della chat ci scrive una riga, 08/10: nessun battito leggero dal vivo), e ogni
     sua riga che cambia lo stato (start, prompt, waiting, stop, end, un comando che non e' una lettura) arriva con
     un hook o un comando che chiede gia' la push completa."""
@@ -1602,6 +1604,12 @@ def sources_print():
              Path(cm.expand(reg.get("good_file") or "~/.claude/sessions-good.json")),
              Path(cm.expand((CFG.get("night") or {}).get("queue_file") or "~/.claude/night-queue.jsonl")), night_report_dir(),
              rdir() / "follow.json", rdir() / "awaiting.json", rdir() / "devices.json"]
+    try:   # 1.87 (27/10): i suggerimenti — il file per add, clear e i tasti, gli id vivi per quelli che scadono
+        sg = _load("cm-suggest")
+        paths.append(sg.path())
+        live_ids = ",".join(x["id"] for x in sg.for_state())
+    except Exception:   # noqa: BLE001 — l'impronta non deve mai fermare il battito
+        live_ids = "-"
     global _TASKS_DB
     if _TASKS_DB is None:   # un caricamento solo: _load riesegue il modulo a ogni chiamata
         _TASKS_DB = _load("cm-tasks").db_path()
@@ -1617,6 +1625,7 @@ def sources_print():
         out += sorted(f"{e.name}:{e.stat().st_mtime_ns}" for e in os.scandir(sd / "waiting"))
     except OSError:
         pass
+    out.append("suggestions:" + live_ids)
     return ";".join(out)
 
 

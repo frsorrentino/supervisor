@@ -26,7 +26,7 @@ un account fermo non aggiunge campioni, e la sua quota non si muove. --json da' 
 trascrizioni dell'account: cm-master-usage.week_origins).
 
 Uso: cm-quota.py [--json] [--no-screen]   (--no-screen: non legge gli schermi tmux per la bassa priorita')
-     cm-quota.py --master [--json] [--days N] [--suggest]   (il consumo della master per origine: cm-master-usage.py)
+     cm-quota.py --master [--json] [--days N] [--notify]   (il consumo della master per origine: cm-master-usage.py)
 """
 import hashlib
 import importlib.util

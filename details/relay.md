@@ -444,8 +444,8 @@ state saved, today's quota per session). All additive, `v` stays 1.
   hides it until the next round (an `add` with the same key brings it back, with
   the new text); never drops it and puts its key on a list `add` then skips
   silently (exit 0, no output). Results «sent to master», «hidden until the next
-  round», «never again», «unknown suggestion». The file is `suggestions.json` next
-  to the config.
+  round», «never again», and since 1.87 «already gone» (ok) for an id no longer
+  there. The file is `suggestions.json` next to the config.
 - **Today's quota per session.** `/state.usage_today` lists `{session, account,
   tokens, share}`, biggest first, at most 12 (fit_state: 5). `tokens` are the
   tokens since local midnight from the transcripts of every account (input,
@@ -484,8 +484,8 @@ Fixtures: `state-1-question.json` (`suggestions` empty, the gone `orbit-docs` wi
 `closed {at, session_id}`), `state-2-idle.json` (three suggestions of different
 kinds, four `usage_today` rows on two accounts, a `needs_you` with `task` and
 `from`), `state-3-stale.json` (a gone session closed from the app with two
-uncommitted files), `cmd-result-sample.json` (a suggestion accepted, an unknown
-one; a `close_preview` and one with no session; a `close` with one session kept
+uncommitted files), `cmd-result-sample.json` (a suggestion accepted, one already
+gone; a `close_preview` and one with no session; a `close` with one session kept
 and one of a busy session only, refused).
 
 Contract 1.85 (25/10/2026, asked by the maintainer from the phone: at the limit of
@@ -544,6 +544,29 @@ chosen by the maintainer on the mockups of 25/10). Additive, `v` stays 1.
 Fixture: `state-2-idle.json` (`personal` with `w7_points` — steps at hours 0, 2,
 3, 24 and 25 — and `w7_origins`; `work` with neither: no samples, the count not
 complete).
+
+Contract 1.87 (27/10/2026, from the phone: after a suggestion was cleared on the
+PC the card stayed on the home page, and «Not now» on it answered «unknown
+suggestion»). `v` stays 1.
+
+- **A suggestion no longer there is already gone.** The op `suggestion` on an id
+  that is not in `suggestions.json` any more (cleared with `suggest clear`,
+  expired, already answered from another device) answers `ok: true`, «already
+  gone»: the app drops the card, as after «Not now».
+- **The state follows the suggestions at once.** `suggestions.json` and the ids
+  of the live suggestions are part of the push fingerprint: an `add`, a `clear`,
+  an answer or an expiry republishes `/state` at the next beat, instead of the
+  light beat resending the old list until the next full collection.
+- **The master's usage alerts are notifications.** `supervisor quota --master
+  --notify` (before: `--suggest`, which made them `quota` suggestions with Accept,
+  Not now and Never) sends the new alerts of a round as one `week_pace` event
+  (1.67: quiet, no buttons, opens Usage), `account: null`, `ref:
+  "master-usage"`: one alert is the title; several are counted in the title and
+  listed in the body, one per line, then `supervisor quota --master`. The same
+  alert at most once every 24 hours.
+
+Fixture: `cmd-result-sample.json` (the suggestion answered «later» on an id no
+longer there: `ok: true`, «already gone»).
 
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)

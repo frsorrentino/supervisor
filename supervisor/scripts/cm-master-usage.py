@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """supervisor quota --master — il consumo della master per ora e per origine (25/10/2026).
 
-  supervisor quota --master [--json] [--days N] [--suggest]
+  supervisor quota --master [--json] [--days N] [--notify]
 
 Legge le trascrizioni della master (la cartella radice del workspace, ogni account, i subagenti compresi), pesa l'usage
 di ogni risposta in token input-equivalenti come le ricevute di fable-director (input 1, output 5, cache read 0,1 o la
@@ -20,9 +20,13 @@ cache e il riassunto scritto) e la prima risposta dopo, che riscrive la cache.
 Zero token di modello. Incrementale: <state_dir>/master-usage.json tiene per ogni file dove si era arrivati e i conti
 per ora; si tengono 35 giorni. Se l'elenco delle automazioni cambia, il conto si rifa' da capo.
 
---suggest: gli avvisi diventano suggerimenti «quota» (supervisor suggest add, key stabile): le automazioni oltre un
+--notify (--suggest, il nome di prima, fa lo stesso): gli avvisi vanno al telefono come evento «week_pace» del relay
+(1.67: la notifica del ritmo della settimana, senza suono e senza tasti, che apre l'Utilizzo): le automazioni oltre un
 quarto del consumo dei giorni letti, un'automazione che nelle ultime 24 ore ha piu' del doppio della sua media
-giornaliera, un'automazione non in elenco.
+giornaliera, un'automazione non in elenco. Gli avvisi nuovi di un giro in un evento solo (il telefono tiene una
+notifica week_pace per account: due eventi si coprirebbero); ogni avviso (la sua key) al massimo una volta ogni 24 ore,
+in <state_dir>/master-usage-alerts.json. Fino al 27/10 erano suggerimenti «quota», con Accetta, Non ora e Mai, che per
+un avviso non vogliono dire niente.
 """
 import datetime as dt
 import glob
@@ -31,7 +35,6 @@ import importlib.util
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -53,6 +56,7 @@ KEEP_DAYS = 35
 AUTO_SHARE = 0.25        # avviso: le automazioni oltre un quarto del consumo
 DOUBLE = 2.0             # avviso: un'automazione oltre il doppio della sua media giornaliera nelle ultime 24 ore
 DOUBLE_MIN_SHARE = 0.01  # ...se pesa almeno l'1 % del periodo (sotto e' rumore)
+ALERT_EVERY_S = 86400    # lo stesso avviso al massimo una volta ogni 24 ore
 EQ_DEFAULT = {"input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_create": 1.25, "cache_create_1h": 2.0}
 EQ_MODELS = {"claude-fable-5-1": {"cache_read": 0.025}, "claude-opus-5-5": {"cache_read": 0.05}, "claude-sonnet-5-5": {"cache_read": 0.05}}
 PEER = re.compile(r'<cross-session-message\b[^>]*\bfrom-name="([^"]*)"[^>]*>\s*(.*?)\s*(?:</cross-session-message>|$)', re.S)
@@ -577,13 +581,31 @@ def text_report(r):
     return "\n".join(out)
 
 
-def suggest(alerts):
-    """Gli avvisi come suggerimenti «quota» (supervisor suggest add: «Mai» dall'app li salta da solo)."""
+def alerts_path():
+    return Path(cm.expand(CFG.get("state_dir") or "~/.local/state/cc-supervisor")) / "master-usage-alerts.json"
+
+
+def notify(alerts, now=None):
+    """Gli avvisi nuovi come un evento «week_pace» del relay (core.relay_event), ognuno al massimo una volta ogni
+    ALERT_EVERY_S per key; quanti ne sono partiti. Uno solo: il suo testo e' il titolo; piu' d'uno: il titolo li conta e
+    il corpo li elenca. Se il relay non lo prende, si riprova al giro dopo."""
+    now = int(now or time.time())
+    p = alerts_path()
+    try:
+        sent = json.loads(p.read_text())
+    except (OSError, ValueError):
+        sent = {}
+    sent = {k: v for k, v in (sent if isinstance(sent, dict) else {}).items() if isinstance(v, (int, float)) and now - v < ALERT_EVERY_S}
+    new = [a for a in alerts if a["key"] not in sent]
     n = 0
-    for a in alerts:
-        p = subprocess.run([sys.executable, str(HERE / "cm-suggest.py"), "add", "--kind", "quota", "--key", a["key"], "--text", a["text"],
-                            "--prompt", a["prompt"], "--ttl", "12h"], capture_output=True, text=True)
-        n += p.returncode == 0 and bool(p.stdout.strip())
+    if new:
+        title = new[0]["text"] if len(new) == 1 else f"Consumo della master: {len(new)} avvisi"
+        body = "\n".join([a["text"] for a in new if len(new) > 1] + ["supervisor quota --master"])
+        if _load("cm-core").relay_event("week_pace", title, body, ref="master-usage"):
+            sent.update({a["key"]: now for a in new})
+            n = len(new)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(sent, ensure_ascii=False) + "\n")
     return n
 
 
@@ -597,14 +619,15 @@ def main(argv):
             print("quota --master: --days wants a number of days", file=sys.stderr)
             return 2
     r = report(scan(), days)
-    if "--suggest" in argv:
-        r["suggested"] = suggest(r["alerts"])
+    notifying = "--notify" in argv or "--suggest" in argv
+    if notifying:
+        r["notified"] = notify(r["alerts"])
     if "--json" in argv:
         print(json.dumps(r, ensure_ascii=False))
     else:
         print(text_report(r))
-        if "--suggest" in argv:
-            print(f"suggerimenti pubblicati: {r['suggested']}")
+        if notifying:
+            print(f"avvisi mandati: {r['notified']}")
     return 0
 
 

@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.68-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.69-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -70,8 +70,9 @@ you do not need it. supervisor is an independent plugin, not made by Anthropic.
 Claude Code 2.1.263 or newer, `tmux`, `python3` 3.8+, `bash` and a
 [supported terminal](#terminal-backends), on Linux, macOS, ChromeOS or WSL2
 ([not native Windows](#windows)). It runs daily on one workstation (ChromeOS,
-two accounts, up to eight sessions); the other terminals are supported in code
-but not yet tried on real hardware. On ChromeOS the window commands also need
+two accounts, up to eight sessions) and was tried on a clean WSL2 install with
+Windows Terminal; the other terminals are supported in code but not yet tried
+on real hardware. On ChromeOS the window commands also need
 [chrome-bridge](https://github.com/frsorrentino/chrome-bridge).
 
 ### Quickstart
@@ -472,7 +473,7 @@ The full list with defaults: [`supervisor/config.example.json`](supervisor/confi
 | `gnome` | no | `gnome-terminal --tab`; written from the docs, covered only by tests with a fake terminal |
 | `kitty` | no | same |
 | `iterm2` · `macos-terminal` | no | same, through AppleScript |
-| `wt` | no | Windows Terminal, from a Linux shell under WSL; same |
+| `wt` | yes, a clean WSL2 install | Windows Terminal, from a Linux shell under WSL; `launch` opened the session in its own tab |
 
 On an untried backend the first launch is the test: `launch` says whether the
 tab attached and, if it did not, prints the `tmux attach` line so nothing is
@@ -534,7 +535,7 @@ The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 | `supervisor desk [start\|stop\|status]` | a Remote Control desk in the workspace root (optional, off by default); the sessions it spawns run without Claude in Chrome, which `claude remote-control` turns on only with `--chrome` |
 | `supervisor tile [names] [--rows\|--grid] [--on PLACE] [--dry-run] [--where]` · `supervisor merge` · `supervisor move PLACE` · `supervisor layout save\|restore\|list NAME` | windows side by side, as tabs, on another monitor, or by saved layout (ChromeOS) |
 | `supervisor attach <name>` · `supervisor color <name>` · `supervisor quota [--json]` | attach a terminal; the tab's shape and colour; how full each account's quota is (`--json` also gives the week's hourly samples since the reset and where the week came from: sessions, automations, requests) |
-| `supervisor quota --master [--json] [--days N] [--suggest]` | the master's usage by hour and by origin: each agreed automation (listed in `automations.json`), the user's requests, the other sessions; `--suggest` turns the alerts into quota suggestions |
+| `supervisor quota --master [--json] [--days N] [--notify]` | the master's usage by hour and by origin: each agreed automation (listed in `automations.json`), the user's requests, the other sessions; `--notify` (or the older `--suggest`) sends the alerts to the phone as a quiet notification, each at most once every 24 hours |
 | `supervisor statusline [--wrap <command>]` | a minimal status line that records each account's quota from what Claude Code already passes it, no network; set it as `statusLine` when fable-director is not installed, or wrap your own |
 | `supervisor needs-you "<what you need>" [--until "<cmd>"] [--expires 2h]` | from a session: it is waiting for something only you can do (a login, a code, a key); it goes to the top of «Needs you» on the phone and the watch, and the master hears of it; with `--until` the relay runs the command once a minute and closes the request when it exits 0, with `--expires` it lapses by itself (24 h without) |
 | `supervisor guard run` · `install\|uninstall\|status` | quota guard: one warning per window above `guard.warn_pct` with the reset time, on Telegram when no watch is receiving; at the reset, the sessions that hit the wall get «resume where you were» and a pending night queue runs | |
