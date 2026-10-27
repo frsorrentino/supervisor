@@ -215,6 +215,21 @@ T.check("CO16 Haiku 5.5 under 200k tokens: the 1M window from relay.window_1m (1
 T.check("CO16 the defaults: claude-haiku-5-5 in relay.window_1m; Sonnet 5.5 and Haiku 5.5 in tune.models",
         "claude-haiku-5-5" in core.cm.DEFAULTS["relay"]["window_1m"]
         and [m["id"] for m in core.cm.DEFAULTS["tune"]["models"]][-2:] == ["claude-sonnet-5-5", "claude-haiku-5-5"], str(core.cm.DEFAULTS["tune"]["models"]))
+# CO17 (27/10/2026, Claude Code 2.1.311): l'id di Sonnet 5.5 non porta mai [1m] e la finestra dipende dall'account, come
+# Fable 5.1: nei default di relay.window_unmarked (la config dell'utente non li sovrascrive)
+def sonnet_window_unmarked(tokens, sid="S-17"):
+    with open(tdir / f"{sid}.jsonl", "w") as f:
+        f.write(json.dumps({"type": "attachment", "attachment": {"type": "model", "identity": {"modelId": "claude-sonnet-5-5", "marketingName": "Sonnet 5.5"}}}) + "\n")
+        f.write(json.dumps({"type": "assistant", "effort": "medium", "message": {"model": "claude-sonnet-5-5", "usage": {
+            "input_tokens": 0, "cache_read_input_tokens": tokens, "cache_creation_input_tokens": 0}}}) + "\n")
+    return core.session_runtime({"session_id": sid, "cwd": str(cwd), "account": "personal"})
+hints17 = proj / "hints17"; hints17.mkdir()
+core._CFG["relay"] = {"dir": str(proj / "relay"), "window_unmarked": core.cm.DEFAULTS["relay"]["window_unmarked"], "window_hint_dir": str(hints17)}
+rt = sonnet_window_unmarked(150_000)
+T.check("CO17 sonnet_window_unmarked: Sonnet 5.5 at 150k tokens and no hint → context null, not 75 % of 200k", rt["context"] is None and rt["model"]["id"] == "claude-sonnet-5-5", str(rt))
+(hints17 / "S-17.json").write_text(json.dumps({"session_id": "S-17", "model": "claude-sonnet-5-5", "ctx_size": 1000000}))
+rt = sonnet_window_unmarked(150_000)
+T.check("CO17 sonnet_window_unmarked: with the statusline hint (1M, same model) → 150k of 1M = 15 %", rt["context"] == 15, str(rt))
 core._CFG["relay"] = {"dir": str(proj / "relay")}
 # CO12 (22/09/2026, Opus 5.5): il ripiego dopo un messaggio segnalato. Le righe come le scrive Claude Code 2.1.280
 # (schema letto nel binario; nessun messaggio segnalato provocato per vederle)

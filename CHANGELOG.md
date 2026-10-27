@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.68 — 2026-10-27: a Sonnet 5.5 session under 200k tokens no longer shows its context on the standard window.**
+  - Claude Code 2.1.311 drops the `[1m]` suffix where it does not matter: `claude-sonnet-5-5` declares a 1M window without `supports_1m_suffix`, so its id never says which window the session has, and that window depends on the account (as for Fable 5.1). Below 200k tokens and without the window saved by the status line, the context was computed on 200k and could read up to five times the real one.
+  - `claude-sonnet-5-5` joins `relay.window_unmarked` in the defaults: there the context is null until the status line's saved window (`relay.window_hint_dir`) says the size, or the tokens pass 200k.
+  - Tests: core-verify CO17 (`sonnet_window_unmarked`).
 - **0.8.67 — 2026-10-26: the week's quota hour by hour and where it came from (contract 1.86).**
   - For the charts 2A (the week cumulated, with «where the 65 % comes from») and 2B (the days against the daily budget) of the app's Usage page, chosen by the maintainer on 25/10 at 21:36. The relay only knew the current weekly percentage.
   - Every quota reading leaves an hourly sample of the weekly percentage in `quota-week.json` (state folder): one per hour since the reset, the hour's last reading, kept until the next reset. The sample's time is the reading's (the status line's file), so an idle account adds none.

@@ -266,7 +266,8 @@
     "telegram_fallback_after_s": 600,
     "window_hint_dir": "~/.claude/fable-director/sessions",
     "window_unmarked": [
-      "claude-fable-5-1"
+      "claude-fable-5-1",
+      "claude-sonnet-5-5"
     ],
     "window_1m": [
       "claude-haiku-5-5"
