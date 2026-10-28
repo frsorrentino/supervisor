@@ -1786,6 +1786,8 @@ def execute(cmd):
             return close_preview(cmd, arg, session)
         if op == "close":   # 1.84
             return close_sessions(cmd, arg, session)
+        if op == "sys_kill":   # 1.90
+            return sys_kill(cmd, arg)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

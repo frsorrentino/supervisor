@@ -400,6 +400,7 @@ SRC3.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
 SRC3["commitments"] = F3["commitments"]   # 1.76
+SRC3["system"] = F3["system"]   # 1.90
 # 1.84 (24/10): orbit-docs chiusa dall'app prima che il PC si fermasse — lo stato salvato, con due file non committati
 SRC3["rows"] = [{"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs",
                  "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789199000}]
@@ -647,7 +648,7 @@ T.check("R4 push --dry-run: clear JSON on stdout, no HTTP; sessions ordered ❓ 
 T.check("R4 (1.1) every live session carries icon (from cm-color's registry, stable) and color «#RRGGBB»; the gone one has none on the first push", all(x["icon"] and re.match(r"^#[0-9A-F]{6}$", x["color"] or "") for x in dry["sessions"] if x["state"] != "gone") and dry["sessions"][3]["icon"] is None, str([(x["name"], x["icon"], x["color"]) for x in dry["sessions"]]))
 r = relay("push")
 _pub4 = C.decrypt(STORE["state"], k) if r.returncode == 0 and STORE.get("state") else {}
-T.check("R4 push: exit 0, /state on the bus is {v:1, enc} and decrypts to the same document as the dry-run (but ts and published_at)", r.returncode == 0 and set(STORE.get("state", {})) == {"v", "enc"} and STORE["state"]["v"] == 1 and {kk: v for kk, v in _pub4.items() if kk not in ("ts", "published_at")} == {kk: v for kk, v in dry.items() if kk != "ts"}, r.stdout + r.stderr + str(STORE.get("state"))[:100])
+T.check("R4 push: exit 0, /state on the bus is {v:1, enc} and decrypts to the same document as the dry-run (but ts, published_at and system, 1.90: a live reading of the machine)", r.returncode == 0 and set(STORE.get("state", {})) == {"v", "enc"} and STORE["state"]["v"] == 1 and {kk: v for kk, v in _pub4.items() if kk not in ("ts", "published_at", "system")} == {kk: v for kk, v in dry.items() if kk not in ("ts", "system")}, r.stdout + r.stderr + str(STORE.get("state"))[:100])
 evs = {kk: C.decrypt(v, k) for kk, v in list((STORE.get("events") or {}).items())}
 T.check("R4 first push: /events has launched ×3 and the question (encrypted, key <ts>_<seq>); FCM sent one data message per event with kind and session; last-state.json written", sorted(e["kind"] for e in evs.values()) == ["launched", "launched", "launched", "question"] and all(kk == evs[kk]["key"] for kk in evs) and len(CALLS["fcm"]) == 4 and any(m["message"]["data"]["kind"] == "question" and m["message"]["data"]["session"] == "ledger-api" and m["message"]["topic"] == "watch" for m in CALLS["fcm"]) and (rdir2 / "last-state.json").is_file(), str(evs) + str(CALLS["fcm"])[:300])
 n_fcm, n_ev = len(CALLS["fcm"]), len(STORE["events"])
@@ -1667,7 +1668,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-3:] == ["suggestion", "close_preview", "close"] and all(s["ops"][-3:] == R_OPS[-3:] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-4:-1] == ["suggestion", "close_preview", "close"] and all(s["ops"][-4:-1] == R_OPS[-4:-1] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3580,7 +3581,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last; /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-6] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops and sys_kill (1.90); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-7] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3609,7 +3610,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-5] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-5:-3] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-6] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-6:-4] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -3995,5 +3996,52 @@ T.check("R88 relay_device_last_seen (1.89): a command with the uid of a paired d
         and _d88 == [{"uid": "phoneUid00000000000000000000", "name": "Pixel 9", "kind": None, "seen": 1789210790},
                      {"uid": "webUid000000000000000000000", "name": "Chrome", "kind": "web", "seen": None, "cmd_at": int(_a88a["webUid000000000000000000000"]["cmd"])}],
         str((_a88a, _a88b, _d88)))
+
+# R89 (contratto 1.90, 28/10): quanto pesa la macchina e cosa fare — il blocco system di /state e l'op sys_kill
+_sy89 = F3["system"]
+_ops89 = [json.loads((FIX / f"{n}.json").read_text())["ops"] for n in ("state-1-question", "state-2-idle", "state-3-stale")]
+T.check("R89 system_advice (1.90) the fixtures: state-3 carries system {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level, load_level, mem_level, consumers, advice}, red, four groups, the reds first; every action an op of the state; state-1 and state-2 without it (old relay); sys_kill in ops",
+        list(_sy89) == ["at", "cores", "load1", "load_per_core", "mem_total_mb", "mem_available_mb", "level", "load_level", "mem_level", "consumers", "advice"]
+        and _sy89["level"] == "red" and sorted(c["group"] for c in _sy89["consumers"]) == ["chrome_bridge", "claude", "other", "relay"]
+        and all(list(a) == ["id", "kind", "level", "text", "action"] for a in _sy89["advice"])
+        and [a["level"] for a in _sy89["advice"]] == sorted([a["level"] for a in _sy89["advice"]], key=lambda x: x != "red")
+        and all(a["action"] is None or (a["action"]["op"] in F3["ops"] and set(a["action"]) == {"op", "arg", "label"}) for a in _sy89["advice"])
+        and "system" not in F1 and "system" not in F2 and all("sys_kill" in o for o in _ops89), json.dumps(_sy89)[:300])
+_big89 = S.build_state(dict(SRC3, system=dict(_sy89, advice=_sy89["advice"] * 2), state_max_kb=5), 1789200000)
+T.check("R89 system_advice (1.90) build_state keeps at most 5 advice; over the cap fit_state leaves the first two (reds first), then drops the consumers, before the gone sessions it keeps",
+        len(S.build_state(dict(SRC3, system=dict(_sy89, advice=_sy89["advice"] * 2)), 1789200000, fit=False)["system"]["advice"]) == 5
+        and _big89["system"]["advice"] == _sy89["advice"][:2] and _big89["system"]["consumers"] == [], json.dumps(_big89.get("system"))[:300])
+_p89 = subprocess.Popen(["bash", "-c", "exec -a 'node /x/chrome-bridge/server/index.js --launch' sleep 300"])
+time.sleep(0.5)
+_st89 = Path(f"/proc/{_p89.pid}/stat").read_text()
+_st89 = _st89[_st89.rindex(")") + 2:].split()[19]
+_me89 = os.path.basename(Path("/proc/self/cmdline").read_bytes().split(b"\0")[0].decode())
+_sv89 = dict(jc=RL._json_cmd, lw=RL.ledger_write, pa=RL.push_async)
+_led89 = []
+try:
+    RL._json_cmd = lambda *a, **k: []
+    RL.ledger_write = lambda ev, **kw: _led89.append(dict(kw, event=ev))
+    RL.push_async = lambda *a, **k: None
+    RL.system_status([], {})
+    _sys89 = RL.SY.CFG["system"]
+    RL.SY.CFG["system"] = dict(_sys89, orphan_parents=["init", "systemd", _me89])   # nel test il padre «ammesso» e' questo python
+    _r89a = RL.execute({"id": "s1", "op": "sys_kill", "arg": "1:1", "by": "web"})
+    _r89b = RL.execute({"id": "s2", "op": "sys_kill", "arg": f"{_p89.pid}:999", "by": "web"})
+    _alive89 = _p89.poll() is None
+    _r89c = RL.execute({"id": "s3", "op": "sys_kill", "arg": f"{_p89.pid}:{_st89}", "by": "web"})
+    try:
+        _p89.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        pass
+finally:
+    RL._json_cmd, RL.ledger_write, RL.push_async = _sv89["jc"], _sv89["lw"], _sv89["pa"]
+    if RL.SY is not None and "_sys89" in globals():
+        RL.SY.CFG["system"] = _sys89
+    if _p89.poll() is None:
+        _p89.kill()
+T.check("R89 system_advice (1.90) sys_kill: a pid that is not among the advice, or the right pid with another procStart, is refused and nothing is touched; the advised one is closed and written in the ledger",
+        _r89a[0] is False and "1:1" in _r89a[1] and _r89b[0] is False and _alive89
+        and _r89c[0] is True and str(_p89.pid) in _r89c[1] and _p89.returncode is not None
+        and [x["event"] for x in _led89] == ["sys-kill"] and _led89[0]["kind"] == "orphan_proc" and _led89[0]["ok"] is True, str((_r89a, _r89b, _r89c, _led89)))
 
 T.finish()

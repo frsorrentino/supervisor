@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1127,6 +1127,7 @@ def collect_sources(now=None):
         "commitments": commitments_list(),   # 1.76
         "elicitations": elicitations_list(rows, now),   # 1.83
         "suggestions": suggestions_list(now), "usage_today": usage_today(rows, now), "closed": closed_saved(now),   # 1.84
+        "system": system_status(rows, runtime),   # 1.90
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1169,6 +1170,23 @@ def handoffs_of(rows):
 # ------------------------------------------------------------------ 1.37: consiglio, doppioni, approvazioni
 ADVICE_REASON_MAX = 200
 DEPLOY_RE = re.compile(r"\b(prod|production|produzione|deploy|live)\b", re.I)
+
+
+SY = None
+
+
+def system_status(rows, runtime):
+    """1.90 (28/10): il blocco `system` di /state — carico, memoria, consumatori raggruppati e consigli con un'azione
+    (cm-system.py). Il modulo resta caricato nel demone: la CPU di un processo e' la differenza fra due push. None se la
+    misura fallisce: un'informazione in piu', mai la push persa."""
+    global SY
+    try:
+        if SY is None:
+            SY = _load("cm-system")
+        return SY.status(rows, {k: {"context": (v or {}).get("context")} for k, v in (runtime or {}).items()}, prefixes())
+    except Exception as e:   # noqa: BLE001
+        log(f"system: misura fallita ({e})")
+        return None
 
 
 def advice_of(rows, now):
@@ -1576,6 +1594,22 @@ def close_sessions(cmd, arg, session=""):
         push_async()
     lines = ([M("relay.cmd_close_done", names=", ".join(done))] if done else []) + kept
     return bool(done), "\n".join(lines)
+
+
+def sys_kill(cmd, arg):
+    """1.90 (28/10): op sys_kill {arg: "pid:procStart"} — il pulsante «Chiudi» di un consiglio di `system`. Rifa' la misura
+    adesso e chiude solo un processo che e' ancora fra i consigli con questa azione (un orfano, uno schema ammesso senza
+    padre): mai un pid scritto a mano, mai uno riusato. HUP, TERM, KILL come gli orfani di cm-sessions."""
+    arg = str(arg or "").strip()
+    st = system_status(_json_cmd("sessions", "--json", "--no-screen") or [], {})
+    adv = next((a for a in (st or {}).get("advice") or [] if (a.get("action") or {}).get("op") == "sys_kill" and a["action"].get("arg") == arg), None)
+    if not adv:
+        return False, M("relay.cmd_sys_kill_gone", arg=arg or "-")
+    pid, _, start = arg.partition(":")
+    ok = _load("cm-sessions").close_orphan({"pid": int(pid), "proc_start": start}, float((CFG.get("sessions") or {}).get("orphan_wait_s", 3)))
+    ledger_write("sys-kill", pid=int(pid), kind=adv["kind"], text=adv["text"], by=cmd.get("by"), ok=ok)
+    push_async()
+    return ok, M("relay.cmd_sys_kill_done" if ok else "relay.cmd_sys_kill_failed", pid=pid)
 
 
 def commitments_list():

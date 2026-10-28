@@ -139,6 +139,49 @@
     "orphan_grace_s": 120,
     "orphan_wait_s": 3
   },
+  "system": {
+    "load_yellow": 1.0,
+    "load_red": 2.0,
+    "mem_yellow_mb": 1536,
+    "mem_red_mb": 1024,
+    "stale_context_pct": 50,
+    "heavy_cpu": 50,
+    "kill_patterns": [
+      {
+        "name": "chrome-bridge",
+        "match": "chrome-bridge/server/index\\.js.* --launch( |$)",
+        "min_age_s": 0,
+        "min_cpu": 0
+      },
+      {
+        "name": "mcp",
+        "match": "(^|[ /])(firebase mcp|\\S*mcp-server\\S*)( |$)",
+        "min_age_s": 1800,
+        "min_cpu": 10
+      }
+    ],
+    "orphan_parents": [
+      "init",
+      "systemd"
+    ],
+    "heavy_patterns": [
+      "gradlew?",
+      "ffmpeg",
+      "remotion",
+      "pytest",
+      "vitest",
+      "jest",
+      "cargo",
+      "rustc",
+      "tsc",
+      "webpack",
+      "vite build",
+      "next build",
+      "npm run build",
+      "tesseract",
+      "make"
+    ]
+  },
   "resume_quota": {
     "windowless": "new",
     "watch_s": 10

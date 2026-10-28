@@ -120,6 +120,14 @@ DEFAULTS = {
              "from_name": "supervisor", "from_mode": "bypass"},
     "report": {"subdir": "docs/reports", "image_exts": ["png", "jpg", "jpeg", "webp", "gif"]},
     "sessions": {"stall_min": 20, "recent_min": 5, "max_sessions": 5, "idle_hours": 2, "orphan_grace_s": 120, "orphan_wait_s": 3},
+    # 1.90 (28/10/2026): il monitoraggio della macchina nel relay (cm-system.py) — soglie del livello e dei consigli;
+    # kill_patterns = i soli processi senza padre che il pulsante «Chiudi» puo' chiudere
+    "system": {"load_yellow": 1.0, "load_red": 2.0, "mem_yellow_mb": 1536, "mem_red_mb": 1024, "stale_context_pct": 50, "heavy_cpu": 50,
+               "kill_patterns": [{"name": "chrome-bridge", "match": r"chrome-bridge/server/index\.js.* --launch( |$)", "min_age_s": 0, "min_cpu": 0},
+                                 {"name": "mcp", "match": r"(^|[ /])(firebase mcp|\S*mcp-server\S*)( |$)", "min_age_s": 1800, "min_cpu": 10}],
+               "orphan_parents": ["init", "systemd"],
+               "heavy_patterns": ["gradlew?", "ffmpeg", "remotion", "pytest", "vitest", "jest", "cargo", "rustc", "tsc", "webpack",
+                                  "vite build", "next build", "npm run build", "tesseract", "make"]},
     # 21/10/2026 (Claude Code 2.1.304): l'avviso «Resume this conversation?» sul costo della ripresa, in una sessione
     # lanciata con --resume/--continue senza finestra o su un altro host: "new" sceglie una conversazione nuova con un
     # rimando alla vecchia, "needs_you" chiede alla persona, "off" non fa niente; watch_s = attesa del dialogo

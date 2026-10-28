@@ -367,7 +367,8 @@
     "elicit",
     "suggestion",
     "close_preview",
-    "close"
+    "close",
+    "sys_kill"
   ],
   "slash": [
     "compact",

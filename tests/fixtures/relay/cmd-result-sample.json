@@ -869,6 +869,24 @@
       "device": "phone",
       "issued": 1789214390,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0890-4000-8000-000000000890",
+      "op": "sys_kill",
+      "session": null,
+      "arg": "4410:912345",
+      "device": "web",
+      "issued": 1789214500,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0891-4000-8000-000000000891",
+      "op": "sys_kill",
+      "session": null,
+      "arg": "4410:912345",
+      "device": "web",
+      "issued": 1789214510,
+      "by": "web"
     }
   ],
   "result": [
@@ -1440,6 +1458,18 @@
       "ok": true,
       "text": "sent to master with the choice",
       "at": 1789214391
+    },
+    {
+      "id": "6f1c2d3e-0890-4000-8000-000000000890",
+      "ok": true,
+      "text": "closed process 4410",
+      "at": 1789214501
+    },
+    {
+      "id": "6f1c2d3e-0891-4000-8000-000000000891",
+      "ok": false,
+      "text": "4410:912345 is no longer among the advice: nothing closed",
+      "at": 1789214511
     }
   ]
 }

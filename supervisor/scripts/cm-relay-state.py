@@ -41,6 +41,8 @@ SUGGESTIONS_FIT = 6
 SUGGESTION_FIELDS = ("id", "kind", "key", "text", "at", "expires_at", "rank", "source", "options")   # 1.88: mai il prompt
 USAGE_MAX = 12   # 1.84: le righe di usage_today; fit_state le scende a USAGE_FIT
 USAGE_FIT = 5
+SYSTEM_ADVICE_MAX = 5   # 1.90: i consigli di system; fit_state li scende a SYSTEM_ADVICE_FIT e toglie i consumatori
+SYSTEM_ADVICE_FIT = 2
 DIRTY_MAX = 20   # 1.84: i file non committati in closed.dirty (il totale in dirty_n)
 PUBLISHED_AT_BYTES = len(',"published_at":1789210801.123')   # il campo che _push aggiunge dopo fit_state
 RECAP_CUT = 80    # 1.7 fit_state: `done` e `next` del recap accorciati a fine parola invece di sparire per primi
@@ -749,6 +751,13 @@ def build_state(src, now, fit=True):
     if "usage_today" in src:
         state["usage_today"] = [dict(x, session=canon_session(x.get("session"), src.get("rows")))
                                 for x in sorted(src.get("usage_today") or [], key=lambda x: -int(x.get("tokens") or 0))][:USAGE_MAX]
+    # 1.90 (28/10): quanto pesa la macchina — {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level,
+    # load_level, mem_level, consumers: [{group, count, cpu, rss_mb}], advice: [{id, kind, level, text, action}]}, i rossi
+    # prima, al massimo SYSTEM_ADVICE_MAX; action {op, arg, label} o null. Assente con un relay vecchio o se la misura fallisce
+    if src.get("system"):
+        sy = src["system"]
+        state["system"] = dict(sy, consumers=[dict(c) for c in sy.get("consumers") or []],
+                               advice=[dict(a, action=dict(a["action"]) if a.get("action") else None) for a in sy.get("advice") or []][:SYSTEM_ADVICE_MAX])
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state
@@ -811,6 +820,15 @@ def fit_state(state, max_kb=8):
     gone = sorted((s for s in state["sessions"] if s["state"] == "gone"), key=lambda s: s.get("since") or 0)
     for s in gone[:max(0, len(gone) - KEEP_GONE)]:
         state["sessions"].remove(s)
+        if fits():
+            return state
+    # 1.90: i consigli di system oltre i primi due (i rossi stanno davanti), poi i consumatori: prima delle liste che
+    # l'app mostra gia' tagliate, dopo le sessioni finite piu' vecchie
+    if state.get("system"):
+        state["system"]["advice"] = state["system"]["advice"][:SYSTEM_ADVICE_FIT]
+        if fits():
+            return state
+        state["system"]["consumers"] = []
         if fits():
             return state
     if len(state.get("published_today") or []) > PUBLISHED_FIT:   # 1.75: le piu' recenti restano

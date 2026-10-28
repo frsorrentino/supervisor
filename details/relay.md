@@ -644,6 +644,51 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.90 (28/10/2026, how heavy the machine is and what to do about it, asked
+by the maintainer from the web app: «a system monitor with advice on the home page
+about what makes the machine heavy»). Additive, `v` stays 1.
+
+- **`/state.system`** (present with this relay, absent when the reading fails):
+  `{at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level,
+  load_level, mem_level, consumers, advice}`. `load_per_core` is the 1-minute
+  load over the cores; `mem_available_mb` is what the Linux container can still
+  give (`MemAvailable`). `level`, `load_level` and `mem_level` are `green`,
+  `yellow` or `red`, `level` the worse of the two: load per core from 1.0 yellow
+  and 2.0 red, memory available under 1536 MB yellow and 1024 MB red
+  (`system.*` in the config).
+- **`consumers`**: always four groups, `claude`, `chrome_bridge`, `relay`,
+  `other`, each `{group, count, cpu, rss_mb}`, the most CPU first. `cpu` is in
+  percent of one core, summed over the group's processes: the difference of their
+  CPU time between two pushes (the first push after a start uses the average since
+  each process was born).
+- **`advice`**: at most 5, the reds first, each `{id, kind, level, text, action}`.
+  `id` is stable while the advice lasts (`kind:key`). `kind` is `orphan` (a claude
+  left without its tmux), `orphan_proc` (a process without a parent that matches
+  one of the allowed patterns: a `chrome-bridge --launch` server, an MCP server
+  older than 30 minutes above 10% CPU), `stale` (sessions idle for
+  `sessions.idle_hours` with a context of 50% or more), `too_many`
+  (`sessions.max_sessions` live sessions or more, the master excluded: the two
+  stillest idle for an hour at least), `heavy_job` (a build, a render, a test run
+  above 50% CPU) or `low_memory` (available under 1024 MB). `text` is ready to
+  show. `action` is `{op, arg, label}` for a button, or null when the advice is
+  only words (`heavy_job` and `low_memory`: «move it to win»). `stale` and
+  `too_many` use the existing op `close` with the state's names in `arg`;
+  `orphan` and `orphan_proc` use the new op `sys_kill`. Never the master, an
+  attached session, the relay or a process outside the patterns.
+- **op `sys_kill {arg: "pid:procStart"}`**: the relay reads the machine again and
+  closes the process only if the same `pid:procStart` is still advised with this
+  action (HUP, then TERM, then KILL); otherwise it refuses with «… is no longer
+  among the advice: nothing closed». The text says the pid; written in the ledger
+  as `sys-kill`.
+- `fit_state` cuts the advice to the first two, then empties `consumers`, right
+  after the oldest gone sessions.
+
+Fixtures: `state-3-stale.json` (red: a chrome-bridge without a parent, an ffmpeg
+at 180%, memory at 0.8 GB, a master without its tmux); `state-1-question.json`
+and `state-2-idle.json` without `system` (an older relay); `sys_kill` in every
+`ops`; `cmd-result-sample.json` (a `sys_kill` that closes, the same one again,
+refused).
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

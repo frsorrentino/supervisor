@@ -151,7 +151,8 @@
     "elicit",
     "suggestion",
     "close_preview",
-    "close"
+    "close",
+    "sys_kill"
   ],
   "slash": [
     "compact",
@@ -337,5 +338,80 @@
       "rank": 6,
       "source": "master"
     }
-  ]
+  ],
+  "system": {
+    "at": 1789210790,
+    "cores": 8,
+    "load1": 17.4,
+    "load_per_core": 2.17,
+    "mem_total_mb": 6636,
+    "mem_available_mb": 870,
+    "level": "red",
+    "load_level": "red",
+    "mem_level": "red",
+    "consumers": [
+      {
+        "group": "claude",
+        "count": 5,
+        "cpu": 142.5,
+        "rss_mb": 2310
+      },
+      {
+        "group": "other",
+        "count": 118,
+        "cpu": 96.0,
+        "rss_mb": 1450
+      },
+      {
+        "group": "chrome_bridge",
+        "count": 3,
+        "cpu": 46.2,
+        "rss_mb": 1061
+      },
+      {
+        "group": "relay",
+        "count": 1,
+        "cpu": 3.1,
+        "rss_mb": 60
+      }
+    ],
+    "advice": [
+      {
+        "id": "orphan_proc:4410:912345",
+        "kind": "orphan_proc",
+        "level": "red",
+        "text": "chrome-bridge without a parent (pid 4410): 46% CPU, 939 MB",
+        "action": {
+          "op": "sys_kill",
+          "arg": "4410:912345",
+          "label": "Close"
+        }
+      },
+      {
+        "id": "heavy_job:5120:990001",
+        "kind": "heavy_job",
+        "level": "red",
+        "text": "ffmpeg at 180% CPU: move it to win",
+        "action": null
+      },
+      {
+        "id": "low_memory:mem",
+        "kind": "low_memory",
+        "level": "red",
+        "text": "memory available 0.8 GB: move heavy work to win; the heaviest are claude 2.3 GB, other 1.4 GB",
+        "action": null
+      },
+      {
+        "id": "orphan:13277:870211",
+        "kind": "orphan",
+        "level": "yellow",
+        "text": "«master» lost its tmux (pid 13277): a duplicate that does not answer",
+        "action": {
+          "op": "sys_kill",
+          "arg": "13277:870211",
+          "label": "Close"
+        }
+      }
+    ]
+  }
 }
