@@ -126,6 +126,9 @@ DEFAULTS = {
                "kill_patterns": [{"name": "chrome-bridge", "match": r"chrome-bridge/server/index\.js.* --launch( |$)", "min_age_s": 0, "min_cpu": 0},
                                  {"name": "mcp", "match": r"(^|[ /])(firebase mcp|\S*mcp-server\S*)( |$)", "min_age_s": 1800, "min_cpu": 10}],
                "orphan_parents": ["init", "systemd"],
+               # 1.91: i processi in D fermi sul ponte grafico di ChromeOS e le unita' che «Ferma il ciclo» puo' fermare
+               "stuck_wchan": ["virtwl_ioctl_ptr", "do_vfd_close"], "stuck_units": ["sommelier-x@*.service", "cros-notificationd.service", "sommelier@*.service"],
+               "stuck_min_restarts": 5,
                "heavy_patterns": ["gradlew?", "ffmpeg", "remotion", "pytest", "vitest", "jest", "cargo", "rustc", "tsc", "webpack",
                                   "vite build", "next build", "npm run build", "tesseract", "make"]},
     # 21/10/2026 (Claude Code 2.1.304): l'avviso «Resume this conversation?» sul costo della ripresa, in una sessione

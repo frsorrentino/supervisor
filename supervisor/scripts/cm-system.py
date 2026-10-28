@@ -11,6 +11,13 @@ dei suoi tick fra due misure dello stesso demone, in percento di un core; alla p
 (quella di `ps`). Livello verde, giallo, rosso: il peggiore fra il carico per core (system.load_yellow/load_red) e la
 memoria disponibile (system.mem_yellow_mb/mem_red_mb). Consumatori raggruppati: claude, chrome_bridge, relay, other.
 
+PROCESSI BLOCCATI SUL PONTE GRAFICO (1.91, 28/10, dal vivo alle 15:08): carico 49,85 su 8 core senza CPU in uso — 48
+processi in stato D (sommelier e notificationd, wchan virtwl_ioctl_ptr e do_vfd_close), lasciati da tre unita' systemd
+--user in ciclo di riavvio dopo il riavvio di ChromeOS delle 11:59, circa 20 l'ora da 3,3 MB l'uno. Un processo in D
+conta nel carico ma non usa CPU, e non muore nemmeno con SIGKILL: si libera solo riavviando Linux. Si contano a parte
+(`stuck`: numero, da quando, memoria, unita') e il carico che colora li toglie. Di un processo in D si leggono solo
+stat, wchan e cgroup, mai la cmdline: leggerla puo' bloccare anche chi legge.
+
 CONSIGLI, ciascuno con un'azione per il pulsante dell'app o null (solo consiglio):
   orphan       un claude senza il suo tmux (cm-sessions.orphans)                        → sys_kill pid:procStart
   orphan_proc  un processo senza padre (figlio di init o systemd) che corrisponde a uno schema di
@@ -20,15 +27,22 @@ CONSIGLI, ciascuno con un'azione per il pulsante dell'app o null (solo consiglio
                (idle da almeno un'ora)
   heavy_job    un lavoro pesante (system.heavy_patterns) sopra system.heavy_cpu          → null: «spostalo su win»
   low_memory   memoria disponibile sotto system.mem_red_mb                               → null
+  stuck_loop   unita' di system.stuck_units con processi bloccati, almeno system.stuck_min_restarts riavvii e
+               ancora attive (il ciclo che li produce)                                   → sys_unit_stop «Ferma il ciclo»
+  stuck        processi bloccati sul ponte grafico: quanti, da quando, quanta memoria; il riavvio di Linux solo come
+               testo, mai automatico (chiude tutte le sessioni)                         → null
 Mai la sessione corrente ne' il relay (`me`), mai la master ne' una sessione attaccata, mai un processo fuori dagli
-schemi: l'op sys_kill rifa' la misura e chiude solo un pid:procStart che e' ancora fra i consigli.
+schemi: l'op sys_kill rifa' la misura e chiude solo un pid:procStart che e' ancora fra i consigli; sys_unit_stop ferma
+solo unita' ancora consigliate e dell'elenco ammesso (`systemctl --user stop --no-block`).
 
 Uso: cm-system.py [--json]
 """
+import fnmatch
 import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -62,7 +76,8 @@ def level_of(value, yellow, red, higher_is_worse=True):
     return "red" if value < red else "yellow" if value < yellow else "green"
 
 
-def measure(proc="/proc", cores=None):
+def measure(proc="/proc", cores=None, stuck=None):
+    """Carico, memoria e livello. `stuck` (stuck_of): i processi bloccati sul ponte grafico non colorano il carico."""
     c = conf()
     cores = cores or os.cpu_count() or 1
     load1 = float(Path(proc, "loadavg").read_text().split()[0])
@@ -72,28 +87,35 @@ def measure(proc="/proc", cores=None):
         if v.strip().split() and v.strip().split()[0].isdigit():
             mem[k] = int(v.split()[0])
     total, avail = round(mem.get("MemTotal", 0) / 1024), round(mem.get("MemAvailable", mem.get("MemFree", 0)) / 1024)
-    lpc = round(load1 / cores, 2)
+    lpc = round(max(load1 - (stuck or {}).get("count", 0), 0) / cores, 2)
     ll = level_of(lpc, c["load_yellow"], c["load_red"])
     ml = level_of(avail, c["mem_yellow_mb"], c["mem_red_mb"], higher_is_worse=False)
     worst = "red" if "red" in (ll, ml) else "yellow" if "yellow" in (ll, ml) else "green"
     return {"cores": cores, "load1": load1, "load_per_core": lpc, "mem_total_mb": total, "mem_available_mb": avail,
-            "level": worst, "load_level": ll, "mem_level": ml}
+            "level": worst, "load_level": ll, "mem_level": ml, "stuck": stuck}
 
 
 def proc_rows(proc="/proc"):
-    """[{pid, ppid, start, age_s, cpu, rss_mb, args}] per ogni processo con una riga di comando (non i thread del kernel)."""
+    """[{pid, ppid, start, age_s, cpu, rss_mb, rss_kb, args, state}] per ogni processo con una riga di comando (non i
+    thread del kernel). Un processo in D porta anche wchan, unit (dal cgroup) e started_at, e per args il suo comm: la
+    cmdline di un processo in D non si legge (1.91)."""
     uptime = float(Path(proc, "uptime").read_text().split()[0])
     now = time.time()
     rows, seen = [], {}
     for d in os.listdir(proc):
         if not d.isdigit():
             continue
+        extra = {}
         try:
             st = Path(proc, d, "stat").read_text()
-            args = Path(proc, d, "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
-        except OSError:
+            f = st[st.rindex(")") + 2:].split()
+            if f[0] == "D":
+                extra = {"wchan": Path(proc, d, "wchan").read_text().strip(), "unit": _unit_of(Path(proc, d, "cgroup").read_text())}
+                args = st[st.index("(") + 1:st.rindex(")")]
+            else:
+                args = Path(proc, d, "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
+        except (OSError, ValueError):
             continue
-        f = st[st.rindex(")") + 2:].split()
         if not args or f[0] == "Z":
             continue
         pid, ticks, start = int(d), int(f[11]) + int(f[12]), f[19]
@@ -104,11 +126,82 @@ def proc_rows(proc="/proc"):
         else:
             cpu = ticks / HZ / age * 100
         seen[(pid, start)] = prev if prev and now - prev[1] < 1 else (ticks, now)
+        if extra:
+            extra["started_at"] = int(now - age)
         rows.append({"pid": pid, "ppid": int(f[1]), "start": start, "age_s": int(age), "cpu": round(max(cpu, 0.0), 1),
-                     "rss_mb": round(int(f[21]) * PAGE_KB / 1024), "args": args})
+                     "rss_mb": round(int(f[21]) * PAGE_KB / 1024), "rss_kb": int(f[21]) * PAGE_KB, "args": args, "state": f[0], **extra})
     _PREV.clear()
     _PREV.update(seen)
     return rows
+
+
+def _unit_of(cgroup):
+    """L'unita' systemd di un processo dal suo /proc/<pid>/cgroup (l'ultimo pezzo che finisce in .service), o ""."""
+    for line in cgroup.splitlines():
+        for part in reversed(line.rpartition(":")[2].split("/")):
+            if part.endswith(".service"):
+                return part
+    return ""
+
+
+def stuck_of(rows, proc=None):
+    """I processi in D fermi sul ponte grafico (wchan in system.stuck_wchan): {count, since, rss_mb, units} o None."""
+    wch = set(conf()["stuck_wchan"])
+    st = [r for r in rows if r.get("state") == "D" and r.get("wchan") in wch]
+    if not st:
+        return None
+    return {"count": len(st), "since": min(r["started_at"] for r in st), "rss_mb": round(sum(r["rss_kb"] for r in st) / 1024),
+            "units": sorted({r["unit"] for r in st if r.get("unit")})}
+
+
+def _allowed_unit(u):
+    return bool(re.fullmatch(r"[A-Za-z0-9@._-]+\.service", u)) and any(fnmatch.fnmatch(u, p) for p in conf()["stuck_units"])
+
+
+def _systemctl():
+    return os.environ.get("CM_SYSTEMCTL", "systemctl")
+
+
+def unit_info(names):
+    """{unit: {restarts, state, stopping}} da `systemctl --user show` (una chiamata per tutte) e `list-jobs`; {} se
+    systemctl non risponde. stopping = uno stop gia' in coda: un'unita' ferma in «deactivating» perche' i suoi processi
+    sono in D (dal vivo alle 15:13, dopo lo stop della master) non e' piu' un ciclo da fermare."""
+    names = [u for u in names if re.fullmatch(r"[A-Za-z0-9@._-]+\.service", u)]
+    if not names:
+        return {}
+    try:
+        r = subprocess.run([_systemctl(), "--user", "show", "-p", "Id", "-p", "NRestarts", "-p", "ActiveState", *names],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    out = {}
+    for block in r.stdout.strip().split("\n\n"):
+        kv = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+        if kv.get("Id"):
+            out[kv["Id"]] = {"restarts": int(kv.get("NRestarts") or 0) if (kv.get("NRestarts") or "0").isdigit() else 0, "state": kv.get("ActiveState") or "",
+                             "stopping": False}
+    try:
+        jobs = subprocess.run([_systemctl(), "--user", "list-jobs", "--no-legend"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        jobs = ""
+    for line in jobs.splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[1] in out and f[2] == "stop":
+            out[f[1]]["stopping"] = True
+    return out
+
+
+def stop_units(names):
+    """`systemctl --user stop --no-block` per ogni unita' dell'elenco ammesso; una sola fuori elenco → False, niente."""
+    if not names or not all(_allowed_unit(u) for u in names):
+        return False
+    ok = True
+    for u in names:
+        try:
+            ok = subprocess.run([_systemctl(), "--user", "stop", "--no-block", u], capture_output=True, timeout=10).returncode == 0 and ok
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+    return ok
 
 
 def group_of(args):
@@ -141,7 +234,7 @@ def _gb(mb):
     return f"{mb / 1024:.1f}".replace(".", "," if (CFG.get("language") or "it") == "it" else ".")
 
 
-def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=()):
+def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=(), units=None):
     """I consigli, deterministici, dalla misura `m`, dai processi, dagli orfani di cm-sessions e dalle righe di
     `sessions --json` (con il contesto di runtime per nome tmux). `me` = i pid da non toccare mai."""
     c = conf()
@@ -212,7 +305,19 @@ def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=()):
         top = [x for x in sorted(consumers(rows), key=lambda x: -x["rss_mb"]) if x["rss_mb"]][:2]
         add("low_memory", "mem", "red", msg("system.advice_low_memory", gb=_gb(m["mem_available_mb"]),
                                             top=", ".join(f"{x['group']} {_gb(x['rss_mb'])} GB" for x in top) or "-"))
-    out.sort(key=lambda a: a["level"] != "red")
+    stuck = m.get("stuck")
+    if stuck:
+        units = units or {}
+        loop = [u for u in stuck["units"] if _allowed_unit(u) and (units.get(u) or {}).get("restarts", 0) >= c["stuck_min_restarts"]
+                and (units.get(u) or {}).get("state") in ("active", "activating", "deactivating", "reloading") and not units[u].get("stopping")]
+        if loop:
+            add("stuck_loop", ",".join(loop), "red", msg("system.advice_stuck_loop", n=len(loop), restarts=max(units[u]["restarts"] for u in loop)),
+                {"op": "sys_unit_stop", "arg": ",".join(loop), "label": msg("system.action_stop_loop")})
+        when = time.strftime("%H:%M" if time.strftime("%Y%m%d", time.localtime(stuck["since"])) == time.strftime("%Y%m%d") else "%d/%m %H:%M",
+                             time.localtime(stuck["since"]))
+        add("stuck", "graphic", "yellow", msg("system.advice_stuck", n=stuck["count"], since=when, mb=stuck["rss_mb"]))
+    # i rossi prima; a pari livello il ciclo da fermare prima di tutto (e' la causa dei bloccati)
+    out.sort(key=lambda a: (a["level"] != "red", a["kind"] != "stuck_loop"))
     return out[:ADVICE_MAX]
 
 
@@ -240,9 +345,11 @@ def _orphans():
 
 def status(rows=(), runtime=None, prefixes=(), proc="/proc"):
     """Il blocco `system` di /state (1.90)."""
-    m = measure(proc)
     procs = proc_rows(proc)
-    adv = advise(m, procs, orphans=_orphans(), sessions=rows, runtime=runtime, me=me_pids(), prefixes=prefixes)
+    stuck = stuck_of(procs)
+    m = measure(proc, stuck=stuck)
+    adv = advise(m, procs, orphans=_orphans(), sessions=rows, runtime=runtime, me=me_pids(), prefixes=prefixes,
+                 units=unit_info(stuck["units"]) if stuck else {})
     return {"at": int(time.time()), **m, "consumers": consumers(procs), "advice": adv}
 
 

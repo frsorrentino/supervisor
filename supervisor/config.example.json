@@ -164,6 +164,16 @@
       "init",
       "systemd"
     ],
+    "stuck_wchan": [
+      "virtwl_ioctl_ptr",
+      "do_vfd_close"
+    ],
+    "stuck_units": [
+      "sommelier-x@*.service",
+      "cros-notificationd.service",
+      "sommelier@*.service"
+    ],
+    "stuck_min_restarts": 5,
     "heavy_patterns": [
       "gradlew?",
       "ffmpeg",

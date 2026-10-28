@@ -100,7 +100,7 @@
       "advice": {
         "model": "claude-fable-5-1",
         "effort": "high",
-        "reason": "Checkout refactor across many files: Fable 5.1 high",
+        "reason": "Big refactor: Fable 5.1 high",
         "switch_cost_tokens": 36000,
         "at": 1789210700,
         "source": "fable-director",
@@ -368,7 +368,8 @@
     "suggestion",
     "close_preview",
     "close",
-    "sys_kill"
+    "sys_kill",
+    "sys_unit_stop"
   ],
   "slash": [
     "compact",

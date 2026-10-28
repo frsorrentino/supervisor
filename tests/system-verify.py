@@ -16,6 +16,11 @@ SY5 sessioni: idle da ore col contesto grande → «Chiudi le ferme» (op close,
 SY6 lavoro pesante (ffmpeg al 150%) → «spostalo su win», nessuna azione; memoria sotto 1 GB → rosso, nessuna azione,
     i gruppi che pesano di piu' nel testo; i rossi prima, al massimo 5
 SY7 status() sulla macchina vera (sola lettura): la forma del blocco
+SY8 system_stuck (28/10, dal vivo alle 15:08): carico 49,85 con 48 processi in D sul ponte grafico (sommelier e
+    notificationd, wchan virtwl_ioctl_ptr e do_vfd_close, figli di tre unita' systemd --user in ciclo di riavvio). Si
+    contano a parte senza leggerne la cmdline (numero, da quando, memoria, unita'); il carico che colora non li conta;
+    «Ferma il ciclo» (op sys_unit_stop) solo per le unita' ammesse con molti riavvii e ancora attive; il riavvio di Linux
+    solo nel testo; un processo in D su un'altra attesa resta nel carico
 """
 import json
 import os
@@ -52,9 +57,14 @@ def fake_proc(d, procs, load="13.20 14.10 12.00 3/900 4242", avail_kb=2_800_000,
         start = int((UPTIME - p.get("age", 3600)) * HZ)
         # pid (comm) state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime cutime cstime
         # priority nice threads itreal starttime vsize rss
-        fields = ["S", p["ppid"], 0, 0, 0, 0, 0, 0, 0, 0, 0, p.get("ticks", 0), 0, 0, 0, 20, 0, 1, 0, start, 0, int(p.get("rss_mb", 10) * 1024 / PAGE_KB)]
+        fields = [p.get("state", "S"), p["ppid"], 0, 0, 0, 0, 0, 0, 0, 0, 0, p.get("ticks", 0), 0, 0, 0, 20, 0, 1, 0, start, 0, int(p.get("rss_mb", 10) * 1024 / PAGE_KB)]
         (pd / "stat").write_text(f"{p['pid']} (x y) " + " ".join(str(x) for x in fields) + "\n")
-        (pd / "cmdline").write_bytes(p["args"].replace(" ", "\0").encode() + b"\0")
+        if p.get("cmdline_dir"):   # system_stuck: una cmdline che non si deve leggere (in D si puo' restare bloccati)
+            (pd / "cmdline").mkdir(exist_ok=True)
+        else:
+            (pd / "cmdline").write_bytes(p["args"].replace(" ", "\0").encode() + b"\0")
+        (pd / "wchan").write_text(p.get("wchan", "0"))
+        (pd / "cgroup").write_text(f"0::{p.get('cgroup', '/user.slice/user-1000.slice/session-1.scope')}\n")
 
 
 SY._PREV.clear()
@@ -166,8 +176,71 @@ T.check("SY6 the reds first, at most 5", [a["level"] for a in adv6] == sorted([a
 
 # SY7
 real = SY.status(rows=[], runtime={}, prefixes=[])
-T.check("SY7 status() on this machine: {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level, load_level, mem_level, consumers, advice}",
-        list(real) == ["at", "cores", "load1", "load_per_core", "mem_total_mb", "mem_available_mb", "level", "load_level", "mem_level", "consumers", "advice"]
+T.check("SY7 status() on this machine: {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level, load_level, mem_level, stuck, consumers, advice}",
+        list(real) == ["at", "cores", "load1", "load_per_core", "mem_total_mb", "mem_available_mb", "level", "load_level", "mem_level", "stuck", "consumers", "advice"]
         and real["level"] in ("green", "yellow", "red") and len(real["consumers"]) == 4 and isinstance(real["advice"], list), json.dumps(real)[:400])
+# SY8 system_stuck
+UNIT = "/user.slice/user-1000.slice/user@1000.service/app.slice/"
+stk = [{"pid": 1, "ppid": 0, "args": "/sbin/init"}, {"pid": 50, "ppid": 1, "args": "/lib/systemd/systemd --user"},
+       {"pid": 582, "ppid": 50, "args": "sommelier --peer-cmd-prefix x", "cgroup": UNIT + "sommelier@0.service"}]
+pid = 1000
+for unit, n, comm in (("sommelier-x@0.service", 16, "sommelier"), ("sommelier-x@1.service", 15, "sommelier"), ("cros-notificationd.service", 14, "notificationd")):
+    for i in range(n):
+        stk.append({"pid": pid, "ppid": 50, "state": "D", "wchan": "virtwl_ioctl_ptr", "cgroup": UNIT + unit, "args": comm, "cmdline_dir": True,
+                    "rss_mb": 3.3, "age": 11000 - pid}); pid += 1
+for i in range(3):   # dentro sommelier@0, sano: non ha riavvii
+    stk.append({"pid": pid, "ppid": 582, "state": "D", "wchan": "do_vfd_close", "cgroup": UNIT + "sommelier@0.service", "args": "sommelier", "cmdline_dir": True, "rss_mb": 3.3, "age": 600}); pid += 1
+stk.append({"pid": pid, "ppid": 50, "state": "D", "wchan": "virtwl_ioctl_ptr", "cgroup": UNIT + "foo.service", "args": "foo", "cmdline_dir": True, "rss_mb": 3.3, "age": 900}); pid += 1
+stk.append({"pid": pid, "ppid": 50, "state": "D", "wchan": "nfs_wait_bit_killable", "cgroup": UNIT + "bar.service", "args": "cp -r /mnt/nfs /tmp", "rss_mb": 5, "age": 60})
+P8 = tmp / "proc8"
+fake_proc(P8, stk, load="49.85 46.90 42.96 3/900 4242", avail_kb=4_190_000)
+SY._PREV.clear()
+rows8 = SY.proc_rows(str(P8))
+st8 = SY.stuck_of(rows8, str(P8))
+_now8 = __import__("time").time()
+T.check("SY8 system_stuck: 49 processes in D on the graphic bridge (virtwl_ioctl_ptr, do_vfd_close) counted although their cmdline is not read; the one in D on NFS is not",
+        st8 is not None and st8["count"] == 49, json.dumps(st8))
+T.check("SY8 system_stuck: since = the oldest one's start (about 10000 s ago), about 160 MB, the units sorted",
+        st8 and abs(st8["since"] - (_now8 - 10000)) <= 3 and 158 <= st8["rss_mb"] <= 163
+        and st8["units"] == ["cros-notificationd.service", "foo.service", "sommelier-x@0.service", "sommelier-x@1.service", "sommelier@0.service"], json.dumps(st8))
+m8 = SY.measure(str(P8), cores=8, stuck=st8)
+T.check("SY8 system_stuck: the load that colours leaves them out — load1 49.85 raw, load_per_core (49.85-49)/8 = 0.11, green",
+        m8["load1"] == 49.85 and m8["load_per_core"] == 0.11 and m8["load_level"] == "green" and m8["level"] == "green" and m8["stuck"] == st8, json.dumps(m8))
+U8 = {"sommelier-x@0.service": {"restarts": 57, "state": "deactivating"}, "sommelier-x@1.service": {"restarts": 56, "state": "deactivating"},
+      "cros-notificationd.service": {"restarts": 58, "state": "deactivating"}, "sommelier@0.service": {"restarts": 0, "state": "active"},
+      "foo.service": {"restarts": 60, "state": "activating"}}
+adv8 = SY.advise(m8, rows8, units=U8)
+lp = next((a for a in adv8 if a["kind"] == "stuck_loop"), None)
+sk = next((a for a in adv8 if a["kind"] == "stuck"), None)
+T.check("SY8 system_stuck: «Ferma il ciclo» = op sys_unit_stop on the allowed units with many restarts still running (not sommelier@0 with none, not foo.service outside the list), red, first",
+        lp is not None and lp["action"] == {"op": "sys_unit_stop", "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service", "label": "Ferma il ciclo"}
+        and lp["level"] == "red" and adv8[0] is lp and "58" in lp["text"], json.dumps(adv8, ensure_ascii=False))
+T.check("SY8 system_stuck: the stuck processes as words only — how many, since when, the MB, «riavviando Linux» and that it closes every session; no action",
+        sk is not None and sk["action"] is None and "49" in sk["text"] and "riavviando Linux" in sk["text"] and "chiude tutte le sessioni" in sk["text"] and "MB" in sk["text"],
+        json.dumps(sk, ensure_ascii=False))
+adv8b = SY.advise(m8, rows8, units={k: dict(v, state="inactive") for k, v in U8.items()})
+T.check("SY8 system_stuck: once the units are stopped (inactive) no «Ferma il ciclo», the stuck count stays as words",
+        not any(a["kind"] == "stuck_loop" for a in adv8b) and any(a["kind"] == "stuck" for a in adv8b), json.dumps(adv8b, ensure_ascii=False))
+adv8c = SY.advise(m8, rows8, units={k: dict(v, stopping=k != "sommelier@0.service") for k, v in U8.items()})
+T.check("SY8 system_stuck: a unit with a stop already queued (deactivating because its processes are in D, as after the master's stop at 15:10) is not advised again",
+        not any(a["kind"] == "stuck_loop" for a in adv8c) or "sommelier-x" not in next(a for a in adv8c if a["kind"] == "stuck_loop")["action"]["arg"], json.dumps(adv8c, ensure_ascii=False))
+_fs8 = tmp / "systemctl-show"
+_fs8.write_text("#!/bin/sh\ncase \"$2\" in\n show) printf 'NRestarts=57\\nId=sommelier-x@0.service\\nActiveState=deactivating\\n\\nNRestarts=0\\nId=sommelier@0.service\\nActiveState=active\\n' ;;\n"
+                "list-jobs) printf '3939 sommelier-x@0.service      stop running\\n3950 other.service start waiting\\n' ;;\nesac\n")
+_fs8.chmod(0o755)
+os.environ["CM_SYSTEMCTL"] = str(_fs8)
+_ui8 = SY.unit_info(["sommelier-x@0.service", "sommelier@0.service", "bad name;rm"])
+T.check("SY8 system_stuck: unit_info reads NRestarts and ActiveState from `systemctl --user show`, and a queued stop from `list-jobs`",
+        _ui8 == {"sommelier-x@0.service": {"restarts": 57, "state": "deactivating", "stopping": True}, "sommelier@0.service": {"restarts": 0, "state": "active", "stopping": False}}, json.dumps(_ui8))
+_log8 = tmp / "systemctl.log"
+_fk8 = tmp / "systemctl"
+_fk8.write_text(f"#!/bin/sh\necho \"$*\" >> {_log8}\n")
+_fk8.chmod(0o755)
+os.environ["CM_SYSTEMCTL"] = str(_fk8)
+_ok8 = SY.stop_units(["sommelier-x@0.service", "cros-notificationd.service"])
+_no8 = SY.stop_units(["sommelier@0.service-evil;rm", "ssh.service"])
+T.check("SY8 system_stuck: stop_units runs `systemctl --user stop --no-block` for each allowed unit; a unit outside the list is refused and nothing runs",
+        _ok8 is True and _no8 is False and _log8.read_text().splitlines() == ["--user stop --no-block sommelier-x@0.service", "--user stop --no-block cros-notificationd.service"],
+        _log8.read_text() if _log8.exists() else "no call")
 T.rm(str(tmp))
 T.finish()

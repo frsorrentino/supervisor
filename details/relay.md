@@ -644,6 +644,36 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.91 (28/10/2026, processes stuck on ChromeOS's graphic bridge, a defect
+of 1.90 at its first live reading: red with a load of 49 on 8 cores and no advice).
+Additive, `v` stays 1. The load was not real: 48 processes in state D (sommelier and
+notificationd, waiting in `virtwl_ioctl_ptr` or `do_vfd_close`), left by three
+`systemd --user` units in a restart loop since the morning. A process in D counts in
+the load average but uses no CPU and does not die even with SIGKILL; only restarting
+Linux frees it.
+
+- **`/state.system.stuck`**: `{count, since, rss_mb, units}` for the processes in D
+  on the graphic bridge (`system.stuck_wchan`), or null. `since` is the oldest one's
+  start (epoch s); `units` the systemd units they belong to, sorted.
+- **`load_per_core`** and `load_level` now leave those processes out:
+  `(load1 - stuck.count) / cores`. `load1` stays the raw figure.
+- **Two new advice kinds.** `stuck_loop` (red, first): the allowed units
+  (`system.stuck_units`: `sommelier-x@*`, `cros-notificationd`, `sommelier@*`) that
+  have stuck processes, at least `system.stuck_min_restarts` (5) restarts, are still
+  running, and have no stop already queued; action `{op: "sys_unit_stop", arg:
+  "unit1,unit2", label: «Stop the loop»}`. `stuck` (yellow): how many, since when,
+  how many MB, and that only restarting Linux frees them, which closes every
+  session; no action. Linux is never restarted by the relay.
+- **op `sys_unit_stop {arg: "unit1,unit2"}`**: the relay reads the machine again and
+  runs `systemctl --user stop --no-block` on each unit only if the same list is
+  still advised; otherwise «… is no longer among the advice: nothing stopped». The
+  text lists the units; written in the ledger as `sys-unit-stop`.
+
+Fixtures: `state-3-stale.json` (48 stuck since 12:00, the loop of three units, the
+stuck advice, load 65.4 raw and 2.17 per core without them; the `heavy_job` example
+left out to stay at five), `sys_unit_stop` last in every `ops`,
+`cmd-result-sample.json` (a `sys_unit_stop` that stops, the same one again, refused).
+
 Contract 1.90 (28/10/2026, how heavy the machine is and what to do about it, asked
 by the maintainer from the web app: «a system monitor with advice on the home page
 about what makes the machine heavy»). Additive, `v` stays 1.

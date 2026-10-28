@@ -152,7 +152,8 @@
     "suggestion",
     "close_preview",
     "close",
-    "sys_kill"
+    "sys_kill",
+    "sys_unit_stop"
   ],
   "slash": [
     "compact",
@@ -342,13 +343,24 @@
   "system": {
     "at": 1789210790,
     "cores": 8,
-    "load1": 17.4,
+    "load1": 65.36,
     "load_per_core": 2.17,
     "mem_total_mb": 6636,
     "mem_available_mb": 870,
     "level": "red",
     "load_level": "red",
     "mem_level": "red",
+    "stuck": {
+      "count": 48,
+      "since": 1789189200,
+      "rss_mb": 161,
+      "units": [
+        "cros-notificationd.service",
+        "sommelier-x@0.service",
+        "sommelier-x@1.service",
+        "sommelier@0.service"
+      ]
+    },
     "consumers": [
       {
         "group": "claude",
@@ -377,6 +389,17 @@
     ],
     "advice": [
       {
+        "id": "stuck_loop:cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+        "kind": "stuck_loop",
+        "level": "red",
+        "text": "3 graphic bridge services in a restart loop (up to 58 restarts): each round leaves stuck processes",
+        "action": {
+          "op": "sys_unit_stop",
+          "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+          "label": "Stop the loop"
+        }
+      },
+      {
         "id": "orphan_proc:4410:912345",
         "kind": "orphan_proc",
         "level": "red",
@@ -388,17 +411,17 @@
         }
       },
       {
-        "id": "heavy_job:5120:990001",
-        "kind": "heavy_job",
-        "level": "red",
-        "text": "ffmpeg at 180% CPU: move it to win",
-        "action": null
-      },
-      {
         "id": "low_memory:mem",
         "kind": "low_memory",
         "level": "red",
         "text": "memory available 0.8 GB: move heavy work to win; the heaviest are claude 2.3 GB, other 1.4 GB",
+        "action": null
+      },
+      {
+        "id": "stuck:graphic",
+        "kind": "stuck",
+        "level": "yellow",
+        "text": "48 processes stuck on the graphic bridge since 12:00 (161 MB): no CPU, but they inflate the load; only restarting Linux frees them, and that closes every session",
         "action": null
       },
       {

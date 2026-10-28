@@ -1,6 +1,6 @@
 # Supervisor for Claude Code
 
-![Version](https://img.shields.io/badge/version-0.8.74-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
+![Version](https://img.shields.io/badge/version-0.8.75-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A5CF6)
 
 **Answer and steer your Claude Code sessions from your phone and watch, with a
 master session that coordinates them and suggests the next step.** A supervisor
@@ -458,7 +458,7 @@ longer adds up. A minimal example for two accounts:
 | `session.claude_args` · `session.link_wait_s` | flags every session starts with; how long `launch` waits for the Remote Control link (20 s) |
 | `sessions.max_sessions` · `sessions.idle_hours` | past this many sessions at work `launch` asks (5); after this many idle hours `sessions` suggests closing (2) |
 | `sessions.orphan_grace_s` · `sessions.orphan_wait_s` | a claude left without its tmux pane is closed after this many seconds (120), each signal of HUP, TERM, KILL waits this long (3) |
-| `system.*` | the relay's machine monitor (contract 1.90): load per core yellow/red (1.0/2.0), memory available yellow/red (1536/1024 MB), the context of an idle session worth closing (50%), a heavy job's CPU (50%), the patterns of processes without a parent that «Close» may end (`kill_patterns`), the heavy jobs to move to another host (`heavy_patterns`) |
+| `system.*` | the relay's machine monitor (contract 1.90): load per core yellow/red (1.0/2.0), memory available yellow/red (1536/1024 MB), the context of an idle session worth closing (50%), a heavy job's CPU (50%), the patterns of processes without a parent that «Close» may end (`kill_patterns`), the heavy jobs to move to another host (`heavy_patterns`), the waits of processes stuck on ChromeOS's graphic bridge (`stuck_wchan`) and the units «Stop the loop» may stop (`stuck_units`, from `stuck_min_restarts` restarts) |
 | `terminal.backend` | `chromeos`, `gnome`, `kitty`, `iterm2`, `macos-terminal`, `wt`, `none` |
 | `shell.*` · `tmux.keybindings` · `tile.*` | the wrappers and aliases `init --shell` generates, the three keys of the `.tmux.conf` block, the window layout rules |
 | `bot.*` · `recap.*` · `night.*` · `guard.*` | one-way Telegram, the evening diary, the night queue, the quota guard: all off or empty until you turn them on |

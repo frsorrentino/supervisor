@@ -202,7 +202,8 @@
     "suggestion",
     "close_preview",
     "close",
-    "sys_kill"
+    "sys_kill",
+    "sys_unit_stop"
   ],
   "slash": [
     "compact",

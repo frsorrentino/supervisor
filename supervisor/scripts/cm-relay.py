@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1173,17 +1173,24 @@ DEPLOY_RE = re.compile(r"\b(prod|production|produzione|deploy|live)\b", re.I)
 
 
 SY = None
+_SYS_LAST = (0.0, None)   # (ora, blocco): una misura al minuto al massimo
 
 
-def system_status(rows, runtime):
+def system_status(rows, runtime, fresh=False):
     """1.90 (28/10): il blocco `system` di /state — carico, memoria, consumatori raggruppati e consigli con un'azione
     (cm-system.py). Il modulo resta caricato nel demone: la CPU di un processo e' la differenza fra due push. None se la
-    misura fallisce: un'informazione in piu', mai la push persa."""
-    global SY
+    misura fallisce: un'informazione in piu', mai la push persa.
+    1.91 (28/10): al massimo una misura ogni 55 s — dal vivo 18 raccolte in 10 minuti, 0,05-0,14 s di CPU ciascuna;
+    le push ravvicinate riusano l'ultima. fresh=True (sys_kill, sys_unit_stop) misura sempre di nuovo."""
+    global SY, _SYS_LAST
+    if not fresh and _SYS_LAST[1] is not None and time.time() - _SYS_LAST[0] < 55:
+        return _SYS_LAST[1]
     try:
         if SY is None:
             SY = _load("cm-system")
-        return SY.status(rows, {k: {"context": (v or {}).get("context")} for k, v in (runtime or {}).items()}, prefixes())
+        st = SY.status(rows, {k: {"context": (v or {}).get("context")} for k, v in (runtime or {}).items()}, prefixes())
+        _SYS_LAST = (time.time(), st)
+        return st
     except Exception as e:   # noqa: BLE001
         log(f"system: misura fallita ({e})")
         return None
@@ -1601,7 +1608,7 @@ def sys_kill(cmd, arg):
     adesso e chiude solo un processo che e' ancora fra i consigli con questa azione (un orfano, uno schema ammesso senza
     padre): mai un pid scritto a mano, mai uno riusato. HUP, TERM, KILL come gli orfani di cm-sessions."""
     arg = str(arg or "").strip()
-    st = system_status(_json_cmd("sessions", "--json", "--no-screen") or [], {})
+    st = system_status(_json_cmd("sessions", "--json", "--no-screen") or [], {}, fresh=True)
     adv = next((a for a in (st or {}).get("advice") or [] if (a.get("action") or {}).get("op") == "sys_kill" and a["action"].get("arg") == arg), None)
     if not adv:
         return False, M("relay.cmd_sys_kill_gone", arg=arg or "-")
@@ -1610,6 +1617,23 @@ def sys_kill(cmd, arg):
     ledger_write("sys-kill", pid=int(pid), kind=adv["kind"], text=adv["text"], by=cmd.get("by"), ok=ok)
     push_async()
     return ok, M("relay.cmd_sys_kill_done" if ok else "relay.cmd_sys_kill_failed", pid=pid)
+
+
+def sys_unit_stop(cmd, arg):
+    """1.91 (28/10): op sys_unit_stop {arg: "unita1,unita2"} — «Ferma il ciclo»: le unita' systemd --user che lasciano
+    processi bloccati sul ponte grafico. Rifa' la misura e ferma (`systemctl --user stop --no-block`) solo se le stesse
+    unita' sono ancora nel consiglio stuck_loop, e solo quelle dell'elenco ammesso (system.stuck_units). Mai un riavvio di
+    Linux: quello resta un testo."""
+    arg = ",".join(u.strip() for u in str(arg or "").split(",") if u.strip())
+    st = system_status(_json_cmd("sessions", "--json", "--no-screen") or [], {}, fresh=True)
+    adv = next((a for a in (st or {}).get("advice") or [] if (a.get("action") or {}).get("op") == "sys_unit_stop" and a["action"].get("arg") == arg), None)
+    if not adv:
+        return False, M("relay.cmd_sys_unit_stop_gone", arg=arg or "-")
+    units = arg.split(",")
+    ok = SY.stop_units(units)
+    ledger_write("sys-unit-stop", units=units, by=cmd.get("by"), ok=ok)
+    push_async()
+    return ok, M("relay.cmd_sys_unit_stop_done" if ok else "relay.cmd_sys_unit_stop_failed", units=", ".join(units))
 
 
 def commitments_list():

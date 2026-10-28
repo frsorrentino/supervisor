@@ -887,6 +887,24 @@
       "device": "web",
       "issued": 1789214510,
       "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0892-4000-8000-000000000892",
+      "op": "sys_unit_stop",
+      "session": null,
+      "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+      "device": "web",
+      "issued": 1789214520,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0893-4000-8000-000000000893",
+      "op": "sys_unit_stop",
+      "session": null,
+      "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+      "device": "web",
+      "issued": 1789214530,
+      "by": "web"
     }
   ],
   "result": [
@@ -1470,6 +1488,18 @@
       "ok": false,
       "text": "4410:912345 is no longer among the advice: nothing closed",
       "at": 1789214511
+    },
+    {
+      "id": "6f1c2d3e-0892-4000-8000-000000000892",
+      "ok": true,
+      "text": "stopped: cros-notificationd.service, sommelier-x@0.service, sommelier-x@1.service",
+      "at": 1789214521
+    },
+    {
+      "id": "6f1c2d3e-0893-4000-8000-000000000893",
+      "ok": false,
+      "text": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service is no longer among the advice: nothing stopped",
+      "at": 1789214531
     }
   ]
 }

@@ -270,7 +270,7 @@ SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-
 # 1.72: la pillola della testata su atlas-shop (i totali di changes-sample.json); le altre sessioni non ce l'hanno
 SRC1["changes"] = {"atlas-shop": {"files": 4, "added": 8, "removed": 2, "at": 1792100000}}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
-SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Checkout refactor across many files: Fable 5.1 high",   # 24/10: piu' corto, state-1 sta negli 8 KB con published_at
+SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Big refactor: Fable 5.1 high",   # 24/10: piu' corto, state-1 sta negli 8 KB con published_at; 28/10 (1.91): ancora, per sys_unit_stop in ops
                                 
                                  "switch_cost_tokens": 36000, "at": 1789210700, "source": "fable-director", "when": "next_task", "differs": True}}
 SRC1["approvals"] = [{"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main",
@@ -1668,7 +1668,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-4:-1] == ["suggestion", "close_preview", "close"] and all(s["ops"][-4:-1] == R_OPS[-4:-1] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-5:-2] == ["suggestion", "close_preview", "close"] and all(s["ops"][-5:-2] == R_OPS[-5:-2] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3581,7 +3581,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops and sys_kill (1.90); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-7] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90) and sys_unit_stop (1.91); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-8] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3610,7 +3610,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-6] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-6:-4] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-7] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-7:-5] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4000,8 +4000,8 @@ T.check("R88 relay_device_last_seen (1.89): a command with the uid of a paired d
 # R89 (contratto 1.90, 28/10): quanto pesa la macchina e cosa fare — il blocco system di /state e l'op sys_kill
 _sy89 = F3["system"]
 _ops89 = [json.loads((FIX / f"{n}.json").read_text())["ops"] for n in ("state-1-question", "state-2-idle", "state-3-stale")]
-T.check("R89 system_advice (1.90) the fixtures: state-3 carries system {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level, load_level, mem_level, consumers, advice}, red, four groups, the reds first; every action an op of the state; state-1 and state-2 without it (old relay); sys_kill in ops",
-        list(_sy89) == ["at", "cores", "load1", "load_per_core", "mem_total_mb", "mem_available_mb", "level", "load_level", "mem_level", "consumers", "advice"]
+T.check("R89 system_advice (1.90) the fixtures: state-3 carries system {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level, load_level, mem_level, stuck (1.91), consumers, advice}, red, four groups, the reds first; every action an op of the state; state-1 and state-2 without it (old relay); sys_kill in ops",
+        list(_sy89) == ["at", "cores", "load1", "load_per_core", "mem_total_mb", "mem_available_mb", "level", "load_level", "mem_level", "stuck", "consumers", "advice"]
         and _sy89["level"] == "red" and sorted(c["group"] for c in _sy89["consumers"]) == ["chrome_bridge", "claude", "other", "relay"]
         and all(list(a) == ["id", "kind", "level", "text", "action"] for a in _sy89["advice"])
         and [a["level"] for a in _sy89["advice"]] == sorted([a["level"] for a in _sy89["advice"]], key=lambda x: x != "red")
@@ -4043,5 +4043,49 @@ T.check("R89 system_advice (1.90) sys_kill: a pid that is not among the advice, 
         _r89a[0] is False and "1:1" in _r89a[1] and _r89b[0] is False and _alive89
         and _r89c[0] is True and str(_p89.pid) in _r89c[1] and _p89.returncode is not None
         and [x["event"] for x in _led89] == ["sys-kill"] and _led89[0]["kind"] == "orphan_proc" and _led89[0]["ok"] is True, str((_r89a, _r89b, _r89c, _led89)))
+
+# R90 (contratto 1.91, 28/10): i processi bloccati sul ponte grafico — stuck in system e l'op sys_unit_stop «Ferma il ciclo»
+_sy90 = F3["system"]
+_lp90 = _sy90["advice"][0]
+T.check("R90 system_stuck (1.91) the fixture: stuck {count, since, rss_mb, units}; load_per_core leaves the stuck out ((load1 - count) / cores); stuck_loop first with sys_unit_stop, stuck as words only; sys_unit_stop last in every ops",
+        list(_sy90["stuck"]) == ["count", "since", "rss_mb", "units"] and _sy90["load_per_core"] == round((_sy90["load1"] - _sy90["stuck"]["count"]) / _sy90["cores"], 2)
+        and _lp90["kind"] == "stuck_loop" and _lp90["action"]["op"] == "sys_unit_stop"
+        and next(a for a in _sy90["advice"] if a["kind"] == "stuck")["action"] is None and all(o[-1] == "sys_unit_stop" for o in _ops89 + [F3["ops"]]), json.dumps(_sy90)[:300])
+_log90 = tmp / "systemctl90.log"
+_fk90 = tmp / "systemctl90"
+_fk90.write_text(f"#!/bin/sh\necho \"$*\" >> {_log90}\n")
+_fk90.chmod(0o755)
+_sv90 = dict(ss=RL.system_status, jc=RL._json_cmd, lw=RL.ledger_write, pa=RL.push_async, env=os.environ.get("CM_SYSTEMCTL"))
+_led90 = []
+try:
+    os.environ["CM_SYSTEMCTL"] = str(_fk90)
+    if RL.SY is None:
+        RL.SY = RL._load("cm-system")
+    RL.system_status = lambda rows, runtime, fresh=False: {"advice": [_lp90]} if fresh else {}
+    RL._json_cmd = lambda *a, **k: []
+    RL.ledger_write = lambda ev, **kw: _led90.append(dict(kw, event=ev))
+    RL.push_async = lambda *a, **k: None
+    _r90a = RL.execute({"id": "u1", "op": "sys_unit_stop", "arg": "ssh.service", "by": "web"})
+    _r90b = RL.execute({"id": "u2", "op": "sys_unit_stop", "arg": _lp90["action"]["arg"], "by": "web"})
+finally:
+    RL.system_status, RL._json_cmd, RL.ledger_write, RL.push_async = _sv90["ss"], _sv90["jc"], _sv90["lw"], _sv90["pa"]
+    if _sv90["env"] is None:
+        os.environ.pop("CM_SYSTEMCTL", None)
+    else:
+        os.environ["CM_SYSTEMCTL"] = _sv90["env"]
+_sv90b = (RL.SY, RL._SYS_LAST)
+_calls90 = []
+try:
+    RL.SY = type("SYfake", (), {"status": staticmethod(lambda *a, **k: _calls90.append(1) or {"at": len(_calls90)}), "stop_units": staticmethod(lambda u: True)})
+    RL._SYS_LAST = (0.0, None)
+    _m90 = [RL.system_status([], {}), RL.system_status([], {}), RL.system_status([], {}, fresh=True)]
+finally:
+    RL.SY, RL._SYS_LAST = _sv90b
+T.check("R90 system_stuck (1.91) the cost: one reading a minute at most — a second push within 55 s reuses the last one, fresh=True (sys_kill, sys_unit_stop) reads again",
+        _m90 == [{"at": 1}, {"at": 1}, {"at": 2}] and len(_calls90) == 2, str(_m90))
+T.check("R90 system_stuck (1.91) sys_unit_stop: units that are not the advised ones are refused and nothing runs; the advised ones get `systemctl --user stop --no-block` each, written in the ledger",
+        _r90a[0] is False and "ssh.service" in _r90a[1] and _r90b[0] is True
+        and _log90.read_text().splitlines() == [f"--user stop --no-block {u}" for u in _lp90["action"]["arg"].split(",")]
+        and [x["event"] for x in _led90] == ["sys-unit-stop"], str((_r90a, _r90b, _led90, _log90.read_text() if _log90.exists() else "")))
 
 T.finish()
