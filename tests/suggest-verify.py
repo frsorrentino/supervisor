@@ -289,6 +289,15 @@ notes("alfa", [("triaged", D, 40, "No tab with id 5")] * 12)
 SGM.fill(NOW + 7200, state={"sessions": []}, commitments=[])
 T.check("S13 suggest_observe: once the notes are sorted (none new) the item leaves the queue",
         f"observe:alfa:{week}" not in by_key() and f"observe:beta:{week}" in by_key(), str(sorted(by_key())))
+# dal vivo (28/10): le note scritte a mano (kind note) hanno error vuoto e il testo in call; la voce diceva «?»
+with open(OBS / "eps.jsonl", "w") as f:
+    for i in range(10):
+        f.write(json.dumps({"id": f"eps-{i}", "status": "new", "kind": "note", "first_seen": NOW - D, "count": 1 + (i == 3), "error": "",
+                            "call": f"seo: lettura dalle API mai riuscita {i}"}) + "\n")
+SGM.fill(NOW + 9000, state={"sessions": []}, commitments=[])
+e13 = by_key().get(f"observe:eps:{week}") or {}
+T.check("S13 suggest_observe: a note written by hand (empty error, its text in call) is named by its text, never «?»",
+        "«seo: lettura dalle API mai riuscita 3»" in e13.get("text", ""), e13.get("text"))
 os.environ["CM_OBSERVE_DIR"] = ENV["CM_OBSERVE_DIR"]
 
 T.finish()

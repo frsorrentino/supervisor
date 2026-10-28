@@ -363,7 +363,9 @@ def observe_wanted(now):
         oldest = min(float(x.get("first_seen") or now) for x in new)
         if len(new) < min_new and now - oldest < days * 86400:
             continue
-        top = " ".join(str(max(new, key=lambda x: int(x.get("count") or 1)).get("error") or "?").split())
+        best = max(new, key=lambda x: int(x.get("count") or 1))
+        # una nota scritta a mano (kind note) ha error vuoto e il testo in call (dal vivo, 28/10: «?»)
+        top = " ".join(str(best.get("error") or best.get("call") or "?").split())
         since = time.strftime("%d/%m", time.localtime(oldest))
         out.append(("observe", f"observe:{plugin}:{week}",
                     one_line("suggest.observe_text", "top", plugin=plugin, n=len(new), since=since, top=top),

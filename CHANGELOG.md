@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.80 — 2026-10-28: the sorting suggestion names a note written by hand by its text.**
+  - Seen live after 0.8.79: for a plugin whose notes were written by hand (`observe add`), the item said «the most frequent «?»». Those notes have no error text: theirs is in `call`. The item now uses it.
+  - Tests: suggest-verify S13.
 - **0.8.79 — 2026-10-28: the hourly suggestions propose sorting a plugin's error notes when they pile up (contract 1.94).**
   - Asked by the maintainer on 28/10: the feedback collection has to work continuously. The local notes of claude-observe were collected and never read, 190 for supervisor alone.
   - `suggest fill`, still with no model call, now reads `~/.local/state/claude-observe/<plugin>.jsonl` and queues one `observe` item per plugin with at least 10 new notes, or the oldest new one 3 days old: «chrome-bridge: 12 new error notes since 10/09, the most frequent «No tab with id»: shall I hand them to its session for sorting?». The key holds for the ISO week; Accept gives the master a prompt that hands the sorting to the plugin's session, with the commands to classify each note and fix the real defects; the item leaves the queue when no note is new.
