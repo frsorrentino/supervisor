@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.71 — 2026-10-28: the hourly script's suggestions ask what Accept does, the project first.**
+  - Reported from the phone on 28/10: an `unsaved` item said only the fact («<session>: 11 file non committati alla chiusura»), and it was not clear whether Accept meant committing the files or leaving them as they are. The same for `followup` and `waiting`.
+  - `suggest fill` now writes each text as a one-line question with the action of Accept, the project's name first (the last part of the session's project, or the session's name without one): «orbit-docs ha 2 file fuori da git: li faccio committare?» (one file: «un file … lo faccio committare?»), «field-notes: la sessione è ferma su «…», glielo mando?», «atlas-shop: ricontrollo «…» e, se è arrivato, riprendo il compito?». The prompts do not change.
+  - An item already queued takes the new text at the next fill (same key, same id, same time).
+  - Tests: suggest-verify S12 (`suggest_fill_text_asks`).
 - **0.8.70 — 2026-10-27: the suggestions as a queue — three at a time, the next one as soon as one is used, new kinds, and an hourly script that queues what was left open (contract 1.88).**
   - Asked by the maintainer on 26/10: the home page suggestions ran out after three taps (at most 4 per round, two rounds a day, four kinds). Design approved from the phone on 27/10 at 20:34: an hourly script at zero model tokens keeps the queue full of what was left open, the master adds ideas with a date and at most two new proposals per round, reading a digest the script prepares.
   - `supervisor suggest fill`, hourly from crontab with `nice -n 19` (0.2 s here): reads the relay's full state (`local/state.json`) and the task registry — no git, no transcripts, no network — and keeps three kinds in the queue: `followup` (the «Prossimi» step of a session idle for 4 to 72 hours, the blocking one first), `unsaved` (a session closed with files not committed), `waiting` (a task paused with `--waits external` past its `--recheck`). Its items are updated in place (same id, same time), last 26 hours while the condition holds and leave as `resolved` when it is gone; at most 8; never a key in «Never», never the master's items.

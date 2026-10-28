@@ -86,7 +86,8 @@ T.check("S4 suggest_queue_refill: an add --source script on the same key keeps i
 rc4 = sg("reshow")
 T.check("S4 reshow (the master's round): the hidden items show again, same id", rc4[0] == 0 and [x["id"] for x in SGM.for_state()] == [id4], str(rc4))
 SGM.act(id4, "later", NOW)
-id4c = sg("add", "--kind", "followup", "--key", "followup:field-notes:aa", "--text", "field-notes e' ferma", "--prompt", "p3")[1]
+# un testo diverso da id4: l'id nasce da key, secondo e testo, e nello stesso secondo coinciderebbe per caso (28/10)
+id4c = sg("add", "--kind", "followup", "--key", "followup:field-notes:aa", "--text", "field-notes e' ferma, dalla master", "--prompt", "p3")[1]
 T.check("S4 an add of the master on the same key renews it as in 1.84: new id, shown again, source master",
         id4c != id4 and not by_key()["followup:field-notes:aa"].get("hidden") and by_key()["followup:field-notes:aa"]["source"] == "master", json.dumps(by_key()))
 
@@ -196,6 +197,33 @@ many = {"v": 1, "sessions": [{"name": f"s{i:02d}", "state": "idle", "since": NOW
 SGM.fill(NOW + 2 * H, state=many, commitments=[])
 T.check("S2 at most 8 items of the script (the ones that waited longest first); the master's stay", len([x for x in items() if x.get("source") == "script"]) == 8
         and "proposal:ga4" in by_key() and f"followup:s11:" in " ".join(by_key()), str(len(items())))
+# S12 (28/10/2026): il testo e' una domanda di una riga che dice cosa fa Accetta, col progetto per primo; una voce gia'
+# in coda col testo di prima prende quello nuovo al fill dopo (stesso id)
+st12 = fixture_state()
+st12["sessions"][0]["project"] = "work/field-notes"
+st12["sessions"][5]["project"] = "work/orbit-docs"
+c12 = [dict(COMMITS[0], project="/home/u/work/atlas-shop")]
+reset()
+SGM.fill(NOW, state=st12, commitments=c12)
+d12 = json.loads(SG.read_text())
+for x in d12["items"]:
+    x["text"] = "orbit-docs: 2 file non committati alla chiusura" if x["kind"] == "unsaved" else x["text"]
+SG.write_text(json.dumps(d12))
+old12 = {x["kind"]: x["id"] for x in d12["items"]}
+SGM.fill(NOW + H, state=st12, commitments=c12)
+t12 = {x["kind"]: x for x in items() if x.get("source") == "script"}
+T.check("S12 suggest_fill_text_asks: followup, unsaved and waiting say as a one-line question what Accept does, the project first; an item already queued takes the new text on the next fill",
+        sorted(t12) == ["followup", "unsaved", "waiting"]
+        and t12["followup"]["text"] == "field-notes: la sessione è ferma su «Scegliere il titolo della release», glielo mando?"
+        and t12["unsaved"]["text"] == "orbit-docs ha 2 file fuori da git: li faccio committare?"
+        and t12["waiting"]["text"] == "atlas-shop: ricontrollo «ticket 4411 del fornitore» e, se è arrivato, riprendo il compito?"
+        and {k: x["id"] for k, x in t12.items()} == old12, json.dumps(t12, ensure_ascii=False)[:700])
+st12b = fixture_state(dirty=1)
+reset()
+SGM.fill(NOW, state=st12b, commitments=[])
+T.check("S12 suggest_fill_text_asks: one file is «un file», «lo faccio committare?»; without a project the session's name leads",
+        by_key()["unsaved:orbit-docs:0b5e7c1d-0000-4000-8000-00000000000d"]["text"] == "orbit-docs ha un file fuori da git: lo faccio committare?",
+        json.dumps(items(), ensure_ascii=False)[:500])
 before10 = SG.read_bytes()
 STATE.unlink(missing_ok=True)
 rc10 = sg("fill")

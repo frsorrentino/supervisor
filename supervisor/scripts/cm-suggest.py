@@ -283,6 +283,11 @@ def followup_key(session, step):
     return f"followup:{session}:{hashlib.sha1(str(step).encode()).hexdigest()[:8]}"
 
 
+def label(project, fallback):
+    """Il nome con cui la voce comincia (28/10): l'ultima parte del progetto, o `fallback` senza progetto."""
+    return str(project or "").rstrip("/").rsplit("/", 1)[-1] or str(fallback)
+
+
 def one_line(template, cut, **kw):
     """Il testo del modello su una riga entro TEXT_MAX: se non entra, `cut` si accorcia a fine parola (mai «…»)."""
     val = " ".join(str(kw[cut]).split())
@@ -305,21 +310,24 @@ def wanted(state, commitments, now):
         if not name or name == master:
             continue
         idle = now - int(s.get("since") or now)
+        project = label(s.get("project"), name)
         steps = [x for x in s.get("next_steps") or [] if isinstance(x, dict) and str(x.get("text") or "").strip()]
         if s.get("state") == "idle" and steps and stall_s <= idle <= max_s:
             step = next((x for x in steps if x.get("blocking")), steps[0])["text"].strip()
-            out.append(("followup", followup_key(name, step), one_line("suggest.followup_text", "step", session=name, step=step),
+            out.append(("followup", followup_key(name, step), one_line("suggest.followup_text", "step", project=project, step=step),
                         M("suggest.followup_prompt", session=name, step=step), idle))
         cl = s.get("closed") or {}
         if s.get("state") == "gone" and int(cl.get("dirty_n") or 0) > 0:
             sid = cl.get("session_id") or int(cl.get("at") or 0)
-            out.append(("unsaved", f"unsaved:{name}:{sid}", one_line("suggest.unsaved_text", "session", session=name, n=cl["dirty_n"]),
+            tpl = "suggest.unsaved_text_one" if int(cl["dirty_n"]) == 1 else "suggest.unsaved_text"
+            out.append(("unsaved", f"unsaved:{name}:{sid}", one_line(tpl, "project", project=project, n=cl["dirty_n"]),
                         M("suggest.unsaved_prompt", session=name, n=cl["dirty_n"], session_id=cl.get("session_id") or "?"), now - int(cl.get("at") or now)))
     for c in commitments or []:
         pz = c.get("paused") or {}
         if pz.get("waits") == "external" and pz.get("recheck") and int(pz["recheck"]) <= now:
             reason = str(pz.get("reason") or c.get("title") or c.get("task"))
-            out.append(("waiting", f"waiting:task:{c['task']}", one_line("suggest.waiting_text", "reason", reason=reason, task=c["task"]),
+            project = label(c.get("project"), c.get("session") or c["task"])
+            out.append(("waiting", f"waiting:task:{c['task']}", one_line("suggest.waiting_text", "reason", reason=reason, project=project),
                         M("suggest.waiting_prompt", reason=reason, task=c["task"]), now - int(pz["recheck"])))
     return out
 
