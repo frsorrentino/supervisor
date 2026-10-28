@@ -38,8 +38,9 @@ grep -q "\*\*$VER" CHANGELOG.md \
 # Un solo grep, niente pipe: con pipefail un SIGPIPE del primo farebbe saltare il controllo in silenzio.
 grep -qiE "^- \*\*${VER//./\\.} — .*unreleased" CHANGELOG.md \
   && { echo "FAIL: CHANGELOG.md entry $VER is still «unreleased» — give it a date and a title (they become the release title and the tag message)"; exit 1; }
-sed -n 3p README.md | grep -q "version-$VER-blue" \
-  || { echo "FAIL: README version badge is not at $VER (line 3: shields.io version-<v>-blue)"; exit 1; }
+# 28/10/2026: il badge e' quello dinamico della release di GitHub, non una versione scritta a mano che invecchia
+sed -n 3p README.md | grep -q "img.shields.io/github/v/release/frsorrentino/supervisor" \
+  || { echo "FAIL: README version badge on line 3 is not the dynamic one (shields.io github/v/release/frsorrentino/supervisor)"; exit 1; }
 git rev-parse "v$VER" >/dev/null 2>&1 \
   && { echo "FAIL: tag v$VER already exists"; exit 1; }
 # Lo zip del passo 3 impacchetta $PLUGIN dal DISCO, non da git: un file non tracciato li' dentro finisce nel pacchetto
@@ -54,7 +55,7 @@ bash "$OBS_SRC/check.sh" "$PLUGIN" \
   || { echo "FAIL: the claude-observe copy differs from its source — python3 $OBS_SRC/sync.py $PLUGIN"; exit 1; }
 python3 tools-privacy-check.py --quiet \
   || { echo "FAIL: privacy check (docs/privacy-blocklist.txt) — neutralize before publishing"; exit 1; }
-echo "preflight ok: $VER in plugin.json, CHANGELOG, README; tag v$VER free; nothing untracked in $PLUGIN; privacy ok"
+echo "preflight ok: $VER in plugin.json and CHANGELOG, README badge dynamic; tag v$VER free; nothing untracked in $PLUGIN; privacy ok"
 
 echo "== 2/6 test suites (must be green BEFORE the commit) =="
 # RELEASE_TESTS=wsl (08/10/2026): the suites run in WSL on win (tools-wsl-tests.sh), the Chromebook stays light;

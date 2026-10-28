@@ -45,11 +45,12 @@ T.check("RL2 consistent version → preflight passes, the suite runs, stops with
         r.returncode == 0 and marker.exists() and "CHECK OK" in r.stdout, r.stdout[-600:] + r.stderr[-300:])
 marker.unlink(missing_ok=True)   # RL2 fallito: il controllo sopra lo dice, il test prosegue
 readme = copy / "README.md"
-readme.write_text(readme.read_text().replace(f"version-{ver}-blue", "version-0.0.0-blue"))
+_dyn = "img.shields.io/github/v/release/frsorrentino/supervisor?label=version&color=blue"
+readme.write_text(readme.read_text().replace(_dyn, "img.shields.io/badge/version-0.0.0-blue"))
 r = run(ver)
-T.check("RL3 README badge off → FAIL naming the badge, suite not run",
+T.check("RL3 README badge not the dynamic one (a version typed by hand) → FAIL naming the badge, suite not run",
         r.returncode != 0 and "badge" in (r.stdout + r.stderr).lower() and not marker.exists(), r.stdout + r.stderr)
-readme.write_text(readme.read_text().replace("version-0.0.0-blue", f"version-{ver}-blue"))
+readme.write_text(readme.read_text().replace("img.shields.io/badge/version-0.0.0-blue", _dyn))
 # RL4: la voce della versione che si rilascia ancora «unreleased» (15/09/2026: la 0.4.7 e' uscita con titolo
 # e tag «v0.4.7 — unreleased», e il tag non si corregge)
 cl = copy / "CHANGELOG.md"
