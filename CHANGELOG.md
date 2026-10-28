@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.77 — 2026-10-28: a change to the machine monitor alone restarts the relay daemon.**
+  - Seen live after 0.8.76: `/state.system` kept the old text. The daemon restarts when the code fingerprint changes, and `cm-system.py`, which it keeps loaded since 0.8.74, was not in it: a release touching only that file stayed out until the next restart. It is in the fingerprint now.
+  - Tests: relay-verify R91.
 - **0.8.76 — 2026-10-28: the system block says what makes the machine heavy, and advice follows the real weight (contract 1.92).**
   - From supervisor-app's live view on 28/10: red at 6.7-7.3 per core with no advice, or only one about a chrome-bridge at 0% CPU — the 48 stuck processes of 0.8.75, and nothing said so.
   - When the raw load would be yellow or red only because of the processes stuck on the graphic bridge, their advice now says the load comes from them, not from work, and goes before the other yellows.

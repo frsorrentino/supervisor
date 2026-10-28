@@ -3013,7 +3013,8 @@ def serve():
     return 0
 
 
-CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py")
+# 28/10: anche cm-system.py, che il demone tiene caricato (1.90) — senza, la 0.8.76 restava fuori fino al riavvio
+CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py", "cm-system.py")
 STALE_S = 180
 
 

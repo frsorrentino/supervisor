@@ -4088,4 +4088,10 @@ T.check("R90 system_stuck (1.91) sys_unit_stop: units that are not the advised o
         and _log90.read_text().splitlines() == [f"--user stop --no-block {u}" for u in _lp90["action"]["arg"].split(",")]
         and [x["event"] for x in _led90] == ["sys-unit-stop"], str((_r90a, _r90b, _led90, _log90.read_text() if _log90.exists() else "")))
 
+# R91 (28/10): l'impronta del codice copre ogni modulo che il demone tiene caricato — dal vivo la 0.8.76 (solo cm-system.py)
+# non riavviava il demone, e /state restava col testo vecchio
+_loaded91 = sorted(set(re.findall(r'_load\("(cm-[a-z-]+)"\)', (T.SCRIPTS / "cm-relay.py").read_text())))
+T.check("R91 code_print covers every module the daemon keeps loaded (cm-system among them): a change to one of them restarts the daemon",
+        "cm-system.py" in RL.CODE_FILES and all(f"{n}.py" in RL.CODE_FILES for n in ("cm-relay-state", "cm-relay-crypto", "cm-diff", "cm-core", "cm-system")), str((RL.CODE_FILES, _loaded91)))
+
 T.finish()
