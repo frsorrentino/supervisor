@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.79 — 2026-10-28: the hourly suggestions propose sorting a plugin's error notes when they pile up (contract 1.94).**
+  - Asked by the maintainer on 28/10: the feedback collection has to work continuously. The local notes of claude-observe were collected and never read, 190 for supervisor alone.
+  - `suggest fill`, still with no model call, now reads `~/.local/state/claude-observe/<plugin>.jsonl` and queues one `observe` item per plugin with at least 10 new notes, or the oldest new one 3 days old: «chrome-bridge: 12 new error notes since 10/09, the most frequent «No tab with id»: shall I hand them to its session for sorting?». The key holds for the ISO week; Accept gives the master a prompt that hands the sorting to the plugin's session, with the commands to classify each note and fix the real defects; the item leaves the queue when no note is new.
+  - `suggest.observe_dir`, `observe_min_new` (10), `observe_days` (3) and `observe_skip` (the old names of supervisor, whose notes are from before the rename) in the config.
+  - claude-observe brought to its source at 43fd22b: «Always anonymous», a consent asked once, off by default and revocable, for sending error reports without the user's name; `observe` lists the anonymous mode and the stats; the privacy notice in force since 6 October 2026.
+  - Tests: suggest-verify S13 (`suggest_observe`); fixture `state-3-stale.json` with one `observe` item.
 - **0.8.78 — 2026-10-28: the phone's chat no longer fails at every poll for normal states, and `talk --help` is not an error (contract 1.93).**
   - Asked by the maintainer on 28/10: the local notes of claude-observe were collected and never read. All 191 are now sorted with a class and a reason; the three most frequent came from the relay's `transcript`.
   - An open chat asks for the entries after the last one it has. After a restart or a `/clear` that entry is gone, and every poll failed («no entry … in the transcript», 525 times). Now the relay answers with the last entries and `reset: true`, and the app replaces its list.

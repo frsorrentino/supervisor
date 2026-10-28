@@ -320,6 +320,16 @@
       "source": "script"
     },
     {
+      "id": "s-7c4a9b1d85",
+      "kind": "observe",
+      "key": "observe:chrome-bridge:2026-W38",
+      "text": "chrome-bridge: 12 new error notes since 10/09, the most frequent «No tab with id»: shall I hand them to its session for sorting?",
+      "at": 1789199150,
+      "expires_at": 1789292750,
+      "rank": 5,
+      "source": "script"
+    },
+    {
       "id": "s-5a6e7f9b67",
       "kind": "idea",
       "key": "idea:field-notes-on-phone",

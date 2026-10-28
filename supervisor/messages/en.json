@@ -515,6 +515,8 @@
   "suggest.unsaved_text": "{project} has {n} files outside git: shall I have them committed?",
   "suggest.unsaved_text_one": "{project} has one file outside git: shall I have it committed?",
   "suggest.unsaved_prompt": "Session {session} closed with {n} uncommitted files (conversation {session_id}). Reopen it with supervisor launch --resume and have it commit them, or tell me if they stay as they are.",
+  "suggest.observe_text": "{plugin}: {n} new error notes since {since}, the most frequent «{top}»: shall I hand them to its session for sorting?",
+  "suggest.observe_prompt": "Sorting of the claude-observe notes of {plugin}: {n} new since {since}. Hand this to the session of the plugin {plugin} (supervisor talk, or launch it): «supervisor observe list {plugin}; for each note supervisor observe mark ID D|L|S and the reason with supervisor observe add --on ID --workaround \"…\"; fix the real defects from the most frequent, each with a test that fails first; mark done only what is fixed and released.»",
   "suggest.waiting_text": "{project}: shall I recheck «{reason}» and resume the task if it came?",
   "suggest.waiting_prompt": "Time to check again the external wait of task {task}: {reason}. If the answer came, resume the task (supervisor task resume {task}); otherwise pause it again with a new date.",
   "suggest.digest_title": "# Suggestions, digest of {time}",

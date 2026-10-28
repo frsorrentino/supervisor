@@ -419,6 +419,9 @@ SRC3["suggestions"] = [
      "prompt": "Session orbit-docs closed with 2 uncommitted files", "at": 1789199300, "expires_at": 1789292900, "rank": 4, "source": "script"},
     {"id": "s-4f7d6e8a58", "kind": "waiting", "key": "waiting:task:ledger-vendor-ticket", "text": "Check again: the vendor's answer on ticket 4411",
      "prompt": "Time to check again the external wait of task ledger-vendor-ticket", "at": 1789199200, "expires_at": 1789292800, "rank": 5, "source": "script"},
+    # 1.94 (28/10): lo smistamento delle note di claude-observe di un plugin
+    {"id": "s-7c4a9b1d85", "kind": "observe", "key": "observe:chrome-bridge:2026-W38", "text": "chrome-bridge: 12 new error notes since 10/09, the most frequent «No tab with id»: shall I hand them to its session for sorting?",
+     "prompt": "Sorting of the claude-observe notes of chrome-bridge", "at": 1789199150, "expires_at": 1789292750, "rank": 5, "source": "script"},
     {"id": "s-5a6e7f9b67", "kind": "idea", "key": "idea:field-notes-on-phone", "text": "Try field-notes on the phone, as planned after the 12th",
      "prompt": "Set up field-notes on the phone", "at": 1789199100, "expires_at": 1789242300, "rank": 6, "source": "master"},
     {"id": "s-6b5f8a0c76", "kind": "proposal", "key": "proposal:release-notes-script", "text": "The release notes were written by hand three times this week: make them a script?",
@@ -1688,7 +1691,7 @@ _left74 = {x["id"] for x in json.loads(_sg72.read_text())["items"]}
 _talk74 = [c for c in cm_calls()[_n74:] if c.startswith("talk master ")]
 T.check("R74 (1.88) suggest_queue_refill choose and discuss: results as in the fixture; a label outside options → ok false and the item stays; discuss sends «talk it over» with the text and the item stays; choose sends the prompt with the choice in place of {choice} and drops the item",
         [(r["ok"], r["text"]) for r in _r74] == [(RS188[c]["ok"], RS188[c]["text"]) for c in CM188] and len(_talk74) == 2
-        and _talk74[0].endswith("[dai suggerimenti] " + RL.M("relay.suggestion_discuss") + " " + SRC3["suggestions"][5]["text"] + " --no-wait")
+        and _talk74[0].endswith("[dai suggerimenti] " + RL.M("relay.suggestion_discuss") + " " + next(x for x in SRC3["suggestions"] if x["id"] == "s-6b5f8a0c76")["text"] + " --no-wait")
         and _talk74[1].endswith("[dai suggerimenti] For the pricing page the maintainer picks Full: go ahead --no-wait")
         and "s-6b5f8a0c76" in _left74 and "s-1c0a7e5f21" not in _left74, str((_r74, _talk74)))
 _led74 = [r for r in led_rows()[_l74:] if r.get("event") == "suggestion"]

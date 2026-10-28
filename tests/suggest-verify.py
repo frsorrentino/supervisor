@@ -24,7 +24,7 @@ LEDGER = tmp / "ledger.jsonl"
 (tmp / "config.json").write_text(json.dumps({"language": "it", "state_dir": str(tmp)}))
 ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "TMUX_PANE")}
 ENV.update(CM_SUGGESTIONS=str(SG), CM_RELAY_STATE=str(STATE), CM_SUGGEST_DIGEST=str(DIGEST), CM_TASKS_DB=str(tmp / "tasks.db"),
-           CC_SUPERVISOR_CONFIG=str(tmp / "config.json"))
+           CC_SUPERVISOR_CONFIG=str(tmp / "config.json"), CM_OBSERVE_DIR=str(tmp / "observe-none"))   # mai le note vere
 os.environ.update(ENV)
 spec = importlib.util.spec_from_file_location("cm_suggest", T.SCRIPTS / "cm-suggest.py")
 SGM = importlib.util.module_from_spec(spec)
@@ -246,5 +246,49 @@ dg = SGM.digest(NOW)
 T.check("S11 the digest: under 2 KB, the queue by kind, the 14-day rate by kind, the kinds off, the never keys of the last 14 days only, no prompt",
         len(dg.encode()) <= 2048 and "followup" in dg and "unsaved" in dg and "proposal:siti-lenti" in dg and "proposal:vecchia" not in dg
         and "prepara la proposta GA4" not in dg and all(x["prompt"] not in dg for x in d11["items"]) and sg("digest")[1].strip() == SGM.digest().strip(), dg)
+
+
+# ------------------------------------------------------------------ S13 suggest_observe (28/10): le note di claude-observe
+# si accumulavano senza che nessuno le leggesse (190 per supervisor). fill propone lo smistamento per plugin
+OBS = tmp / "observe"
+OBS.mkdir()
+os.environ["CM_OBSERVE_DIR"] = str(OBS)
+D = 86400
+
+
+def notes(plugin, specs):
+    with open(OBS / f"{plugin}.jsonl", "w") as f:
+        for i, (status, age, count, err) in enumerate(specs):
+            f.write(json.dumps({"id": f"{plugin}-{i:08x}", "status": status, "first_seen": NOW - age, "last_seen": NOW - 60,
+                                "count": count, "error": err, "call": "x"}) + "\n")
+
+
+notes("alfa", [("new", D, 40, "No tab with id 5")] + [("new", D // 2, 1, f"altro {i}") for i in range(11)])
+notes("beta", [("new", 4 * D, 1, "uno"), ("new", D, 2, "due")])
+notes("gamma", [("new", D, 1, "g")] * 3)
+notes("delta", [("triaged", 9 * D, 3, "d")] * 15)
+notes("claude-master", [("new", 30 * D, 1, "vecchio nome")] * 20)
+reset()
+SGM.fill(NOW, state={"sessions": []}, commitments=[])
+ob = {x["key"]: x for x in items() if x["kind"] == "observe"}
+week = time.strftime("%G-W%V", time.localtime(NOW))
+T.check("S13 suggest_observe: one item per plugin with at least 10 new notes (alfa) or the oldest new one 3 days old or more (beta); not gamma (3, young), not delta (none new), not claude-master (an old name, skipped)",
+        sorted(ob) == [f"observe:alfa:{week}", f"observe:beta:{week}"], str(sorted(ob)))
+a13 = ob.get(f"observe:alfa:{week}") or {}
+since = time.strftime("%d/%m", time.localtime(NOW - D))
+T.check("S13 suggest_observe: the text is a question with the plugin first, how many, since when and the most frequent error",
+        a13.get("text") == f"alfa: 12 note di errore nuove dal {since}, la più frequente «No tab with id 5»: le passo alla sessione per lo smistamento?",
+        a13.get("text"))
+T.check("S13 suggest_observe: the master's prompt hands the sorting to the plugin's session, with the commands; source script, rank 5",
+        "supervisor observe list alfa" in a13.get("prompt", "") and "mark" in a13.get("prompt", "") and a13.get("source") == "script" and a13.get("rank") == 5,
+        a13.get("prompt", "")[:300])
+SGM.fill(NOW + 3600, state={"sessions": []}, commitments=[])
+T.check("S13 suggest_observe: the key is stable within the week: one more pass keeps the same item",
+        sorted(x["key"] for x in items() if x["kind"] == "observe") == sorted(ob) and by_key()[f"observe:alfa:{week}"]["id"] == a13.get("id"), str(items()))
+notes("alfa", [("triaged", D, 40, "No tab with id 5")] * 12)
+SGM.fill(NOW + 7200, state={"sessions": []}, commitments=[])
+T.check("S13 suggest_observe: once the notes are sorted (none new) the item leaves the queue",
+        f"observe:alfa:{week}" not in by_key() and f"observe:beta:{week}" in by_key(), str(sorted(by_key())))
+os.environ["CM_OBSERVE_DIR"] = ENV["CM_OBSERVE_DIR"]
 
 T.finish()

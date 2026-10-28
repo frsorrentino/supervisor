@@ -644,6 +644,20 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.94 (28/10/2026, asked by the maintainer: «the feedback collection has to
+work continuously»). Additive, `v` stays 1.
+
+- **A new suggestion kind `observe`**, written by the hourly `suggest fill`, source
+  `script`, rank 5: the local notes of claude-observe of one plugin need sorting —
+  at least 10 new notes, or the oldest new one 3 days old. The text is a question
+  with the plugin first («chrome-bridge: 12 new error notes since 10/09, the most
+  frequent «No tab with id»: shall I hand them to its session for sorting?»); the
+  key is `observe:<plugin>:<ISO week>`, so it stays the same within a week; Accept
+  sends the master a prompt that hands the sorting to the plugin's session. It
+  leaves the queue when the plugin has no new note left.
+
+Fixture: `state-3-stale.json` (one `observe` item after the external wait).
+
 Contract 1.93 (28/10/2026, from the local notes of claude-observe: «no entry … in
 the transcript» 525 times, «X is not running» and «X: no transcript» on dozens of
 sessions). Additive, `v` stays 1.

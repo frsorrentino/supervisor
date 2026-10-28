@@ -415,7 +415,14 @@
   "suggest": {
     "stall_h": 4,
     "followup_max_h": 72,
-    "script_max": 8
+    "script_max": 8,
+    "observe_dir": "~/.local/state/claude-observe",
+    "observe_min_new": 10,
+    "observe_days": 3,
+    "observe_skip": [
+      "claude-master",
+      "team-supervisor"
+    ]
   },
   "hooks": {
     "local_time": {

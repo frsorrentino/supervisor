@@ -45,9 +45,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-KINDS = ("recurring", "cleanup", "deadline", "quota", "choice", "followup", "unsaved", "waiting", "idea", "proposal")
-SCRIPT_KINDS = ("followup", "unsaved", "waiting")   # 1.88: i tipi che scrive `fill`
-RANK_OF = {"deadline": 2, "choice": 2, "followup": 4, "unsaved": 4, "quota": 5, "waiting": 5,
+KINDS = ("recurring", "cleanup", "deadline", "quota", "choice", "followup", "unsaved", "waiting", "idea", "proposal", "observe")
+SCRIPT_KINDS = ("followup", "unsaved", "waiting", "observe")   # 1.88: i tipi che scrive `fill`; 1.94: observe
+RANK_OF = {"deadline": 2, "choice": 2, "followup": 4, "unsaved": 4, "quota": 5, "waiting": 5, "observe": 5,
            "proposal": 6, "idea": 6, "recurring": 6, "cleanup": 6}
 RANK_NONE = 5   # una voce senza rank (scritta prima della 1.88)
 SOURCES = ("script", "master")
@@ -329,6 +329,45 @@ def wanted(state, commitments, now):
             project = label(c.get("project"), c.get("session") or c["task"])
             out.append(("waiting", f"waiting:task:{c['task']}", one_line("suggest.waiting_text", "reason", reason=reason, project=project),
                         M("suggest.waiting_prompt", reason=reason, task=c["task"]), now - int(pz["recheck"])))
+    return out + observe_wanted(now)
+
+
+def observe_wanted(now):
+    """1.94 (28/10, «la raccolta del feedback deve lavorare con continuita'»): le note locali di claude-observe
+    (<suggest.observe_dir>/<plugin>.jsonl, o CM_OBSERVE_DIR) si accumulavano senza che nessuno le leggesse — 190 per
+    supervisor il 28/10. Una voce per plugin quando le note new sono almeno suggest.observe_min_new o la piu' vecchia ha
+    almeno suggest.observe_days giorni; key stabile per settimana ISO; la piu' frequente per conteggio. Solo lettura."""
+    sc = _cfg()[1].get("suggest") or {}
+    d = Path(os.environ.get("CM_OBSERVE_DIR") or _expand(sc.get("observe_dir") or "~/.local/state/claude-observe"))
+    skip = set(sc.get("observe_skip") or [])
+    min_new, days = int(sc.get("observe_min_new", 10)), float(sc.get("observe_days", 3))
+    week = time.strftime("%G-W%V", time.localtime(now))
+    out = []
+    for f in sorted(d.glob("*.jsonl")) if d.is_dir() else []:
+        plugin = f.stem
+        if plugin in skip:
+            continue
+        new = []
+        try:
+            for line in f.read_text(errors="replace").splitlines():
+                try:
+                    x = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(x, dict) and x.get("status") == "new":
+                    new.append(x)
+        except OSError:
+            continue
+        if not new:
+            continue
+        oldest = min(float(x.get("first_seen") or now) for x in new)
+        if len(new) < min_new and now - oldest < days * 86400:
+            continue
+        top = " ".join(str(max(new, key=lambda x: int(x.get("count") or 1)).get("error") or "?").split())
+        since = time.strftime("%d/%m", time.localtime(oldest))
+        out.append(("observe", f"observe:{plugin}:{week}",
+                    one_line("suggest.observe_text", "top", plugin=plugin, n=len(new), since=since, top=top),
+                    M("suggest.observe_prompt", plugin=plugin, n=len(new), since=since), int(now - oldest)))
     return out
 
 

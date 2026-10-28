@@ -252,7 +252,10 @@ DEFAULTS = {
     "tasks": {"guard": False, "notify": "master", "stall_hours": 2, "commitments_prompt": True, "commitments_max_lines": 8, "quiet_hours": [23, 7]},
     # 27/10 (1.88): `suggest fill`, lo script orario della coda dei suggerimenti — una sessione e' ferma da stall_h ore
     # (e non oltre followup_max_h), al massimo script_max voci sue
-    "suggest": {"stall_h": 4, "followup_max_h": 72, "script_max": 8},
+    "suggest": {"stall_h": 4, "followup_max_h": 72, "script_max": 8,
+                # 28/10 (1.94): lo smistamento delle note di claude-observe, per plugin; skip = i nomi vecchi di supervisor
+                "observe_dir": "~/.local/state/claude-observe", "observe_min_new": 10, "observe_days": 3,
+                "observe_skip": ["claude-master", "team-supervisor"]},
     "hooks": {
         "local_time": {"enabled": True, "format": "%A %Y-%m-%d %H:%M", "prefix": "[local time]"},
         "restart_stop": {"enabled": True},

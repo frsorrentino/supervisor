@@ -515,6 +515,8 @@
   "suggest.unsaved_text": "{project} ha {n} file fuori da git: li faccio committare?",
   "suggest.unsaved_text_one": "{project} ha un file fuori da git: lo faccio committare?",
   "suggest.unsaved_prompt": "La sessione {session} si è chiusa con {n} file non committati (conversazione {session_id}). Riaprila con supervisor launch --resume e falle committare quei file, oppure dimmi se vanno lasciati così.",
+  "suggest.observe_text": "{plugin}: {n} note di errore nuove dal {since}, la più frequente «{top}»: le passo alla sessione per lo smistamento?",
+  "suggest.observe_prompt": "Smistamento delle note di claude-observe di {plugin}: {n} nuove dal {since}. Passa alla sessione del plugin {plugin} (supervisor talk, o lanciala) questo compito: «supervisor observe list {plugin}; per ogni nota supervisor observe mark ID D|L|S e la ragione con supervisor observe add --on ID --workaround \"…\"; correggi i difetti veri a partire dai più frequenti, ciascuno con un test che fallisce prima; segna done solo ciò che è corretto e rilasciato.»",
   "suggest.waiting_text": "{project}: ricontrollo «{reason}» e, se è arrivato, riprendo il compito?",
   "suggest.waiting_prompt": "È ora di ricontrollare l'attesa esterna del compito {task}: {reason}. Se la risposta è arrivata riprendi il compito (supervisor task resume {task}); altrimenti rimetti la pausa con una data nuova.",
   "suggest.digest_title": "# Suggerimenti, riassunto delle {time}",
