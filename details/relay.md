@@ -644,6 +644,22 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.92 (28/10/2026, from supervisor-app's live view: red at 6.7-7.3 per core
+with no advice, or only one about a chrome-bridge at 0% CPU, and nothing said what
+was heavy). Additive, `v` stays 1; no new field.
+
+- **A new advice kind `load`**: the load is yellow or red and no advice explains
+  it (none above 25% of a core). The text names the three processes using the most
+  CPU, or says the load comes from waits (disk, network, stuck processes) when they
+  use little; level = `load_level`; no action.
+- **`stuck` says when it is the cause**: when the raw load would be yellow or red
+  and without the stuck processes it is not, the text says the load comes from them
+  and not from work, with the raw figure, and the advice goes before the other
+  yellows.
+- **Order**: the reds first, then `stuck_loop`, then by real weight — the CPU of
+  the process behind the advice — so a process at 0% is never presented first as
+  the cause of the weight.
+
 Contract 1.91 (28/10/2026, processes stuck on ChromeOS's graphic bridge, a defect
 of 1.90 at its first live reading: red with a load of 49 on 8 cores and no advice).
 Additive, `v` stays 1. The load was not real: 48 processes in state D (sommelier and

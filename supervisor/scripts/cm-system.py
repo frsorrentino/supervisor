@@ -30,7 +30,11 @@ CONSIGLI, ciascuno con un'azione per il pulsante dell'app o null (solo consiglio
   stuck_loop   unita' di system.stuck_units con processi bloccati, almeno system.stuck_min_restarts riavvii e
                ancora attive (il ciclo che li produce)                                   → sys_unit_stop «Ferma il ciclo»
   stuck        processi bloccati sul ponte grafico: quanti, da quando, quanta memoria; il riavvio di Linux solo come
-               testo, mai automatico (chiude tutte le sessioni)                         → null
+               testo, mai automatico (chiude tutte le sessioni). Se il carico grezzo viene da loro, lo dice («non da
+               lavoro») e passa davanti agli altri gialli                                → null
+  load         carico giallo o rosso che nessun consiglio spiega (nessuno sopra il 25%): i tre processi che pesano di
+               piu', o che il carico viene da attese                                     → null
+A pari livello l'ordine e' il peso vero (CPU): un processo allo 0% non si presenta come causa della pesantezza.
 Mai la sessione corrente ne' il relay (`me`), mai la master ne' una sessione attaccata, mai un processo fuori dagli
 schemi: l'op sys_kill rifa' la misura e chiude solo un pid:procStart che e' ancora fra i consigli; sys_unit_stop ferma
 solo unita' ancora consigliate e dell'elenco ammesso (`systemctl --user stop --no-block`).
@@ -240,16 +244,18 @@ def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=(), u
     c = conf()
     by_pid = {r["pid"]: r for r in rows}
     me = set(me)
-    out = []
+    out, weight = [], {}
 
-    def add(kind, key, level, text, action=None):
+    def add(kind, key, level, text, action=None, w=0.0):
+        """w = il peso vero (CPU in % di un core) per l'ordine: un processo allo 0% non passa davanti a uno che pesa."""
         out.append({"id": f"{kind}:{key}", "kind": kind, "level": level, "text": text, "action": action})
+        weight[out[-1]["id"]] = w
 
     for o in orphans:
         if o["pid"] in me:
             continue
         add("orphan", f"{o['pid']}:{o['proc_start']}", "yellow", msg("system.advice_orphan", name=o["name"], pid=o["pid"]),
-            {"op": "sys_kill", "arg": f"{o['pid']}:{o['proc_start']}", "label": msg("system.action_kill")})
+            {"op": "sys_kill", "arg": f"{o['pid']}:{o['proc_start']}", "label": msg("system.action_kill")}, (by_pid.get(o["pid"]) or {}).get("cpu", 0.0))
     parents = set(c["orphan_parents"])
     claimed = {o["pid"] for o in orphans}
     for r in rows:
@@ -263,7 +269,7 @@ def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=(), u
             if re.search(pat["match"], r["args"]) and r["age_s"] >= pat.get("min_age_s", 0) and r["cpu"] >= pat.get("min_cpu", 0):
                 add("orphan_proc", f"{r['pid']}:{r['start']}", "red" if r["cpu"] >= 25 else "yellow",
                     msg("system.advice_orphan_proc", name=pat["name"], pid=r["pid"], cpu=round(r["cpu"]), mb=r["rss_mb"]),
-                    {"op": "sys_kill", "arg": f"{r['pid']}:{r['start']}", "label": msg("system.action_kill")})
+                    {"op": "sys_kill", "arg": f"{r['pid']}:{r['start']}", "label": msg("system.action_kill")}, r["cpu"])
                 break
 
     root = (CFG.get("workspace") or {}).get("root_session_name") or "master"
@@ -300,7 +306,7 @@ def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=(), u
                 break
     for p, r in sorted(heavy.items(), key=lambda x: -x[1]["cpu"])[:2]:
         add("heavy_job", f"{r['pid']}:{r['start']}", "red" if m.get("level") == "red" else "yellow",
-            msg("system.advice_heavy", name=_short(r["args"]), cpu=round(r["cpu"])))
+            msg("system.advice_heavy", name=_short(r["args"]), cpu=round(r["cpu"])), None, r["cpu"])
     if m.get("mem_available_mb", 1 << 30) < c["mem_red_mb"]:
         top = [x for x in sorted(consumers(rows), key=lambda x: -x["rss_mb"]) if x["rss_mb"]][:2]
         add("low_memory", "mem", "red", msg("system.advice_low_memory", gb=_gb(m["mem_available_mb"]),
@@ -315,10 +321,31 @@ def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=(), u
                 {"op": "sys_unit_stop", "arg": ",".join(loop), "label": msg("system.action_stop_loop")})
         when = time.strftime("%H:%M" if time.strftime("%Y%m%d", time.localtime(stuck["since"])) == time.strftime("%Y%m%d") else "%d/%m %H:%M",
                              time.localtime(stuck["since"]))
-        add("stuck", "graphic", "yellow", msg("system.advice_stuck", n=stuck["count"], since=when, mb=stuck["rss_mb"]))
-    # i rossi prima; a pari livello il ciclo da fermare prima di tutto (e' la causa dei bloccati)
-    out.sort(key=lambda a: (a["level"] != "red", a["kind"] != "stuck_loop"))
+        # 28/10 (supervisor-app, dal vivo): rosso a 6,7-7,3 per core e niente diceva cosa pesa. Quando il carico grezzo
+        # sarebbe giallo o rosso e senza i bloccati non lo e', il consiglio lo dice: il carico viene da loro, non da lavoro
+        raw = round(m.get("load1", 0) / (m.get("cores") or 1), 2)
+        explains = _rank(level_of(raw, c["load_yellow"], c["load_red"])) > _rank(m.get("load_level", "green"))
+        add("stuck", "graphic", "yellow",
+            msg("system.advice_stuck_load" if explains else "system.advice_stuck", n=stuck["count"], since=when, mb=stuck["rss_mb"], load=_dec(raw)),
+            None, 1000.0 if explains else 0.0)
+    # carico alto che nessun consiglio spiega (nessuno sopra il 25% di un core): si nominano i processi che pesano davvero
+    if m.get("load_level") in ("yellow", "red") and not any(w >= 25 for w in weight.values()):
+        top = sorted((r for r in rows if r["pid"] not in me and r.get("state") != "D"), key=lambda r: -r["cpu"])[:3]
+        busy = sum(r["cpu"] for r in top)
+        add("load", "unexplained", m["load_level"],
+            msg("system.advice_load", load=_dec(m["load_per_core"]), top=", ".join(f"{_short(r['args'])} {round(r['cpu'])}%" for r in top) or "-")
+            + (msg("system.advice_load_waits") if busy < 50 else ""), None, busy)
+    # i rossi prima; a pari livello il ciclo da fermare (e' la causa dei bloccati), poi il peso vero, il piu' grande prima
+    out.sort(key=lambda a: (a["level"] != "red", a["kind"] != "stuck_loop", -weight[a["id"]]))
     return out[:ADVICE_MAX]
+
+
+def _rank(level):
+    return {"green": 0, "yellow": 1, "red": 2}.get(level, 0)
+
+
+def _dec(x):
+    return f"{x:.1f}".replace(".", "," if (CFG.get("language") or "it") == "it" else ".")
 
 
 def me_pids():

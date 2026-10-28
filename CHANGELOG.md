@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.76 — 2026-10-28: the system block says what makes the machine heavy, and advice follows the real weight (contract 1.92).**
+  - From supervisor-app's live view on 28/10: red at 6.7-7.3 per core with no advice, or only one about a chrome-bridge at 0% CPU — the 48 stuck processes of 0.8.75, and nothing said so.
+  - When the raw load would be yellow or red only because of the processes stuck on the graphic bridge, their advice now says the load comes from them, not from work, and goes before the other yellows.
+  - A load that is yellow or red with no advice above 25% of a core gets a `load` advice: the three processes using the most CPU, or that the load comes from waits when none uses much.
+  - Same level, the order is the real CPU behind each advice: a process at 0% is never presented first as the cause.
+  - Tests: system-verify SY9 (`system_stuck`).
 - **0.8.75 — 2026-10-28: processes stuck on ChromeOS's graphic bridge no longer turn the load red, and the loop that leaves them has a «Stop the loop» button (contract 1.91).**
   - Seen at the first live reading of 0.8.74: red, a load of 49 on 8 cores, and no advice. The load was not real: 48 processes in state D (sommelier and notificationd, waiting in `virtwl_ioctl_ptr` or `do_vfd_close`), left since the morning by three `systemd --user` units in a restart loop (up to 58 restarts), about 20 an hour at 3.3 MB each. A process in D counts in the load average, uses no CPU and does not die even with SIGKILL.
   - They are counted apart, `system.stuck {count, since, rss_mb, units}`, and the load that colours leaves them out: `load_per_core = (load1 - stuck.count) / cores`. Of a process in D only `stat`, `wchan` and `cgroup` are read, never its command line: reading it can block the reader too.

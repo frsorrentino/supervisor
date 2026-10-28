@@ -21,6 +21,10 @@ SY8 system_stuck (28/10, dal vivo alle 15:08): carico 49,85 con 48 processi in D
     contano a parte senza leggerne la cmdline (numero, da quando, memoria, unita'); il carico che colora non li conta;
     «Ferma il ciclo» (op sys_unit_stop) solo per le unita' ammesse con molti riavvii e ancora attive; il riavvio di Linux
     solo nel testo; un processo in D su un'altra attesa resta nel carico
+SY9 system_stuck (28/10, nota di supervisor-app dal vivo: rosso a 6,7-7,3 per core e niente diceva cosa pesa, o solo un
+    chrome-bridge allo 0%): il consiglio dei bloccati dice che il carico viene da loro, non da lavoro, e passa davanti;
+    a pari livello l'ordine e' la CPU vera; un carico alto che nessun consiglio spiega nomina i processi che pesano, o
+    dice che viene da attese
 """
 import json
 import os
@@ -242,5 +246,28 @@ _no8 = SY.stop_units(["sommelier@0.service-evil;rm", "ssh.service"])
 T.check("SY8 system_stuck: stop_units runs `systemctl --user stop --no-block` for each allowed unit; a unit outside the list is refused and nothing runs",
         _ok8 is True and _no8 is False and _log8.read_text().splitlines() == ["--user stop --no-block sommelier-x@0.service", "--user stop --no-block cros-notificationd.service"],
         _log8.read_text() if _log8.exists() else "no call")
+
+# SY9
+skl = next(a for a in adv8b if a["kind"] == "stuck")
+T.check("SY9 system_stuck: when the raw load (49.85/8) would be red and without the stuck it is green, the advice says the load comes from them, not from work, with the raw figure",
+        "non da lavoro" in skl["text"] and "6,2" in skl["text"], skl["text"])
+adv9 = SY.advise(m8, rows8 + [r for r in rows if r["pid"] == 500], units={k: dict(v, state="inactive") for k, v in U8.items()})
+T.check("SY9 system_stuck: the stuck advice that explains the load goes before a chrome-bridge at 0% CPU",
+        [a["kind"] for a in adv9][:2] == ["stuck", "orphan_proc"], json.dumps([(a["kind"], a["text"]) for a in adv9], ensure_ascii=False))
+adv9b = SY.advise(m, rows, orphans=orph, me={400, 1, 50})
+yk = [a["action"]["arg"].split(":")[0] if a["action"] else a["kind"] for a in adv9b if a["level"] == "yellow"]
+T.check("SY9 system_stuck: same level, ordered by real CPU — the MCP server at 20% before the --launch and the orphan claude at 0%",
+        yk.index("330") < yk.index("500") and yk.index("330") < yk.index("700"), json.dumps(yk))
+rows9 = [r for r in rows if r["pid"] not in (300,)]
+adv9c = SY.advise(m, rows9, me={400})
+ld = next((a for a in adv9c if a["kind"] == "load"), None)
+T.check("SY9 system_stuck: a yellow load that no advice explains (the MCP at 20% is below 25%) → «load», no action, the heaviest by CPU named, the person's script at 90% first",
+        ld is not None and ld["action"] is None and ld["level"] == "yellow" and "mio-script.py 90%" in ld["text"] and "1,6" in ld["text"], json.dumps(adv9c, ensure_ascii=False))
+idle9 = [dict(r, cpu=0.5) for r in rows9]
+ld2 = next((a for a in SY.advise(m, idle9, me={400}) if a["kind"] == "load"), None)
+T.check("SY9 system_stuck: a high load with nothing using CPU → the advice says it comes from waits",
+        ld2 is not None and "attese" in ld2["text"], json.dumps(ld2, ensure_ascii=False))
+T.check("SY9 system_stuck: a load explained by an advice above 25% (the --launch at 46%) has no «load» advice",
+        not any(a["kind"] == "load" for a in adv9b), json.dumps([a["kind"] for a in adv9b]))
 T.rm(str(tmp))
 T.finish()
