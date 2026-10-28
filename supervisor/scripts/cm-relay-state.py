@@ -612,18 +612,29 @@ def kind_of(name):
     return None
 
 
-def build_devices(devices, seen):
+def _epoch(t):
+    return t if isinstance(t, (int, float)) and not isinstance(t, bool) and t > 0 else 0
+
+
+def build_devices(devices, seen, activity=None):
     """1.32 (04/10, chiesto dall'app, scelto dal maintainer): [{uid, name, kind, seen}], uno per dispositivo accoppiato
     (devices.json, che e' /allowed), nell'ordine di accoppiamento. kind = quello scritto dal dispositivo nel pairing
-    (dalla 1.32) o dedotto dal nome, null se non si sa; seen = epoch s dell'ultima lettura (/seen), null se mai."""
+    (dalla 1.32) o dedotto dal nome, null se non si sa; seen = epoch s dell'ultima lettura (/seen), null se mai.
+    1.89 (28/10): activity = device-activity.json {uid: {arrival, cmd}}; seen e' anche l'ultimo arrivo tenuto dal relay
+    (vale quando /seen non ce l'ha), cmd_at l'ultimo comando con quel uid, solo se ce n'e' uno."""
     seen = seen if isinstance(seen, dict) else {}
+    activity = activity if isinstance(activity, dict) else {}
     rows = [(u, d) for u, d in (devices.items() if isinstance(devices, dict) else []) if isinstance(d, dict)]
     rows.sort(key=lambda x: x[1].get("paired_at") or 0)   # stabile: a parita' l'ordine del file
     out = []
     for u, d in rows:
         k = d.get("kind") if d.get("kind") in DEVICE_KINDS else kind_of(d.get("name"))
-        t = seen.get(u)
-        out.append({"uid": u, "name": str(d.get("name") or ""), "kind": k, "seen": int(t) if isinstance(t, (int, float)) and t > 0 else None})
+        act = activity.get(u) if isinstance(activity.get(u), dict) else {}
+        t = max(_epoch(seen.get(u)), _epoch(act.get("arrival")))
+        row = {"uid": u, "name": str(d.get("name") or ""), "kind": k, "seen": int(t) if t else None}
+        if _epoch(act.get("cmd")):
+            row["cmd_at"] = int(act["cmd"])
+        out.append(row)
     return out
 
 
@@ -678,7 +689,7 @@ def build_state(src, now, fit=True):
         # 1.25: i comandi slash che il telefono puo' dare (senza «/»); l'app li propone scrivendo «/» nel campo
         "slash": list(src.get("slash") or []),
         # 1.32: i dispositivi accoppiati, per lo schema dei collegamenti dell'app
-        "devices": build_devices(src.get("devices"), src.get("seen")),
+        "devices": build_devices(src.get("devices"), src.get("seen"), src.get("activity")),
         # 1.37: i compiti del registro che aspettano un ok ({task, title, what, where, deploy, requested_at}), dal
         # piu' vecchio; l'app li approva con l'op approve
         "approvals": [dict(a) for a in (src.get("approvals") or [])],

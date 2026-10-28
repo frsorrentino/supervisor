@@ -165,7 +165,8 @@
       "uid": "phoneUid00000000000000000000",
       "name": "Pixel 9",
       "kind": "phone",
-      "seen": 1789210790
+      "seen": 1789210790,
+      "cmd_at": 1789199950
     },
     {
       "uid": "watchUid0000000000000000000",
@@ -189,13 +190,14 @@
       "uid": "spareUid00000000000000000000",
       "name": "Pixel 7",
       "kind": null,
-      "seen": null
+      "seen": 1789150500
     },
     {
       "uid": "webUid000000000000000000000",
       "name": "Safari on Mac",
       "kind": "web",
-      "seen": null
+      "seen": 1789197990,
+      "cmd_at": 1789198000
     }
   ],
   "approvals": [],

@@ -422,6 +422,11 @@ SRC3["suggestions"] = [
      "prompt": "Set up field-notes on the phone", "at": 1789199100, "expires_at": 1789242300, "rank": 6, "source": "master"},
     {"id": "s-6b5f8a0c76", "kind": "proposal", "key": "proposal:release-notes-script", "text": "The release notes were written by hand three times this week: make them a script?",
      "prompt": "Propose a script for the release notes", "at": 1789199000, "expires_at": 1789242200, "rank": 6, "source": "master"}]
+# 1.89 (28/10): l'ultimo comando di ogni dispositivo (Cmd.uid) e l'ultimo arrivo tenuto dal relay, che vale quando
+# /seen non ce l'ha (il browser, il Pixel 7)
+SRC3["activity"] = {"phoneUid00000000000000000000": {"cmd": 1789199950.2, "arrival": 1789210000.0},
+                    "webUid000000000000000000000": {"cmd": 1789198000.0, "arrival": 1789197990.0},
+                    "spareUid00000000000000000000": {"arrival": 1789150500.0}, "goneUid0000000000000000000": {"cmd": 1789199999.0}}
 st3 = S.build_state(SRC3, 1789200000)
 T.check("R2 build_state(src) == state-3-stale.json", st3 == _np(F3), diff(st3, _np(F3)) or "equal")
 T.check("R2 (1.33) no recurring list → no `recurring` field (the app shows no box)", "recurring" not in S.build_state(dict(SRC3, recurring=[]), 1789200000), "")
@@ -3940,5 +3945,55 @@ _st86 = {"v": 1, "ts": 1, "host": "", "sessions": [], "quota": json.loads(json.d
 _fit86 = S.fit_state(json.loads(json.dumps(_st86)), 0.1)
 T.check("R86 (1.86) fit_state never drops the week: w7_points and w7_origins stay in a state that stays over its cap",
         _fit86["quota"]["a"].get("w7_points") == _q86["a"]["w7_points"] and _fit86["quota"]["a"]["w7_origins"] == _q86["a"]["w7_origins"], json.dumps(_fit86["quota"]))
+
+# R87 (28/10): la barra di stato parte ogni pochi secondi come «/bin/sh -c <statusLine.command>», figlia di claude:
+# non e' un lavoro in sottofondo e non blocca la chiusura; una shell vera accanto la blocca ancora
+_u87 = tmp / "u87"
+_sl87 = 'bash "/opt/fd/scripts/statusline-ctx.sh"'
+(_u87 / "personal").mkdir(parents=True, exist_ok=True)
+(_u87 / "personal" / "settings.json").write_text(json.dumps({"statusLine": {"type": "command", "command": _sl87, "refreshInterval": 5}}))
+_row87 = {"tmux": "field-notes", "name": "field-notes", "status": "idle", "waiting": False, "attached": False, "pid": 4242, "cwd": str(tmp), "account": "personal", "session_id": "S-F"}
+_cmd87 = {4244: ["/bin/sh", "-c", _sl87], 4245: ["bash", "/opt/fd/scripts/statusline-ctx.sh"], 4246: ["/bin/bash", "-c", "sleep 600"]}
+_sv87 = dict(acc=RL.CFG["accounts"], kids=RL._children, cmdl=RL._cmdline, last=RL.last_sessions)
+try:
+    RL.CFG["accounts"] = {"personal": {"config_dir": str(_u87 / "personal")}}
+    RL.last_sessions = lambda: {"field-notes": {"state": "idle"}}
+    RL._cmdline = lambda pid: _cmd87.get(pid, [])
+    RL._children = lambda pid: [(4243, "node"), (4244, "sh")]
+    _sl87a = RL.close_check("field-notes", [_row87])[0]
+    RL._children = lambda pid: [(4243, "node"), (4244, "sh"), (4246, "bash")]
+    _sl87b = RL.close_check("field-notes", [_row87])[0]
+finally:
+    RL.CFG["accounts"], RL._children, RL._cmdline, RL.last_sessions = _sv87["acc"], _sv87["kids"], _sv87["cmdl"], _sv87["last"]
+T.check("R87 close_ignores_statusline (28/10): the status line command of the settings, run as a child of claude, is not a job in the background → closable; a real shell beside it still blocks",
+        _sl87a["closable"] is True and _sl87a["blocked_by"] is None and _sl87b["blocked_by"] == "background", str((_sl87a, _sl87b)))
+
+# R88 (contratto 1.89, 28/10): per ogni dispositivo l'ultimo comando (Cmd.uid) e l'ultimo arrivo, in
+# device-activity.json: restano dopo la rotazione di relay.log, solo per gli uid accoppiati
+_r88 = tmp / "r88"
+_r88.mkdir(parents=True, exist_ok=True)
+(_r88 / "devices.json").write_text(json.dumps({"phoneUid00000000000000000000": {"name": "Pixel 9", "paired_at": 1}, "webUid000000000000000000000": {"name": "Chrome", "paired_at": 2, "kind": "web"}}))
+_sv88 = dict(rdir=RL.rdir, ex=RL.execute, pa=RL.push_async, last=RL.last_sessions, sd=RL.seen_devices)
+try:
+    RL.rdir = lambda: _r88
+    RL.execute = lambda cmd: (True, "ok")
+    RL.push_async = lambda *a, **k: None
+    RL.last_sessions = lambda: {}
+    RL.run_cmd({"id": "c1", "op": "screen", "session": "x", "by": "web", "uid": "webUid000000000000000000000"})
+    RL.run_cmd({"id": "c2", "op": "screen", "session": "x", "by": "?", "uid": "strangerUid000000000000000"})
+    RL.run_cmd({"id": "c3", "op": "screen", "session": "x", "by": "phone-pixel8"})
+    _a88a = json.loads((_r88 / "device-activity.json").read_text())
+    RL.seen_devices = lambda: {"phoneUid00000000000000000000": 1789210790.0}
+    RL.seen_cached(time.time())
+    _a88b = json.loads((_r88 / "device-activity.json").read_text())
+    _d88 = S.build_devices(json.loads((_r88 / "devices.json").read_text()), {}, _a88b)
+finally:
+    RL.rdir, RL.execute, RL.push_async, RL.last_sessions, RL.seen_devices = _sv88["rdir"], _sv88["ex"], _sv88["pa"], _sv88["last"], _sv88["sd"]
+T.check("R88 relay_device_last_seen (1.89): a command with the uid of a paired device stores its time (a stranger's uid and a command without uid store nothing); a new /seen stores the arrival; build_devices gives cmd_at and the arrival as seen",
+        set(_a88a) == {"webUid000000000000000000000"} and time.time() - _a88a["webUid000000000000000000000"]["cmd"] < 60
+        and _a88b["phoneUid00000000000000000000"] == {"arrival": 1789210790.0} and _a88b["webUid000000000000000000000"] == _a88a["webUid000000000000000000000"]
+        and _d88 == [{"uid": "phoneUid00000000000000000000", "name": "Pixel 9", "kind": None, "seen": 1789210790},
+                     {"uid": "webUid000000000000000000000", "name": "Chrome", "kind": "web", "seen": None, "cmd_at": int(_a88a["webUid000000000000000000000"]["cmd"])}],
+        str((_a88a, _a88b, _d88)))
 
 T.finish()

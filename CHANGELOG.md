@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.72 — 2026-10-28: Close no longer mistakes the status line for a background job, and every paired device shows its last sign of life (contract 1.89).**
+  - Reported from the web app on 28/10: the Close button refused idle sessions at random with «not closed: a job is running in the background». Claude Code runs the `statusLine.command` of the settings every few seconds as `/bin/sh -c <command>`, a child of claude, and the background check counted any shell among those children. A shell whose arguments are the status line command of an account's or the project's settings no longer counts; a real shell beside it still blocks.
+  - The device list had only the name and the pairing time, and a duplicate browser was found only by reading `relay.log`. The relay now keeps, per paired uid, the last command (`Cmd.uid`, new and optional) and the last arrival of a push in `device-activity.json`, outside the log that rotates; `/state.devices[]` gains `cmd_at`, and `seen` falls back to the stored arrival when `/seen` has none.
+  - Tests: relay-verify R87 (`close_ignores_statusline`), R88 (`relay_device_last_seen`), fixture `state-3-stale.json`.
 - **0.8.71 — 2026-10-28: the hourly script's suggestions ask what Accept does, the project first.**
   - Reported from the phone on 28/10: an `unsaved` item said only the fact («<session>: 11 file non committati alla chiusura»), and it was not clear whether Accept meant committing the files or leaving them as they are. The same for `followup` and `waiting`.
   - `suggest fill` now writes each text as a one-line question with the action of Accept, the project's name first (the last part of the session's project, or the session's name without one): «orbit-docs ha 2 file fuori da git: li faccio committare?» (one file: «un file … lo faccio committare?»), «field-notes: la sessione è ferma su «…», glielo mando?», «atlas-shop: ricontrollo «…» e, se è arrivato, riprendo il compito?». The prompts do not change.

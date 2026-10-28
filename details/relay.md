@@ -617,6 +617,33 @@ three items with `rank` and `source`, without `prompt`, by rank),
 `cmd-result-sample.json` (a `choose` outside the options refused, a `discuss`, a
 `choose` accepted).
 
+Contract 1.89 (28/10/2026, the last sign of life of every paired device,
+accepted by the maintainer from the suggestions: «the list of devices in the app
+shows for each the last arrival of a push, with Revoke beside it»). Additive, `v`
+stays 1.
+
+- **`Cmd.uid`** (optional): the Firebase uid of the device that sends the command,
+  the same uid it paired with (`/allowed`). Phone, watch and the web app put it in
+  every command, inside the encrypted document (bus and local API alike). The
+  relay keeps the time of the last command per uid; a uid that is not paired is
+  ignored, and a command without `uid` works as before.
+- **`/state.devices[].cmd_at`** (epoch s): the last command received with that
+  device's uid. Present only when there is one: an app that does not send `uid`
+  yet leaves its device without it.
+- **`/state.devices[].seen`** is now also the last arrival kept by the relay: the
+  latest of `/seen/<uid>` and the arrival stored the last time `/seen` changed, so
+  a device whose `/seen` node is missing still shows when it last read.
+- Both live in `device-activity.json` next to `devices.json` (`{uid: {arrival,
+  cmd}}`), not in `relay.log`, so they survive its rotation; a revoked device
+  leaves the file at the next write. The last sign of life is the later of `seen`
+  and `cmd_at`: the app computes it. Revoke is the existing op `unpair`.
+- `cmd_at` reaches `/state` with the next full push (a command that changes
+  something asks for one; a read waits for the next).
+
+Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at`
+and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
+the relay's arrival only).
+
 Contract 1.20 counts the phone as well as the watch before falling back to
 Telegram. Each paired device writes `/seen/<uid>` (the Firebase server time)
 when it reads `/state`; if no paired device has read an event within

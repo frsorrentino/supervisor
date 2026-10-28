@@ -190,7 +190,31 @@ def seen_cached(now):
         return c.get("seen") if isinstance(c.get("seen"), dict) else {}
     write_json(p, {"at": now, "seen": got})
     arrival_log(c.get("seen") if isinstance(c.get("seen"), dict) else {}, got)
+    device_activity("arrival", got)
     return got
+
+
+def device_activity_path():
+    return rdir() / "device-activity.json"
+
+
+def device_activity(field, times):
+    """1.89 (28/10): l'ultimo segno di vita di ogni dispositivo accoppiato in device-activity.json, {uid: {arrival,
+    cmd}} — field arrival (una lettura nuova di /seen) o cmd (un comando con il suo uid); times {uid: epoch s}. Fuori da
+    relay.log, che ruota; un uid non accoppiato non entra, uno revocato esce."""
+    devs = read_json(devices_path(), {})
+    if not isinstance(devs, dict) or not devs:
+        return
+    p = device_activity_path()
+    cur = read_json(p, {})
+    cur = {u: v for u, v in (cur.items() if isinstance(cur, dict) else []) if u in devs and isinstance(v, dict)}
+    changed = False
+    for uid, at in times.items():
+        if uid in devs and isinstance(at, (int, float)) and at > float(cur.get(uid, {}).get(field) or 0):
+            cur.setdefault(uid, {})[field] = float(at)
+            changed = True
+    if changed:
+        write_json(p, cur)
 
 
 def arrival_log(old, new):
@@ -1092,7 +1116,7 @@ def collect_sources(now=None):
         "quota": _json_cmd("quota", "--json", expect="{") or {},
         "projects": inv, "night": night_queue(), "night_report": night_report_latest(), "recap": recap_today(now), "ops": list(OPS), "slash": slash_allowed(),
         "follow": followed(), "awaiting": aw, "next": nexts, "next_at": nexts_at, "tools": tools,
-        "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "recurring": _load("cm-recurring").for_state(),
+        "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "activity": read_json(device_activity_path(), {}), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
         "attention": attention_open(rows, ledger), "needs_you": needs_you_of(rows),
@@ -1434,13 +1458,40 @@ def _children(pid):
     return out
 
 
+def _cmdline(pid):
+    """Gli argomenti del processo pid; [] se /proc non risponde."""
+    try:
+        return [a for a in Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace").split("\0") if a]
+    except OSError:
+        return []
+
+
+def statusline_cmds(cwd=None):
+    """28/10: i comandi della barra di stato (statusLine.command) nelle impostazioni degli account e del progetto."""
+    files = [Path(cm.expand(a.get("config_dir") or "")) / "settings.json" for a in (CFG.get("accounts") or {}).values() if a.get("config_dir")]
+    if cwd:
+        files += [Path(cwd) / ".claude" / "settings.json", Path(cwd) / ".claude" / "settings.local.json"]
+    out = set()
+    for f in files:
+        sl = (read_json(f, {}) or {}).get("statusLine") if f.is_file() else None
+        if isinstance(sl, dict) and isinstance(sl.get("command"), str) and sl["command"].strip():
+            out.add(sl["command"].strip())
+    return out
+
+
 def background_of(row):
     """1.84: la sessione ha un lavoro in sottofondo — un Bash in background o un processo figlio di una shell: fra i
-    figli del processo claude una shell (i server MCP sono node o python, non shell). Solo per le sessioni di qui."""
+    figli del processo claude una shell (i server MCP sono node o python, non shell). Solo per le sessioni di qui.
+    28/10: la barra di stato non conta — Claude Code la lancia ogni pochi secondi come «/bin/sh -c <statusLine.command>»,
+    e la chiusura falliva a caso."""
     pid = row.get("pid")
     if not pid or (row.get("host") and row.get("host") != "local"):
         return False
-    return any(name in BG_SHELLS for _, name in _children(pid))
+    shells = [k for k, name in _children(pid) if name in BG_SHELLS]
+    if not shells:
+        return False
+    sls = statusline_cmds(row.get("cwd"))
+    return any(" ".join(_cmdline(k)[2:]).strip() not in sls for k in shells)
 
 
 def close_check(name, rows, allow_attached=False):
@@ -2646,6 +2697,11 @@ def run_cmd(cmd, arrived=None):
     ok, text = res[0], res[1]
     extra = res[2] if len(res) > 2 and isinstance(res[2], dict) else {}   # 1.13: {"session": nome} dopo un launch
     by = str(cmd.get("by") or "?")
+    if isinstance(cmd.get("uid"), str):   # 1.89: chi l'ha mandato, per l'ultimo segno di vita del dispositivo
+        try:
+            device_activity("cmd", {cmd["uid"]: t_in})
+        except (OSError, ValueError):
+            pass
     # 15/10: per una risposta, la domanda a cui risponde (1.52) o «senza id»: dal log si vede se l'app la manda
     asked = (f" · domanda {cmd.get('question')}" if cmd.get("question") else " · senza id domanda") if cmd.get("op") in ("answer", "allow_all") else ""
     log(f"cmd {cid}: {cmd.get('op')} {cmd.get('session') or ''} da {by}{' (locale)' if cmd.get('_local') else ''}{asked} → {'ok' if ok else 'ERR'} {str(text)[:80]}{timing}")
