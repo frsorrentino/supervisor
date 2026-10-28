@@ -42,7 +42,12 @@ fermarla. `fallback` = {from, to, category, at} finche' la sessione e' ancora
 sul modello di ripiego, letto dalla trascrizione (cm-core.model_fallback, stessa
 definizione di fable-director); nella tabella, la nota dice come tornare.
 
+ORFANI (28/10/2026): un claude con un nome che discende dal server tmux ma da nessun suo pannello non e' una
+sessione viva: fuori dall'elenco e dal JSON, una nota nella tabella. `--reap-orphans` li chiude (HUP, TERM, KILL):
+subito con --now, altrimenti passati sessions.orphan_grace_s dalla prima vista; --name NOME solo quello.
+
 Uso: cm-sessions.py [--json] [--watch [SECONDI]] [--no-screen]
+       cm-sessions.py --reap-orphans [--now] [--name NOME]
 """
 import glob
 import importlib.util
@@ -249,12 +254,134 @@ def registry_entries():
 
 def tmux_panes():
     """{pane_pid: session_name} — per i processi fuori registro e per il ripiego."""
-    out = {}
-    for line in (tmux("list-panes", "-a", "-F", "#{session_name} #{pane_pid}") or "").splitlines():
-        s, _, p = line.rpartition(" ")
-        if p.strip().isdigit():
+    return tmux_server()[1]
+
+
+def tmux_server():
+    """(pid del server tmux, {pane_pid: session_name}); (None, {}) senza server."""
+    server, out = None, {}
+    for line in (tmux("list-panes", "-a", "-F", "#{pid} #{session_name} #{pane_pid}") or "").splitlines():
+        srv, _, rest = line.partition(" ")
+        s, _, p = rest.rpartition(" ")
+        if p.strip().isdigit() and srv.isdigit():
+            server = int(srv)
             out[int(p)] = s
+    return server, out
+
+
+def ancestors(pid):
+    """Il pid e i suoi antenati, fino a init."""
+    out = []
+    while pid and pid > 1 and len(out) < 64:
+        out.append(pid)
+        pid = proc_ppid(pid)
     return out
+
+
+def alive(pid):
+    """Vivo = /proc/<pid> esiste e non e' uno zombie (stessa regola di `vivo` in cm-restart.sh)."""
+    try:
+        return "\nState:\tZ" not in Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return False
+
+
+NAME_ARG = re.compile(r"(?:^| )(?:-n|--name|--remote-control) (\S+)")
+
+
+def orphans(server=None, panes=None):
+    """I claude rimasti senza il loro tmux (28/10/2026, dal vivo): il claude della master partito alle 11:58 (PID 13277,
+    `--remote-control master -n master -c`) era ancora figlio del server tmux ma in nessun pannello, dopo che il tmux
+    «master» era stato rifatto alle 12:42. Vivo e occupato per 52 minuti, col suo Remote Control «master» ancora
+    registrato: l'app mostrava due master, una che non rispondeva; SIGTERM ignorato.
+    Orfano = un claude con un nome (registro, -n o --remote-control) che discende dal NOSTRO server tmux senza stare in
+    nessuno dei suoi pannelli. Un pannello vivo e' sempre un antenato del suo claude (anche del figlio in cui claude si
+    rilancia); un claude fuori da tmux (terminale, --bg) non discende dal server; mai la sessione da cui si guarda.
+    [{pid, name, proc_start}]"""
+    if server is None:
+        server, panes = tmux_server()
+    if not server:
+        return []
+    cands = [(d["pid"], d.get("name") or "") for d in registry_entries()]
+    scan = os.environ.get("CM_PROC_SCAN_PIDS")
+    for pid in ([int(x) for x in scan.split() if x.isdigit()] if scan is not None else
+                [int(os.path.basename(d)) for d in glob.glob("/proc/[0-9]*")]):
+        cmd = proc_cmdline(pid)
+        if CLAUDE_CMD.search(cmd) and not CLAUDE_HELPER.search(cmd) and not is_tmux(pid, cmd):
+            cands.append((pid, ""))
+    out, seen = [], set()
+    for pid, name in cands:
+        if pid in seen or not alive(pid) or is_ancestor(pid):
+            continue
+        seen.add(pid)
+        m = NAME_ARG.search(proc_cmdline(pid))
+        name = name or (m.group(1) if m else "")
+        chain = ancestors(pid)
+        # un claude senza nome in un popup o in un run-shell di tmux non e' una sessione: non si tocca
+        if not name or server not in chain or any(p in panes for p in chain):
+            continue
+        out.append({"pid": pid, "name": name, "proc_start": proc_start(pid)})
+    return out
+
+
+def close_orphan(o, wait):
+    """HUP, poi TERM, poi KILL, ognuno con la sua attesa; si ferma appena il processo muore. Il pid si ricontrolla con
+    procStart prima di ogni segnale (un pid riusato non si tocca). True = chiuso."""
+    import signal
+    for sig, w in ((signal.SIGHUP, wait), (signal.SIGTERM, wait), (signal.SIGKILL, max(wait, 5))):
+        if not alive(o["pid"]) or proc_start(o["pid"]) != o["proc_start"]:
+            return True
+        try:
+            os.kill(o["pid"], sig)
+        except OSError:
+            return True
+        end = time.time() + w
+        while time.time() < end and alive(o["pid"]):
+            time.sleep(0.2)
+    return not alive(o["pid"])
+
+
+def reap_orphans(now=False, name=None):
+    """Chiude gli orfani. Senza --now si segnano alla prima vista (state_dir/orphans.json) e si chiudono passati
+    sessions.orphan_grace_s; --now (l'hook session-closed, launch di un nome) li chiude subito; --name solo quello."""
+    sc = CFG.get("sessions") or {}
+    grace, wait = sc.get("orphan_grace_s", 120), sc.get("orphan_wait_s", 3)
+    sd = Path(cm.expand(CFG.get("state_dir") or "~/.local/state/cc-supervisor"))
+    path = sd / "orphans.json"
+    try:
+        marks = json.loads(path.read_text())
+    except (OSError, ValueError):
+        marks = {}
+    found = orphans()
+    t = time.time()
+    keep = {}
+    for o in found:
+        key = f"{o['pid']}:{o['proc_start']}"
+        first = marks.get(key, t)
+        if name and o["name"] != name:
+            keep[key] = first
+            continue
+        if now or t - first >= grace:
+            ok = close_orphan(o, wait)
+            msg = cm.msg(CFG, "sessions.orphan_closed" if ok else "sessions.orphan_not_closed", name=o["name"], pid=o["pid"])
+            print(msg)
+            try:
+                sd.mkdir(parents=True, exist_ok=True)
+                with open(sd / "orphans.log", "a") as f:
+                    f.write(time.strftime("%Y-%m-%dT%H:%M:%S ") + msg + "\n")
+            except OSError:
+                pass
+            if not ok:
+                keep[key] = first
+        else:
+            keep[key] = first
+            print(cm.msg(CFG, "sessions.orphan_marked", name=o["name"], pid=o["pid"], s=round(grace - (t - first))))
+    try:
+        sd.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(keep))
+    except OSError:
+        pass
+    return 0
 
 
 def tmux_client_activity():
@@ -482,16 +609,26 @@ def short_cwd(cwd):
     return cwd
 
 
+ORPHANS = []   # gli orfani visti dall'ultimo collect(): fuori dall'elenco, una nota nella tabella
+
+
 def collect(read_screen=True):
-    panes = tmux_panes()
+    global ORPHANS
+    server, panes = tmux_server()
+    # 28/10/2026: un claude senza il suo tmux non e' una sessione viva (l'app mostrava due master): non entra nell'elenco
+    ORPHANS = orphans(server, panes)
+    skip = {o["pid"] for o in ORPHANS}
     attached = tmux_attached()
     mine = my_config_dir()
     my_registry = os.path.realpath(os.path.join(mine, "sessions"))
     rows = []
     seen_pids = set()
     disk = disk_version()
+    seen_pids.update(skip)
     for d in registry_entries():
         pid = d["pid"]
+        if pid in skip:
+            continue
         seen_pids.add(pid)
         tm = (d.get("tmux") or "").split(":", 1)[0] or panes.get(pid) or panes.get(proc_ppid(pid) or -1) or ""
         row = {
@@ -701,6 +838,9 @@ def render(rows):
             lines += [""] + ["  " + x for x in hl]
     if abandoned:
         lines += ["", "  " + m("sessions.abandoned_hint", n=abandoned)]
+    for o in ORPHANS:
+        lines += ["", "  " + m("sessions.orphan_note", name=o["name"], pid=o["pid"],
+                               min=max(1, round((CFG.get("sessions") or {}).get("orphan_grace_s", 120) / 60)))]
     if any(r.get("outdated") for r in rows):
         lines += ["", "  " + m("sessions.outdated", version=disk_version())]
     if tmux("list-sessions") is None:
@@ -725,6 +865,9 @@ def main(argv):
     if "--count-active" in argv:   # usato da launch (tetto sessions.max_sessions): solo il numero
         print(active_count(collect(read_screen=False)))
         return 0
+    if "--reap-orphans" in argv:   # relay ensure (ogni minuto), launch di un nome, l'hook session-closed di tmux
+        name = argv[argv.index("--name") + 1] if "--name" in argv and argv.index("--name") + 1 < len(argv) else None
+        return reap_orphans(now="--now" in argv, name=name)
     if "--quota-warn" in argv:   # usato da launch: stampa l'avviso per UN account, se serve
         acc = argv[argv.index("--quota-warn") + 1]
         for a, q in quota_warnings():

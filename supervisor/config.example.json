@@ -135,7 +135,9 @@
     "stall_min": 20,
     "recent_min": 5,
     "max_sessions": 5,
-    "idle_hours": 2
+    "idle_hours": 2,
+    "orphan_grace_s": 120,
+    "orphan_wait_s": 3
   },
   "resume_quota": {
     "windowless": "new",

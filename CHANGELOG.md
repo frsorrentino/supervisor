@@ -2,6 +2,14 @@
 
 ## 0.3.x
 
+- **0.8.73 — 2026-10-28: a claude left without its tmux closes, instead of staying on as a duplicate that does not answer.**
+  - Seen on 28/10: the master's claude started at 11:58 (`--remote-control master -n master -c`) was still a child of the tmux server but in no pane, after the `master` tmux session had been made again at 12:42. It stayed alive and busy for 52 minutes with its Remote Control `master` still registered: the app showed two masters, one that did not answer. SIGTERM was ignored; it took SIGKILL.
+  - An orphan is a claude with a name (registry, `-n` or `--remote-control`) that descends from the tmux server without being in any of its panes; never the session that looks, never a claude outside tmux (terminal, `--bg`), never an unnamed claude in a popup or `run-shell`.
+  - `launch` sets a global tmux hook `session-closed[73]` (its own index, rewritten at every launch): when a session dies (`kill-session`, `destroy-unattached`, restart), `sessions --reap-orphans --now` closes the orphans at once with HUP, then TERM, then KILL, `sessions.orphan_wait_s` (3) apart; the output goes to `orphans.log` in the state folder.
+  - `relay ensure`, every minute, marks the orphans it sees and closes them after `sessions.orphan_grace_s` (120): the net for a server started before this version, or a hook removed.
+  - `launch` of a name (and so `restart`, which goes through it) first closes the orphan with that name: before, its registry entry kept the name and the new session became `-2` beside it.
+  - `sessions` and `sessions --json` (the app's list, and every relay command) no longer list an orphan as a live session; the table adds a line «orfana: NAME (pid N)» with the time left.
+  - Tests: orphan-verify O1-O5 (`orphan_claude_closed`); the fake claude gains the `deaf` scenario (ignores HUP and TERM).
 - **0.8.72 — 2026-10-28: Close no longer mistakes the status line for a background job, and every paired device shows its last sign of life (contract 1.89).**
   - Reported from the web app on 28/10: the Close button refused idle sessions at random with «not closed: a job is running in the background». Claude Code runs the `statusLine.command` of the settings every few seconds as `/bin/sh -c <command>`, a child of claude, and the background check counted any shell among those children. A shell whose arguments are the status line command of an account's or the project's settings no longer counts; a real shell beside it still blocks.
   - The device list had only the name and the pairing time, and a duplicate browser was found only by reading `relay.log`. The relay now keeps, per paired uid, the last command (`Cmd.uid`, new and optional) and the last arrival of a push in `device-activity.json`, outside the log that rotates; `/state.devices[]` gains `cmd_at`, and `seen` falls back to the stored arrival when `/seen` has none.

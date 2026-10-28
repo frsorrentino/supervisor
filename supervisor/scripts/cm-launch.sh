@@ -176,6 +176,11 @@ nome_preso() {
   done
   return 1
 }
+# 28/10/2026: un claude rimasto senza il suo tmux con questo nome (il doppione che non risponde) si chiude prima: altrimenti
+# la sua voce nel registro tiene il nome e la sessione nuova diventa «-2», accanto a lui. Restart passa di qui.
+if [ -z "$HOST" ] && [ "$BG" != si ]; then
+  python3 "$CM_SCRIPTS/cm-sessions.py" --reap-orphans --now --name "$BASE" >&2 || true
+fi
 NOME="$BASE"; n=2
 while nome_preso "$NOME"; do NOME="$BASE-$n"; n=$((n + 1)); done
 
@@ -266,6 +271,7 @@ if [ "$AGENT" = codex ]; then   # S09: Codex CLI nudo, senza gli argomenti di Cl
 else
   cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env "${ENVARGS[@]}" "$CLAUDE" "${ARGS[@]}"
 fi
+cm_orphan_hook   # 28/10/2026: alla morte del tmux di una sessione il suo claude si chiude (HUP, TERM, KILL)
 # Il file di registro NON e' <pane_pid>.json: il binario `claude` si rilancia
 # in un figlio (visto dal vivo il 09/09: pane 1122 → sessione registrata 1146),
 # quindi si cerca il file che dichiara QUESTA sessione tmux nel campo `tmux`.

@@ -3041,6 +3041,13 @@ def guard(now=None):
 
 
 def ensure():
+    # 28/10/2026: ogni minuto, i claude rimasti senza il loro tmux si segnano e passati sessions.orphan_grace_s si
+    # chiudono (cm-sessions.py --reap-orphans): staccato, la scaletta HUP/TERM/KILL non ferma il battito
+    try:
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve().parent / "cm-sessions.py"), "--reap-orphans"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
     if not R.get("enabled"):
         return 0
     pid = serve_alive()

@@ -332,6 +332,17 @@ case "$SCEN" in *,perm,*|*,perm-bypass,*|*,perm-old,*|*,perm-lag,*|*,perm-stuck,
   exit 0 ;;
 esac
 printf '❯ '   # senza newline: il testo digitato resta sulla riga del prompt, come in Claude Code
+# deaf (28/10/2026): come il claude della master rimasta senza tmux (PID 13277), ignora HUP e TERM e resta acceso
+# anche quando il terminale non c'e' piu'. Se compare il file FAKE_CLAUDE_RUN_FILE.<nome>, lo esegue una volta (output
+# in <file>.out): un comando lanciato DA questa sessione, per provare che la pulizia non chiude mai la sessione corrente
+case "$SCEN" in *,deaf,*)
+  trap '' HUP TERM
+  while :; do
+    run="${FAKE_CLAUDE_RUN_FILE:-}.$NAME"
+    if [ -n "${FAKE_CLAUDE_RUN_FILE:-}" ] && [ -f "$run" ]; then bash "$run" > "$run.tmp" 2>&1; mv "$run.tmp" "$run.out"; rm -f "$run"; fi
+    sleep 0.3
+  done ;;
+esac
 # resta vivo finche' non riceve /exit (o un segnale)
 while IFS= read -r line; do
   line="${line//$'\e'/}"   # un ESC arrivato prima del testo (Escape di talk) non e' testo

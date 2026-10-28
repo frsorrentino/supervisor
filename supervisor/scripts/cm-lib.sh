@@ -6,6 +6,7 @@
 #   cm_account_of_name NOME  account dal prefisso tmux (prefisso piu' lungo vince; "" = quello senza prefisso)
 #   cm_get ACCOUNT CAMPO     campo di un account (CONFIG_DIR, TMUX_PREFIX, SHAPE, SHELL_COMMAND, LABEL)
 #   cm_msg CHIAVE k=v ...    messaggio formattato nella lingua configurata
+#   cm_orphan_hook           hook tmux session-closed: chiude i claude rimasti senza pannello (28/10/2026)
 CM_SCRIPTS="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # T81 (11/09/2026, dal polso dell'utente): dal cron PATH=/usr/bin:/bin e `claude` (link in ~/.local/bin)
 # non si trova: il bot rispondeva «AVVIO FALLITO». Ogni script passa di qui: si antepone una volta.
@@ -30,6 +31,18 @@ cm_tmux() {
   if [ -n "${CM_TMUX_ARGS:-}" ]; then tmux $CM_TMUX_ARGS "$@"
   elif [ -n "${CM_TMUX_SOCKET:-}" ]; then tmux -L "$CM_TMUX_SOCKET" "$@"
   else tmux "$@"; fi
+}
+
+cm_orphan_hook() {  # l'hook session-closed del server tmux: alla morte di una sessione si chiudono i claude rimasti senza pannello
+  # 28/10/2026: il claude della master (PID 13277) e' rimasto vivo e occupato per 52 minuti dopo che il suo tmux era
+  # stato rifatto, col suo Remote Control «master» registrato; SIGHUP e SIGTERM non lo fermavano. L'hook e' globale
+  # e con un indice suo (73), per non togliere quelli della persona; si riscrive a ogni launch (idempotente). L'uscita
+  # va in state_dir/orphans.log: quella di run-shell comparirebbe nel pannello attivo.
+  local cfg="${CC_SUPERVISOR_CONFIG:-${TEAM_SUPERVISOR_CONFIG:-${CLAUDE_MASTER_CONFIG:-${CM_HOME:-$HOME}/.config/cc-supervisor/config.json}}}"
+  local envs="HOME='$HOME' CC_SUPERVISOR_CONFIG='$cfg' CM_TMUX_ARGS='-S #{socket_path}'"
+  [ -n "${CM_HOME:-}" ] && envs="$envs CM_HOME='$CM_HOME'"
+  cm_tmux set-hook -g 'session-closed[73]' \
+    "run-shell -b \"env $envs python3 '$CM_SCRIPTS/cm-sessions.py' --reap-orphans --now >/dev/null 2>&1\"" 2>/dev/null || true
 }
 
 cm_recover_display() {  # esporta il display del desktop se manca: 0 = recuperato

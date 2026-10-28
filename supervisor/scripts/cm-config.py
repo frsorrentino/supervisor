@@ -119,7 +119,7 @@ DEFAULTS = {
     "talk": {"quiet_s": 6, "max_wait_s": 240, "warn_native_channel": True,
              "from_name": "supervisor", "from_mode": "bypass"},
     "report": {"subdir": "docs/reports", "image_exts": ["png", "jpg", "jpeg", "webp", "gif"]},
-    "sessions": {"stall_min": 20, "recent_min": 5, "max_sessions": 5, "idle_hours": 2},
+    "sessions": {"stall_min": 20, "recent_min": 5, "max_sessions": 5, "idle_hours": 2, "orphan_grace_s": 120, "orphan_wait_s": 3},
     # 21/10/2026 (Claude Code 2.1.304): l'avviso «Resume this conversation?» sul costo della ripresa, in una sessione
     # lanciata con --resume/--continue senza finestra o su un altro host: "new" sceglie una conversazione nuova con un
     # rimando alla vecchia, "needs_you" chiede alla persona, "off" non fa niente; watch_s = attesa del dialogo
