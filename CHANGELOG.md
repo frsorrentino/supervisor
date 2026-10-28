@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.78 — 2026-10-28: the phone's chat no longer fails at every poll for normal states, and `talk --help` is not an error (contract 1.93).**
+  - Asked by the maintainer on 28/10: the local notes of claude-observe were collected and never read. All 191 are now sorted with a class and a reason; the three most frequent came from the relay's `transcript`.
+  - An open chat asks for the entries after the last one it has. After a restart or a `/clear` that entry is gone, and every poll failed («no entry … in the transcript», 525 times). Now the relay answers with the last entries and `reset: true`, and the app replaces its list.
+  - The chat of a session that is no longer running, asked by name, read «… is not running»: now it comes from the registry, read-only, as by id since 1.82. A live session with no transcript yet (it starts with the first turn) gets an empty page instead of «no transcript».
+  - `supervisor talk --help` printed the usage on stderr and exited 2: now on stdout, exit 0.
+  - Tests: relay-verify R92 and R19, talk-report-verify T-HELP.
 - **0.8.77 — 2026-10-28: a change to the machine monitor alone restarts the relay daemon.**
   - Seen live after 0.8.76: `/state.system` kept the old text. The daemon restarts when the code fingerprint changes, and `cm-system.py`, which it keeps loaded since 0.8.74, was not in it: a release touching only that file stayed out until the next restart. It is in the fingerprint now.
   - Tests: relay-verify R91.

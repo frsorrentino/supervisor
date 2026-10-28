@@ -1221,7 +1221,13 @@ def transcript_page(session, tm, arg, sid=None):
         return transcript_read(path, n, mode, ref)
     row = live_row(tm)
     if not row:
-        return False, M("relay.cmd_interrupt_gone", name=session)
+        # 28/10 (note di claude-observe, «X is not running» su decine di sessioni): la chat di una sessione chiusa,
+        # chiesta per nome, si legge dal registro in sola lettura come quella per id (1.82)
+        row = session_row(tm)
+        path = core.transcript_of(row) if row else None
+        if not path:
+            return False, M("relay.cmd_interrupt_gone", name=session)
+        return transcript_read(path, n, mode, ref)
     if row.get("host") and row.get("host") != "local":
         # 09/10: la chat di una sessione su un altro host: prima i byte nuovi del suo transcript, nella copia locale
         try:
@@ -1232,7 +1238,8 @@ def transcript_page(session, tm, arg, sid=None):
             pass
     path = core.transcript_of(row)
     if not path:
-        return False, M("relay.cmd_transcript_none", name=session)
+        # 28/10: una sessione appena partita non ha ancora la trascrizione (nasce col primo turno): una pagina vuota
+        return True, json.dumps({"entries": [], "more": False})
     return transcript_read(path, n, mode, ref)
 
 
@@ -1248,8 +1255,14 @@ def transcript_read(path, n, mode, ref):
         if not ref and len(entries) < n and start:
             continue
         break
+    reset = False
     if ref and ref not in ids:
-        return False, M("relay.cmd_transcript_unknown", id=ref)
+        if mode != "after":
+            return False, M("relay.cmd_transcript_unknown", id=ref)
+        # 1.93 (28/10, «no entry … in the transcript» ×525 nelle note di claude-observe): la chat aperta chiede le voci
+        # dopo l'ultima che ha; dopo un riavvio o un /clear quella voce non c'e' piu' e ogni giro falliva. Le ultime n
+        # voci con reset true: l'app sostituisce la lista
+        mode, ref, reset = None, None, True
     if mode == "after":
         i = ids.index(ref) + 1
         page, more = entries[i:i + n], len(entries) > i + n
@@ -1264,7 +1277,7 @@ def transcript_read(path, n, mode, ref):
         else:
             page = page[1:]
         more = True
-    return True, json.dumps({"entries": page, "more": bool(more)}, ensure_ascii=False)
+    return True, json.dumps({"entries": page, "more": bool(more), **({"reset": True} if reset else {})}, ensure_ascii=False)
 
 
 def session_row(tm):

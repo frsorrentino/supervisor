@@ -274,6 +274,9 @@ def reopen_session(name):
 
 
 def cmd_talk(argv):
+    if argv and argv[0] in ("--help", "-h", "--aiuto"):   # 28/10: un aiuto chiesto non e' un errore (nota di claude-observe)
+        print(M("talk.usage"))
+        return 0
     if argv and argv[0] == "--status":
         return inbox().main(["status"] + argv[1:2])
     name = argv[0] if argv else ""

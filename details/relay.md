@@ -644,6 +644,22 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.93 (28/10/2026, from the local notes of claude-observe: «no entry … in
+the transcript» 525 times, «X is not running» and «X: no transcript» on dozens of
+sessions). Additive, `v` stays 1.
+
+- **`transcript {arg: "n:after=<id>"}` with an id that is no longer in the
+  transcript** (a restart, a `/clear`, a new conversation in the same session)
+  answers ok with the last `n` entries and **`reset: true`**: the app replaces its
+  list. Before, every poll of an open chat failed. `reset` is present only then;
+  `before=<id>` with an unknown id still fails.
+- **`transcript` by name of a session that is no longer running** reads its last
+  conversation from the registry, read-only, as `sid` does since 1.82; a name the
+  registry does not know still answers «… is not running».
+- **`transcript` of a live session that has no transcript yet** (it starts with
+  the first turn) answers ok with `{entries: [], more: false}` instead of «no
+  transcript».
+
 Contract 1.92 (28/10/2026, from supervisor-app's live view: red at 6.7-7.3 per core
 with no advice, or only one about a chrome-bridge at 0% CPU, and nothing said what
 was heavy). Additive, `v` stays 1; no new field.

@@ -294,6 +294,11 @@ print(repr(filt("❯ \\x1b[2msolo suggerimento fino a fine riga")))        # non
             and tm("has-session", "-t", "=orto-2").returncode != 0 and bg_got("seconda foto"), r.stdout + r.stderr)
     bg.proc.kill()
 
+# 28/10 (note di claude-observe): `talk --help` usciva con 2 e scriveva l'uso su stderr, e la nota contava come errore
+_h = talk("--help")
+T.check("T-HELP talk --help prints the usage on stdout and exits 0 (an asked help is not an error)",
+        _h.returncode == 0 and "supervisor talk" in _h.stdout and not _h.stderr.strip(), f"rc={_h.returncode} out={_h.stdout[:120]} err={_h.stderr[:120]}")
+
 peer.proc.kill()
 T.rm(str(tmp))
 T.finish()

@@ -1389,7 +1389,7 @@ T.check("R19 (1.22) typed while a turn runs: shown from the enqueue, with the ti
         and sum(1 for _, _, t in q19.values() if t == "then tag the release") == 1, str(q19))
 T.check("R19 (1.22) «2:before=a4.0» → the two entries before it, more true; a bad arg, an unknown id and a session that is not running → ok false in plain words",
         [e["id"] for e in p19["entries"]] == ["a1.1", "a3.0"] and p19["more"] is True and bad[0]["ok"] is False and "expected n" in bad[0]["text"]
-        and bad[1]["text"] == "no entry nope in the transcript" and none19["ok"] is False and none19["text"] == "atlas-shop-none is not running", str(p19) + str(bad) + str(none19))
+        and bad[1]["ok"] is True and json.loads(bad[1]["text"]).get("reset") is True and none19["ok"] is False and none19["text"] == "atlas-shop-none is not running", str(p19) + str(bad) + str(none19))
 # R55 (contratto 1.72, 15/10): «Mostra tutto» sotto un passaggio — op diff con l'id della voce, sulla stessa trascrizione
 _a8_54 = next(e for e in json.loads(RES[19]["text"])["entries"] if e["id"] == "a8.0")
 d54 = [send_cmd({"id": f"6f1c2d3e-0710-4000-8000-00000000071{i}", "op": "diff", "session": "field-notes", "arg": a, "issued": 1789211000 + i, "by": "phone-pixel8"})
@@ -4093,5 +4093,30 @@ T.check("R90 system_stuck (1.91) sys_unit_stop: units that are not the advised o
 _loaded91 = sorted(set(re.findall(r'_load\("(cm-[a-z-]+)"\)', (T.SCRIPTS / "cm-relay.py").read_text())))
 T.check("R91 code_print covers every module the daemon keeps loaded (cm-system among them): a change to one of them restarts the daemon",
         "cm-system.py" in RL.CODE_FILES and all(f"{n}.py" in RL.CODE_FILES for n in ("cm-relay-state", "cm-relay-crypto", "cm-diff", "cm-core", "cm-system")), str((RL.CODE_FILES, _loaded91)))
+
+# R92 (28/10, note di claude-observe: «no entry … in the transcript» ×525, «X is not running» e «X: no transcript» su
+# decine di sessioni): la chat del telefono non deve fallire a ogni giro per uno stato normale
+_tx92 = tmp / "r92.jsonl"
+_tx92.write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+_all92 = [e["id"] for e in json.loads(RL.transcript_read(str(_tx92), 200, None, None)[1])["entries"]]
+_sv92 = dict(lr=RL.live_row, sr=RL.session_row, tof=RL.core.transcript_of)
+try:
+    _a92 = RL.transcript_read(str(_tx92), 5, "after", "gone-entry.0")
+    RL.live_row = lambda tm: None
+    RL.session_row = lambda tm: {"tmux": tm, "name": tm, "status": "dead", "cwd": "/x", "account": "personal", "session_id": "S-closed"} if tm == "chiusa92" else None
+    RL.core.transcript_of = lambda row: str(_tx92) if row.get("session_id") == "S-closed" else ""
+    _b92 = RL.transcript_page("chiusa92", "chiusa92", "5")
+    _c92 = RL.transcript_page("mai92", "mai92", "5")
+    RL.live_row = lambda tm: {"tmux": tm, "name": tm, "status": "idle", "cwd": "/x", "session_id": ""}
+    _d92 = RL.transcript_page("nuova92", "nuova92", "5")
+finally:
+    RL.live_row, RL.session_row, RL.core.transcript_of = _sv92["lr"], _sv92["sr"], _sv92["tof"]
+_ja92 = json.loads(_a92[1]) if _a92[0] else {}
+T.check("R92 (1.93) transcript «n:after=<id>» with an id no longer in the transcript (a new conversation, a restart) → ok, the last n entries and reset true: the app replaces its list instead of failing at every poll",
+        _a92[0] is True and _ja92.get("reset") is True and [e["id"] for e in _ja92["entries"]] == _all92[-5:], str(_a92)[:300])
+T.check("R92 (1.93) transcript of a session that is no longer running but is in the registry → its conversation read-only; a name nowhere → still «is not running»",
+        _b92[0] is True and [e["id"] for e in json.loads(_b92[1])["entries"]] == _all92[-5:] and _c92 == (False, "mai92 is not running"), str((_b92[:1], _c92)))
+T.check("R92 (1.93) transcript of a live session with no transcript yet (just started) → ok, no entries, more false",
+        _d92 == (True, json.dumps({"entries": [], "more": False})), str(_d92))
 
 T.finish()
