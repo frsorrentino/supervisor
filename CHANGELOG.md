@@ -2,6 +2,15 @@
 
 ## 0.3.x
 
+- **0.8.83 — 2026-10-29: the relay much lighter, its children included.**
+  - Measured on the live daemon before: 36% of a core (12.7% the process, 23.5% the programs it starts). A push spent about 12 s of CPU on a loaded Chromebook, and a detached recount of the day's publications ran every minute.
+  - After, same measure (process + children from /proc): 2.5% over 2 minutes at rest, 5.2% over 10 minutes of normal use, 12.8% over 10 minutes with 25 pushes. What is left grows with the number of pushes, about 1 s each.
+  - In the daemon the slow reads are remembered until something they depend on changes: quota (read again when a statusline file changes, at most every 2 minutes), the registry snapshot, the tasks waiting for an ok and the commitments, the project folders. Every command from the app that changes something empties the memory before and after it runs. Outside the daemon nothing changes.
+  - The task registry is watched with sqlite's `data_version` on a read-only connection kept open: sqlite dates its files at every open and close, so the memory never held and the cron beat never stayed light.
+  - `sessions` runs inside the daemon for the push, with the CLI as fallback; the app's timeline and KPI reads use the last push's live sessions, as the chat reads do now (kept 120 s instead of 10).
+  - The ledger rows of each session come from an index built once per push; the account of a folder and the suggestions module are computed once; state files are written with the C JSON encoder.
+  - The publications are recounted after a minute only when a git ref of the live or today's folders changed, otherwise every 5 minutes.
+  - Tests: relay-verify R95.
 - **0.8.82 — 2026-10-29: the numbers for the app's KPI views, and the waits in the timeline (contract 1.96).**
   - The KPI proposals of 25/10, approved by the maintainer for after the quota reset of 29/10. `cm-kpi.py` computes six blocks from local files, with no model: open tasks with age and checks spent, the week's green and red checks, today's turns per session with their tokens from the transcript, the relay's latency and the machines, how the suggestions of the last 7 days ended, and who waits for the person.
   - They come with a passive op `kpi`, not in `/state`: today's turns alone pass its 8 KB.

@@ -1146,7 +1146,7 @@ def timeline_page(session, arg):
     if secs <= 0 or secs > TIMELINE_MAX_S:
         return False, M("relay.cmd_timeline_bad_arg", arg=a)
     tl = _load("cm-timeline").timeline(secs, str(session) if session else None, now=now,
-                                       live=_json_cmd("sessions", "--json", "--no-screen") or [])
+                                       live=live_rows())
     root = cm.expand(CFG["workspace"]["root"])
     for r in tl["sessions"]:
         r["project"] = S.project_of(r["project"], root)   # come state.sessions[].project: relativo alla radice
@@ -1165,9 +1165,22 @@ TRANSCRIPT_MAX_BYTES = 60000   # 1.22: il JSON di una pagina in /result; oltre s
 TRANSCRIPT_WINDOWS = (2 * 1024 * 1024, 16 * 1024 * 1024, None)   # si legge dalla coda, e si allarga solo se serve
 
 
-LIVE_ROWS_TTL_S = 10
+LIVE_ROWS_TTL_S = 120   # 29/10: anche ogni push le rinnova (collect_sources); prima 10 s, una CLI a ogni lettura della web app
 _LIVE = {"at": 0.0, "rows": None}
 _LIVE_LOCK = threading.Lock()
+
+
+def live_rows():
+    """29/10: le righe vive per le letture dell'app (timeline, kpi): quelle dell'ultima push se hanno meno di
+    LIVE_ROWS_TTL_S, altrimenti `sessions --json --no-screen` (e restano per le letture dopo). Una copia."""
+    with _LIVE_LOCK:
+        rows = _LIVE["rows"] if _LIVE["rows"] is not None and time.time() - _LIVE["at"] < LIVE_ROWS_TTL_S else None
+    if rows is None:
+        rows = _json_cmd("sessions", "--json", "--no-screen")
+        if rows is not None:
+            with _LIVE_LOCK:
+                _LIVE.update(at=time.time(), rows=rows)
+    return copy.deepcopy(rows or [])
 
 
 def live_row(tm):

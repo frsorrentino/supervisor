@@ -315,7 +315,7 @@ def write_json(p, obj, mode=0o600):
     tmp = p.with_suffix(p.suffix + ".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
     with os.fdopen(fd, "w") as f:
-        json.dump(obj, f, ensure_ascii=False)
+        f.write(json.dumps(obj, ensure_ascii=False))   # 29/10: json.dump su file usa l'encoder in Python puro, dumps quello in C
     os.replace(tmp, p)
 
 
@@ -433,9 +433,18 @@ def prefixes():
     return [a.get("tmux_prefix") or "" for a in CFG["accounts"].values()]
 
 
+_ACCOUNT_OF = {}
+
+
 def account_for_path(path):
-    """L'account dedotto dalla cartella come cm-launch.sh: cm-config.account_for, altrimenti il default."""
-    return cm.account_for(CFG, path)[0]
+    """L'account dedotto dalla cartella come cm-launch.sh: cm-config.account_for, altrimenti il default. Ricordato per
+    cartella finche' la config resta la stessa (29/10: 253 realpath a ogni push)."""
+    k = (id(CFG), str(path))
+    if k not in _ACCOUNT_OF:
+        if len(_ACCOUNT_OF) > 4000:
+            _ACCOUNT_OF.clear()
+        _ACCOUNT_OF[k] = cm.account_for(CFG, path)[0]
+    return _ACCOUNT_OF[k]
 
 
 def inventory():
@@ -470,6 +479,96 @@ def last_used_of(path, account):
     except OSError:
         return None
     return int(max(times)) if times else None
+
+
+# 29/10 (relay al 22% di CPU propria + 18% di figli): ogni push rilanciava cinque CLI (>1 s di CPU ciascuna solo per
+# partire) e rileggeva le cartelle dei progetti. Nel demone una lettura si rifa' solo se cambia un file da cui dipende o
+# dopo `ttl` secondi; ogni comando dell'app che cambia qualcosa svuota tutto. Fuori dal demone (CLI, test) niente memoria.
+_MEMO = {}
+MEMO_ON = False
+
+
+def _mtime(p):
+    """(dimensione, data) di un file; del -wal di sqlite la sola dimensione: ogni lettura del registro ne cambia la data
+    anche a 0 byte (29/10: la memoria dei compiti e l'impronta del battito si invalidavano da sole a ogni lettura)."""
+    wal = str(p).endswith("-wal")
+    try:
+        st = os.stat(p)
+        return (st.st_size,) if wal else (st.st_size, st.st_mtime_ns)
+    except OSError:
+        return (0,) if wal else None   # sqlite lo crea all'apertura e lo toglie alla chiusura: assente = vuoto
+
+
+def _memo(key, fn, ttl=60, deps=(), min_age=0):
+    """`min_age`: anche con un file cambiato, non prima di tanti secondi dall'ultima lettura."""
+    if not MEMO_ON:
+        return fn()
+    now, sig = time.time(), tuple(p() if callable(p) else _mtime(p) for p in deps)
+    hit = _MEMO.get(key)
+    if hit and (hit[1] == sig or now - hit[0] < min_age) and now - hit[0] < ttl:
+        return copy.deepcopy(hit[2])
+    v = fn()
+    _MEMO[key] = (now, sig, copy.deepcopy(v))
+    return v
+
+
+def _quota_files():
+    """I file che la statusline scrive per la quota (cm-quota.leggi): quota-<hash>.json in quota.source."""
+    try:
+        d = Path(cm.expand((CFG.get("quota") or {}).get("source") or "~/.claude/fable-director"))
+        return sorted(str(e.path) for e in os.scandir(d) if e.name.startswith("quota-") and e.name.endswith(".json"))
+    except OSError:
+        return []
+
+
+_TASKS_CONN = {"ino": None, "conn": None}
+_TASKS_CONN_LOCK = threading.Lock()
+
+
+def tasks_version():
+    """29/10: quando il registro dei compiti e' cambiato, senza guardare le date: sqlite le cambia a ogni apertura e
+    chiusura, anche di sola lettura (anche le nostre). PRAGMA data_version su una connessione di sola lettura tenuta
+    aperta cambia solo quando un'altra connessione registra una scrittura. Il file sostituito riapre la connessione."""
+    db = _tasks_db_files()[0]
+    with _TASKS_CONN_LOCK:
+        try:
+            ino = os.stat(db).st_ino
+            if _TASKS_CONN["ino"] != ino or _TASKS_CONN["conn"] is None:
+                if _TASKS_CONN["conn"] is not None:
+                    _TASKS_CONN["conn"].close()
+                import sqlite3
+                _TASKS_CONN.update(ino=ino, conn=sqlite3.connect(f"file:{db}?mode=ro", uri=True, check_same_thread=False, timeout=2))
+            return (ino, _TASKS_CONN["conn"].execute("PRAGMA data_version").fetchone()[0])
+        except Exception:   # noqa: BLE001 — senza registro o senza sqlite: le date, come prima
+            _TASKS_CONN.update(ino=None, conn=None)
+            return tuple(_mtime(p) for p in _tasks_db_files())
+
+
+def _tasks_db_files():
+    global _TASKS_DB
+    if _TASKS_DB is None:   # un caricamento solo: _load riesegue il modulo a ogni chiamata
+        _TASKS_DB = _load("cm-tasks").db_path()
+    return [_TASKS_DB, _TASKS_DB.with_name(_TASKS_DB.name + "-wal")]
+
+
+_SESS = {"key": None, "mod": None}
+
+
+def sessions_rows():
+    """Le righe di `sessions --json` per la push. 29/10: nel demone, con la CLI vera (non CM_RELAY_CM), cm-sessions gira
+    in questo processo: niente bash e python da avviare a ogni push (~0,35 s di CPU). Il modulo si ricarica quando
+    cambia il suo codice, quello che importa o la config; un errore ripiega sulla CLI."""
+    if MEMO_ON and CM_BIN == str(HERE / "supervisor"):
+        try:
+            key = tuple(_mtime(HERE / f) for f in ("cm-sessions.py", "cm-config.py", "cm-core.py")) + (_mtime(cm.config_path()),)
+            if _SESS["key"] != key:
+                _SESS.update(key=key, mod=_load("cm-sessions"))
+            m = _SESS["mod"]
+            return json.loads(json.dumps(m.collect(True) + m.remote_rows(), ensure_ascii=False))
+        except Exception as e:   # noqa: BLE001 — la CLI resta la via sicura
+            _SESS.update(key=None, mod=None)
+            log(f"sessions in processo fallito ({str(e)[:120]}), uso la CLI")
+    return _json_cmd("sessions", "--json")
 
 
 def _json_cmd(*args, expect="["):
@@ -792,6 +891,7 @@ def hosts_status(rows, now):
 
 PUBLISHED_MAX = 30
 PUBLISHED_EVERY_S = 60   # le pubblicazioni si ricontano al piu' una volta al minuto, fuori dal percorso della push
+PUBLISHED_FULL_S = 300   # 29/10: senza un ref git cambiato, al piu' ogni 5 minuti (i deploy dalle trascrizioni)
 DEPLOY_CMD = re.compile(r"\bfirebase\b[^;&|\n]*\bdeploy\b")
 DEPLOY_DONE = "Deploy complete!"
 
@@ -804,21 +904,56 @@ def published_path():
     return rdir() / "published-today.json"
 
 
-def published_cached(now):
+_PUB_REFS = [None]
+
+
+def refs_print(dirs):
+    """29/10: l'impronta dei ref di git (remoti, tag, packed-refs) dei repository di `dirs`, senza lanciare git: un push,
+    un tag o un fetch cambiano la data di una di queste cartelle o file. Solo stat."""
+    out, seen = [], set()
+    for d in dirs:
+        p = Path(d or "")
+        for q in (p, *p.parents):
+            g = q / ".git"
+            if g.is_file():   # un worktree: i ref stanno nella cartella comune
+                try:
+                    gd = Path(g.read_text().split("gitdir:", 1)[1].strip())
+                    g = (gd / (gd / "commondir").read_text().strip()).resolve() if (gd / "commondir").is_file() else gd
+                except (OSError, IndexError):
+                    break
+            if g.is_dir():
+                if str(g) not in seen:
+                    seen.add(str(g))
+                    for sub in ("refs/remotes", "refs/tags"):
+                        for w, _, _ in os.walk(g / sub):
+                            out.append(f"{w}:{_mtime(w)}")
+                    out.append(f"{g}/packed-refs:{_mtime(g / 'packed-refs')}")
+                break
+    return ";".join(sorted(out))
+
+
+def published_cached(now, rows=None):
     """1.75: published_today per /state, dalla copia su disco; se e' vecchia di un minuto (o di ieri) la ricalcola un
     processo staccato (`published-refresh`), uno alla volta. Una copia di ieri non vale: oggi, finche' il primo
-    conteggio non c'e', la lista e' vuota."""
+    conteggio non c'e', la lista e' vuota. 29/10 (2,2 s di CPU a ricalcolo, uno al minuto): dopo il minuto si ricalcola
+    solo se un ref git delle cartelle vive o usate oggi e' cambiato, altrimenti ogni PUBLISHED_FULL_S."""
     c = read_json(published_path(), {}) or {}
-    if c.get("day") != dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d"):
-        items = []
-    else:
-        items = c.get("items") or []
-    if now - float(c.get("at") or 0) >= PUBLISHED_EVERY_S:
+    today = c.get("day") == dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d")
+    items = (c.get("items") or []) if today else []
+    age = now - float(c.get("at") or 0)
+    refs = None
+    if rows is not None and today and age >= PUBLISHED_EVERY_S:
+        start = _midnight(now)
+        refs = refs_print([str(r.get("cwd") or "") for r in rows if r.get("status") != "dead" and (not r.get("host") or r.get("host") == "local")]
+                          + [x["path"] for x in _memo("inventory", inventory, ttl=120) if (x.get("last_used") or 0) >= start])
+    # 29/10: l'impronta si salva anche al ricalcolo per scadenza, altrimenti al giro dopo sembrava sempre cambiata
+    if age >= PUBLISHED_EVERY_S and (refs is None or refs != _PUB_REFS[0] or age >= PUBLISHED_FULL_S):
         lock = rdir() / "published-refresh.lock"
         try:
             fresh = lock.exists() and now - lock.stat().st_mtime < 300
             if not fresh:
                 lock.touch()
+                _PUB_REFS[0] = refs
                 subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "published-refresh"], stdin=subprocess.DEVNULL,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         except OSError:
@@ -996,8 +1131,12 @@ def published_refresh():
 def collect_sources(now=None):
     now = now or time.time()
     # senza nome ne' tmux e' un processo claude fuori registro (un `claude -p`, il recap): non e' una sessione da polso
-    live = [r for r in (_json_cmd("sessions", "--json") or []) if (r.get("tmux") or r.get("name"))]
-    good = _json_cmd("registry", "--good", expect="{") or {}
+    live = [r for r in (sessions_rows() or []) if (r.get("tmux") or r.get("name"))]
+    with _LIVE_LOCK:   # 29/10: le letture della web app (transcript ogni ~10 s) usano le righe di questa push
+        _LIVE.update(at=time.time(), rows=copy.deepcopy(live))
+    reg = CFG.get("registry") or {}
+    good = _memo("good", lambda: _json_cmd("registry", "--good", expect="{") or {}, ttl=300,
+                 deps=[cm.expand(reg.get("good_file") or "~/.claude/sessions-good.json")])
     alive_names = {r.get("tmux") for r in live}
     # 30/09: una sessione chiusa con lo stesso nome corto di una viva (stessa cartella, l'altro account: «x» e
     # «pix-x») non entra — sul polso sarebbero due «x», e il nome del contratto portava alla tmux sbagliata
@@ -1110,14 +1249,14 @@ def collect_sources(now=None):
             runtime[r.get("tmux") or r.get("name") or ""] = rt
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             pass
-    inv = inventory()
+    inv = _memo("inventory", inventory, ttl=120)
     return {
         "host": str(R.get("host") or socket.gethostname()),
         "root": cm.expand(CFG["workspace"]["root"]), "prefixes": prefixes(), "high_words": R.get("tier_high") or None,
         "account_kinds": S.kinds_of(CFG["accounts"], CFG.get("default_account") or ""),
         "state_max_kb": R.get("state_max_kb") or 8,
         "rows": rows, "ledger": ledger, "questions": questions,
-        "quota": _json_cmd("quota", "--json", expect="{") or {},
+        "quota": _memo("quota", lambda: _json_cmd("quota", "--json", expect="{") or {}, ttl=300, min_age=120, deps=_quota_files()),
         "projects": inv, "night": night_queue(), "night_report": night_report_latest(), "recap": recap_today(now), "ops": list(OPS), "slash": slash_allowed(),
         "follow": followed(), "awaiting": aw, "next": nexts, "next_at": nexts_at, "tools": tools,
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "activity": read_json(device_activity_path(), {}), "recurring": _load("cm-recurring").for_state(),
@@ -1127,7 +1266,7 @@ def collect_sources(now=None):
         "attention_dismissed": read_json(rdir() / "attention-dismissed.json", {}),   # 1.80: i turn_blocking chiusi dall'app
         "handoffs": handoffs_of(rows), "resolved": resolved_of(questions, rows, now), "project_parents": sorted({str(Path(x["path"]).parent) for x in inv}),
         "changes": changes_pills(rows, ledger, now),   # 1.72
-        "hosts_status": hosts_status(rows, now), "published_today": published_cached(now),   # 1.75
+        "hosts_status": hosts_status(rows, now), "published_today": published_cached(now, rows),   # 1.75
         "commitments": commitments_list(),   # 1.76
         "elicitations": elicitations_list(rows, now),   # 1.83
         "suggestions": suggestions_list(now), "usage_today": usage_today(rows, now), "closed": closed_saved(now),   # 1.84
@@ -1193,7 +1332,7 @@ def kpi_op():
     i turni di oggi da soli passano gli 8 KB."""
     now = time.time()
     full = (read_json(rdir() / "last-state.json", {}) or {}).get("full") or {}
-    rows = _json_cmd("sessions", "--json", "--no-screen") or []
+    rows = live_rows()   # 29/10: le righe dell'ultima push, non una CLI a ogni apertura della vista
     pfx = prefixes()
     sessions = [(S.short_name(r.get("name") or r.get("tmux") or "?", pfx), core.transcript_of(r), r.get("status"))
                 for r in rows if r.get("session_id") and (not r.get("host") or r.get("host") == "local")]
@@ -1338,7 +1477,7 @@ def approvals_list():
     destinazione o la cosa nomina la produzione. 1.81 (23/10): `options`, le etichette di una scelta (wait-ok
     --options), solo quando ci sono: l'app mostra un tasto per opzione al posto di «Approva»."""
     out = []
-    for t in _json_cmd("task", "list", "--state", "awaiting_ok", "--json") or []:
+    for t in _memo("awaiting_ok", lambda: _json_cmd("task", "list", "--state", "awaiting_ok", "--json") or [], deps=[tasks_version]):
         req = t.get("request") or {}
         what, where = str(req.get("what") or ""), str(req.get("where") or "")
         a = {"task": t.get("id"), "title": S.one_line(str(t.get("title") or ""))[:200], "what": what[:300], "where": where[:300],
@@ -1746,7 +1885,7 @@ def commitments_list():
     per /state.commitments, con `project` relativo come sessions[].project; fermi prima, al massimo COMMITMENTS_MAX."""
     root = cm.expand(CFG["workspace"]["root"])
     out = []
-    for x in _json_cmd("task", "impegni", "--json") or []:
+    for x in _memo("impegni", lambda: _json_cmd("task", "impegni", "--json") or [], deps=[tasks_version]):
         if not isinstance(x, dict) or not x.get("task"):
             continue
         y = dict(x)
@@ -1815,6 +1954,7 @@ BEAT_FULL_BUSY_S = 120   # ogni 2 se una lavora (la nota dello strumento in cors
 
 
 _TASKS_DB = None
+_SG = None
 
 
 def sources_print():
@@ -1831,27 +1971,23 @@ def sources_print():
              Path(cm.expand(reg.get("good_file") or "~/.claude/sessions-good.json")),
              Path(cm.expand((CFG.get("night") or {}).get("queue_file") or "~/.claude/night-queue.jsonl")), night_report_dir(),
              rdir() / "follow.json", rdir() / "awaiting.json", rdir() / "devices.json"]
+    global _SG
     try:   # 1.87 (27/10): i suggerimenti — il file per add, clear e i tasti, gli id vivi per quelli che scadono
-        sg = _load("cm-suggest")
+        sg = _SG = _SG or _load("cm-suggest")   # 29/10: caricato una volta, non a ogni battito
         paths.append(sg.path())
         live_ids = ",".join(x["id"] for x in sg.for_state())
     except Exception:   # noqa: BLE001 — l'impronta non deve mai fermare il battito
         live_ids = "-"
-    global _TASKS_DB
-    if _TASKS_DB is None:   # un caricamento solo: _load riesegue il modulo a ogni chiamata
-        _TASKS_DB = _load("cm-tasks").db_path()
-    paths += [_TASKS_DB, _TASKS_DB.with_name(_TASKS_DB.name + "-wal")]
+    tv = tasks_version()
     out = []
     for p in paths:
-        try:
-            st = p.stat()
-            out.append(f"{p.name}:{st.st_size}:{st.st_mtime_ns}")
-        except OSError:
-            out.append(f"{p.name}:-")
+        st = _mtime(p)
+        out.append(f"{p.name}:" + (":".join(map(str, st)) if st else "-"))
     try:   # le attese: la cartella cambia data quando un file entra o esce, non quando cambia
         out += sorted(f"{e.name}:{e.stat().st_mtime_ns}" for e in os.scandir(sd / "waiting"))
     except OSError:
         pass
+    out.append("tasks:" + str(tv))
     out.append("suggestions:" + live_ids)
     return ";".join(out)
 
@@ -2854,7 +2990,12 @@ def run_cmd(cmd, arrived=None):
     t_in = time.time()
     with EXEC_LOCK:
         t_run = time.time()
+        active = str(cmd.get("op") or "") not in PASSIVE_OPS
+        if active:
+            _MEMO.clear()   # 29/10: un comando che cambia qualcosa decide sul fresco (approve legge le attese di ok)
         res = execute(cmd)
+        if active:
+            _MEMO.clear()   # e la push dopo di lui rilegge tutto
     t_done = time.time()
     try:
         issued = float(cmd.get("issued") or 0)
@@ -3050,6 +3191,8 @@ def serve():
     except OSError:
         print(M("relay.serve_locked")); log("serve: lock preso da un altro serve, esco"); return 4
     serve_pid_path().write_text(str(os.getpid()))
+    global MEMO_ON
+    MEMO_ON = True   # 29/10: la memoria delle letture vale solo nel demone
     started = time.time()
     import signal
 

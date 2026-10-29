@@ -266,8 +266,20 @@ def order_sessions(sessions):
     return sorted(sessions, key=lambda s: (ORDER.get(s["state"], 9), s["name"]))
 
 
+_BY_SID = {"ledger": None, "n": 0, "map": {}}
+
+
 def _events_of(ledger, sid):
-    return [r for r in ledger if r.get("session_id") == sid] if sid else []
+    """Le righe del ledger di una sessione. 29/10: un indice per sessione costruito una volta per lista, non una scansione
+    dell'intero ledger per ogni sessione (45 sessioni x 36.000 righe a ogni push)."""
+    if not sid:
+        return []
+    if _BY_SID["ledger"] is not ledger or _BY_SID["n"] != len(ledger):   # la stessa lista allungata si reindicizza
+        m = {}
+        for r in ledger:
+            m.setdefault(r.get("session_id"), []).append(r)
+        _BY_SID.update(ledger=ledger, n=len(ledger), map=m)
+    return list(_BY_SID["map"].get(sid, ()))
 
 
 NEXT_RE = re.compile(r"^\s*\W*\s*prossimi\s*:\s*(.*)$", re.I)

@@ -3733,7 +3733,7 @@ T.check("R61 (1.75) the fixtures: state-2-idle with win up and one publication o
         and F3["hosts_status"][0]["up"] is False and F3["hosts_status"][0]["error"] == "ssh: timeout" and F3["published_today"] == [], "")
 T.check("R61 (1.75) a src without the two keys (an old caller) gives a /state without them; collect_sources passes both",
         "hosts_status" not in S.build_state({}, 1) and "published_today" not in S.build_state({}, 1)
-        and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now)' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+        and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now, rows)' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
 # R62 (contratto 1.76, 22/10, impegni sempre visibili): /state.commitments dal registro, l'evento task_stalled, le fixture
 _cm62 = F2["commitments"]
 T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalled running task of ledger-api (its session gone, red check, outcome deploy) and atlas-seo-pages just approved, waiting for atlas-shop; state-3 one paused, never stalled",
@@ -4183,5 +4183,150 @@ finally:
 T.check("R94 kpi_waits (1.96) the waits of state-1 open in waits.jsonl (ledger-api's question since its asked_at); op kpi answers ok with every block, the sources it cannot read null",
         [(w["event"], w["session"], w["kind"], w["since"]) for w in _w94 if w["session"] == "ledger-api"] == [("start", "ledger-api", "question", 1789210500)]
         and _o94[0] is True and list(json.loads(_o94[1])) == list(_s94), str(_w94)[:300] + str(_o94)[:200])
+
+# R95 (29/10, relay al 36% di un core con i figli): nel demone le letture lente si ricordano finche' non cambia un loro
+# file o scade il tempo; un comando che cambia qualcosa svuota la memoria prima e dopo; fuori dal demone niente memoria
+_q95 = lambda: sum(1 for c in cm_calls() if c.startswith("quota --json"))   # noqa: E731
+_i95 = lambda: sum(1 for c in cm_calls() if c.startswith("task impegni"))   # noqa: E731
+_sv95 = dict(on=RL.MEMO_ON, ex=RL.execute, pa=RL.push_async, rd=RL.rdir)
+_r95 = tmp / "r95"
+_r95.mkdir(parents=True, exist_ok=True)
+try:
+    RL.MEMO_ON = False
+    a0 = _q95(); RL.collect_sources(); RL.collect_sources(); off95 = _q95() - a0
+    RL.MEMO_ON = True
+    RL._MEMO.clear()
+    a1, b1 = _q95(), _i95(); RL.collect_sources(); RL.commitments_list(); RL.collect_sources(); RL.commitments_list()
+    on95, imp95 = _q95() - a1, _i95() - b1
+    # il registro: una lettura da un'altra connessione (che cambia le date dei file) non svuota la memoria ne' cambia
+    # l'impronta del battito; una scrittura si'
+    import sqlite3 as _sq95
+    _db95 = RL._tasks_db_files()[0]
+    _db95.parent.mkdir(parents=True, exist_ok=True)
+    _c95 = _sq95.connect(str(_db95)); _c95.execute("PRAGMA journal_mode=WAL"); _c95.execute("CREATE TABLE IF NOT EXISTS r95 (x)"); _c95.commit(); _c95.close()
+    RL.commitments_list(); _fpw95 = RL.sources_print()
+    _c95 = _sq95.connect(str(_db95)); _c95.execute("SELECT count(*) FROM r95").fetchone(); _c95.close()
+    os.utime(_db95, ns=(time.time_ns(), time.time_ns() + 2 * 10**9))
+    b3 = _i95(); RL.commitments_list(); walr95 = (_i95() - b3, RL.sources_print() == _fpw95)
+    _c95 = _sq95.connect(str(_db95)); _c95.execute("INSERT INTO r95 VALUES (1)"); _c95.commit(); _c95.close()
+    b4 = _i95(); RL.commitments_list(); walw95 = (_i95() - b4, RL.sources_print() == _fpw95)
+    dep95 = walw95[0]
+    _nw95 = tmp / "r95-none.db-wal"
+    _ew95 = tmp / "r95-empty.db-wal"
+    _ew95.write_bytes(b"")
+    walg95 = RL._mtime(_nw95) == RL._mtime(_ew95) == (0,)   # sqlite lo toglie alla chiusura: assente = vuoto
+    # la quota: un file della statusline cambiato si rilegge, ma non prima di 120 s dall'ultima lettura
+    _qd95 = Path(RL.cm.expand((RL.CFG.get("quota") or {}).get("source") or "~/.claude/fable-director"))
+    _qd95.mkdir(parents=True, exist_ok=True)
+    _qf95 = _qd95 / "quota-r95.json"
+    _qf95.write_text("{}")
+    RL._MEMO.pop("quota", None)
+    q0 = _q95(); RL.collect_sources()
+    _qf95.write_text('{"x": 1}')
+    RL.collect_sources(); qy95 = _q95() - q0
+    _h95 = RL._MEMO["quota"]
+    RL._MEMO["quota"] = (_h95[0] - 130, _h95[1], _h95[2])
+    RL.collect_sources(); qo95 = _q95() - q0
+    RL.collect_sources(); qs95 = _q95() - q0
+    _qf95.unlink()
+    _seen95 = []
+    RL.rdir = lambda: _r95
+    RL.push_async = lambda *a, **k: None
+    RL.execute = lambda cmd: (_seen95.append(len(RL._MEMO)), (True, "ok"))[1]
+    RL._LIVE.update(at=0.0, rows=None)
+    _cs95 = RL.collect_sources()
+    full95 = len(RL._MEMO)
+    _lv95 = (RL._LIVE["rows"] is not None and time.time() - RL._LIVE["at"] < 5
+             and {r.get("tmux") for r in RL._LIVE["rows"]} >= {r.get("tmux") for r in _cs95["rows"] if r.get("status") != "dead"} and RL.LIVE_ROWS_TTL_S == 120)
+    RL.run_cmd({"id": "c95a", "op": "transcript", "session": "x", "by": "web"})
+    pas95 = len(RL._MEMO)
+    RL.run_cmd({"id": "c95b", "op": "approve", "session": "x", "by": "web"})
+    act95 = len(RL._MEMO)
+finally:
+    RL.MEMO_ON, RL.execute, RL.push_async, RL.rdir = _sv95["on"], _sv95["ex"], _sv95["pa"], _sv95["rd"]
+T.check("R95 (29/10) outside the daemon every push reads quota again; in the daemon twice → once; impegni read again when tasks.db changes",
+        off95 == 2 and on95 == 1 and imp95 == 1 and dep95 == 1, str((off95, on95, imp95, dep95)))
+T.check("R95 (29/10) the task registry by sqlite's data_version: a read from another connection (which dates the files) changes neither the memory nor the beat's fingerprint; a write changes both; a missing -wal is an empty one",
+        walr95 == (0, True) and walw95 == (1, False) and walg95, str((walr95, walw95, walg95)))
+T.check("R95 (29/10) quota: a changed statusline file is read again, but not before 120 s from the last read; then the same files keep the memory",
+        (qy95, qo95, qs95) == (1, 2, 2), str((qy95, qo95, qs95)))
+T.check("R95 (29/10) a passive op keeps the memory; an op that changes something finds it empty and leaves it empty",
+        full95 >= 3 and _seen95[0] == full95 and pas95 == full95 and _seen95[1] == 0 and act95 == 0, str((full95, _seen95, pas95, act95)))
+# le pubblicazioni: dopo il minuto un ricalcolo solo se un ref git e' cambiato, comunque ogni PUBLISHED_FULL_S
+_g95 = tmp / "r95-repo"
+_g95.mkdir(exist_ok=True)
+subprocess.run(["git", "init", "-q", str(_g95)], capture_output=True)
+subprocess.run(["git", "-C", str(_g95), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], capture_output=True)
+_sp95, _pp95 = [], RL.subprocess.Popen
+_now95 = time.time()
+_day95 = _dt.datetime.fromtimestamp(_now95).strftime("%Y-%m-%d")
+def _pub95(age, rows):
+    RL.write_json(RL.published_path(), {"day": _day95, "at": _now95 - age, "items": []})
+    (_r95 / "published-refresh.lock").unlink(missing_ok=True)
+    n = len(_sp95)
+    RL.subprocess.Popen = lambda *a, **k: _sp95.append(a[0])
+    try:
+        RL.published_cached(_now95, rows)
+    finally:
+        RL.subprocess.Popen = _pp95
+    return len(_sp95) - n
+try:
+    RL.rdir = lambda: _r95
+    _rows95 = [{"cwd": str(_g95), "status": "idle"}]
+    p1 = _pub95(90, _rows95); p2 = _pub95(90, _rows95)
+    subprocess.run(["git", "-C", str(_g95), "tag", "v1"], capture_output=True)
+    p3 = _pub95(90, _rows95); p4 = _pub95(400, _rows95); p7 = _pub95(90, _rows95); p5 = _pub95(90, None); p6 = _pub95(30, _rows95)
+finally:
+    RL.rdir = _sv95["rd"]
+T.check("R95 (29/10) published_cached: a minute old, a recount only when a git ref of the live folders changed (first time yes, same refs no, a new tag yes); after 5 minutes always; without rows as before; under a minute never",
+        (p1, p2, p3, p4, p7, p5, p6) == (1, 0, 1, 1, 0, 1, 0), str((p1, p2, p3, p4, p7, p5, p6)))
+# sessions: nel demone con la CLI vera cm-sessions gira in processo; con una CLI sostituita, o se il modulo fallisce, la CLI
+_s95 = lambda: sum(1 for c in cm_calls() if c.startswith("sessions --json"))   # noqa: E731
+class _M95:
+    fail = False
+    def collect(self, screen):
+        if self.fail:
+            raise RuntimeError("boom")
+        return [{"tmux": "in-proc", "name": "in-proc", "screen": screen}]
+    def remote_rows(self):
+        return [{"tmux": "win:far", "host": "win"}]
+_m95 = _M95()
+_sv95b = dict(bin=RL.CM_BIN, load=RL._load, on=RL.MEMO_ON)
+try:
+    RL.MEMO_ON = True
+    c0 = _s95(); fake95 = RL.sessions_rows(); cfake95 = _s95() - c0
+    RL.CM_BIN = str(RL.HERE / "supervisor")
+    RL._load = lambda name: _m95 if name == "cm-sessions" else _sv95b["load"](name)
+    RL._SESS.update(key=None, mod=None)
+    c1 = _s95(); inp95 = RL.sessions_rows(); cinp95 = _s95() - c1
+    _m95.fail = True
+    RL.CM_BIN = _sv95b["bin"]   # il ripiego chiama la CLI: quella finta del test
+    RL.sessions_rows()   # con la CLI finta non si passa dal modulo: si torna alla vera per provare il ripiego
+    RL.CM_BIN = str(RL.HERE / "supervisor")
+    _fb95 = RL._json_cmd
+    RL._json_cmd = lambda *a, **k: [{"tmux": "via-cli"}] if a[:2] == ("sessions", "--json") else _fb95(*a, **k)
+    back95 = RL.sessions_rows()
+    RL._json_cmd = _fb95
+finally:
+    RL.CM_BIN, RL._load, RL.MEMO_ON = _sv95b["bin"], _sv95b["load"], _sv95b["on"]
+    RL._SESS.update(key=None, mod=None)
+T.check("R95 (29/10) sessions for the push: with a replaced CLI the CLI; with the real one in the daemon cm-sessions in process (screen read, remote rows after), no CLI; a module that fails falls back to the CLI",
+        cfake95 == 1 and isinstance(fake95, list) and inp95 == [{"tmux": "in-proc", "name": "in-proc", "screen": True}, {"tmux": "win:far", "host": "win"}] and cinp95 == 0
+        and back95 == [{"tmux": "via-cli"}], str((cfake95, inp95, cinp95, back95)))
+_led95 = [{"session_id": f"S{i % 7}", "n": i} for i in range(200)]
+T.check("R95 (29/10) every push hands its live rows to live_row (the web app's transcript reads), kept 120 s", _lv95, "")
+_LV95 = dict(RL._LIVE)
+RL._LIVE.update(at=time.time(), rows=[{"tmux": "fresh-row"}])
+k0 = sum(1 for c in cm_calls() if c.startswith("sessions --json"))
+_lr95a = RL.live_rows()
+RL._LIVE.update(at=time.time() - 200)
+_lr95b = RL.live_rows()
+k1 = sum(1 for c in cm_calls() if c.startswith("sessions --json")) - k0
+RL._LIVE.update(_LV95)
+T.check("R95 (29/10) the app's reads (timeline, kpi) take the last push's live rows while fresh, with no CLI; older than 120 s → one `sessions --json --no-screen`",
+        _lr95a == [{"tmux": "fresh-row"}] and k1 == 1 and _lr95b != _lr95a, str((_lr95a, k1)))
+T.check("R95 (29/10) the ledger rows of a session from the index are those of a full scan, also after the list grows",
+        all(S._events_of(_led95, f"S{k}") == [r for r in _led95 if r["session_id"] == f"S{k}"] for k in range(8))
+        and (_led95.append({"session_id": "S3", "n": 999}) or S._events_of(_led95, "S3")[-1]["n"] == 999) and S._events_of(_led95, "") == [], "")
 
 T.finish()
