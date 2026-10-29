@@ -36,6 +36,7 @@ def _load(name):
 cm = _load("cm-config")
 core = _load("cm-core")
 CFG = cm.load(warn=False)
+R = CFG.get("relay") or {}
 TEST_RE = re.compile(r"(?:^|[\s;&|(/])(?:python3?\s+(?:-\S+\s+)*\S*-verify\.py|python3?\s+(?:-\S+\s+)*\"\$t\"|pytest\b|python3?\s+-m\s+pytest\b|(?:npm|yarn|pnpm)\s+(?:run\s+)?test\b"
                      r"|go\s+test\b|cargo\s+test\b|make\s+(?:test|check)\b|\S*release\.sh\s+\S+\s+--check\b|for\s+t\s+in\s+tests/)")
 OUTCOME_RE = re.compile(r"^\s*(?:Esito|Outcome)\s*:\s*(.+)$", re.M)
@@ -236,6 +237,25 @@ def task_events(project, since):
             for r in rows if os.path.realpath(r["project"]) == real]
 
 
+_KPI = None
+
+
+def wait_events(rdir, session, since):
+    """1.96 (29/10): le attese della sessione verso la persona — domanda, permesso, needs-you — da <relay>/waits.jsonl,
+    che il relay scrive a ogni push da oggi in poi (cm-kpi.record_waits): un evento wait all'inizio e uno alla fine."""
+    global _KPI
+    out = []
+    _KPI = _KPI or _load("cm-kpi")
+    for r in _KPI.wait_rows(_KPI._jsonl(Path(rdir) / "waits.jsonl")):   # la stessa attesa una volta sola (29/10)
+        if r.get("session") != session or int(r.get("at") or 0) < since:
+            continue
+        kind = cm.msg(CFG, f"timeline.wait_{r.get('kind')}") if r.get("kind") in ("question", "permission", "needs_you") else str(r.get("kind"))
+        key = "timeline.wait_start" if r.get("event") == "start" else "timeline.wait_end"
+        mins = max(0, int(r["at"]) - int(r.get("since") or r["at"])) // 60
+        out.append({"at": int(r["at"]), "kind": "wait", "text": one_line(cm.msg(CFG, key, kind=kind, min=mins)), "ok": None})
+    return out
+
+
 def sessions_in(since, name=None, live=None):
     """[(nome, viva, cartella, trascrizione)]: le vive con la loro trascrizione, poi le chiuse toccate da `since`.
     `live` = le righe di `sessions --json` gia' lette da chi chiama (il relay); senza, si chiedono alla CLI."""
@@ -278,7 +298,7 @@ def timeline(since_s, name=None, limit=40, now=None, live=None):
     since = int(now - since_s)
     rows, by_project = [], {}
     for nm, is_live, cwd, path in sessions_in(since, name, live):
-        ev = transcript_events(path, since)
+        ev = transcript_events(path, since) + wait_events(Path(cm.expand(R.get("dir") or "~/.cc-supervisor/relay")), nm, since)
         if not ev and not is_live:
             continue
         rows.append({"session": nm, "live": is_live, "project": cwd, "events": ev})

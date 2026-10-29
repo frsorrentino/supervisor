@@ -373,7 +373,8 @@
     "plugins",
     "plugin_check",
     "plugin_update",
-    "plugin_update_all"
+    "plugin_update_all",
+    "kpi"
   ],
   "slash": [
     "compact",

@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -227,6 +227,10 @@ def arrival_log(old, new):
         before = [x for x in pubs if x <= at + 2]
         if before and at - before[-1] < SEEN_SKEW_S * 10:
             log(f"arrivo: {uid[:6]} {_s(max(0.0, at - before[-1]))} s dopo la push")
+            try:   # 1.96: un campione per la latenza di kpi_health
+                _kpi().record_latency(rdir(), at, max(0.0, at - before[-1]))
+            except Exception:   # noqa: BLE001
+                pass
 
 
 def unseen_notice(events, now):
@@ -1173,6 +1177,44 @@ ADVICE_REASON_MAX = 200
 DEPLOY_RE = re.compile(r"\b(prod|production|produzione|deploy|live)\b", re.I)
 
 
+KPI = None
+
+
+def _kpi():
+    global KPI
+    if KPI is None:
+        KPI = _load("cm-kpi")
+    return KPI
+
+
+def kpi_op():
+    """1.96 (29/10): op kpi, una lettura — i blocchi kpi_* dei numeri dell'app (cm-kpi.collect), dallo stato intero
+    dell'ultima push, dalle sessioni vive, dal registro dei compiti e dalla storia dei suggerimenti. Non sta in /state:
+    i turni di oggi da soli passano gli 8 KB."""
+    now = time.time()
+    full = (read_json(rdir() / "last-state.json", {}) or {}).get("full") or {}
+    rows = _json_cmd("sessions", "--json", "--no-screen") or []
+    pfx = prefixes()
+    sessions = [(S.short_name(r.get("name") or r.get("tmux") or "?", pfx), core.transcript_of(r), r.get("status"))
+                for r in rows if r.get("session_id") and (not r.get("host") or r.get("host") == "local")]
+    con, commits = None, []
+    try:
+        tk = _load("cm-tasks")
+        con = tk.connect(create=False)
+        commits = tk.commitments(con, now) if con else []
+    except Exception:   # noqa: BLE001 — il registro e' facoltativo
+        con = None
+    try:
+        history = (_load("cm-suggest").load() or {}).get("history")
+    except Exception:   # noqa: BLE001
+        history = None
+    try:
+        return True, json.dumps(_kpi().collect(now, full, rows, sessions, rdir(), con, commits, history), ensure_ascii=False)
+    finally:
+        if con is not None:
+            con.close()
+
+
 PL = None
 _PL_LAST = (0.0, None)
 
@@ -1857,6 +1899,11 @@ def _push(dry_run=False, now=None, m=None):
     # gli eventi si calcolano sullo stato INTERO; il taglio per la dimensione tocca solo cio' che si pubblica (23/09:
     # una sessione viva tolta da fit_state diventava «gone» e il polso diceva «Session closed»)
     full = S.build_state(src, now, fit=False)
+    if not dry_run:
+        try:   # 1.96 (29/10): inizio e fine delle attese per la timeline e kpi_waits, da oggi in poi
+            _kpi().record_waits(full, now, rdir())
+        except Exception as e:   # noqa: BLE001
+            log(f"kpi: attese non registrate ({e})")
     state = S.fit_state(copy.deepcopy(full), int(src.get("state_max_kb") or 8))
     names = {}
     for r in src["rows"]:   # le vive vengono prima: a parita' di nome corto vince la sessione viva
@@ -2676,7 +2723,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):
@@ -3077,7 +3124,7 @@ def serve():
 
 
 # 28/10: anche cm-system.py, che il demone tiene caricato (1.90) — senza, la 0.8.76 restava fuori fino al riavvio
-CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py", "cm-system.py", "cm-plugins.py")
+CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py", "cm-system.py", "cm-plugins.py", "cm-kpi.py")
 STALE_S = 180
 
 

@@ -1805,6 +1805,8 @@ def execute(cmd):
             return sys_unit_stop(cmd, arg)
         if op in ("plugins", "plugin_check", "plugin_update", "plugin_update_all"):   # 1.95
             return plugins_op(op, arg)
+        if op == "kpi":   # 1.96
+            return kpi_op()
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

@@ -1672,7 +1672,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-9:-6] == ["suggestion", "close_preview", "close"] and all(s["ops"][-9:-6] == R_OPS[-9:-6] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-10:-7] == ["suggestion", "close_preview", "close"] and all(s["ops"][-10:-7] == R_OPS[-10:-7] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -2212,8 +2212,15 @@ _c27 = _sq27.connect(str(_db27)); _c27.execute("UPDATE results SET at=1789208000
 rows_alive("field-notes")
 r27 = send_cmd(CMDS[29])
 _got27 = json.loads((r27 or {}).get("text") or "{}")
+def _nowait27(tl):
+    return {**tl, "sessions": [dict(x, events=[e for e in x["events"] if e.get("kind") != "wait"]) for x in tl["sessions"]]}
+
+
 T.check("R27 (1.29) timeline from an epoch → the live session (prompts typed, queued and from the phone) and a closed one with a red and a green test, a commit, an outcome and a task; project relative to the root as in state.sessions; nothing after the instant asked; as in the fixture",
-        r27 and r27["ok"] is True and _got27 == json.loads(RES[29]["text"]), json.dumps(_got27, ensure_ascii=False)[:500])
+        r27 and r27["ok"] is True and _nowait27(_got27) == _nowait27(json.loads(RES[29]["text"])), json.dumps(_got27, ensure_ascii=False)[:500])
+_w27 = [(x["session"], e["at"], e["ok"]) for x in _got27["sessions"] for e in x["events"] if e.get("kind") == "wait"]
+T.check("R27 (1.96) the waits the pushes of this test recorded show in the timeline as events of kind wait, once: ledger-api's question since its asked_at; the fixture carries one",
+        _w27 == [("ledger-api", 1789210500, None)] and any(e.get("kind") == "wait" for x in json.loads(RES[29]["text"])["sessions"] for e in x["events"]), str(_w27))
 _one27 = json.loads(send_cmd(dict(CMDS[29], id="6f1c2d3e-0190-4000-8000-000000000191", session="field-notes"))["text"])
 _bad27 = [send_cmd(dict(CMDS[29], id=f"6f1c2d3e-0190-4000-8000-00000000019{i}", arg=a)) for i, a in ((2, "yesterday"), (3, "8d"))]
 T.check("R27 (1.29) one session by its name; a bad arg and more than 7 days → ok false in plain words",
@@ -3585,7 +3592,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91) and the plugin ops (1.95); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-12] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95) and kpi (1.96); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-13] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3614,7 +3621,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-11] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-11:-9] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-12] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-12:-10] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4154,5 +4161,27 @@ T.check("R93 plugins_state (1.95) the fixture: state-3 carries plugins {checked_
         list(F3["plugins"]) == ["checked_at", "accounts"] and all(list(a) == ["account", "updates"] for a in F3["plugins"]["accounts"])
         and all(list(p) == ["id", "name", "marketplace", "scope", "installed", "latest", "update"] for a in _full93["accounts"] for p in a["plugins"])
         and all(list(sk) == ["name", "version", "source"] for a in _full93["accounts"] for sk in a["skills"]) and "plugins" not in F1, json.dumps(F3["plugins"]))
+
+# R94 (contratto 1.96, 29/10): i numeri delle viste KPI — l'op kpi (una lettura) e le attese registrate a ogni push
+_res94 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_s94 = json.loads(_res94["6f1c2d3e-0899-4000-8000-000000000899"]["text"])
+T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six kpi_* blocks in their shape; kpi is a passive read in every ops, never in /state",
+        list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
+        and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
+        and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-1] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+_r94 = tmp / "r94"
+_r94.mkdir(parents=True, exist_ok=True)
+_sv94 = RL.rdir
+try:
+    RL.rdir = lambda: _r94
+    RL._kpi().record_waits(S.build_state(SRC1, 1789200000, fit=False), 1789200000, RL.rdir())
+    _w94 = [json.loads(l) for l in (_r94 / "waits.jsonl").read_text().splitlines()]
+    _o94 = RL.kpi_op()
+finally:
+    RL.rdir = _sv94
+T.check("R94 kpi_waits (1.96) the waits of state-1 open in waits.jsonl (ledger-api's question since its asked_at); op kpi answers ok with every block, the sources it cannot read null",
+        [(w["event"], w["session"], w["kind"], w["since"]) for w in _w94 if w["session"] == "ledger-api"] == [("start", "ledger-api", "question", 1789210500)]
+        and _o94[0] is True and list(json.loads(_o94[1])) == list(_s94), str(_w94)[:300] + str(_o94)[:200])
 
 T.finish()

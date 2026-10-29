@@ -950,6 +950,15 @@
       "device": "web",
       "issued": 1789214640,
       "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0899-4000-8000-000000000899",
+      "op": "kpi",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789214700,
+      "by": "web"
     }
   ],
   "result": [
@@ -1132,7 +1141,7 @@
     {
       "id": "6f1c2d3e-0190-4000-8000-000000000190",
       "ok": true,
-      "text": "{\"since\": 1789200000, \"sessions\": [{\"session\": \"ledger-api\", \"live\": false, \"project\": \"work/clients/ledger-api\", \"events\": [{\"at\": 1789205000, \"kind\": \"prompt\", \"text\": \"add the invoices endpoint\", \"ok\": null, \"ref\": null}, {\"at\": 1789205600, \"kind\": \"test\", \"text\": \"api-verify.py\", \"ok\": false, \"ref\": \"3/4 OK, FAIL: A2 invoices\"}, {\"at\": 1789206600, \"kind\": \"test\", \"text\": \"api-verify.py\", \"ok\": true, \"ref\": \"4/4 OK\"}, {\"at\": 1789207000, \"kind\": \"commit\", \"text\": \"feat(api): invoices endpoint\", \"ok\": null, \"ref\": \"0f20786\"}, {\"at\": 1789207800, \"kind\": \"outcome\", \"text\": \"invoices endpoint added, api suite green\", \"ok\": null, \"ref\": null}, {\"at\": 1789208000, \"kind\": \"task\", \"text\": \"Invoices endpoint: check green\", \"ok\": true, \"ref\": \"invoices\"}]}, {\"session\": \"field-notes\", \"live\": true, \"project\": \"personal/field-notes\", \"events\": [{\"at\": 1789207200, \"kind\": \"prompt\", \"text\": \"Add the Tuesday meeting notes to the draft\", \"ok\": null, \"ref\": null}, {\"at\": 1789207320, \"kind\": \"prompt\", \"text\": \"Also fix the typo in the title\", \"ok\": null, \"ref\": null}, {\"at\": 1789207350, \"kind\": \"prompt\", \"text\": \"and push when done\", \"ok\": null, \"ref\": null}, {\"at\": 1789207357, \"kind\": \"prompt\", \"text\": \"Also add the attendees list\", \"ok\": null, \"ref\": \"phone\"}, {\"at\": 1789207358, \"kind\": \"prompt\", \"text\": \"Also add the room booking\", \"ok\": null, \"ref\": \"web\"}, {\"at\": 1789207364, \"kind\": \"prompt\", \"text\": \"this is how the header looks now\", \"ok\": null, \"ref\": null}]}], \"more\": false}",
+      "text": "{\"since\": 1789200000, \"sessions\": [{\"session\": \"ledger-api\", \"live\": false, \"project\": \"work/clients/ledger-api\", \"events\": [{\"at\": 1789205000, \"kind\": \"prompt\", \"text\": \"add the invoices endpoint\", \"ok\": null, \"ref\": null}, {\"at\": 1789205600, \"kind\": \"test\", \"text\": \"api-verify.py\", \"ok\": false, \"ref\": \"3/4 OK, FAIL: A2 invoices\"}, {\"at\": 1789206600, \"kind\": \"test\", \"text\": \"api-verify.py\", \"ok\": true, \"ref\": \"4/4 OK\"}, {\"at\": 1789207000, \"kind\": \"commit\", \"text\": \"feat(api): invoices endpoint\", \"ok\": null, \"ref\": \"0f20786\"}, {\"at\": 1789207800, \"kind\": \"outcome\", \"text\": \"invoices endpoint added, api suite green\", \"ok\": null, \"ref\": null}, {\"at\": 1789208000, \"kind\": \"task\", \"text\": \"Invoices endpoint: check green\", \"ok\": true, \"ref\": \"invoices\"}, {\"at\": 1789210500, \"kind\": \"wait\", \"text\": \"waiting for you: question\", \"ok\": null}]}, {\"session\": \"field-notes\", \"live\": true, \"project\": \"personal/field-notes\", \"events\": [{\"at\": 1789207200, \"kind\": \"prompt\", \"text\": \"Add the Tuesday meeting notes to the draft\", \"ok\": null, \"ref\": null}, {\"at\": 1789207320, \"kind\": \"prompt\", \"text\": \"Also fix the typo in the title\", \"ok\": null, \"ref\": null}, {\"at\": 1789207350, \"kind\": \"prompt\", \"text\": \"and push when done\", \"ok\": null, \"ref\": null}, {\"at\": 1789207357, \"kind\": \"prompt\", \"text\": \"Also add the attendees list\", \"ok\": null, \"ref\": \"phone\"}, {\"at\": 1789207358, \"kind\": \"prompt\", \"text\": \"Also add the room booking\", \"ok\": null, \"ref\": \"web\"}, {\"at\": 1789207364, \"kind\": \"prompt\", \"text\": \"this is how the header looks now\", \"ok\": null, \"ref\": null}]}], \"more\": false}",
       "at": 1789210841
     },
     {
@@ -1575,6 +1584,12 @@
       "ok": true,
       "text": "nothing to update",
       "at": 1789214641
+    },
+    {
+      "id": "6f1c2d3e-0899-4000-8000-000000000899",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"kpi_tasks\": {\"open\": 3, \"waiting_you\": 1, \"stalled\": 1, \"closed_today\": 2, \"tasks\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"state\": \"running\", \"age_s\": 9000, \"attempts\": 2, \"attempts_max\": 3, \"stalled\": true, \"who\": \"master\"}, {\"task\": \"ledger-vendor-ticket\", \"short\": \"Vendor ticket 4411\", \"state\": \"paused\", \"age_s\": 172800, \"attempts\": 0, \"attempts_max\": 3, \"stalled\": false, \"who\": \"maintainer\"}]}, \"kpi_checks_week\": [{\"date\": \"2026-09-06\", \"green\": 4, \"red\": 0}, {\"date\": \"2026-09-07\", \"green\": 7, \"red\": 1}, {\"date\": \"2026-09-08\", \"green\": 3, \"red\": 0}, {\"date\": \"2026-09-09\", \"green\": 5, \"red\": 2}, {\"date\": \"2026-09-10\", \"green\": 7, \"red\": 0}, {\"date\": \"2026-09-11\", \"green\": 2, \"red\": 0}, {\"date\": \"2026-09-12\", \"green\": 5, \"red\": 1}], \"kpi_turns_today\": [{\"session\": \"atlas-shop\", \"turns\": [{\"start\": 1789200000, \"end\": 1789200240, \"outcome\": \"ok\", \"tokens\": 18200, \"cache_read\": 210000}, {\"start\": 1789201000, \"end\": 1789201420, \"outcome\": \"fail\", \"tokens\": 26100, \"cache_read\": 260000}, {\"start\": 1789210000, \"end\": 1789210700, \"outcome\": \"running\", \"tokens\": 41000, \"cache_read\": 390000}]}], \"kpi_health\": {\"latency\": {\"p50_s\": 2.1, \"max_s\": 9.8, \"n\": 41}, \"sessions_here\": 4, \"sessions_max\": 5, \"hosts\": [{\"name\": \"win\", \"up\": true, \"cpu\": 0.12, \"ram_pct\": 71, \"disk_pct\": null}]}, \"kpi_suggestions_7d\": {\"accepted\": 7, \"discussed\": 3, \"later\": 2, \"never\": 0, \"expired\": 2}, \"kpi_waits\": {\"now\": [{\"session\": \"ledger-api\", \"kind\": \"question\", \"since\": 1789210500}], \"week\": [{\"date\": \"2026-09-06\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-07\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-08\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-09\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-10\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-11\", \"median_min\": 6.0, \"n\": 3}, {\"date\": \"2026-09-12\", \"median_min\": 11.5, \"n\": 2}]}}",
+      "at": 1789214701
     }
   ]
 }

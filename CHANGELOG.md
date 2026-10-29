@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.82 — 2026-10-29: the numbers for the app's KPI views, and the waits in the timeline (contract 1.96).**
+  - The KPI proposals of 25/10, approved by the maintainer for after the quota reset of 29/10. `cm-kpi.py` computes six blocks from local files, with no model: open tasks with age and checks spent, the week's green and red checks, today's turns per session with their tokens from the transcript, the relay's latency and the machines, how the suggestions of the last 7 days ended, and who waits for the person.
+  - They come with a passive op `kpi`, not in `/state`: today's turns alone pass its 8 KB.
+  - From now on the relay records, at every push, when a question, a permission or a needs-you starts and ends, per session; the timeline shows them, and `kpi_waits` takes the daily median from them. Nothing before today is rebuilt.
+  - The limit of one model (proposal 3) is not there: Claude Code passes the status line only the five-hour and weekly limits.
+  - A wait that one push does not see and the next sees again with the same start is the same wait: the timeline shows it once and the median does not count the false end.
+  - Tests: kpi-verify K1-K7, relay-verify R94; fixture `cmd-result-sample.json`.
 - **0.8.81 — 2026-10-29: the installed plugins and skills of both accounts, their latest versions, and Update from the app (contract 1.95).**
   - The maintainer's idea of 28/10: a section of the app listing the installed plugins and skills with the current and the latest version, with Update and Update all.
   - `cm-plugins.py` reads, per account, `installed_plugins.json` and the manifests of the marketplaces (the entry's version, or the plugin.json of a local source; unknown stays null), and the skills with their version and where they come from (`ORIGINE.txt`, synced from the account, a link). Only file reads: 0.45 s here.

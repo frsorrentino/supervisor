@@ -644,6 +644,40 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.96 (29/10/2026, the numbers of the KPI proposals of 25/10, approved by the
+maintainer at 21:47 for after the quota reset of 29/10). Additive, `v` stays 1.
+
+- **op `kpi`** (a passive read, never in `/state`: today's turns alone pass 8 KB):
+  `{at, kpi_tasks, kpi_checks_week, kpi_turns_today, kpi_health, kpi_suggestions_7d,
+  kpi_waits}`. A block whose source cannot be read is null.
+- **`kpi_tasks`** (proposal 8): `{open, waiting_you, stalled, closed_today, tasks}`,
+  each task `{task, short, state, age_s, attempts, attempts_max, stalled, who}` —
+  `attempts` are the red checks already spent, at most 12 tasks.
+- **`kpi_checks_week`** (9): seven `{date, green, red}`, the oldest first, every check
+  rerun of a task.
+- **`kpi_turns_today`** (10): per live session with turns today `{session, turns}`,
+  each turn `{start, end, outcome, tokens, cache_read}`: `outcome` ok, fail (an API
+  error in the turn), question (the last turn of a session waiting) or running (the
+  last, session working); `tokens` = input + cache writes + output, once per message,
+  `cache_read` apart. At most 30 turns per session.
+- **`kpi_health`** (12): `{latency: {p50_s, max_s, n}, sessions_here, sessions_max,
+  hosts: [{name, up, cpu, ram_pct, disk_pct}]}` — latency from the push to a device's
+  read over the last hour (a sample at each new `/seen`), the live sessions of this
+  computer against `sessions.max_sessions`, the other hosts from `hosts_status`.
+- **`kpi_suggestions_7d`** (13): `{accepted, discussed, later, never, expired}` over
+  seven days; `accepted` counts the choices.
+- **`kpi_waits`** (17): `{now: [{session, kind, since}], week: [{date, median_min,
+  n}]}` — who waits for the person now (`kind` question, permission, needs_you) and
+  the median minutes of the waits closed each day.
+- **Waits in the timeline.** From this version the relay writes, at every push, the
+  start and the end of each wait (question, permission, needs-you) per session in
+  `waits.jsonl`; the timeline shows them as events of kind `wait`. Nothing before is
+  rebuilt.
+- **Proposal 3, the limit of one model, is not there:** Claude Code passes the status
+  line only `five_hour` and `seven_day`.
+
+Fixtures: `cmd-result-sample.json` (one `kpi` result), `kpi` last in every `ops`.
+
 Contract 1.95 (29/10/2026, the maintainer's idea of 28/10: «a section of the app with
 the installed plugins and skills, the current version and the latest, and Update and
 Update all»). Additive, `v` stays 1.
