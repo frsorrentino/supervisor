@@ -102,7 +102,7 @@
       "op": "night_add",
       "session": null,
       "arg": "/home/demo/workspaces/work/clients/ledger-api",
-      "text": "Update the changelog for 2.4 and check the migration notes",
+      "text": "Update the changelog for 2.4",
       "issued": 1789210600,
       "by": "phone-pixel8"
     },
@@ -905,6 +905,51 @@
       "device": "web",
       "issued": 1789214530,
       "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0894-4000-8000-000000000894",
+      "op": "plugins",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789214600,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0895-4000-8000-000000000895",
+      "op": "plugin_check",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789214610,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0896-4000-8000-000000000896",
+      "op": "plugin_update",
+      "session": null,
+      "arg": "personal:chrisbanes-skills@chrisbanes-skills",
+      "device": "web",
+      "issued": 1789214620,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0897-4000-8000-000000000897",
+      "op": "plugin_update",
+      "session": null,
+      "arg": "personal:needs-command@some-market",
+      "device": "web",
+      "issued": 1789214630,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0898-4000-8000-000000000898",
+      "op": "plugin_update_all",
+      "session": null,
+      "arg": "work",
+      "device": "web",
+      "issued": 1789214640,
+      "by": "web"
     }
   ],
   "result": [
@@ -1500,6 +1545,36 @@
       "ok": false,
       "text": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service is no longer among the advice: nothing stopped",
       "at": 1789214531
+    },
+    {
+      "id": "6f1c2d3e-0894-4000-8000-000000000894",
+      "ok": true,
+      "text": "{\"checked_at\": 1789189400, \"accounts\": [{\"account\": \"personal\", \"plugins\": [{\"id\": \"chrisbanes-skills@chrisbanes-skills\", \"name\": \"chrisbanes-skills\", \"marketplace\": \"chrisbanes-skills\", \"scope\": \"user\", \"installed\": \"2026.9.22.01\", \"latest\": \"2026.10.26\", \"update\": true}, {\"id\": \"frontend-design@claude-plugins-official\", \"name\": \"frontend-design\", \"marketplace\": \"claude-plugins-official\", \"scope\": \"user\", \"installed\": \"465f09344424\", \"latest\": null, \"update\": null}, {\"id\": \"supervisor@supervisor-dev\", \"name\": \"supervisor\", \"marketplace\": \"supervisor-dev\", \"scope\": \"user\", \"installed\": \"0.8.81\", \"latest\": \"0.8.81\", \"update\": false}], \"skills\": [{\"name\": \"animate\", \"version\": \"1.2\", \"source\": \"someone/motion-skills@1a2b3c4d\"}, {\"name\": \"docx\", \"version\": null, \"source\": \"account\"}]}, {\"account\": \"work\", \"plugins\": [{\"id\": \"supervisor@supervisor-dev\", \"name\": \"supervisor\", \"marketplace\": \"supervisor-dev\", \"scope\": \"user\", \"installed\": \"0.8.81\", \"latest\": \"0.8.81\", \"update\": false}], \"skills\": []}]}",
+      "at": 1789214601
+    },
+    {
+      "id": "6f1c2d3e-0895-4000-8000-000000000895",
+      "ok": true,
+      "text": "plugin check started: the versions come with the next state",
+      "at": 1789214611
+    },
+    {
+      "id": "6f1c2d3e-0896-4000-8000-000000000896",
+      "ok": true,
+      "text": "chrisbanes-skills@chrisbanes-skills updated: it applies to new sessions",
+      "at": 1789214621
+    },
+    {
+      "id": "6f1c2d3e-0897-4000-8000-000000000897",
+      "ok": false,
+      "text": "needs-command@some-market: the marketplace asks to confirm a command, to confirm at the PC (claude plugin update needs-command@some-market)",
+      "at": 1789214631
+    },
+    {
+      "id": "6f1c2d3e-0898-4000-8000-000000000898",
+      "ok": true,
+      "text": "nothing to update",
+      "at": 1789214641
     }
   ]
 }

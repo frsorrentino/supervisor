@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1128,6 +1128,7 @@ def collect_sources(now=None):
         "elicitations": elicitations_list(rows, now),   # 1.83
         "suggestions": suggestions_list(now), "usage_today": usage_today(rows, now), "closed": closed_saved(now),   # 1.84
         "system": system_status(rows, runtime),   # 1.90
+        "plugins": plugins_summary(),   # 1.95
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1170,6 +1171,49 @@ def handoffs_of(rows):
 # ------------------------------------------------------------------ 1.37: consiglio, doppioni, approvazioni
 ADVICE_REASON_MAX = 200
 DEPLOY_RE = re.compile(r"\b(prod|production|produzione|deploy|live)\b", re.I)
+
+
+PL = None
+_PL_LAST = (0.0, None)
+
+
+def _plugins():
+    global PL
+    if PL is None:
+        PL = _load("cm-plugins")
+    return PL
+
+
+def plugins_summary(fresh=False):
+    """1.95 (29/10): il riassunto di plugin e skill per /state — quando si e' controllato e, per account, gli id con un
+    aggiornamento. L'elenco intero e' l'op `plugins` (non sta negli 8 KB). Riletto al piu' ogni 5 minuti, o subito dopo
+    un aggiornamento. None se la lettura fallisce."""
+    global _PL_LAST
+    if not fresh and _PL_LAST[1] is not None and time.time() - _PL_LAST[0] < 300:
+        return _PL_LAST[1]
+    try:
+        sm = _plugins().summary(_plugins().collect())
+    except Exception as e:   # noqa: BLE001 — un'informazione in piu', mai la push persa
+        log(f"plugins: lettura fallita ({e})")
+        return None
+    _PL_LAST = (time.time(), sm)
+    return sm
+
+
+def plugins_check_due():
+    """Il controllo dei marketplace e' scaduto (plugins.check_hours)? Solo la data del file: niente Python in piu'."""
+    try:
+        at = float(json.loads(_plugins().stamp_path().read_text()).get("at") or 0)
+    except (OSError, ValueError):
+        at = 0.0
+    return time.time() - at >= float((CFG.get("plugins") or {}).get("check_hours", 6)) * 3600
+
+
+def plugins_check_spawn(force=False):
+    """`cm-plugins.py check` staccato e a bassa priorita'; poi una push."""
+    sh = f"nice -n 19 {sys.executable} {HERE / 'cm-plugins.py'} check{' --force' if force else ''} >/dev/null 2>&1; " \
+         f"{sys.executable} {Path(__file__).resolve()} push --async >/dev/null 2>&1"
+    subprocess.Popen(["sh", "-c", sh], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 SY = None
@@ -1634,6 +1678,25 @@ def sys_unit_stop(cmd, arg):
     ledger_write("sys-unit-stop", units=units, by=cmd.get("by"), ok=ok)
     push_async()
     return ok, M("relay.cmd_sys_unit_stop_done" if ok else "relay.cmd_sys_unit_stop_failed", units=", ".join(units))
+
+
+def plugins_op(op, arg):
+    """1.95 (29/10): plugins (lettura: l'elenco intero), plugin_check (controlla subito i marketplace, la risposta arriva
+    con la push dopo), plugin_update {arg: "account:id"}, plugin_update_all {arg: account}. Mai -y (cm-plugins)."""
+    arg = str(arg or "").strip()
+    if op == "plugins":
+        return True, json.dumps(_plugins().collect(), ensure_ascii=False)
+    if op == "plugin_check":
+        plugins_check_spawn(force=True)
+        return True, M("relay.cmd_plugins_checking")
+    if op == "plugin_update":
+        acc, _, pid = arg.partition(":")
+        ok, text = _plugins().update(acc, pid)
+    else:
+        ok, text = _plugins().update_all(arg)
+    plugins_summary(fresh=True)
+    push_async()
+    return ok, text
 
 
 def commitments_list():
@@ -2613,7 +2676,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):
@@ -3014,7 +3077,7 @@ def serve():
 
 
 # 28/10: anche cm-system.py, che il demone tiene caricato (1.90) — senza, la 0.8.76 restava fuori fino al riavvio
-CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py", "cm-system.py")
+CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py", "cm-system.py", "cm-plugins.py")
 STALE_S = 180
 
 
@@ -3100,6 +3163,12 @@ def guard(now=None):
 
 
 def ensure():
+    # 1.95 (29/10): l'ultima versione di plugin e skill, al piu' ogni plugins.check_hours ore, staccato e con nice
+    try:
+        if plugins_check_due():
+            plugins_check_spawn()
+    except Exception:   # noqa: BLE001
+        pass
     # 28/10/2026: ogni minuto, i claude rimasti senza il loro tmux si segnano e passati sessions.orphan_grace_s si
     # chiudono (cm-sessions.py --reap-orphans): staccato, la scaletta HUP/TERM/KILL non ferma il battito
     try:

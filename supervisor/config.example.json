@@ -412,6 +412,9 @@
       7
     ]
   },
+  "plugins": {
+    "check_hours": 6
+  },
   "suggest": {
     "stall_h": 4,
     "followup_max_h": 72,

@@ -1803,6 +1803,8 @@ def execute(cmd):
             return sys_kill(cmd, arg)
         if op == "sys_unit_stop":   # 1.91
             return sys_unit_stop(cmd, arg)
+        if op in ("plugins", "plugin_check", "plugin_update", "plugin_update_all"):   # 1.95
+            return plugins_op(op, arg)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

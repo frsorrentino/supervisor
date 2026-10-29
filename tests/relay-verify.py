@@ -242,7 +242,7 @@ SRC1 = {
     # 1.17: le righe della coda come le scrive `night add` (added ISO locale, prompt intero)
     "night": {"queued": 2, "running": None, "master": True, "items": [
         {"id": "a3f09c1e", "dir": ROOT_WS + "/personal/atlas-shop", "prompt": "Go through the open issues labelled flaky, reproduce each one locally with the seed from its report, fix the ones that are real and write a short note in docs/notte for the others, then run the full suite twice", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789207200)},
-        {"id": "7b21d4e8", "dir": ROOT_WS + "/work/clients/ledger-api", "prompt": "Update the changelog for 2.4 and check the migration notes", "account": "work", "model": "", "effort": "", "max_turns": 40, "added": iso(1789210620)}]},
+        {"id": "7b21d4e8", "dir": ROOT_WS + "/work/clients/ledger-api", "prompt": "Update the changelog for 2.4", "account": "work", "model": "", "effort": "", "max_turns": 40, "added": iso(1789210620)}]},
     "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": [{"project": "atlas-shop", "done": "Migrations 008-011 applied, tests green", "next": "Review the seeds and the admin page"}, {"project": "ledger-api", "done": "Deploy ready", "next": "Wait for the go"}]},
     "follow": {"work-ledger-api"}, "awaiting": set(),
     "next": {"work-ledger-api": "Wait for the go", "atlas-shop": "Review the seeds and the admin page", "work-orbit-docs": "Pick up the pricing page"},
@@ -288,7 +288,7 @@ DEV_SRC = {"devices": {"phoneUid00000000000000000000": {"name": "Pixel 9", "pair
 # 1.33: le azioni ricorrenti della master, gia' in ordine (l'ultima usata in cima), una con param
 DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on X", "prompt": "Review this week's posts on X and suggest replies", "param": False},
                         {"id": "release-changelog", "label": "Changelog of a release", "prompt": "Write the changelog of release", "param": True},
-                        {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Check what the competing plugins shipped this week and sum it up", "param": False}]
+                        {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Sum up what competing plugins shipped", "param": False}]
 SRC1.update(DEV_SRC)
 SRC1["suggestions"] = []   # 1.84: nessun suggerimento; orbit-docs chiusa dal PC porta closed {at, session_id}
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
@@ -401,6 +401,7 @@ SRC3.update(DEV_SRC)
 SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
 SRC3["commitments"] = F3["commitments"]   # 1.76
 SRC3["system"] = F3["system"]   # 1.90
+SRC3["plugins"] = F3["plugins"]   # 1.95
 # 1.84 (24/10): orbit-docs chiusa dall'app prima che il PC si fermasse — lo stato salvato, con due file non committati
 SRC3["rows"] = [{"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs",
                  "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789199000}]
@@ -1202,7 +1203,7 @@ n_calls = len(cm_calls())
 res = send_cmd(dict(CMDS[12], arg=str(led)))
 T.check("R13 (1.17) night_add → `night add PATH PROMPT`, /result ok with the fixture's text and `job` = the new id",
         res and res["ok"] is True and res["text"] == RES[12]["text"] and res.get("job") == RES[12]["job"] == "7b21d4e8"
-        and f"night add {led} Update the changelog for 2.4 and check the migration notes" in cm_calls()[n_calls:], str(res) + str(cm_calls()[n_calls:]))
+        and f"night add {led} Update the changelog for 2.4" in cm_calls()[n_calls:], str(res) + str(cm_calls()[n_calls:]))
 res = send_cmd(dict(CMDS[12], id="6f1c2d3e-0123-4000-8000-000000000201"))
 res2 = send_cmd(dict(CMDS[12], id="6f1c2d3e-0123-4000-8000-000000000202", arg=str(led), text="   "))
 res3 = send_cmd(dict(CMDS[12], id="6f1c2d3e-0123-4000-8000-000000000203", arg=str(led), text="FULL"))
@@ -1671,7 +1672,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-5:-2] == ["suggestion", "close_preview", "close"] and all(s["ops"][-5:-2] == R_OPS[-5:-2] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-9:-6] == ["suggestion", "close_preview", "close"] and all(s["ops"][-9:-6] == R_OPS[-9:-6] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3584,7 +3585,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90) and sys_unit_stop (1.91); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-8] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91) and the plugin ops (1.95); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-12] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3613,7 +3614,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-7] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-7:-5] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-11] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-11:-9] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4050,10 +4051,10 @@ T.check("R89 system_advice (1.90) sys_kill: a pid that is not among the advice, 
 # R90 (contratto 1.91, 28/10): i processi bloccati sul ponte grafico — stuck in system e l'op sys_unit_stop «Ferma il ciclo»
 _sy90 = F3["system"]
 _lp90 = _sy90["advice"][0]
-T.check("R90 system_stuck (1.91) the fixture: stuck {count, since, rss_mb, units}; load_per_core leaves the stuck out ((load1 - count) / cores); stuck_loop first with sys_unit_stop, stuck as words only; sys_unit_stop last in every ops",
+T.check("R90 system_stuck (1.91) the fixture: stuck {count, since, rss_mb, units}; load_per_core leaves the stuck out ((load1 - count) / cores); stuck_loop first with sys_unit_stop, stuck as words only; sys_unit_stop right after sys_kill in every ops",
         list(_sy90["stuck"]) == ["count", "since", "rss_mb", "units"] and _sy90["load_per_core"] == round((_sy90["load1"] - _sy90["stuck"]["count"]) / _sy90["cores"], 2)
         and _lp90["kind"] == "stuck_loop" and _lp90["action"]["op"] == "sys_unit_stop"
-        and next(a for a in _sy90["advice"] if a["kind"] == "stuck")["action"] is None and all(o[-1] == "sys_unit_stop" for o in _ops89 + [F3["ops"]]), json.dumps(_sy90)[:300])
+        and next(a for a in _sy90["advice"] if a["kind"] == "stuck")["action"] is None and all(o[o.index("sys_kill") + 1] == "sys_unit_stop" for o in _ops89 + [F3["ops"]]), json.dumps(_sy90)[:300])
 _log90 = tmp / "systemctl90.log"
 _fk90 = tmp / "systemctl90"
 _fk90.write_text(f"#!/bin/sh\necho \"$*\" >> {_log90}\n")
@@ -4121,5 +4122,37 @@ T.check("R92 (1.93) transcript of a session that is no longer running but is in 
         _b92[0] is True and [e["id"] for e in json.loads(_b92[1])["entries"]] == _all92[-5:] and _c92 == (False, "mai92 is not running"), str((_b92[:1], _c92)))
 T.check("R92 (1.93) transcript of a live session with no transcript yet (just started) → ok, no entries, more false",
         _d92 == (True, json.dumps({"entries": [], "more": False})), str(_d92))
+
+# R93 (contratto 1.95, 29/10): plugin e skill — il riassunto in /state, l'elenco intero e gli aggiornamenti dall'app
+_res93 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_cmd93 = [c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"] if str(c.get("op", "")).startswith("plugin")]
+_full93 = json.loads(_res93[_cmd93[0]["id"]]["text"])
+_calls93 = []
+_fake93 = type("PLfake", (), {
+    "collect": staticmethod(lambda: _full93), "summary": staticmethod(lambda st: {"checked_at": st["checked_at"], "accounts": []}),
+    "update": staticmethod(lambda acc, pid: (_calls93.append(("u", acc, pid)), (pid != "needs-command@some-market",
+        f"{pid} updated: it applies to new sessions" if pid != "needs-command@some-market" else
+        f"{pid}: the marketplace asks to confirm a command, to confirm at the PC (claude plugin update {pid})"))[1]),
+    "update_all": staticmethod(lambda acc: (_calls93.append(("a", acc)), (True, "nothing to update"))[1])})
+_sv93 = dict(pl=RL.PL, sp=RL.plugins_check_spawn, pa=RL.push_async, lang=RL.CFG.get("language"))
+_sp93 = []
+try:
+    RL.PL = _fake93
+    RL.CFG["language"] = "en"   # i testi delle fixture sono in inglese
+    RL.plugins_check_spawn = lambda force=False: _sp93.append(force)
+    RL.push_async = lambda *a, **k: None
+    _r93 = [RL.execute(dict(c)) for c in _cmd93]
+finally:
+    RL.PL, RL.plugins_check_spawn, RL.push_async = _sv93["pl"], _sv93["sp"], _sv93["pa"]
+    RL.CFG["language"] = _sv93["lang"]
+T.check("R93 plugins_state (1.95) the ops: plugins (a passive read, the whole list), plugin_check (starts a forced check), plugin_update «account:id», plugin_update_all «account»: results as in the fixture",
+        [(ok, txt) for ok, txt in _r93] == [(_res93[c["id"]]["ok"], _res93[c["id"]]["text"]) for c in _cmd93] and _sp93 == [True]
+        and _calls93 == [("u", "personal", "chrisbanes-skills@chrisbanes-skills"), ("u", "personal", "needs-command@some-market"), ("a", "work")]
+        and "plugins" in RL.PASSIVE_OPS and "plugin_update" not in RL.PASSIVE_OPS,
+        str([(c["op"], r, (_res93[c["id"]]["ok"], _res93[c["id"]]["text"][:80])) for c, r in zip(_cmd93, _r93) if (r[0], r[1]) != (_res93[c["id"]]["ok"], _res93[c["id"]]["text"])] + [_sp93, _calls93])[:900])
+T.check("R93 plugins_state (1.95) the fixture: state-3 carries plugins {checked_at, accounts: [{account, updates}]}; the full list (op plugins) has plugins {id, name, marketplace, scope, installed, latest, update} and skills {name, version, source}",
+        list(F3["plugins"]) == ["checked_at", "accounts"] and all(list(a) == ["account", "updates"] for a in F3["plugins"]["accounts"])
+        and all(list(p) == ["id", "name", "marketplace", "scope", "installed", "latest", "update"] for a in _full93["accounts"] for p in a["plugins"])
+        and all(list(sk) == ["name", "version", "source"] for a in _full93["accounts"] for sk in a["skills"]) and "plugins" not in F1, json.dumps(F3["plugins"]))
 
 T.finish()

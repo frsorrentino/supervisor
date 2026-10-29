@@ -644,6 +644,35 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.95 (29/10/2026, the maintainer's idea of 28/10: «a section of the app with
+the installed plugins and skills, the current version and the latest, and Update and
+Update all»). Additive, `v` stays 1.
+
+- **`/state.plugins`**: `{checked_at, accounts: [{account, updates: [id]}]}` — when the
+  marketplaces were last checked (epoch s, null if never) and, per account, the plugin
+  ids with an update. Small on purpose: the whole list does not fit the 8 KB.
+- **op `plugins`** (a passive read): `{checked_at, accounts: [{account, plugins,
+  skills}]}`. Each plugin `{id, name, marketplace, scope, installed, latest, update}`:
+  `latest` from the marketplace's manifest (its entry's version, or the plugin.json of
+  a local source), null when the source does not say; `update` true when `latest` is
+  newer (numbers) or different (a commit), null when `latest` is unknown. Each skill
+  `{name, version, source}`: `version` from its SKILL.md (null if absent); `source`
+  `account` (synced from the account), `<repo>@<commit>` (from its ORIGINE.txt),
+  `link:<target>` or `local`. Skills are not updated from the app.
+- **op `plugin_check`**: checks the marketplaces now (`claude plugin marketplace
+  update` per account, low priority); the result says it started, the versions come
+  with the next state. The relay does the same by itself at most every
+  `plugins.check_hours` (6).
+- **op `plugin_update {arg: "account:id"}`** and **`plugin_update_all {arg:
+  account}`** (the user-scope plugins with an update): `claude plugin update ID --json
+  -s SCOPE` for that account, never `-y`. When the marketplace asks to confirm a
+  command, the result is not ok and says to confirm it at the PC. An update applies
+  to new sessions. The text has one line per plugin.
+
+Fixtures: `state-3-stale.json` (`plugins`, one update on `personal`), the four ops last
+in every `ops`, `cmd-result-sample.json` (the list, a check, an update, one that needs
+the PC, update all with nothing to do).
+
 Contract 1.94 (28/10/2026, asked by the maintainer: «the feedback collection has to
 work continuously»). Additive, `v` stays 1.
 

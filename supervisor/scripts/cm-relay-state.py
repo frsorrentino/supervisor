@@ -758,6 +758,10 @@ def build_state(src, now, fit=True):
         sy = src["system"]
         state["system"] = dict(sy, consumers=[dict(c) for c in sy.get("consumers") or []],
                                advice=[dict(a, action=dict(a["action"]) if a.get("action") else None) for a in sy.get("advice") or []][:SYSTEM_ADVICE_MAX])
+    # 1.95 (29/10): plugin e skill — {checked_at, accounts: [{account, updates: [id]}]}; l'elenco intero e' l'op plugins
+    if src.get("plugins"):
+        state["plugins"] = {"checked_at": src["plugins"].get("checked_at"),
+                            "accounts": [{"account": a["account"], "updates": list(a.get("updates") or [])} for a in src["plugins"].get("accounts") or []]}
     # fit=False: lo stato intero, su cui il relay calcola gli eventi (23/09: gli eventi sullo stato tagliato davano
     # «Session closed» al polso per sessioni vive che fit_state aveva tolto per la dimensione)
     return fit_state(state, int(src.get("state_max_kb") or 8)) if fit else state

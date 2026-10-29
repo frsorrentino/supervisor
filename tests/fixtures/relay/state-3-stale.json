@@ -153,7 +153,11 @@
     "close_preview",
     "close",
     "sys_kill",
-    "sys_unit_stop"
+    "sys_unit_stop",
+    "plugins",
+    "plugin_check",
+    "plugin_update",
+    "plugin_update_all"
   ],
   "slash": [
     "compact",
@@ -219,7 +223,7 @@
     {
       "id": "plugin-rivals",
       "label": "What competing plugins shipped",
-      "prompt": "Check what the competing plugins shipped this week and sum it up",
+      "prompt": "Sum up what competing plugins shipped",
       "param": false
     }
   ],
@@ -444,6 +448,21 @@
           "arg": "13277:870211",
           "label": "Close"
         }
+      }
+    ]
+  },
+  "plugins": {
+    "checked_at": 1789189400,
+    "accounts": [
+      {
+        "account": "personal",
+        "updates": [
+          "chrisbanes-skills@chrisbanes-skills"
+        ]
+      },
+      {
+        "account": "work",
+        "updates": []
       }
     ]
   }

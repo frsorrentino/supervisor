@@ -203,7 +203,11 @@
     "close_preview",
     "close",
     "sys_kill",
-    "sys_unit_stop"
+    "sys_unit_stop",
+    "plugins",
+    "plugin_check",
+    "plugin_update",
+    "plugin_update_all"
   ],
   "slash": [
     "compact",
@@ -280,7 +284,7 @@
     {
       "id": "plugin-rivals",
       "label": "What competing plugins shipped",
-      "prompt": "Check what the competing plugins shipped this week and sum it up",
+      "prompt": "Sum up what competing plugins shipped",
       "param": false
     }
   ],

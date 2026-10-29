@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.81 — 2026-10-29: the installed plugins and skills of both accounts, their latest versions, and Update from the app (contract 1.95).**
+  - The maintainer's idea of 28/10: a section of the app listing the installed plugins and skills with the current and the latest version, with Update and Update all.
+  - `cm-plugins.py` reads, per account, `installed_plugins.json` and the manifests of the marketplaces (the entry's version, or the plugin.json of a local source; unknown stays null), and the skills with their version and where they come from (`ORIGINE.txt`, synced from the account, a link). Only file reads: 0.45 s here.
+  - Every 6 hours at most, detached and with `nice`, the relay runs `claude plugin marketplace update` for each account, so «latest» stays fresh; the op `plugin_check` does it now.
+  - `plugin_update` and `plugin_update_all` run `claude plugin update ID --json -s SCOPE` for the account, never `-y`: a command declared by the marketplace is someone else's code, so when Claude Code asks to confirm one the result says to do it at the PC.
+  - `/state.plugins` carries only when it was checked and the ids with an update; the whole list is the passive op `plugins`. `python3 supervisor/scripts/cm-plugins.py` prints it at the PC.
+  - Tests: plugins-verify P1-P5 (`plugins_state`), relay-verify R93; fixtures `state-3-stale.json`, `cmd-result-sample.json`, the four ops in every `ops` (two example texts shortened to keep state-1 within 8 KB).
 - **0.8.80 — 2026-10-28: the sorting suggestion names a note written by hand by its text.**
   - Seen live after 0.8.79: for a plugin whose notes were written by hand (`observe add`), the item said «the most frequent «?»». Those notes have no error text: theirs is in `call`. The item now uses it.
   - Tests: suggest-verify S13.

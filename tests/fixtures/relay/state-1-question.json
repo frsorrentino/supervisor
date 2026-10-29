@@ -269,7 +269,7 @@
         "id": "7b21d4e8",
         "dir": "/home/demo/workspaces/work/clients/ledger-api",
         "name": "ledger-api",
-        "prompt": "Update the changelog for 2.4 and check the migration notes",
+        "prompt": "Update the changelog for 2.4",
         "added": 1789210620,
         "started": null
       }
@@ -369,7 +369,11 @@
     "close_preview",
     "close",
     "sys_kill",
-    "sys_unit_stop"
+    "sys_unit_stop",
+    "plugins",
+    "plugin_check",
+    "plugin_update",
+    "plugin_update_all"
   ],
   "slash": [
     "compact",
@@ -442,7 +446,7 @@
     {
       "id": "plugin-rivals",
       "label": "What competing plugins shipped",
-      "prompt": "Check what the competing plugins shipped this week and sum it up",
+      "prompt": "Sum up what competing plugins shipped",
       "param": false
     }
   ],
