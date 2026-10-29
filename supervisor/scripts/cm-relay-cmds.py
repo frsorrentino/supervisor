@@ -1167,6 +1167,23 @@ TRANSCRIPT_WINDOWS = (2 * 1024 * 1024, 16 * 1024 * 1024, None)   # si legge dall
 
 LIVE_ROWS_TTL_S = 120   # 29/10: anche ogni push le rinnova (collect_sources); prima 10 s, una CLI a ogni lettura della web app
 _LIVE = {"at": 0.0, "rows": None}
+# 29/10 (note di claude-observe, «win:workspace-61 is not running» ×22): le righe viste nelle righe vive, per nome,
+# anche dopo che la sessione si chiude — una di win o un nome «-2» non stanno nel registro, e la chat aperta sul
+# telefono le chiede ancora. In processo, al piu' SEEN_MAX nomi (i piu' vecchi escono)
+_SEEN = {}
+SEEN_MAX = 300
+
+
+def live_set(rows):
+    """Le righe vive nuove (sotto _LIVE_LOCK): in _LIVE per LIVE_ROWS_TTL_S e, per nome, in _SEEN."""
+    _LIVE.update(at=time.time(), rows=rows)
+    for r in rows or []:
+        k = r.get("tmux") or r.get("name")
+        if k:
+            _SEEN.pop(k, None)
+            _SEEN[k] = dict(r)
+    while len(_SEEN) > SEEN_MAX:
+        _SEEN.pop(next(iter(_SEEN)))
 _LIVE_LOCK = threading.Lock()
 
 
@@ -1179,7 +1196,7 @@ def live_rows():
         rows = _json_cmd("sessions", "--json", "--no-screen")
         if rows is not None:
             with _LIVE_LOCK:
-                _LIVE.update(at=time.time(), rows=rows)
+                live_set(rows)
     return copy.deepcopy(rows or [])
 
 
@@ -1194,7 +1211,7 @@ def live_row(tm):
         rows = _json_cmd("sessions", "--json", "--no-screen")
         if rows is not None:
             with _LIVE_LOCK:
-                _LIVE.update(at=time.time(), rows=rows)
+                live_set(rows)
         hit = next((r for r in rows or [] if (r.get("tmux") or r.get("name")) == tm), None)
     return dict(hit) if hit else None
 
@@ -1237,6 +1254,10 @@ def transcript_page(session, tm, arg, sid=None):
         # 28/10 (note di claude-observe, «X is not running» su decine di sessioni): la chat di una sessione chiusa,
         # chiesta per nome, si legge dal registro in sola lettura come quella per id (1.82)
         row = session_row(tm)
+        if not row:
+            # 29/10: una sessione appena chiusa fuori registro (di win, un nome «-2»): la riga vista prima
+            with _LIVE_LOCK:
+                row = dict(_SEEN[tm]) if tm in _SEEN else None
         path = core.transcript_of(row) if row else None
         if not path:
             return False, M("relay.cmd_interrupt_gone", name=session)

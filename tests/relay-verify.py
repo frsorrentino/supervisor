@@ -4329,4 +4329,35 @@ T.check("R95 (29/10) the ledger rows of a session from the index are those of a 
         all(S._events_of(_led95, f"S{k}") == [r for r in _led95 if r["session_id"] == f"S{k}"] for k in range(8))
         and (_led95.append({"session_id": "S3", "n": 999}) or S._events_of(_led95, "S3")[-1]["n"] == 999) and S._events_of(_led95, "") == [], "")
 
+# R96 (29/10, note di claude-observe: «win:workspace-61 is not running» ×22, «supervisor-app-2 is not running»): una
+# sessione appena chiusa che il registro non ha (una di win, un nome «-2») — la chat aperta sul telefono la chiede
+# ancora: la riga vista nelle righe vive di prima porta alla sua trascrizione (per win la copia locale)
+_tx96 = tmp / "r96-win.jsonl"
+_tx96.write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+_all96 = [e["id"] for e in json.loads(RL.transcript_read(str(_tx96), 200, None, None)[1])["entries"]]
+_rows96 = [{"tmux": "", "name": "win:workspace-61", "host": "win", "remote_name": "workspace-61", "status": "idle",
+            "cwd": "C:/w", "account": "personal", "session_id": "S-win96", "transcript": str(_tx96)},
+           {"tmux": "supervisor-app-2", "name": "supervisor-app-2", "status": "idle", "cwd": "/x", "account": "personal",
+            "session_id": "S-loc96"}]
+_live96 = {"rows": _rows96}
+_sv96 = dict(jc=RL._json_cmd, tof=RL.core.transcript_of, live=dict(RL._LIVE))
+try:
+    RL._json_cmd = lambda *a, **k: ({"sessioni": []} if a[:1] == ("registry",) else copy.deepcopy(_live96["rows"]))
+    _tof96 = _sv96["tof"]
+    RL.core.transcript_of = lambda row: str(_tx96) if row.get("session_id") == "S-loc96" else _tof96(row)
+    RL._LIVE.update(at=0.0, rows=None)
+    _seen96 = RL.live_rows()   # le righe vive di una push: le due sessioni ci sono
+    _live96["rows"] = []       # poi si chiudono
+    RL._LIVE.update(at=0.0, rows=None)
+    _a96 = RL.transcript_page("win:workspace-61", "win:workspace-61", "5")
+    _b96 = RL.transcript_page("supervisor-app-2", "supervisor-app-2", "5")
+    _c96 = RL.transcript_page("mai96", "mai96", "5")
+finally:
+    RL._json_cmd, RL.core.transcript_of = _sv96["jc"], _sv96["tof"]
+    RL._LIVE.update(_sv96["live"])
+T.check("R96 (29/10) transcript of a win session that just closed (seen in the live rows before, not in the registry) → its conversation from the local copy, read-only",
+        _a96[0] is True and [e["id"] for e in json.loads(_a96[1])["entries"]] == _all96[-5:], str(_a96)[:300])
+T.check("R96 (29/10) transcript of a local «-2» session that just closed and is not in the registry → its conversation; a name never seen → still «is not running»",
+        _b96[0] is True and [e["id"] for e in json.loads(_b96[1])["entries"]] == _all96[-5:] and _c96 == (False, "mai96 is not running"), str((_b96[:1], _c96)))
+
 T.finish()

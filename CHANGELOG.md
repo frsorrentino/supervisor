@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.85 — 2026-10-29: the phone's chat of a session that just closed opens, also for win sessions and «-2» names.**
+  - A chat open on the phone keeps asking for the transcript of its session after it closes. 0.8.78 read a closed session from the registry, but the sessions of win and the «-2» names are not there: «win:workspace-61 is not running» ×22 and eight more notes like it (51 in all). The relay now remembers by name the rows it saw in the live rows (up to 300, in process) and reads the conversation from there, read-only; for win the local copy of its transcript. A name never seen still answers «is not running». Tests: relay-verify R96.
 - **0.8.84 — 2026-10-29: the Update buttons work from the relay, «Update all» covers the project plugins, and suggestions already dealt with stay away.**
   - The relay runs with the cron's PATH (/usr/bin:/bin) and `claude` lives in ~/.local/bin: every Update from the app answered «No such file or directory: 'claude'». cm-plugins now finds it the way the other daemons do (`cm-config.claude_bin`). Tests: plugins-verify P7.
   - A suggestion accepted from the app does not come back while its condition holds (`accepted_live`, seeded from the history of a file written before); when the condition goes and comes back it is asked again. The unsaved one counts the files outside git now, not those at closing, and leaves when there are none; the observe one does not come with a task open on sorting that plugin's notes. Tests: suggest-verify S14.

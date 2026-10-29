@@ -1133,7 +1133,7 @@ def collect_sources(now=None):
     # senza nome ne' tmux e' un processo claude fuori registro (un `claude -p`, il recap): non e' una sessione da polso
     live = [r for r in (sessions_rows() or []) if (r.get("tmux") or r.get("name"))]
     with _LIVE_LOCK:   # 29/10: le letture della web app (transcript ogni ~10 s) usano le righe di questa push
-        _LIVE.update(at=time.time(), rows=copy.deepcopy(live))
+        live_set(copy.deepcopy(live))
     reg = CFG.get("registry") or {}
     good = _memo("good", lambda: _json_cmd("registry", "--good", expect="{") or {}, ttl=300,
                  deps=[cm.expand(reg.get("good_file") or "~/.claude/sessions-good.json")])
