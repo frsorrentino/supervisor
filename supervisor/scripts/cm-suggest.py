@@ -40,6 +40,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -123,11 +124,22 @@ def load():
     except (OSError, ValueError):
         d = {}
     d = d if isinstance(d, dict) else {}
+    hist = [h for h in d.get("history") or [] if isinstance(h, dict)]
+    if "accepted_live" not in d:
+        # 29/10: un file di prima di accepted_live — le accettazioni di voci dello script nella storia, se dopo non sono
+        # state risolte o scadute (il primo fill toglie quelle la cui condizione non regge piu')
+        d["accepted_live"] = {}
+        for h in sorted(hist, key=lambda h: int(h.get("at") or 0)):
+            if h.get("action") in ACCEPTED and h.get("source") == "script":
+                d["accepted_live"][h.get("key")] = int(h.get("at") or 0)
+            elif h.get("action") in ("resolved", "expired"):
+                d["accepted_live"].pop(h.get("key"), None)
     return {"items": [x for x in d.get("items") or [] if isinstance(x, dict) and x.get("id")],
             "never": [str(k) for k in d.get("never") or []],
             "never_at": dict(d.get("never_at") or {}),
-            "history": [h for h in d.get("history") or [] if isinstance(h, dict)],
-            "kinds_on": dict(d.get("kinds_on") or {}), "kinds_off": dict(d.get("kinds_off") or {})}
+            "history": hist,
+            "kinds_on": dict(d.get("kinds_on") or {}), "kinds_off": dict(d.get("kinds_off") or {}),
+            "accepted_live": dict(d.get("accepted_live") or {})}
 
 
 def save(d, now=None):
@@ -245,6 +257,9 @@ def act(sid, action, now=None, choice=None):
     else:
         d["items"] = [x for x in d["items"] if x["id"] != sid]
         close(d, hit, code, now)
+        if code in ACCEPTED and source_of(hit) == "script":
+            # 29/10: accettata, non torna finche' la sua condizione regge (fill la toglie da qui quando si risolve)
+            d["accepted_live"][hit["key"]] = now
         if action == "never":
             if hit.get("key") not in d["never"]:
                 d["never"].append(hit["key"])
@@ -298,6 +313,23 @@ def one_line(template, cut, **kw):
         val = val.rsplit(" ", 1)[0].rstrip(",;:.")
 
 
+def dirty_now(project):
+    """29/10: i file fuori da git adesso nella cartella del progetto (assoluta o relativa alla radice), o None se non si
+    sa (cartella che non c'e', non un repo, git che non risponde): allora vale il conto alla chiusura."""
+    if not project:
+        return None
+    p = Path(_expand(str(project)))
+    if not p.is_absolute():
+        p = _expand((_cfg()[1].get("workspace") or {}).get("root") or "~") / p
+    if not p.is_dir():
+        return None
+    try:
+        r = subprocess.run(["git", "-C", str(p), "status", "--porcelain"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return len([l for l in r.stdout.splitlines() if l.strip()]) if r.returncode == 0 else None
+
+
 def wanted(state, commitments, now):
     """Le voci che `fill` vuole in coda: [(kind, key, text, prompt, attesa in secondi)]. commitments None: il registro
     non risponde, e le attese esterne non si toccano."""
@@ -317,11 +349,15 @@ def wanted(state, commitments, now):
             out.append(("followup", followup_key(name, step), one_line("suggest.followup_text", "step", project=project, step=step),
                         M("suggest.followup_prompt", session=name, step=step), idle))
         cl = s.get("closed") or {}
-        if s.get("state") == "gone" and int(cl.get("dirty_n") or 0) > 0:
+        n = int(cl.get("dirty_n") or 0) if s.get("state") == "gone" else 0
+        if n > 0:
+            live_n = dirty_now(s.get("project"))   # 29/10: il conto di adesso; 0 = gia' sistemati, la voce non serve
+            n = n if live_n is None else live_n
+        if n > 0:
             sid = cl.get("session_id") or int(cl.get("at") or 0)
-            tpl = "suggest.unsaved_text_one" if int(cl["dirty_n"]) == 1 else "suggest.unsaved_text"
-            out.append(("unsaved", f"unsaved:{name}:{sid}", one_line(tpl, "project", project=project, n=cl["dirty_n"]),
-                        M("suggest.unsaved_prompt", session=name, n=cl["dirty_n"], session_id=cl.get("session_id") or "?"), now - int(cl.get("at") or now)))
+            tpl = "suggest.unsaved_text_one" if n == 1 else "suggest.unsaved_text"
+            out.append(("unsaved", f"unsaved:{name}:{sid}", one_line(tpl, "project", project=project, n=n),
+                        M("suggest.unsaved_prompt", session=name, n=n, session_id=cl.get("session_id") or "?"), now - int(cl.get("at") or now)))
     for c in commitments or []:
         pz = c.get("paused") or {}
         if pz.get("waits") == "external" and pz.get("recheck") and int(pz["recheck"]) <= now:
@@ -329,10 +365,10 @@ def wanted(state, commitments, now):
             project = label(c.get("project"), c.get("session") or c["task"])
             out.append(("waiting", f"waiting:task:{c['task']}", one_line("suggest.waiting_text", "reason", reason=reason, project=project),
                         M("suggest.waiting_prompt", reason=reason, task=c["task"]), now - int(pz["recheck"])))
-    return out + observe_wanted(now)
+    return out + observe_wanted(now, commitments)
 
 
-def observe_wanted(now):
+def observe_wanted(now, commitments=None):
     """1.94 (28/10, «la raccolta del feedback deve lavorare con continuita'»): le note locali di claude-observe
     (<suggest.observe_dir>/<plugin>.jsonl, o CM_OBSERVE_DIR) si accumulavano senza che nessuno le leggesse — 190 per
     supervisor il 28/10. Una voce per plugin quando le note new sono almeno suggest.observe_min_new o la piu' vecchia ha
@@ -345,7 +381,8 @@ def observe_wanted(now):
     out = []
     for f in sorted(d.glob("*.jsonl")) if d.is_dir() else []:
         plugin = f.stem
-        if plugin in skip:
+        # 29/10: con un compito aperto sullo smistamento delle note di quel plugin la voce non serve
+        if plugin in skip or any(str(c.get("task") or "").startswith(f"{plugin}-note-observe") for c in commitments or []):
             continue
         new = []
         try:
@@ -413,7 +450,12 @@ def fill(now=None, state=None, commitments=None):
     stats["expired"] = len(d["history"]) - n0
     off = kind_off(d, now)
     smax = int((_cfg()[1].get("suggest") or {}).get("script_max", 8))
-    want = [w for w in wanted(state, commitments, now) if w[1] not in d["never"] and w[0] not in off]
+    allw = wanted(state, commitments, now)
+    # 29/10: una voce accettata resta fuori finche' la sua condizione regge; quando un passaggio non la vuole piu' esce
+    # da accepted_live, e se torna si ripropone
+    held = {w[1] for w in allw}
+    d["accepted_live"] = {k: v for k, v in d["accepted_live"].items() if k in held}
+    want = [w for w in allw if w[1] not in d["never"] and w[0] not in off and w[1] not in d["accepted_live"]]
     want = sorted(want, key=lambda w: (RANK_OF[w[0]], -w[4], w[1]))[:smax]
     keys = {w[1] for w in want}
     untouched = set() if commitments is not None else {"waiting"}

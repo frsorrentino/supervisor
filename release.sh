@@ -121,7 +121,9 @@ TITLE=$(awk -v v="$VER" '$0 ~ "^- \\*\\*" v {sub(/^- \*\*/,""); sub(/\.\*\*.*/,"
 git tag -a "v$VER" -m "v$VER — ${TITLE:-release}" "$PUB"
 git push origin "v$VER"
 NOTES=$(mktemp)
-awk -v v="$VER" '$0 ~ "^- \\*\\*" v {f=1} f {print} f && /^$/ {exit}' CHANGELOG.md > "$NOTES"
+# 29/10/2026: le voci stanno una dopo l'altra senza righe vuote, e le note prendevano tutto il CHANGELOG da qui in giu'
+# (GitHub: «body is too long», 0.8.83): finiscono alla voce dopo, a una riga vuota o a un titolo
+awk -v v="$VER" '$0 ~ "^- \\*\\*" v {f=1; print; next} f && (/^- \*\*/ || /^$/ || /^#/) {exit} f {print}' CHANGELOG.md > "$NOTES"
 [ -s "$NOTES" ] || { echo "FAIL: could not extract $VER notes from CHANGELOG"; exit 1; }
 gh release create "v$VER" --title "v$VER — ${TITLE:-release}" --notes-file "$NOTES" "$(readlink -f "$ZIP")"
 rm -f "$NOTES"

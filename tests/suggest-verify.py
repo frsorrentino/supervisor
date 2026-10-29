@@ -215,15 +215,19 @@ t12 = {x["kind"]: x for x in items() if x.get("source") == "script"}
 T.check("S12 suggest_fill_text_asks: followup, unsaved and waiting say as a one-line question what Accept does, the project first; an item already queued takes the new text on the next fill",
         sorted(t12) == ["followup", "unsaved", "waiting"]
         and t12["followup"]["text"] == "field-notes: la sessione è ferma su «Scegliere il titolo della release», glielo mando?"
-        and t12["unsaved"]["text"] == "orbit-docs ha 2 file fuori da git: li faccio committare?"
+        and t12["unsaved"]["text"] == "orbit-docs ha 2 file fuori da git: li smisto?"
         and t12["waiting"]["text"] == "atlas-shop: ricontrollo «ticket 4411 del fornitore» e, se è arrivato, riprendo il compito?"
         and {k: x["id"] for k, x in t12.items()} == old12, json.dumps(t12, ensure_ascii=False)[:700])
 st12b = fixture_state(dirty=1)
 reset()
 SGM.fill(NOW, state=st12b, commitments=[])
-T.check("S12 suggest_fill_text_asks: one file is «un file», «lo faccio committare?»; without a project the session's name leads",
-        by_key()["unsaved:orbit-docs:0b5e7c1d-0000-4000-8000-00000000000d"]["text"] == "orbit-docs ha un file fuori da git: lo faccio committare?",
+T.check("S12 suggest_fill_text_asks: one file is «un file», «lo smisto?»; without a project the session's name leads",
+        by_key()["unsaved:orbit-docs:0b5e7c1d-0000-4000-8000-00000000000d"]["text"] == "orbit-docs ha un file fuori da git: lo smisto?",
         json.dumps(items(), ensure_ascii=False)[:500])
+# 29/10 (13 dei 19 file di un sito erano personali): Accetta chiede di smistare per contenuto, mai un commit in blocco
+_p12 = by_key()["unsaved:orbit-docs:0b5e7c1d-0000-4000-8000-00000000000d"]["prompt"]
+T.check("S12 suggest_fill_text_asks: Accept on unsaved asks to sort by content — read each file, commit by name only the project ones, propose .gitignore for the personal, generated or secret ones and name them",
+        all(w in _p12 for w in ("per contenuto", "per nome", "di progetto", ".gitignore", "personali", "generati", "segreti")) and "falle committare" not in _p12, _p12)
 before10 = SG.read_bytes()
 STATE.unlink(missing_ok=True)
 rc10 = sg("fill")
@@ -298,6 +302,66 @@ SGM.fill(NOW + 9000, state={"sessions": []}, commitments=[])
 e13 = by_key().get(f"observe:eps:{week}") or {}
 T.check("S13 suggest_observe: a note written by hand (empty error, its text in call) is named by its text, never «?»",
         "«seo: lettura dalle API mai riuscita 3»" in e13.get("text", ""), e13.get("text"))
+os.environ["CM_OBSERVE_DIR"] = ENV["CM_OBSERVE_DIR"]
+
+# ------------------------------------------------------------------ S14 suggest_superseded (29/10, «Fai togliere i
+# suggerimenti superati»): observe accettate 3 volte in un giorno col lavoro gia' nel registro; unsaved di nuovo in coda
+# con «19 file» quando il repo ne aveva 0. Una voce accettata non torna finche' la sua condizione regge; unsaved guarda
+# git; observe non torna con un compito aperto sullo smistamento di quel plugin
+_site = tmp / "site"
+_site.mkdir()
+_g = lambda *a: subprocess.run(["git", "-C", str(_site), *a], capture_output=True, text=True)   # noqa: E731
+_g("init", "-q"); (_site / "a.txt").write_text("a"); _g("add", "a.txt"); _g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a")
+(_site / "notes.md").write_text("mie"); (_site / "draft.txt").write_text("x")
+def st14(present=True):
+    return {"sessions": [{"name": "site", "state": "gone", "since": NOW - 7 * H, "project": str(_site),
+                          "closed": {"at": NOW - 7 * H, "session_id": "aefcd4c6", "dirty_n": 19, "dirty": []}}] if present else []}
+K14 = "unsaved:site:aefcd4c6"
+reset()
+SGM.fill(NOW, state=st14(), commitments=[])
+u14 = by_key().get(K14) or {}
+T.check("S14 suggest_superseded: unsaved counts the files outside git now, not those at closing (2, not 19)",
+        u14.get("text") == "site ha 2 file fuori da git: li smisto?", u14.get("text"))
+SGM.act(u14.get("id"), "accept", now=NOW + 60)
+SGM.fill(NOW + H, state=st14(), commitments=[])
+back14 = K14 in by_key()
+(_site / "notes.md").unlink(); (_site / "draft.txt").unlink()
+SGM.fill(NOW + 2 * H, state=st14(), commitments=[])
+clean14 = K14 in by_key()
+(_site / "new.txt").write_text("n")
+SGM.fill(NOW + 3 * H, state=st14(), commitments=[])
+again14 = by_key().get(K14, {}).get("text")
+T.check("S14 suggest_superseded: an accepted unsaved does not come back while the files are still there; a clean repo has no item; files outside git again → back",
+        back14 is False and clean14 is False and again14 == "site ha un file fuori da git: lo smisto?", str((back14, clean14, again14)))
+reset()
+SGM.fill(NOW, state=st14(False), commitments=[])
+SGM.fill(NOW + 60, state=st14(), commitments=[])
+x14 = by_key().get(K14) or {}
+SGM.act(x14.get("id"), "accept", now=NOW + 120)
+SGM.fill(NOW + 180, state=st14(False), commitments=[])
+SGM.fill(NOW + 240, state=st14(), commitments=[])
+T.check("S14 suggest_superseded: once its condition goes and comes back, an accepted item is asked again",
+        K14 in by_key(), str(sorted(by_key())))
+os.environ["CM_OBSERVE_DIR"] = str(OBS)
+notes("alfa", [("new", D, 40, "No tab with id 5")] + [("new", D // 2, 1, f"altro {i}") for i in range(11)])
+reset()
+KO = f"observe:alfa:{week}"
+SGM.fill(NOW, state={"sessions": []}, commitments=[{"task": "alfa-note-observe-29-10", "title": "Note di alfa", "session": "alfa"}])
+open14 = KO in by_key()
+SGM.fill(NOW + 60, state={"sessions": []}, commitments=[])
+o14 = by_key().get(KO) or {}
+SGM.act(o14.get("id"), "accept", now=NOW + 120)
+SGM.fill(NOW + 180, state={"sessions": []}, commitments=[])
+SGM.fill(NOW + 240, state={"sessions": []}, commitments=[])
+T.check("S14 suggest_superseded: observe does not come with a task open on sorting that plugin's notes; accepted, it does not come back while the notes are still new",
+        open14 is False and bool(o14) and KO not in by_key(), str((open14, bool(o14), sorted(by_key()))))
+# un file di prima della correzione (senza accepted_live): le accettazioni gia' nella storia valgono
+reset({"items": [], "never": [], "history": [{"key": KO, "kind": "observe", "source": "script", "action": "accepted", "at": NOW + 300},
+                                          {"key": "observe:beta:old", "kind": "observe", "source": "script", "action": "accepted", "at": NOW + 100},
+                                          {"key": "observe:beta:old", "kind": "observe", "source": "script", "action": "resolved", "at": NOW + 200}]})
+SGM.fill(NOW + 400, state={"sessions": []}, commitments=[])
+T.check("S14 suggest_superseded: a file from before (no accepted_live) takes the accepts already in its history: the observe accepted today does not come back",
+        KO not in by_key() and KO in json.loads(SG.read_text()).get("accepted_live", {}), str(sorted(by_key())))
 os.environ["CM_OBSERVE_DIR"] = ENV["CM_OBSERVE_DIR"]
 
 T.finish()

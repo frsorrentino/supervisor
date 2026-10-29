@@ -17,6 +17,9 @@ P4 plugins_state: check aggiorna i marketplace al più ogni 6 ore per account (`
 P5 plugins_state: update chiama `claude plugin update ID --json -s SCOPE` col suo account, mai -y: un comando del
    marketplace da confermare diventa «da confermare al PC»; un id non installato è rifiutato senza chiamare niente;
    update_all aggiorna solo quelli con update true e di scope user
+P6 (29/10) un plugin di scope project si aggiorna dalla sua cartella (projectPath); update_all copre tutti quelli che il
+   riassunto conta, e quello senza cartella lo dice
+P7 (29/10) col PATH del demone (/usr/bin:/bin) claude si trova in ~/.local/bin
 """
 import json
 import os
@@ -37,6 +40,7 @@ log = tmp / "claude.log"
 fake = tmp / "claude"
 fake.write_text(f"""#!/bin/sh
 echo "CCD=${{CLAUDE_CONFIG_DIR:-}} $*" >> {log}
+pwd >> {log}.cwd
 case "$*" in
   *"plugin update needsconf@"*) echo '{{"ok":false,"needsConfirmation":true,"shownCommand":{{"sha256":"abc"}}}}'; exit 3 ;;
   *"plugin update"*) echo '{{"ok":true}}' ;;
@@ -61,17 +65,24 @@ def market(acc, name, loc, plugins, src="github"):
 def installed(acc, entries):
     (acc / "plugins").mkdir(parents=True, exist_ok=True)
     (acc / "plugins" / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {
-        k: [{"scope": sc, "version": v, "installPath": str(acc / "plugins" / "cache" / k / v)}] for k, (v, sc) in entries.items()}}))
+        k: [dict({"scope": e[1], "version": e[0], "installPath": str(acc / "plugins" / "cache" / k / e[0])}, **({"projectPath": e[2]} if len(e) > 2 else {}))]
+        for k, e in entries.items()}}))
+
+
+projA = tmp / "work" / "app-a"
+projA.mkdir(parents=True)
 
 
 m1 = tmp / "mk" / "tools"
 market(A, "tools", m1, [{"name": "alpha", "version": "1.4.0", "source": "./alpha"}, {"name": "beta", "source": "./beta"},
                         {"name": "gamma", "source": {"source": "url", "url": "https://example.org/g.git"}},
-                        {"name": "needsconf", "version": "2.0.0", "source": "./n"}, {"name": "proj", "version": "9.0.0", "source": "./p"}])
+                        {"name": "needsconf", "version": "2.0.0", "source": "./n"}, {"name": "proj", "version": "9.0.0", "source": "./p"},
+                        {"name": "lost", "version": "0.2.0", "source": "./l"}])
 (m1 / "beta" / ".claude-plugin").mkdir(parents=True)
 (m1 / "beta" / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "beta", "version": "0.3.0"}))
 installed(A, {"alpha@tools": ("1.2.9", "user"), "beta@tools": ("0.3.0", "user"), "gamma@tools": ("abc123def456", "user"),
-              "needsconf@tools": ("1.0.0", "user"), "proj@tools": ("1.0.0", "project")})
+              "needsconf@tools": ("1.0.0", "user"), "proj@tools": ("1.0.0", "project", str(projA)),
+              "lost@tools": ("0.1.0", "project", str(tmp / "work" / "gone"))})
 market(B, "tools", tmp / "mk" / "tools-b", [{"name": "alpha", "version": "1.4.0", "source": "./alpha"}])
 installed(B, {"alpha@tools": ("1.4.0", "user")})
 sk = A / "skills"
@@ -96,7 +107,7 @@ st = PL.collect()
 acc = {a["account"]: a for a in st["accounts"]}
 pa = {p["id"]: p for p in acc["personal"]["plugins"]}
 T.check("P1 plugins_state: both accounts, the plugins of each with installed and latest",
-        set(acc) == {"personal", "work"} and set(pa) == {"alpha@tools", "beta@tools", "gamma@tools", "needsconf@tools", "proj@tools"}
+        set(acc) == {"personal", "work"} and set(pa) == {"alpha@tools", "beta@tools", "gamma@tools", "lost@tools", "needsconf@tools", "proj@tools"}
         and [p["id"] for p in acc["work"]["plugins"]] == ["alpha@tools"], json.dumps(st)[:400])
 T.check("P1 plugins_state: latest from the manifest entry (alpha 1.4.0) or the local plugin.json (beta 0.3.0); a remote source with no version → null",
         (pa["alpha@tools"]["installed"], pa["alpha@tools"]["latest"], pa["alpha@tools"]["update"]) == ("1.2.9", "1.4.0", True)
@@ -114,7 +125,7 @@ T.check("P2 plugins_state: skills — version from the frontmatter (metadata.ver
         and all(list(s) == ["name", "version", "source"] for s in acc["personal"]["skills"]), json.dumps(acc["personal"]["skills"]))
 sm = PL.summary(st)
 T.check("P3 plugins_state: the /state summary — checked_at and, per account, the ids with an update — in a few hundred bytes",
-        sm["accounts"] == [{"account": "personal", "updates": ["alpha@tools", "needsconf@tools", "proj@tools"]}, {"account": "work", "updates": []}]
+        sm["accounts"] == [{"account": "personal", "updates": ["alpha@tools", "lost@tools", "needsconf@tools", "proj@tools"]}, {"account": "work", "updates": []}]
         and "checked_at" in sm and len(json.dumps(sm)) < 400, json.dumps(sm))
 
 log.write_text("")
@@ -138,10 +149,41 @@ T.check("P5 plugins_state: update runs `claude plugin update ID --json -s user` 
 T.check("P5 plugins_state: a marketplace command to confirm → not ok, «da confermare al PC»; an id not installed or malformed → refused, nothing run",
         u2[0] is False and "PC" in u2[1] and u3[0] is False and u4[0] is False and len(lines) == 2, str((u2, u3, u4, lines)))
 log.write_text("")
+Path(f"{log}.cwd").write_text("")
+up = PL.update("personal", "proj@tools")
+ul = PL.update("personal", "lost@tools")
+lines, cwds = log.read_text().splitlines(), Path(f"{log}.cwd").read_text().splitlines()
+T.check("P6 (29/10, «Aggiorna tutto» always the same two) a project-scope plugin is updated from its project folder with -s project; one whose folder is gone → refused in plain words, nothing run",
+        up[0] is True and lines == ["CCD= plugin update proj@tools --json -s project"] and cwds == [str(projA)]
+        and ul[0] is False and str(tmp / "work" / "gone") in ul[1], str((up, ul, lines, cwds)))
+log.write_text("")
+Path(f"{log}.cwd").write_text("")
 ua = PL.update_all("personal")
-lines = log.read_text().splitlines()
-T.check("P5 plugins_state: update_all updates only the user-scope plugins with an update (alpha, needsconf), never the project one; one line per plugin",
-        [l.split(" plugin update ")[1].split(" ")[0] for l in lines] == ["alpha@tools", "needsconf@tools"] and ua[0] is False and "alpha@tools" in ua[1] and "needsconf@tools" in ua[1],
-        str((ua, lines)))
+lines, cwds = log.read_text().splitlines(), Path(f"{log}.cwd").read_text().splitlines()
+upd = [p["id"] for a in PL.collect()["accounts"] if a["account"] == "personal" for p in a["plugins"] if p["update"]]
+T.check("P6 update_all works on every plugin the summary counts as updatable: the user ones from here, the project one from its folder, the lost one said; one line per plugin",
+        [l.split(" plugin update ")[1].split(" ")[0] for l in lines] == ["alpha@tools", "needsconf@tools", "proj@tools"] and cwds[2] == str(projA)
+        and ua[0] is False and all(pid in ua[1] for pid in upd) and sorted(upd) == ["alpha@tools", "lost@tools", "needsconf@tools", "proj@tools"],
+        str((ua, lines, cwds, upd)))
+# P7 (29/10, «i tasti aggiorna danno errore»): il relay gira con PATH=/usr/bin:/bin e claude sta in ~/.local/bin:
+# «[Errno 2] No such file or directory: 'claude'»
+lb = home / ".local" / "bin"
+lb.mkdir(parents=True, exist_ok=True)
+(lb / "claude").write_text(fake.read_text())
+(lb / "claude").chmod(0o755)
+_env7 = {k: os.environ.get(k) for k in ("CM_CLAUDE_BIN", "PATH")}
+os.environ.pop("CM_CLAUDE_BIN", None)
+os.environ["PATH"] = "/usr/bin:/bin"
+log.write_text("")
+try:
+    u7 = PL.update("personal", "alpha@tools")
+finally:
+    for k, v in _env7.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+T.check("P7 plugins_state: with the daemon's PATH (/usr/bin:/bin) claude is found in ~/.local/bin, the update runs",
+        u7[0] is True and log.read_text().splitlines() == ["CCD= plugin update alpha@tools --json -s user"], str((u7, log.read_text())))
 T.rm(str(tmp))
 T.finish()

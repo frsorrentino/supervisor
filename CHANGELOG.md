@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.84 — 2026-10-29: the Update buttons work from the relay, «Update all» covers the project plugins, and suggestions already dealt with stay away.**
+  - The relay runs with the cron's PATH (/usr/bin:/bin) and `claude` lives in ~/.local/bin: every Update from the app answered «No such file or directory: 'claude'». cm-plugins now finds it the way the other daemons do (`cm-config.claude_bin`). Tests: plugins-verify P7.
+  - A suggestion accepted from the app does not come back while its condition holds (`accepted_live`, seeded from the history of a file written before); when the condition goes and comes back it is asked again. The unsaved one counts the files outside git now, not those at closing, and leaves when there are none; the observe one does not come with a task open on sorting that plugin's notes. Tests: suggest-verify S14.
+  - «Update all» in the Plugins and skills section counted every plugin with an update but updated only the user-scope ones: two plugins installed for one project stayed «to update» for ever, and the answer was «nothing to update». `claude plugin update -s project` works on the folder it runs in, so a project plugin is now updated from its `projectPath`; one whose folder is gone is refused in plain words. Tests: plugins-verify P6.
+  - The unsaved suggestion asks «{project} ha {n} file fuori da git: li smisto?», and Accept asks the session to sort the files by content: read each one, commit by name only the project files, propose a `.gitignore` for the personal, generated or secret ones and name them; never one commit of everything (13 of the 19 files of a site were personal). Tests: suggest-verify S12.
 - **0.8.83 — 2026-10-29: the relay much lighter, its children included.**
   - Measured on the live daemon before: 36% of a core (12.7% the process, 23.5% the programs it starts). A push spent about 12 s of CPU on a loaded Chromebook, and a detached recount of the day's publications ran every minute.
   - After, same measure (process + children from /proc): 2.5% over 2 minutes at rest, 5.2% over 10 minutes of normal use, 12.8% over 10 minutes with 25 pushes. What is left grows with the number of pushes, about 1 s each.

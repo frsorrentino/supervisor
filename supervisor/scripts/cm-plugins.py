@@ -175,7 +175,7 @@ def _env(conf):
 
 
 def _claude():
-    return os.environ.get("CM_CLAUDE_BIN") or "claude"
+    return cm.claude_bin()   # 29/10: il relay gira col PATH del cron (/usr/bin:/bin), claude sta in ~/.local/bin
 
 
 def check(force=False):
@@ -205,12 +205,20 @@ def _find(account, pid):
 
 
 def update(account, pid):
-    """(ok, testo) per un plugin di un account; mai -y."""
+    """(ok, testo) per un plugin di un account; mai -y. 29/10: uno di scope project o local si aggiorna dalla sua
+    cartella (projectPath di installed_plugins.json): `-s project` vale per la cartella da cui parte il comando, e dal
+    relay non trovava niente."""
     conf, p = _find(account, pid)
     if not p:
         return False, msg("plugins.not_installed", id=str(pid)[:80], account=str(account)[:40])
+    cwd = None
+    if p["scope"] in ("project", "local"):
+        e = ((_json(conf / "plugins" / "installed_plugins.json", {}) or {}).get("plugins") or {}).get(pid) or [{}]
+        cwd = str(e[0].get("projectPath") or "")
+        if not cwd or not os.path.isdir(cwd):
+            return False, msg("plugins.no_project", id=pid, path=cwd or "?")
     try:
-        r = subprocess.run([_claude(), "plugin", "update", pid, "--json", "-s", p["scope"]], env=_env(conf),
+        r = subprocess.run([_claude(), "plugin", "update", pid, "--json", "-s", p["scope"]], env=_env(conf), cwd=cwd,
                            capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError) as e:
         return False, msg("plugins.update_failed", id=pid, why=str(e)[:120])
@@ -228,11 +236,12 @@ def update(account, pid):
 
 
 def update_all(account):
-    """Ogni plugin di scope user con un aggiornamento; ok se tutti riescono. Una riga per plugin."""
+    """Ogni plugin con un aggiornamento, come li conta il riassunto; ok se tutti riescono. Una riga per plugin. 29/10:
+    prima solo quelli di scope user, e quelli di progetto restavano nel conto per sempre («Aggiorna tutto (2)»)."""
     acc = next((a for a in collect()["accounts"] if a["account"] == account), None)
     if acc is None:
         return False, msg("plugins.not_installed", id="*", account=str(account)[:40])
-    todo = [p["id"] for p in acc["plugins"] if p["update"] and p["scope"] == "user"]
+    todo = [p["id"] for p in acc["plugins"] if p["update"]]
     if not todo:
         return True, msg("plugins.nothing")
     res = [update(account, pid) for pid in todo]
