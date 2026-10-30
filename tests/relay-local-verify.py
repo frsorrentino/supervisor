@@ -118,7 +118,7 @@ T.check("LW2 the site unreachable → index.html and the asset from the cache; a
 st5, _ = get("/../config.json")
 T.check("LW2 no way out of the cache", st5 in (400, 404), str(st5))
 
-ok = T.wait_until(lambda: get("/api/state", tok)[0] == 200, 15)
+ok = T.wait_until(lambda: get("/api/state", tok)[0] == 200, 60)   # 30/10: a nice 19 la prima push passa i 15 s (release 0.8.87 ferma qui)
 st, body = get("/api/state", tok)
 try:
     state = json.loads(body)

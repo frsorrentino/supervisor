@@ -30,9 +30,9 @@ def config(guard):
     cfg.write_text(json.dumps({"language": "en", "tasks": {"guard": guard}}))
 
 
-def hook(cmd, cwd=proj, *flags, script=None):
+def hook(cmd, cwd=proj, *flags, script=None, tool="Bash"):
     p = subprocess.run([sys.executable, str(script or T.SCRIPTS / "cm-lane-guard.py"), *flags], capture_output=True, text=True, env=ENV, timeout=30,
-                       input=json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": str(cwd), "hook_event_name": "PreToolUse"}))
+                       input=json.dumps({"tool_name": tool, "tool_input": {"command": cmd}, "cwd": str(cwd), "hook_event_name": "PreToolUse"}))
     if p.returncode != 0:
         return "error"
     if not p.stdout.strip():
@@ -166,4 +166,20 @@ ok12 = {c: hook(c) for c in ("grep -n send-keys supervisor/scripts/cm-talk.py", 
 T.check("G12 (23/10) tmux send-keys, send, paste-buffer toward any pane → deny with the reason, guard off: typed text counts as the person's",
         all(v.startswith("deny:") and "send-keys" in v for v in k12.values()), str(k12))
 T.check("G12 reading about send-keys, a talk or a commit message that mentions them (quoted text, 19:26), a tmux command that does not type → allow", all(v == "allow" for v in ok12.values()), str(ok12))
+# G10 (30/10, Claude Code 2.1.314): un comando del Monitor passa dagli hook. Provato dal vivo con un comando innocuo: un
+# hook con matcher Bash riceve tool_name «Bash» e il comando (quindi la guardia lo fermava gia'), con matcher Monitor
+# riceve tool_name «Monitor» e lo stesso comando; `if: Monitor(…)` scatta solo sotto il matcher Monitor. Seconda rete
+config(True)
+_mon = [e for e in hooks.get("PreToolUse", []) if e.get("matcher") == "Monitor"]
+_mon_h = [h for e in _mon for h in e["hooks"]]
+_mon_strict = [h for h in _mon_h if "--strict" in h["command"]]
+_twin = lambda h: {**h, "if": h["if"].replace("Bash(", "Monitor(", 1)}
+T.check("G10 the guard treats a Monitor command as a Bash one: tmux send-keys denied, a closed `git push` denied; a harmless command and another tool pass",
+        hook("tmux send-keys -t x y", tool="Monitor").startswith("deny") and hook("git push", T.tmpdir(), tool="Monitor").startswith("deny")
+        and hook("echo hello", tool="Monitor") == "allow" and hook("git push", T.tmpdir(), tool="Read") == "allow",
+        str((hook("tmux send-keys -t x y", tool="Monitor"), hook("git push", T.tmpdir(), tool="Monitor"))))
+T.check("G10 hooks.json: every strict entry has its Monitor(…) twin under the Monitor matcher (under Bash it would never fire), and the lane guard runs on Monitor too",
+        strict and _mon_strict == [_twin(h) for h in strict] and sum("--strict" not in h["command"] and "cm-lane-guard.py" in h["command"] for h in _mon_h) == 1,
+        str(_mon_h))
+
 T.finish()

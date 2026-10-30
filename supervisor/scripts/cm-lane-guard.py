@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hook PreToolUse (Bash): la guardia della corsia chiusa (fase 1, 03/10/2026).
+"""Hook PreToolUse (Bash, Monitor): la guardia della corsia chiusa (fase 1, 03/10/2026).
 
 Nega `git push`, `gh release create|upload|edit|delete`, `npm publish`, `claude plugin publish` e uno script
 `release.sh` quando nella cartella del comando non c'e' un compito che li copre:
@@ -134,7 +134,7 @@ def main():
     strict = "--strict" in sys.argv[1:]
     try:
         payload = json.load(sys.stdin)
-        if payload.get("tool_name") != "Bash":
+        if payload.get("tool_name") not in ("Bash", "Monitor"):   # 30/10: i comandi del Monitor (Claude Code 2.1.314)
             return 0
         reason = decide(payload)
     except Exception as e:   # noqa: BLE001 — la guardia non deve mai rompere una sessione, salvo un push (--strict)

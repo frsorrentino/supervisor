@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.87 — 2026-10-30: the lane guard also runs on Monitor commands, as a second net.**
+  - Since Claude Code 2.1.314 a Monitor command goes through the hooks. Tried live with a harmless command: a hook matching Bash receives `tool_name: "Bash"` and the command, and its deny stops the tool, so the guard already held there; a hook matching Monitor receives `tool_name: "Monitor"`; `if: Monitor(…)` fires only under the Monitor matcher. `cm-lane-guard.py` now takes both tool names, and `hooks.json` runs the guard under the Monitor matcher too, with a `Monitor(…)` twin of every strict condition (guard-lane-verify G10).
 - **0.8.86 — 2026-10-30: the relay gives its memory back: 1.5 GB after 17 hours came down to about 35 MB in the same reads.**
   - Each request of the web app is a thread with its own malloc arena, and requests queue on the command lock, so many live together. The `timeline` op reads whole windows of the transcripts; the freed memory stayed in the arena: 1.28 GB in 33 arenas of about 35 MB, with up to 64 possible. It was freed memory, not a leak. The daemon now keeps two arenas, fixes the malloc thresholds at 1 MB (the first big block freed would otherwise raise them to 64 MB of retained top per arena) and every 60 s runs a collection and `malloc_trim` from the push worker (63-92 ms). The same reads measured 263 MB before and 31-36 MB after (relay-verify R97).
 - **0.8.85 — 2026-10-29: the phone's chat of a session that just closed opens, also for win sessions and «-2» names.**
