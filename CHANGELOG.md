@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.86 — 2026-10-30: the relay gives its memory back: 1.5 GB after 17 hours came down to about 35 MB in the same reads.**
+  - Each request of the web app is a thread with its own malloc arena, and requests queue on the command lock, so many live together. The `timeline` op reads whole windows of the transcripts; the freed memory stayed in the arena: 1.28 GB in 33 arenas of about 35 MB, with up to 64 possible. It was freed memory, not a leak. The daemon now keeps two arenas, fixes the malloc thresholds at 1 MB (the first big block freed would otherwise raise them to 64 MB of retained top per arena) and every 60 s runs a collection and `malloc_trim` from the push worker (63-92 ms). The same reads measured 263 MB before and 31-36 MB after (relay-verify R97).
 - **0.8.85 — 2026-10-29: the phone's chat of a session that just closed opens, also for win sessions and «-2» names.**
   - A chat open on the phone keeps asking for the transcript of its session after it closes. 0.8.78 read a closed session from the registry, but the sessions of win and the «-2» names are not there: «win:workspace-61 is not running» ×22 and eight more notes like it (51 in all). The relay now remembers by name the rows it saw in the live rows (up to 300, in process) and reads the conversation from there, read-only; for win the local copy of its transcript. A name never seen still answers «is not running». Tests: relay-verify R96.
 - **0.8.84 — 2026-10-29: the Update buttons work from the relay, «Update all» covers the project plugins, and suggestions already dealt with stay away.**

@@ -4360,4 +4360,51 @@ T.check("R96 (29/10) transcript of a win session that just closed (seen in the l
 T.check("R96 (29/10) transcript of a local «-2» session that just closed and is not in the registry → its conversation; a name never seen → still «is not running»",
         _b96[0] is True and [e["id"] for e in json.loads(_b96[1])["entries"]] == _all96[-5:] and _c96 == (False, "mai96 is not running"), str((_b96[:1], _c96)))
 
+# R97 (30/10, relay a 1,5 GB dopo 17 ore, 1,28 GB in 33 arene da 35 MB): richieste della web app in fila su EXEC_LOCK,
+# ognuna col suo thread e la sua arena. In un processo a parte: mallopt e RSS sono di tutto il processo
+_mem97 = """
+import importlib.util as u, re, sys, threading, time
+s = u.spec_from_file_location("cm_relay", sys.argv[1]); RL = u.module_from_spec(s); sys.modules["cm_relay"] = RL; s.loader.exec_module(RL)
+def rss():
+    return int([l for l in open("/proc/self/status") if l.startswith("VmRSS")][0].split()[1]) // 1024
+def arenas():
+    n, name = 0, None
+    for l in open("/proc/self/smaps"):
+        if re.match(r"^[0-9a-f]+-", l):
+            name = l.split()[5] if len(l.split()) > 5 else ""
+        elif l.startswith("Rss:") and name == "" and int(l.split()[1]) >= 8192:
+            n += 1
+    return n
+if sys.argv[2] == "cura":
+    RL.malloc_setup()
+big = bytes(30 * 1024 * 1024)   # il primo blocco grande liberato alza le soglie dinamiche di glibc
+del big
+size = int("2048")   # non una costante: il compilatore piegherebbe b"x" * 2048
+lock, gate = threading.Lock(), threading.Barrier(8)
+def req():
+    gate.wait()   # tutti vivi insieme, in fila sul lock
+    with lock:
+        blocks = [b"x" * size for _ in range(10000)]
+        del blocks
+ts = [threading.Thread(target=req) for _ in range(8)]
+[t.start() for t in ts]; [t.join() for t in ts]
+print(arenas(), rss())
+"""
+_p97 = {m: subprocess.run([sys.executable, "-c", _mem97, str(T.SCRIPTS / "cm-relay.py"), m], capture_output=True, text=True, timeout=120).stdout.split() for m in ("senza", "cura")}
+T.check("R97 (30/10) eight requests queued on a lock: without malloc_setup each keeps its 20 MB in its arena; with it the memory goes back",
+        len(_p97["senza"]) == 2 and len(_p97["cura"]) == 2 and int(_p97["senza"][0]) >= 5 and int(_p97["senza"][1]) >= 120
+        and int(_p97["cura"][0]) <= 2 and int(_p97["cura"][1]) < 80, str(_p97))
+_sv97 = dict(trim=RL._trim, every=RL.TRIM_EVERY_S)
+_n97 = []
+try:
+    RL._trim, RL.TRIM_EVERY_S = (lambda: _n97.append(1)), 0.1
+    _w97 = RL.PushWorker()
+    _w97.pending = lambda after=0.0: (0.0, "", set())
+    _w97.start(); time.sleep(1.2); _w97.stop.set(); _w97.join()
+finally:
+    RL._trim, RL.TRIM_EVERY_S = _sv97["trim"], _sv97["every"]
+_src97 = (T.SCRIPTS / "cm-relay.py").read_text()
+T.check("R97 (30/10) the push worker gives the freed memory back on its clock; serve sets malloc up before its threads",
+        2 <= len(_n97) <= 11 and _src97.index("malloc_setup()   # prima dei thread") < _src97.index("search_warm_async()   # 04/10"), str(_n97))
+
 T.finish()

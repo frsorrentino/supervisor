@@ -2312,6 +2312,27 @@ PUSH_MAX_WAIT_S = 10
 PUSH_RETRY_S = (5, 15, 30)
 
 
+MALLOC_ARENA_MAX = 2
+MALLOC_TRIM_THRESHOLD = 1024 * 1024
+TRIM_EVERY_S = 60
+
+
+def malloc_setup():
+    """30/10 (relay a 1,5 GB dopo 17 ore, 1,28 GB in 33 arene di malloc da 35 MB): ogni richiesta della web app e' un
+    thread con la sua arena e aspetta su EXEC_LOCK, cosi' sono tante insieme; l'op timeline legge finestre intere delle
+    trascrizioni e la memoria liberata resta nell'arena, fino a 64 arene. Due bastano: i thread lavorano uno alla volta.
+    Le soglie fisse perche' il primo blocco grande liberato le alzerebbe da sole (fino a 64 MB di cima tenuti per arena,
+    che malloc_trim non restituisce fuori dall'arena principale)."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        libc.mallopt(-8, MALLOC_ARENA_MAX)   # M_ARENA_MAX
+        libc.mallopt(-1, MALLOC_TRIM_THRESHOLD)   # M_TRIM_THRESHOLD
+        libc.mallopt(-3, MALLOC_TRIM_THRESHOLD)   # M_MMAP_THRESHOLD
+    except (OSError, AttributeError):
+        pass   # non glibc (macOS, Windows): resta com'e'
+
+
 class PushWorker(threading.Thread):
     """08/10 (piano prestazioni, fase 1): le push del demone, una alla volta. Una richiesta e' una data di modifica in
     push-req/; quelle arrivate durante una push diventano UNA push dopo (al piu' una in corso e una in attesa).
@@ -2339,7 +2360,11 @@ class PushWorker(threading.Thread):
     def run(self):
         handled, first, fails = 0.0, None, 0
         debounce = float(R.get("debounce_s") or 2)
+        trimmed = time.monotonic()
         while not self.stop.wait(0.25):
+            if time.monotonic() - trimmed >= TRIM_EVERY_S:   # 30/10: la memoria liberata da push e letture torna al sistema
+                _trim()
+                trimmed = time.monotonic()
             newest, origin, since = self.pending(handled)
             if newest <= handled:
                 continue
@@ -3193,6 +3218,7 @@ def serve():
     serve_pid_path().write_text(str(os.getpid()))
     global MEMO_ON
     MEMO_ON = True   # 29/10: la memoria delle letture vale solo nel demone
+    malloc_setup()   # prima dei thread
     started = time.time()
     import signal
 
