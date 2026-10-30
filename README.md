@@ -10,10 +10,8 @@ already run, on your own computer.
 
 [![supervisor, the film: the session waiting for you comes first; one tap answers it from the phone. Demo data.](assets/readme/supervisor-film.gif)](https://www.francescosorrentino.com/plugins/supervisor)
 
-The film (2 min 24 s) shows every session on one screen, the blocked ones
-first, a master session that runs the others, the daily recap, work set for the
-night, and answers given from the phone and the watch. Names and numbers in it
-are demo data. [Try the demo in your browser, no install](https://supervisor.francescosorrentino.com/?demo&lang=en).
+The film runs 2 min 24 s; names and numbers in it are demo data.
+[Try the demo in your browser, no install](https://supervisor.francescosorrentino.com/?demo&lang=en).
 
 ## The problem
 
@@ -24,10 +22,9 @@ keeps them alive, but it does not know which one is waiting, which Claude
 account a folder belongs to, or how to bring eight conversations back after a
 reboot.
 
-supervisor is for people who keep several sessions open in a terminal, on
-Linux, macOS, ChromeOS or WSL2, with one or two Claude accounts. If you open one
-session at a time, you do not need it. It is an independent plugin, not made by
-Anthropic.
+supervisor is for people who keep several sessions open in a terminal, with one
+or two Claude accounts. If you open one session at a time, you do not need it.
+It is an independent plugin, not made by Anthropic.
 
 ## Try it in 60 seconds
 
@@ -37,44 +34,39 @@ claude plugin install supervisor --marketplace frsorrentino/supervisor
 supervisor relay web
 ```
 
-The first line installs the plugin (Claude Code 2.1.292 or newer; other
-versions: [Install](#install)). The second writes the configuration from what it
-finds on your machine and puts `supervisor` in `~/.local/bin`. The third opens
-every session on one screen in this computer's browser: no Firebase, no
-account, nothing leaves the computer.
+The first line installs the plugin ([requirements](#requirements)). The second
+writes the configuration from what it finds on your machine and puts `supervisor`
+in `~/.local/bin`. The third opens every session on one screen in this computer's
+browser: no Firebase, no account, nothing leaves the computer.
 
 ## What you get
 
 - **Answer from your phone and your watch.** A session that stops on a question
   reaches your phone, tablet or watch with its options as buttons. One tap
-  answers it. You can also send it a prompt, read what it did, see the files it
-  changed with their diff, switch its model or effort, and answer the forms
-  that MCP servers open.
+  answers it. You can also prompt it, read what it did, see the diff of its files,
+  switch its model or effort, and answer the forms MCP servers open.
 - **A master session that works with you.** One session on your workspace root
   launches, watches, answers and closes the others, and tells you which one
   needs you.
-- **Every session on one screen, the blocked ones first.** One list shows every
-  session of every account: busy, idle, or stopped on a question.
+- **Every session on one screen, the blocked ones first.** Every account, in one
+  list: busy, idle, or stopped on a question.
 - **Automations while you are away.** At 20:00 one sentence per project on what
   was done and the next step. At 02:00 a queue of jobs runs one at a time while
   memory and quota allow, with a report in the morning. When a session hits a
   limit, the phone offers to go on with another model, on your other account if
   you have one, or to resume by itself at the reset.
 - **Suggestions for what to pick up next.** An hourly script, with no model
-  call, queues what was left open: the next step of a session idle for hours, the
-  files a closed session did not commit. The master adds its own ideas. Three at
-  a time on the phone's home page, each with a button.
+  call, queues what was left open: the next step of an idle session, the files a
+  closed session did not commit. The master adds its own ideas. The phone's home
+  page shows three at a time, each with a button.
 - **The machine's weight, explained.** The home page shows the load, the memory
   and what uses them. A button closes what is safe to close: a duplicate session
-  left without its terminal, a background process left behind, the restart loop
-  of a ChromeOS service. Heavy builds and renders get the advice to move them to
-  another computer.
+  without its terminal, a leftover background process, the restart loop of a
+  ChromeOS service. Heavy builds and renders get the advice to move elsewhere.
 - **Back after a reboot.** The first shell after a reboot offers every session
   again, each with its own conversation.
 
 ![One master session runs all the others: the root session launches, watches, answers and closes the parallel sessions of every project, from the terminal and from the wrist — beside it, the session list of the Wear OS app, rendered from the app's code, on the demo set.](assets/readme/card0-hero.png)
-
-The long version of every function: [details/features.md](details/features.md).
 
 ## Every day
 
@@ -97,8 +89,7 @@ Inside a session the same things are slash commands (`/supervisor:sessions`,
 
 ## On your phone and watch
 
-**The web app**, on any phone or tablet, iPhone and iPad included. Away from
-this computer it needs your own Firebase project, which carries the
+**The web app**, on any phone or tablet. Your own Firebase project carries the
 traffic encrypted end to end: Firebase sees only blobs. On the PC:
 
 ```bash
@@ -109,13 +100,11 @@ supervisor relay pair      # a QR for the first device; later ones: relay pair -
 ```
 
 On the phone, open [supervisor.francescosorrentino.com](https://supervisor.francescosorrentino.com)
-and scan the QR with the app's camera button (on iPhone and iPad, add it to the
-Home Screen first and open it from there). The key stays in that browser.
+and scan the QR with the app's camera button. The key stays in that browser.
 
-**Android and Wear OS.** The native apps for an Android 13+ phone and a Wear OS
-4+ watch are in review on Google Play. Until they are published, use the web
-app. They pair with the same QR, and the phone passes the key to the watch,
-which then works on its own.
+**Android and Wear OS.** The native apps are in review on Google Play; until they
+are published, use the web app. They pair with the same QR, and the phone passes
+the key to the watch, which then works on its own.
 
 ![From your wrist: the Wear OS app on the demo set — a session's card, a question with its options, the quota — real screens rendered from the app's code.](assets/readme/card7-wrist.png)
 
@@ -145,11 +134,20 @@ How the relay works, its protocol and its rules: [details/relay.md](details/rela
 
 In full: [details/trust.md](details/trust.md) and [PRIVACY.md](PRIVACY.md).
 
-## Install
+## Requirements
 
-Claude Code 2.1.263 or newer, signed in once on this machine, plus `tmux`,
-`python3` 3.8+ and `bash`, on Linux, macOS, ChromeOS or WSL2. Not native
-Windows: inside WSL2 it runs ([details/windows.md](details/windows.md)).
+| you need | for | which |
+|---|---|---|
+| Claude Code | everything | 2.1.263 or newer, signed in once on this machine; 2.1.292 for the one-line install in [Try it](#try-it-in-60-seconds) |
+| `tmux` | everything | on the PATH |
+| `python3` | everything | 3.8+ |
+| `bash` | everything | on the PATH |
+| A system | everything | Linux, macOS, ChromeOS or WSL2; not native Windows ([details/windows.md](details/windows.md)) |
+| Firebase project, `firebase-tools` | phone and watch away from this computer | your own, set up by `relay setup` |
+| A browser | web app | any phone or tablet; on iPhone and iPad, add it to the Home Screen and open it from there |
+| Android, Wear OS | native apps | Android 13+ phone, Wear OS 4+ watch |
+
+## Install
 
 ```bash
 claude plugin marketplace add frsorrentino/supervisor
@@ -169,8 +167,8 @@ added to your `.bashrc` or `.zshrc`, and `supervisor recap uninstall` /
 
 It runs every day on one workstation (ChromeOS, two accounts, up to eight
 sessions) and was tried on a clean WSL2 install with Windows Terminal. The other
-terminals are supported in code but not yet tried on real hardware. Terminals,
-requirements and every configuration key: [details/configuration.md](details/configuration.md).
+terminals are supported in code but not yet tried on real hardware. Terminals and
+every configuration key: [details/configuration.md](details/configuration.md).
 
 <details>
 <summary>If something goes wrong</summary>
@@ -210,9 +208,8 @@ what to do. These are the problems seen on clean installs.
 
 Every session is a `tmux` session named after its folder, started with Claude
 Code's Remote Control, so it also shows in the Claude app under the same name.
-The plugin reads the session registry Claude Code already keeps, one per
-account, and talks to a session through the inbox socket Claude Code already
-opens. Six small hooks keep the list fresh, stamp the local time on every
+The plugin reads Claude Code's session registry, one per account, and talks to a
+session through the inbox socket Claude Code already opens. Six small hooks keep the list fresh, stamp the local time on every
 prompt, deliver queued prompts and run the restart you armed. State lives in
 one folder; the configuration is one JSON file that `init` writes from your
 machine. The only process the plugin adds is the relay's daemon, and only if
@@ -254,10 +251,9 @@ you turn it on.
 for t in tests/*-verify.py; do python3 "$t"; done
 ```
 
-55 suites and about 1,870 cases. None of them touches your real tmux, your real
-Claude or your browser: they use a private tmux server, a fake `claude` that
-draws the real dialogs and writes the real registry files, a fake browser and a
-fake Telegram. Every defect found on the real machine became a test before it
+55 suites and about 1,870 cases. None touches your real tmux, Claude or browser:
+they use a private tmux server, a fake `claude` that draws the real dialogs and
+writes the real registry files, a fake browser and a fake Telegram. Every defect found on the real machine became a test before it
 was fixed.
 
 ## License
