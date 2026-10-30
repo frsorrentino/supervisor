@@ -270,7 +270,7 @@ SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-
 # 1.72: la pillola della testata su atlas-shop (i totali di changes-sample.json); le altre sessioni non ce l'hanno
 SRC1["changes"] = {"atlas-shop": {"files": 4, "added": 8, "removed": 2, "at": 1792100000}}
 # 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
-SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Big refactor: Fable 5.1 high",   # 24/10: piu' corto, state-1 sta negli 8 KB con published_at; 28/10 (1.91): ancora, per sys_unit_stop in ops
+SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Big refactor",   # 24/10: piu' corto, state-1 sta negli 8 KB con published_at; 28/10 (1.91): ancora, per sys_unit_stop in ops
                                 
                                  "switch_cost_tokens": 36000, "at": 1789210700, "source": "fable-director", "when": "next_task", "differs": True}}
 SRC1["approvals"] = [{"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main",
@@ -371,6 +371,7 @@ SRC2.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["published_today"]
 SRC2["commitments"] = F2["commitments"]   # 1.76
+SRC2["home_order"] = F2["home_order"]   # 1.97
 # 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
 SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
                       "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"]}]
@@ -1672,7 +1673,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-10:-7] == ["suggestion", "close_preview", "close"] and all(s["ops"][-10:-7] == R_OPS[-10:-7] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-11:-8] == ["suggestion", "close_preview", "close"] and all(s["ops"][-11:-8] == R_OPS[-11:-8] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3592,7 +3593,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95) and kpi (1.96); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-13] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-14] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3621,7 +3622,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-12] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-12:-10] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-13] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-13:-11] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4169,7 +4170,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-1] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-2] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir
@@ -4406,5 +4407,31 @@ finally:
 _src97 = (T.SCRIPTS / "cm-relay.py").read_text()
 T.check("R97 (30/10) the push worker gives the freed memory back on its clock; serve sets malloc up before its threads",
         2 <= len(_n97) <= 11 and _src97.index("malloc_setup()   # prima dei thread") < _src97.index("search_warm_async()   # 04/10"), str(_n97))
+
+# R98 (1.97, 30/10): l'ordine unico delle sezioni della home: si salva sul relay, sopravvive ai riavvii (un file), e torna al predefinito
+_ho = RL.home_order_op
+_hop = RL.rdir() / "home-order.json"
+_hop.unlink(missing_ok=True)
+_h0 = RL.home_order_read()
+_ha = _ho('["suggestions","sessions","nuova-di-domani"]')
+_hb, _hdisk = RL.home_order_read(), json.loads(_hop.read_text())
+_bad = ['[1,2]', '{"a":1}', '"sessions"', 'non json', '["a","a"]', json.dumps(["x" * 33]), json.dumps([f"k{i}" for i in range(17)]), '[""]']
+_hbad = [_ho(b)[0] for b in _bad]
+_hc = RL.home_order_read()
+_hd = _ho("")
+_he = RL.home_order_read(), _hop.exists()
+_ho('["a"]'); _hf = _ho(None), RL.home_order_read()
+_ho('["a"]'); _hg = _ho("[]"), RL.home_order_read()
+_hop.write_text("[1,2]"); _hh = RL.home_order_read(); _hop.unlink()
+T.check("R98 (1.97) op home_order: an array of any keys saved in home-order.json and read back; nothing saved → None",
+        _h0 is None and _ha[0] is True and _hb == _hdisk == ["suggestions", "sessions", "nuova-di-domani"], str((_h0, _ha, _hb)))
+T.check("R98 (1.97) home_order refused: not an array of strings, not JSON, duplicates, a key over 32, over 16 keys, an empty key; the saved order stays",
+        _hbad == [False] * len(_bad) and _hc == _hb, str(_hbad))
+T.check("R98 (1.97) home_order with arg empty, absent or [] goes back to the default, the file gone; a broken file reads as the default",
+        _hd[0] is True and _he == (None, False) and _hf[0][0] is True and _hf[1] is None and _hg[0][0] is True and _hg[1] is None and _hh is None, str((_hd, _he, _hf, _hg, _hh)))
+T.check("R98 (1.97) home_order is a command in ops (not passive: its push carries the new order); state.home_order only when set",
+        "home_order" in RL.OPS and "home_order" not in RL.PASSIVE_OPS and "home_order" not in F1 and F2["home_order"][0] == "suggestions"
+        and S.build_state(dict(SRC2, home_order=["a"]), 1789210800)["home_order"] == ["a"], "")
+T.check("R98 (1.97) the push reads the saved order", 'home_order": home_order_read()' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
 
 T.finish()

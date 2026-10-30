@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.88 — 2026-10-30: one order for the sections of the home, kept by the relay.**
+  - Op `home_order` saves it and `state.home_order` sends it to phone and web, the same on every device, across restarts. The relay keeps the keys it gets, so a new section needs no release (contract 1.97, relay-verify R98).
 - **0.8.87 — 2026-10-30: the lane guard also runs on Monitor commands, as a second net.**
   - Since Claude Code 2.1.314 a Monitor command goes through the hooks. Tried live with a harmless command: a hook matching Bash receives `tool_name: "Bash"` and the command, and its deny stops the tool, so the guard already held there; a hook matching Monitor receives `tool_name: "Monitor"`; `if: Monitor(…)` fires only under the Monitor matcher. `cm-lane-guard.py` now takes both tool names, and `hooks.json` runs the guard under the Monitor matcher too, with a `Monitor(…)` twin of every strict condition (guard-lane-verify G10).
 - **0.8.86 — 2026-10-30: the relay gives its memory back: 1.5 GB after 17 hours came down to about 35 MB in the same reads.**

@@ -159,6 +159,7 @@
     "max_parts_bytes": 52428800,
     "multi": 5
   },
+  "home_order": ["suggestions", "sessions", "lavori", "esiti", "altro"],
   "ops": [
     "answer",
     "prompt",
@@ -208,7 +209,8 @@
     "plugin_check",
     "plugin_update",
     "plugin_update_all",
-    "kpi"
+    "kpi",
+    "home_order"
   ],
   "slash": [
     "compact",

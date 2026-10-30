@@ -1125,6 +1125,39 @@ def search(arg):
     return True, json.dumps({"hits": hits, "more": more}, ensure_ascii=False)
 
 
+HOME_ORDER_MAX = 16
+HOME_ORDER_KEY_MAX = 32
+
+
+def home_order_valid(v):
+    """Una lista di chiavi diverse, stringhe non vuote: il relay non ne controlla l'elenco (l'app ignora le sconosciute e
+    accoda quelle mancanti), cosi' una sezione nuova non chiede una release."""
+    return (isinstance(v, list) and len(v) <= HOME_ORDER_MAX and len(set(map(str, v))) == len(v)
+            and all(isinstance(x, str) and 0 < len(x) <= HOME_ORDER_KEY_MAX for x in v))
+
+
+def home_order_read():
+    """1.97: l'ordine unico delle sezioni della home, o None (il predefinito dell'app)."""
+    v = read_json(rdir() / "home-order.json", None)
+    return list(v) if v and home_order_valid(v) else None
+
+
+def home_order_op(arg):
+    """1.97 (30/10, «Ok, falla così»): arg = array JSON in stringa delle chiavi; vuoto, assente o [] torna al predefinito."""
+    a = str(arg or "").strip()
+    try:
+        v = json.loads(a) if a else []
+    except ValueError:
+        v = None
+    if not home_order_valid(v):
+        return False, M("relay.cmd_home_order_bad_arg", max=HOME_ORDER_MAX, key_max=HOME_ORDER_KEY_MAX)
+    if not v:
+        (rdir() / "home-order.json").unlink(missing_ok=True)
+        return True, M("relay.cmd_home_order_cleared")
+    write_json(rdir() / "home-order.json", v)
+    return True, M("relay.cmd_home_order_saved")
+
+
 TIMELINE_MAX_S = 7 * 86400
 
 
@@ -1841,6 +1874,8 @@ def execute(cmd):
             return plugins_op(op, arg)
         if op == "kpi":   # 1.96
             return kpi_op()
+        if op == "home_order":   # 1.97
+            return home_order_op(arg)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

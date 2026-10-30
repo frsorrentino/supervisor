@@ -644,6 +644,23 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.97 (30/10/2026, the order of the home's sections, asked by the maintainer at
+17:22, shape from supervisor-app). Additive, `v` stays 1.
+
+- **op `home_order`**, in `state.ops`: `arg` = a JSON array of keys in a string, e.g.
+  `"[\"sessions\",\"suggestions\",\"lavori\",\"esiti\",\"altro\"]"`. Empty, absent or `[]`
+  goes back to the default. The usual cmd-result; not an array of strings, duplicates, an
+  empty key, a key over 32 characters or over 16 keys = `ok: false`, the saved order stays.
+- **`state.home_order`**: an array of strings; absent = the app's default. One order for
+  all devices, it survives restarts (`<relay.dir>/home-order.json`). A change reaches
+  `/state` with the push that follows the command.
+- The relay does not check the list of keys: it keeps what it gets, so a new section needs
+  no release. The app ignores unknown keys and appends the missing ones. Today's keys, in
+  default order: sessions, suggestions, lavori, esiti, altro; the scoreboard and «Ti
+  aspettano» have no key and stay on top.
+
+Fixture: `state-2-idle.json` (`home_order`); `home_order` in the `ops` of the three states.
+
 Contract 1.96 (29/10/2026, the numbers of the KPI proposals of 25/10, approved by the
 maintainer at 21:47 for after the quota reset of 29/10). Additive, `v` stays 1.
 

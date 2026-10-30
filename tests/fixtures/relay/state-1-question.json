@@ -100,7 +100,7 @@
       "advice": {
         "model": "claude-fable-5-1",
         "effort": "high",
-        "reason": "Big refactor: Fable 5.1 high",
+        "reason": "Big refactor",
         "switch_cost_tokens": 36000,
         "at": 1789210700,
         "source": "fable-director",
@@ -374,7 +374,8 @@
     "plugin_check",
     "plugin_update",
     "plugin_update_all",
-    "kpi"
+    "kpi",
+    "home_order"
   ],
   "slash": [
     "compact",

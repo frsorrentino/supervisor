@@ -708,6 +708,9 @@ def build_state(src, now, fit=True):
         # piu' vecchio; l'app li approva con l'op approve
         "approvals": [dict(a) for a in (src.get("approvals") or [])],
     }
+    # 1.97: l'ordine unico delle sezioni della home; senza, il campo manca e l'app usa il suo predefinito
+    if src.get("home_order"):
+        state["home_order"] = list(src["home_order"])
     # 1.33: le azioni ricorrenti della master (box «Ricorrenti»); senza lista il campo manca e l'app non mostra il box
     if src.get("recurring"):
         state["recurring"] = [dict(x) for x in src["recurring"]][:8]
