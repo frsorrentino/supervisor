@@ -32,6 +32,7 @@ import os
 import re
 import secrets
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -331,8 +332,11 @@ def mark(rec_id, status, via=None):
     if status == "delivered":
         rec["delivered_at"], rec["via"] = time.time(), via
         ledger("delivered", to=rec["to"], id=rec_id, sender=rec.get("from"), via=via)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(rec, ensure_ascii=False))
+    # 31/10: un file temporaneo per scrittore. Con /clear dal telefono il hook SessionStart e `talk` segnano lo stesso
+    # record insieme; con un nome solo, chi arrivava secondo cadeva con FileNotFoundError a consegna gia' avvenuta
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=p.stem + ".", suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(rec, ensure_ascii=False))
     os.replace(tmp, p)
     return rec
 

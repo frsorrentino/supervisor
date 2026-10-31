@@ -623,4 +623,12 @@ with T.PrivateTmux() as tm:
     rc4, out4, err4 = cm("wait-ok", "y4", "--what", "release", "--where", "github", env=M24)
     T.check("T24 standing list shows the rule; remove N revokes it: the next wait-ok waits for an ok again",
             rc == 0 and "n1" in out and "release" in out and rcr == 0 and "revoked" in outr and show("y4")["state"] == "awaiting_ok" and "standing" not in out4, out + outr + out4 + errr)
+# TSH (31/10/2026, nota 970c0d9c): il controllo gira con /bin/sh; provato a mano in bash passava, e cadeva solo a task done
+rc, out, err = add(contract("tsh", cmd="cmp -s <(true) <(true)"))
+T.check("TSH (31/10) a check /bin/sh cannot parse (bash's <(...)) is refused at add: exit 2, says it runs with /bin/sh, nothing stored",
+        rc == 2 and "$.task.check.cmd" in err and "/bin/sh" in err and cm("show", "tsh", "--json")[0] != 0, out + err)
+rc, out, err = add(contract("tshb", cmd="bash -c 'cmp -s <(true) <(true)'"))
+T.check("TSH the same check wrapped in bash -c enters and runs green", rc == 0 and cm("check", "tshb")[0] == 0, out + err)
+rc, out, err = cm("amend", "tshb", "--check", "cmp -s <(true) <(true)")
+T.check("TSH task amend refuses it too and keeps the old check", rc != 0 and "/bin/sh" in (out + err) and "bash -c" in show("tshb")["contract"]["task"]["check"]["cmd"], out + err)
 T.finish()

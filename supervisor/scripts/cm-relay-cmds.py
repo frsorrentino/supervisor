@@ -173,7 +173,7 @@ def _share_report(cmd, tm, session, sid):
         if claim:
             claim.unlink(missing_ok=True)
     if rc != 0:
-        return False, (out.splitlines() or ["report failed"])[0]
+        return False, fail_line(out, "report failed")
     try:   # 0319ab (21:43): anche la segnalazione e' un messaggio del relay; il testo lo scrive cm-report.sh
         _load("cm-inbox").mark_origin(tm, None, t0, "relay")
     except Exception:   # noqa: BLE001 — il messaggio e' partito: l'origine e' un'informazione in piu'
@@ -347,7 +347,7 @@ def share_multi(cmd, tm, session, sids, row=None):
     msg = M("report.prompt", date=time.strftime("%d/%m/%Y"), text=text or M("relay.report_image_only"))
     rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + msg + ("\n" + "\n".join(lines) if lines else ""), "--no-wait")
     if rc != 0:
-        return False, out.splitlines()[0] if out else "talk failed"
+        return False, fail_line(out, "talk failed")
     if saved_in_inbox(out):
         return False, M("relay.cmd_inbox_only", name=session)
     if not got:
@@ -371,7 +371,7 @@ def share_file(cmd, tm, session, row, mime, data, name, text):
     msg = M("relay.share_file", name=clean, mime=mime, size=_human_size(len(data)), path=str(dest))
     rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + msg + ("\n\n" + text if text else ""), "--no-wait")
     if rc != 0:
-        return False, out.splitlines()[0] if out else "talk failed"
+        return False, fail_line(out, "talk failed")
     if saved_in_inbox(out):
         return False, M("relay.cmd_inbox_only", name=session)
     return True, M("relay.cmd_report_sent_file", name=session, file=clean)
@@ -550,7 +550,7 @@ def slash_send(cmd, session, tm, arg):
     if rc == 4:
         return False, M("relay.cmd_slash_typed", name=session)
     if rc != 0:
-        return False, (out.splitlines() or ["slash failed"])[0]
+        return False, fail_line(out, "slash failed")
     sent = M("relay.cmd_slash_sent", cmd=name, name=session)
     if name in SLASH_NO_PANEL:
         return True, sent
@@ -1449,7 +1449,7 @@ def approve_task(cmd, arg):
     rc, out = run_cm("task", "approve", tid, "--by", str(cmd.get("by") or "app"), "--text", f"{text} ({where})", *(["--choice", choice] if choice else []),
                      env={"CM_APPROVE_VIA": "relay"})
     if rc != 0:
-        return False, (out.splitlines() or ["task approve failed"])[0]
+        return False, fail_line(out, "task approve failed")
     wake_after_approve(tid, text)
     return True, M("relay.cmd_approved_choice", task=tid, choice=choice) if choice else M("relay.cmd_approved", task=tid)
 
@@ -1502,7 +1502,7 @@ def decision_send(cmd, arg):
             project=M("relay.decision_project", project=project) if project else "")
     rc, out = relay_talk("master", msg, "--no-wait")
     if rc != 0:
-        return False, (out.splitlines() or ["talk failed"])[0]
+        return False, fail_line(out, "talk failed")
     return True, M("relay.cmd_decision_inbox" if saved_in_inbox(out) else "relay.cmd_decision_sent")
 
 
@@ -1680,7 +1680,7 @@ def execute(cmd):
                 checkpoint(row.get("cwd"))
             rc, out = run_cm("answer", tm, *pick)
             if rc != 0:
-                return False, out.splitlines()[0] if out else "answer failed"
+                return False, fail_line(out, "answer failed")
             mark_answered(session, row)
             clear_waiting((row or {}).get("session_id"))
             m = re.search(r"risposto\s+(\d+)\.\s+(.*?)\s{2,}", out + "  ") or re.search(r"risposto\s+(\d+)\.\s+(\S.*)$", out.splitlines()[0])
@@ -1695,7 +1695,7 @@ def execute(cmd):
                 # prompt (`talk --reopen`); se il rilancio non riesce il messaggio resta nella sua casella
                 rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + with_scope(cmd, text), "--no-wait", "--reopen")
                 if rc != 0:
-                    return False, (out.splitlines() or ["talk failed"])[0]
+                    return False, fail_line(out, "talk failed")
                 if saved_in_inbox(out):
                     return False, M("relay.cmd_inbox_only", name=session)
                 return True, M("relay.cmd_reopened_delivered", name=session)
@@ -1713,7 +1713,7 @@ def execute(cmd):
                 full_text = prefix_for(cmd, tm) + voice + " " + with_scope(cmd, text)
                 rc, out = run_cm("queue", tm, full_text, "--at-epoch", str(at))
                 if rc != 0:
-                    return False, (out.splitlines() or ["queue failed"])[0]
+                    return False, fail_line(out, "queue failed")
                 mark_queued(tm, full_text)
                 return True, M("relay.cmd_prompt_scheduled", name=session, t=time.strftime("%H:%M", time.localtime(at)))
             ago = duplicate_prompt(tm, text)
@@ -1724,7 +1724,7 @@ def execute(cmd):
             voice = " " + M("relay.prompt_voice") if cmd.get("voice") is True else ""
             rc, out = relay_talk(tm, prefix_for(cmd, tm) + voice + " " + with_scope(cmd, text), "--no-wait")
             if rc != 0:
-                return False, out.splitlines()[0] if out else "talk failed"
+                return False, fail_line(out, "talk failed")
             if saved_in_inbox(out):
                 return False, M("relay.cmd_inbox_only", name=session)
             aw = read_json(rdir() / "awaiting.json", {}); aw[tm] = int(time.time()); write_json(rdir() / "awaiting.json", aw)
@@ -1750,7 +1750,7 @@ def execute(cmd):
             # 1.9.2 (15/09, decisione dell'utente): la scheda sul desktop come reopen; senza desktop, senza finestra
             rc, out = run_cm("launch", proj["path"], "--window")
             if rc != 0:
-                return False, out.splitlines()[0] if out else "launch failed"
+                return False, fail_line(out, "launch failed")
             # il nome vero della sessione nata (launch prende il primo libero: «orbit-docs-2»), cosi' il polso apre la
             # Scheda giusta senza indovinare; e' lo stesso nome corto di sessions[].name
             new = [r.get("tmux") or r.get("name") for r in (_json_cmd("sessions", "--json", "--no-screen") or [])
@@ -1763,7 +1763,7 @@ def execute(cmd):
             rc, out = relay_talk(new[0], prefix_for(cmd, new[0]) + " " + prompt, "--no-wait")
             if rc != 0:
                 return False, M("relay.cmd_launch_no_prompt", name=proj["name"], account=proj["account"],
-                                line=(out.splitlines() or ["talk failed"])[0]), extra
+                                line=fail_line(out, "talk failed")), extra
             aw = read_json(rdir() / "awaiting.json", {}); aw[new[0]] = int(time.time()); write_json(rdir() / "awaiting.json", aw)
             return True, M("relay.cmd_launched_prompt", name=proj["name"], account=proj["account"]), extra
         if op in ("follow", "unfollow"):
@@ -1778,7 +1778,7 @@ def execute(cmd):
                 return False, M("relay.cmd_not_running", name=session)
             rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + str((CFG.get("guard") or {}).get("resume_prompt") or "riprendi da dove eri"), "--no-wait")
             if rc != 0:
-                return False, out.splitlines()[0] if out else "talk failed"
+                return False, fail_line(out, "talk failed")
             if saved_in_inbox(out):
                 return False, M("relay.cmd_inbox_only", name=session)
             return True, M("relay.cmd_resumed", name=session)
@@ -1797,7 +1797,7 @@ def execute(cmd):
             if info.get("state") == "gone":
                 return False, M("relay.cmd_gone", name=session)
             rc, out = run_cm(op, tm, str(arg or "").strip())
-            text = (out.splitlines() or [f"{op} failed"])[0]
+            text = fail_line(out, f"{op} failed")
             if rc == 0:
                 push_async()   # lo stato riporta subito il valore nuovo (annotato dal comando, cm-core lo usa)
             return rc == 0, text
@@ -1807,7 +1807,7 @@ def execute(cmd):
             if info.get("state") == "gone":
                 return False, M("relay.cmd_gone", name=session)
             rc, out = run_cm("permissions", tm, str(arg or "").strip())
-            text = (out.splitlines() or ["permission change failed"])[0]
+            text = fail_line(out, "permission change failed")
             if rc == 0:
                 push_async()
             return rc == 0, text
@@ -1826,7 +1826,7 @@ def execute(cmd):
             if rc == 4:
                 return False, M("relay.cmd_night_full", max=night_max())
             if rc != 0:
-                return False, (out.splitlines() or ["night add failed"])[0]
+                return False, fail_line(out, "night add failed")
             m = re.search(r"\b([0-9a-f]{8})\b", out)
             job = m.group(1) if m else "?"
             return True, M("relay.cmd_night_added", id=job, name=proj["name"], account=proj["account"]), {"job": job}
@@ -1840,7 +1840,7 @@ def execute(cmd):
             if rc == 5:
                 return False, M("relay.cmd_night_started", id=job)
             if rc != 0:
-                return False, (out.splitlines() or ["night remove failed"])[0]
+                return False, fail_line(out, "night remove failed")
             return True, M("relay.cmd_night_removed", id=job)
         if op == "report":
             return share_report(cmd, tm, session)
@@ -1923,7 +1923,7 @@ def execute(cmd):
                 return False, M("relay.cmd_nothing_to_stop", name=session)
             if rc == 4:
                 return False, M("relay.cmd_still_running", name=session)
-            return False, (out.splitlines() or ["interrupt failed"])[0]
+            return False, fail_line(out, "interrupt failed")
         if op == "last":
             row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
             text = last_message(row) if row else ""
@@ -1931,7 +1931,7 @@ def execute(cmd):
         if op == "screen":
             # --join: tmux riunisce le righe mandate a capo, cosi' il polso non riceve parole spezzate
             rc, out = run_cm("screen", tm, "--lines", "30", "--join")
-            return (rc == 0), ("\n".join(out.splitlines()[-30:]) if rc == 0 else (out.splitlines()[0] if out else "screen failed"))
+            return (rc == 0), ("\n".join(out.splitlines()[-30:]) if rc == 0 else (fail_line(out, "screen failed")))
         if op == "allow_all":
             q = info.get("question") or {}
             if not q:
@@ -1949,7 +1949,7 @@ def execute(cmd):
             if rc == 0:
                 mark_answered(session, row)
                 clear_waiting((row or {}).get("session_id"))
-            return (rc == 0), (M("relay.cmd_answered", n=opt["n"], label=opt["label"]) if rc == 0 else (out.splitlines()[0] if out else "answer failed"))
+            return (rc == 0), (M("relay.cmd_answered", n=opt["n"], label=opt["label"]) if rc == 0 else (fail_line(out, "answer failed")))
     except subprocess.TimeoutExpired:
         return False, "timeout"
     return False, M("relay.cmd_not_allowed", op=op)

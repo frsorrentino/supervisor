@@ -4434,4 +4434,18 @@ T.check("R98 (1.97) home_order is a command in ops (not passive: its push carrie
         and S.build_state(dict(SRC2, home_order=["a"]), 1789210800)["home_order"] == ["a"], "")
 T.check("R98 (1.97) the push reads the saved order", 'home_order": home_order_read()' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
 
+# R99 (31/10/2026, nota 8f2a8108): il /clear era partito ma il telefono leggeva solo «Traceback (most recent call last):»
+_saved = RL.relay_talk, RL._json_cmd, RL.slash_allowed
+RL._json_cmd = lambda *a: [{"tmux": "field-notes", "name": "field-notes", "status": "idle"}]
+RL.slash_allowed = lambda: ["clear"]
+RL.relay_talk = lambda *a: (1, 'Traceback (most recent call last):\n  File "x.py", line 1, in <module>\nFileNotFoundError: [Errno 2] no such file\n')
+_r99 = RL.slash_send({"text": None}, "field-notes", "field-notes", "clear")
+RL.relay_talk = lambda *a: (1, "first line\nsecond line")
+_r99b = RL.slash_send({"text": None}, "field-notes", "field-notes", "clear")
+RL.relay_talk, RL._json_cmd, RL.slash_allowed = _saved
+T.check("R99 (31/10) a command that crashes gives the phone the exception, not the word Traceback; an ordinary error keeps its first line",
+        _r99 == (False, "FileNotFoundError: [Errno 2] no such file") and _r99b == (False, "first line"), str([_r99, _r99b]))
+T.check("R99 no failure path of the relay's commands still picks the first line by hand",
+        not re.search(r'splitlines\(\)\[0\] if out else "|splitlines\(\) or \[[^\]]*\]\)\[0\]', (T.SCRIPTS / "cm-relay-cmds.py").read_text()), "")
+
 T.finish()

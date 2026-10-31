@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.89 — 2026-10-31: a /clear from the phone no longer comes back as an error, and a check /bin/sh cannot run is refused when it enters.**
+  - The SessionStart hook and `talk` mark the same inbox record at the same moment on `/clear`. They shared one temporary file, so the second one crashed after the delivery; each writer now has its own (inbox-verify IB14). This race is the likely cause of the error seen on 30/10: the original exception was not kept.
+  - When a relay command crashes, the phone and the log now get the exception instead of the words «Traceback (most recent call last):» (relay-verify R99).
+  - `task add` and `task amend` refuse a check that /bin/sh cannot parse, such as bash's `<(...)`. It used to pass by hand in bash and fail only at `task done`; `bash -c '…'` is the way to keep bash syntax (tasks-verify TSH).
 - **0.8.88 — 2026-10-30: one order for the sections of the home, kept by the relay.**
   - Op `home_order` saves it and `state.home_order` sends it to phone and web, the same on every device, across restarts. The relay keeps the keys it gets, so a new section needs no release (contract 1.97, relay-verify R98).
 - **0.8.87 — 2026-10-30: the lane guard also runs on Monitor commands, as a second net.**

@@ -350,6 +350,15 @@ def run_cm(*args, timeout=None, env=None):
     return p.returncode, out
 
 
+def fail_line(out, default):
+    """La riga da mostrare per un comando fallito: la prima, ma di un traceback l'ultima, cioe' l'eccezione (31/10: il
+    telefono leggeva solo «Traceback (most recent call last):» e nel log non restava altro)."""
+    lines = [x.strip() for x in (out or "").splitlines() if x.strip()]
+    if not lines:
+        return default
+    return lines[-1] if any(x.startswith("Traceback (most recent call last)") for x in lines) else lines[0]
+
+
 # ------------------------------------------------------------------ Firebase: REST, SSE, FCM
 def sa_path():
     return Path(cm.expand(R.get("service_account") or "")) if R.get("service_account") else rdir() / "service-account.json"

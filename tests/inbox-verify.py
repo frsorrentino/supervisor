@@ -240,4 +240,15 @@ T.check("IB12 resolve_box: human → terminal, scheduled → cron (from cron), p
 # IB13 (23/10/2026, 17:14): la maschera del PIN
 m13 = py(f"r=I.put('theta','ok 1234 alla release','terminal',{str(work)!r});r2=I.put('theta','PIN 123456','terminal',{str(work)!r});r3=I.put('theta','ok 123 e ok alla 0.8.48','terminal',{str(work)!r});print(r['text'],'|',r2['text'],'|',r3['text'])").stdout.strip()
 T.check("IB13 (23/10, 17:14) put masks a PIN after «ok» or «pin» (4-8 digits): «ok ••••»; three digits or a version stay", m13 == "ok •••• alla release | PIN •••• | ok 123 e ok alla 0.8.48", m13)
+# IB14 (31/10/2026, nota 8f2a8108): /clear dal telefono: il hook SessionStart e `talk` segnano lo stesso record insieme.
+# Il file temporaneo era uno solo: chi arrivava secondo cadeva con FileNotFoundError, e il telefono riceveva un errore.
+m14 = py(f"import os,pathlib;r=I.put('iota','/clear','terminal',{str(work)!r});o=os.replace;n=[0]\n"
+         "def rival(a,b):\n"
+         "    if not n[0]:\n"
+         "        n[0]=1;I.mark(r['id'],'delivered','session-start')\n"
+         "    return o(a,b)\n"
+         "os.replace=rival;I.mark(r['id'],'delivered','tmux');os.replace=o\n"
+         "print(I.load(r['id'])['status'],len(list(I.box('iota').glob('*.tmp'))),len(list(I.box('iota').glob('*.json'))))")
+T.check("IB14 (31/10) two writers mark the same record at once (the SessionStart hook and talk): neither crashes, the record is delivered, no temporary file left",
+        m14.returncode == 0 and m14.stdout.split() == ["delivered", "0", "1"], m14.stdout + m14.stderr)
 T.finish()

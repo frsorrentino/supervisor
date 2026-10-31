@@ -161,6 +161,20 @@ def validate(value, node=None, root=None, path="$"):
     return errs
 
 
+def check_syntax_errors(task):
+    """31/10: il controllo gira con /bin/sh (shell=True). Provato a mano in bash passava, anche con <(...), e cadeva solo
+    a `task done` con «Syntax error»: lo si dice all'ingresso. Solo la sintassi, niente viene eseguito."""
+    cmd = str((task.get("check") or {}).get("cmd") or "")
+    try:
+        p = subprocess.run(["/bin/sh", "-n", "-c", cmd], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if p.returncode == 0:
+        return []
+    why = (p.stderr.strip().splitlines() or ["syntax error"])[-1]
+    return [f"$.task.check.cmd: the check runs with /bin/sh, which refuses it ({why}); for bash syntax wrap it in bash -c '…'"]
+
+
 def outcome_errors(task):
     """P1 (22/10): il controllo deve toccare l'esito atteso. [] senza outcome (il compito vale come prima)."""
     oc = task.get("outcome")
@@ -255,6 +269,8 @@ def add(con, contract, topic=None):
     errs = validate(contract)
     if not errs:
         errs = outcome_errors(contract["task"])   # P1: un controllo che non tocca l'esito non entra
+    if not errs:
+        errs = check_syntax_errors(contract["task"])
     if errs:
         return None, errs
     t = contract["task"]
@@ -782,7 +798,7 @@ def amend(con, tid, check=None, timeout_s=None, expected=None, kind=None, proof=
         changes.append(f"outcome ({o.get('kind')}): {o.get('expected')}")
     if not changes:
         sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P]")
-    errs = validate(contract) or outcome_errors(t)
+    errs = validate(contract) or outcome_errors(t) or check_syntax_errors(t)
     if errs:
         return errs
     con.execute("UPDATE tasks SET contract=?, updated_at=? WHERE id=?", (json.dumps(contract, ensure_ascii=False), now(), tid))
