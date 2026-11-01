@@ -91,7 +91,7 @@ c = {"schema_version": 1, "task": node("solo", None)}
 cm("task", "add", "-", stdin=json.dumps(c))
 cm("task", "wait-ok", "solo", "--what", "tag v1", "--where", "github")
 T.check("G4 awaiting ok (asked, nobody approved) → denied", hook("git push --tags").startswith("deny"), "")
-cm("task", "approve", "solo", "--by", "maintainer (phone)", "--text", "ok")
+T.device_ok("approve", "solo", "maintainer (phone)", "ok", ENV)
 T.check("G4 the ok recorded → allowed", hook("git push --tags") == "allow", "")
 
 # G7 lane-guard-cd-target (09/10, chiesto dal maintainer): la cartella del comando, non solo quella della sessione.

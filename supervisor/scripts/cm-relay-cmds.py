@@ -404,12 +404,12 @@ def _fit_image(data, cap_enc):
     (base64 di base64 e AES-GCM: si stima dal JPEG e si verifica sulla busta vera). None se non ci sta mai."""
     from io import BytesIO
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         im = Image.open(BytesIO(data))
         im.load()
     except Exception:   # noqa: BLE001 — non e' un'immagine che PIL sa leggere
         return None
-    im = im.convert("RGB")
+    im = ImageOps.exif_transpose(im).convert("RGB")   # 01/11: il JPEG nuovo non porta l'EXIF: la rotazione va applicata ai pixel
     side = max(im.size)
     for edge, q in ((2048, 85), (1600, 80), (1280, 75), (1024, 70), (800, 65), (640, 60)):
         if edge < side:
@@ -1442,14 +1442,24 @@ def approve_task(cmd, arg):
         return False, M("relay.cmd_approve_bad_choice", task=tid, choice=choice, options=", ".join(opts))
     if choice and not opts:
         return False, M("relay.cmd_approve_no_options", task=tid)
+    # 1.99: l'elenco di --also che l'app ha mostrato. Diverso: la carta e' cambiata sotto il tocco. Assente (un'app vecchia,
+    # che non l'ha mostrato): l'ok vale per il padre solo
+    also = [x["task"] for x in entry.get("also") or []]
+    seen = cmd.get("also")
+    if isinstance(seen, list) and sorted(map(str, seen)) != sorted(also):
+        return False, M("relay.cmd_approve_card_changed", task=tid)
     text = S.one_line(str(cmd.get("text") or "").strip())[:500] or "ok"
     where = from_device(cmd) + (", " + M("relay.approve_live") if live else "")
-    # 16/10/2026: il demone eredita CLAUDECODE dalla sessione che l'ha avviato; `task approve` lo prenderebbe per una
-    # sessione Claude e vorrebbe --inbox. L'ok che arriva qui viene dal dispositivo
-    rc, out = run_cm("task", "approve", tid, "--by", str(cmd.get("by") or "app"), "--text", f"{text} ({where})", *(["--choice", choice] if choice else []),
-                     env={"CM_APPROVE_VIA": "relay"})
-    if rc != 0:
-        return False, fail_line(out, "task approve failed")
+    # 01/11 (ok_variabile): nel processo del relay, non con la CLI: nessuna variabile da dichiarare. Limite che resta: sessioni e
+    # relay girano con lo stesso utente (CHANGELOG 0.8.92)
+    tk = _load("cm-tasks")
+    con = tk.connect()
+    try:
+        tk.approve(con, tid, str(cmd.get("by") or "app"), f"{text} ({where})", choice=choice or None, inherit=isinstance(seen, list))
+    except SystemExit as e:
+        return False, fail_line(str(e), "task approve failed")
+    finally:
+        con.close()
     wake_after_approve(tid, text)
     return True, M("relay.cmd_approved_choice", task=tid, choice=choice) if choice else M("relay.cmd_approved", task=tid)
 
@@ -1480,6 +1490,178 @@ def wake_after_approve(tid, text):
         clear_needs_you(sess)
     if sess != master:
         spawn("talk", master, M("relay.approve_master", session=sess or "-", **kw), "--no-wait")
+
+
+# ------------------------------------------------------------------ 1.99 (01/11, fase A): Banco prova e Cinque minuti
+DEVICE_OPS = ("phone", "watch", "web")
+PROVA_IDS_MAX = 50
+PROVA_TEXT_MAX = 2000
+SNOOZE_MAX_H = 168
+
+
+def _spawn_cm(*args):
+    """Un comando di supervisor staccato: i comandi del relay girano uno alla volta (EXEC_LOCK), e un controllo dura fino a minuti."""
+    try:
+        subprocess.Popen([CM_BIN, *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def _touch_refused(cmd, op):
+    """Il motivo per cui questo comando non e' un tocco della persona, o None: serve `device` (le app dalla 1.36 lo mandano) e,
+    al polso in modalita' live, la doppia conferma, come per approve."""
+    if str(cmd.get("device") or "") not in DEVICE_OPS:
+        return M("relay.cmd_touch_no_device", op=op)
+    n = cmd.get("confirmations")
+    if cmd.get("via") == "live" and (isinstance(n, bool) or not isinstance(n, int) or n < 2):
+        return M("relay.cmd_touch_live_needs_two", op=op)
+    return None
+
+
+def _tasks_read(fn):
+    """Una lettura del registro, nel processo: (ok, JSON). Senza registro risponde vuoto."""
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return None
+    try:
+        return fn(tk, con)
+    finally:
+        con.close()
+
+
+def prove_op():
+    """1.99: op prove, una lettura: le prove da fare per build, quelle che non vanno, i compiti col controllo rosso."""
+    p = _tasks_read(lambda tk, con: tk.prove_list(con))
+    root = cm.expand(CFG["workspace"]["root"])
+    for x in (x for g in (p or {}).get("groups", []) for x in g["prove"]):
+        x["project"] = S.project_of(x.get("project") or "", root)   # come state.sessions[].project
+    return True, json.dumps(p or {"at": int(time.time()), "n": 0, "builds": 0, "groups": [], "ko": [], "red": []}, ensure_ascii=False)
+
+
+def decisioni_op():
+    """1.99: op decisioni, una lettura: cio' che aspetta la persona per causa, le fattibili da qui e le piu' pesanti prima."""
+    d = _tasks_read(lambda tk, con: tk.decisions(con))
+    root = cm.expand(CFG["workspace"]["root"])
+    for x in (x for g in (d or {}).get("groups", []) for x in g["items"] if x.get("project")):
+        x["project"] = S.project_of(x["project"], root)   # come state.sessions[].project
+    return True, json.dumps(d or {"at": int(time.time()), "n": 0, "here": 0, "tasks": 0, "snoozed": 0, "groups": []}, ensure_ascii=False)
+
+
+def prova_op(cmd, arg):
+    """1.99: l'esito di un tocco. arg = un id, o piu' id separati da virgola per «Tutte ok»: gli id che l'app ha mostrato, cosi'
+    una prova scritta nel frattempo non passa senza essere vista. result ok: conferma con origine relay, e con tutte le prove
+    ok il controllo gira in un processo suo (task settle). result ko: un id solo, `text` obbligatorio, va alla master."""
+    why = _touch_refused(cmd, "prova")
+    if why:
+        return False, why
+    result, a = cmd.get("result"), str(arg or "").strip()
+    if result not in ("ok", "ko"):
+        return False, M("relay.cmd_prova_bad_result")
+    if not re.fullmatch(r"\d{1,12}(,\d{1,12})*", a) or a.count(",") >= PROVA_IDS_MAX:
+        return False, M("relay.cmd_prova_bad_arg")
+    ids = list(dict.fromkeys(int(x) for x in a.split(",")))
+    text = str(cmd.get("text") or "").strip()[:PROVA_TEXT_MAX] if isinstance(cmd.get("text"), str) else ""
+    if result == "ko" and (len(a.split(",")) != 1 or not text):
+        return False, M("relay.cmd_prova_ko_needs_text")
+    by, where = str(cmd.get("by") or "app"), from_device(cmd)
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return False, M("relay.cmd_prova_gone", n=a)
+    try:
+        if result == "ko":
+            r = tk.prova_info(con, ids[0])
+            if r is None:
+                return False, M("relay.cmd_prova_gone", n=ids[0])
+            rc, out = relay_talk(str((CFG.get("workspace") or {}).get("root_session_name") or "master"),
+                                 M("relay.prova_ko_to_master", device=where, task=r["task"], build=r["build"], dove=r["dove"], fai=r["fai"], atteso=r["atteso"], text=text), "--no-wait")
+            if rc != 0:
+                return False, fail_line(out, "talk failed")
+        res = tk.prove_mark(con, ids, result, by, where, text or None)
+        if res.get("error") is not None:
+            return False, M("relay.cmd_prova_gone", n=res["error"])
+    finally:
+        con.close()
+    if result == "ko":
+        return True, M("relay.cmd_prova_ko", n=ids[0])
+    for tid in res["complete"]:
+        _spawn_cm("task", "settle", tid)
+    return True, M("relay.cmd_prova_ok", n=len(ids), closing=len(res["complete"]))
+
+
+def decisione_op(cmd, arg):
+    """1.99: «Non ora» e «Lascia perdere» su un gruppo di Cinque minuti. arg = la chiave; action not_now (`hours` facoltativo, 24)
+    o drop (`reason` obbligatoria: i compiti del gruppo cancellati, le sessioni e la master avvisate, i needs-you tolti). Per
+    ok, scelta e conferma restano approve e attention_done. La chiave si cerca di nuovo qui: si agisce su cio' che c'e' adesso."""
+    why = _touch_refused(cmd, "decisione")
+    if why:
+        return False, why
+    action, key = cmd.get("action"), str(arg or "").strip()
+    if action not in ("not_now", "drop"):
+        return False, M("relay.cmd_decisione_bad_action")
+    reason = S.one_line(str(cmd.get("reason") or "").strip())[:300] if isinstance(cmd.get("reason"), str) else ""
+    if action == "drop" and not reason:
+        return False, M("relay.cmd_decisione_needs_reason")
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return False, M("relay.cmd_decisione_gone")
+    by, where = str(cmd.get("by") or "app"), from_device(cmd)
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    try:
+        g = next((x for x in tk.decisions(con, snoozed=True)["groups"] if x["key"] == key), None)
+        if g is None:
+            return False, M("relay.cmd_decisione_gone")
+        if action == "not_now":
+            h = cmd.get("hours")
+            h = h if isinstance(h, int) and not isinstance(h, bool) and 1 <= h <= SNOOZE_MAX_H else tk.SNOOZE_DEFAULT_H
+            tk.decision_snooze(con, key, g["refs"], by, h, reason or None)
+            return True, M("relay.cmd_decisione_snoozed", hours=h)
+        told = set()
+        for i in g["items"]:
+            sess = i.get("session")
+            if i["kind"] in ("pause", "ok"):
+                tk.decision_drop(con, i["task"], by, f"{reason} ({where})")
+            if sess and (i["kind"] == "needs_you" or i.get("needs_you")):
+                clear_needs_you(sess)
+            for name in (sess, master):
+                if name and name not in told:
+                    told.add(name)
+                    _wake(name, M("relay.decisione_dropped", person=M("tasks.person"), device=where, title=str(g["title"])[:120], reason=reason))
+    finally:
+        con.close()
+    return True, M("relay.cmd_decisione_dropped", n=len(g["items"]))
+
+
+def heads_up_seen(rows, now):
+    """1.99 (heads_up): {tmux: {text, seen_at}} dalle note lette nel pannello; seen_at = la prima volta di quel testo. Una nota
+    sparita dal pannello esce di qui. Le sessioni su altri host non hanno pannello leggibile da qui: restano fuori."""
+    p = rdir() / "heads-up.json"
+    old = read_json(p, {}) or {}
+    out = {}
+    for r in rows or []:
+        tm, text = r.get("tmux") or r.get("name"), r.get("heads_up")
+        if tm and text:
+            o = old.get(tm) if isinstance(old.get(tm), dict) else {}
+            out[tm] = {"text": str(text)[:300], "seen_at": o.get("seen_at") if o.get("text") == text else int(now)}
+    if out != old:
+        write_json(p, out)
+    return out
+
+
+def decisions_summary():
+    """1.99: i numeri per la home, {decisions, prove}. Le liste stanno nelle op: /state ha un tetto di 8 KB."""
+    def read():
+        def both(tk, con):
+            d, p = tk.decisions(con), tk.prove_list(con)
+            return {"decisions": {k: d[k] for k in ("n", "here", "tasks", "snoozed")},
+                    "prove": {"n": p["n"], "builds": p["builds"], "red": len(p["red"]), "ko": len(p["ko"])}}
+        try:
+            return _tasks_read(both) or {}
+        except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
+            return {}
+    return _memo("decisions_summary", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you")])
 
 
 def clear_needs_you(tm):
@@ -1876,6 +2058,14 @@ def execute(cmd):
             return kpi_op()
         if op == "home_order":   # 1.97
             return home_order_op(arg)
+        if op == "prove":   # 1.99
+            return prove_op()
+        if op == "prova":   # 1.99
+            return prova_op(cmd, arg)
+        if op == "decisioni":   # 1.99
+            return decisioni_op()
+        if op == "decisione":   # 1.99
+            return decisione_op(cmd, arg)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

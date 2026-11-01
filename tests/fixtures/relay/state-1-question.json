@@ -75,7 +75,7 @@
       "question": null,
       "outcome": {
         "short": "Migrations 008-011 applied, tests green",
-        "full": "Esito: migrations 008-011 applied, tests green.\nThe test seeds and the admin page are still to review.\nProssimi: ok to deploy on staging · review the test seeds",
+        "full": "Esito: migrations 008-011 applied, tests green.\nSeeds still to review.\nProssimi: ok to deploy on staging · review the test seeds",
         "at": 1789210300
       },
       "next": "Review the seeds and the admin page",
@@ -144,11 +144,11 @@
       "question": null,
       "outcome": {
         "short": "README rewritten",
-        "full": "Esito: README rewritten with the three sections asked for.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.",
+        "full": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.",
         "at": 1789121000,
         "preview": {
           "short": "README rewritten",
-          "full": "Esito: README rewritten with the three sections asked for.\nThe preview build uses PREVIEW_TOKEN=•••."
+          "full": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=•••."
         }
       },
       "next": null,
@@ -375,7 +375,11 @@
     "plugin_update",
     "plugin_update_all",
     "kpi",
-    "home_order"
+    "home_order",
+    "prove",
+    "prova",
+    "decisioni",
+    "decisione"
   ],
   "slash": [
     "compact",

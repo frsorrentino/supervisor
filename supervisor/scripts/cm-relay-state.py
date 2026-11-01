@@ -724,7 +724,13 @@ def canon_session(name, rows):
 
 def build_state(src, now, fit=True):
     src = dict(src, _now=now)   # 1.62: build_session confronta l'attivita' al PC con l'ora della raccolta
-    sessions = order_sessions([build_session(r, src) for r in (src.get("rows") or [])])
+    rows_ = src.get("rows") or []
+    built = [build_session(r, src) for r in rows_]
+    for r, x in zip(rows_, built):   # 1.99 (heads_up): solo quando c'e'
+        hu = (src.get("heads_up") or {}).get(r.get("tmux") or "")
+        if hu:
+            x["heads_up"] = {"text": str(hu["text"])[:300], "seen_at": hu["seen_at"]}
+    sessions = order_sessions(built)
     # 1.13: last_used = l'ultima trascrizione di quella cartella (epoch s) o null; l'ordine resta per nome
     projects = sorted(({"path": p.get("path", ""), "name": p.get("name", ""), "account": p.get("account", ""),
                         "last_used": p.get("last_used") if isinstance(p.get("last_used"), int) else None}
@@ -765,6 +771,10 @@ def build_state(src, now, fit=True):
     # 1.97: l'ordine unico delle sezioni della home; senza, il campo manca e l'app usa il suo predefinito
     if src.get("home_order"):
         state["home_order"] = list(src["home_order"])
+    # 1.99: i due numeri per la home; le liste stanno nelle op prove e decisioni. Senza niente da fare il campo manca
+    for k in ("decisions", "prove"):
+        if src.get(k) and any(src[k].values()):
+            state[k] = dict(src[k])
     # 1.33: le azioni ricorrenti della master (box «Ricorrenti»); senza lista il campo manca e l'app non mostra il box
     if src.get("recurring"):
         state["recurring"] = [dict(x) for x in src["recurring"]][:8]
@@ -976,6 +986,7 @@ def fit_state(state, max_kb=8):
             return state
     for s in state["sessions"]:
         s["suggestion"], s["goal"], s["tool_note"] = None, None, None
+        s.pop("heads_up", None)
         if s.get("advice"):
             s["advice"]["reason"] = ""
         o = s.get("outcome")

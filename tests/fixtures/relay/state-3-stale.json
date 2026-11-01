@@ -159,7 +159,11 @@
     "plugin_update",
     "plugin_update_all",
     "kpi",
-    "home_order"
+    "home_order",
+    "prove",
+    "prova",
+    "decisioni",
+    "decisione"
   ],
   "slash": [
     "compact",

@@ -24,8 +24,7 @@ CLI = str(T.SCRIPTS / "supervisor")
 
 
 def cm(*args, stdin=None, env=None):
-    p = subprocess.run([CLI, "task", *args], input=stdin, capture_output=True, text=True, env=dict(ENV, **(env or {})), timeout=60)
-    return p.returncode, p.stdout, p.stderr
+    return T.cli_or_device(CLI, args, dict(ENV, **(env or {})), stdin)
 
 
 def contract(tid, cmd="test -f ok.txt", **over):
@@ -168,8 +167,8 @@ CC = {"CLAUDECODE": "1", "CC_SUPERVISOR_CONFIG": str(cfg9)}
 rc, out, err = cm("approve", "ok9", "--by", "maintainer", "--text", "ok", env=CC)
 T.check("T10 from a Claude session, --text alone → refused, it asks for --inbox; nothing recorded",
         rc != 0 and "--inbox" in err and show("ok9")["state"] == "awaiting_ok" and all(a["by_"] is None for a in show("ok9")["approvals"]), err)
-rc, out, err = cm("approve", "ok9", "--by", "app", "--text", "ok (from the phone)", env=dict(CC, CM_APPROVE_VIA="relay"))
-T.check("T10 the relay (CM_APPROVE_VIA=relay, it inherits CLAUDECODE) still records the device's ok", rc == 0 and show("ok9")["state"] == "approved", err)
+rc, out, err = T.device_ok("approve", "ok9", "app", "ok (from the phone)", dict(ENV, **CC))
+T.check("T10 the relay, in its own process and with CLAUDECODE inherited, still records the device's ok", rc == 0 and show("ok9")["state"] == "approved", err)
 
 
 def inbox_put(to, text, origin, age_s=0, transcript=""):
@@ -257,7 +256,7 @@ add(contract("c1", cmd="supervisor task confirmed c1", outcome={"expected": "APK
 T.check("T13 confirmed before any confirmation → exit 1", cm("confirmed", "c1")[0] == 1, "")
 rc, _, err = cm("confirm", "c1", "--by", "maintainer", "--text", "lo vedo", env=CC)
 T.check("T13 confirm from a Claude session needs --inbox, as approve", rc != 0 and "--inbox" in err, err)
-rc, _, err = cm("confirm", "c1", "--by", "maintainer", "--text", "lo vedo (dal telefono)", env=dict(CC, CM_APPROVE_VIA="relay"))
+rc, _, err = T.device_ok("confirm", "c1", "maintainer", "lo vedo (dal telefono)", dict(ENV, **CC))
 T.check("T13 confirm from the relay → recorded (what = confirmed), the state does not move; confirmed → exit 0", rc == 0 and cm("confirmed", "c1")[0] == 0
         and show("c1")["approvals"][-1]["what"] == "confirmed" and show("c1")["state"] == "proposed", err)
 

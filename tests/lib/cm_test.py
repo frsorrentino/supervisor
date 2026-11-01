@@ -433,3 +433,23 @@ def wait_until(pred, timeout=5.0, step=0.2):
             return True
         time.sleep(step)
     return pred()
+
+
+def device_ok(verb, tid, by, text, env, what=None, where=None, choice=None):
+    """Un ok come lo registra il relay, nel suo processo: da riga di comando --text non basta piu' (01/11). (rc, stdout, stderr)."""
+    code = ("import importlib.util as u,json,sys;a=json.loads(sys.argv[2]);s=u.spec_from_file_location('t',sys.argv[1]);m=u.module_from_spec(s);s.loader.exec_module(m);c=m.connect();"
+            "(m.confirm(c,a['tid'],a['by'],a['text']) if a['verb']=='confirm' else m.approve(c,a['tid'],a['by'],a['text'],a['what'],a['where'],a['choice']))")
+    p = subprocess.run([sys.executable, "-c", code, str(SCRIPTS / "cm-tasks.py"), json.dumps({"verb": verb, "tid": tid, "by": by, "text": text, "what": what, "where": where, "choice": choice})],
+                       capture_output=True, text=True, env=env, timeout=60)
+    return p.returncode, p.stdout, p.stderr
+
+
+def cli_or_device(cli, args, env, stdin=None):
+    """`task approve|confirm ID --by B --text T` senza --inbox ne' --pin, fuori da una sessione: come dal dispositivo. Il resto: la CLI."""
+    a = list(args)
+    if a[:1] and a[0] in ("approve", "confirm") and len(a) > 1 and "--text" in a and "--by" in a and "--inbox" not in a and "--pin" not in a and not env.get("CLAUDECODE"):
+        o = lambda k: a[a.index(k) + 1] if k in a else None  # noqa: E731
+        return device_ok(a[0], a[1], o("--by"), o("--text"), env, o("--what"), o("--where"), o("--choice"))
+    p = subprocess.run([cli, "task", *a], input=stdin, capture_output=True, text=True, env=env, timeout=60)
+    return p.returncode, p.stdout, p.stderr
+

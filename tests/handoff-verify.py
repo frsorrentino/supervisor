@@ -100,8 +100,9 @@ c6 = {"schema_version": 1, "task": {"id": "gantt-apk", "title": "APK del Gantt",
       "where": {"project": str(proj), "session": "notte-app", "host": "local", "account": None},
       "check": {"cmd": "adb shell dumpsys package x", "cwd": None, "timeout_s": 30}, "perimeter": [], "lane": "closed",
       "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
-for args6, stdin6 in ((["add", "-"], json.dumps(c6)), (["wait-ok", "gantt-apk", "--what", "push", "--where", "GitHub"], None), (["approve", "gantt-apk", "--by", "maintainer", "--text", "ok"], None)):
+for args6, stdin6 in ((["add", "-"], json.dumps(c6)), (["wait-ok", "gantt-apk", "--what", "push", "--where", "GitHub"], None), ):
     subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py")] + args6, input=stdin6, capture_output=True, text=True, env=E6, timeout=30)
+T.device_ok("approve", "gantt-apk", "maintainer", "ok", E6)
 Path(p_here).write_text("# Handoff\n\n## 1. Goal and state\n\nx\n")
 r = ho("--written", p_here, env=E6) if False else subprocess.run([sys.executable, str(T.SCRIPTS / "cm-handoff.py"), "--written", p_here], capture_output=True, text=True, env=E6, cwd=str(proj), timeout=30)
 t6 = Path(p_here).read_text()

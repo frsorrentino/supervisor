@@ -464,6 +464,37 @@ def _dim_after(params, dim):
     return dim
 
 
+HEADS_UP_RE = re.compile(r"^\W*✦\s*Heads up\s*·\s*(.*)$")
+HEADS_UP_KEYS_RE = re.compile(r"^\W*1:\s.*\b0:\s*Dismiss\s*$")
+HEADS_UP_TAIL, HEADS_UP_LINES, HEADS_UP_MAX = 25, 10, 300
+
+
+def heads_up_of(screen):
+    """1.99 (heads_up): la nota «✦ Heads up · testo» di Claude Code, anche su piu' righe fino alla riga dei tasti («1: Learn
+    more   2: Knew this already   0: Dismiss»), solo in fondo al pannello. Non e' nella trascrizione e non e' documentata: un
+    formato diverso da' None, mai un errore. Il testo e' solo un dato: non si esegue e non si passa a un modello."""
+    lines = str(screen or "").rstrip("\n").splitlines()[-HEADS_UP_TAIL:]
+    for i in range(len(lines) - 1, -1, -1):
+        m = HEADS_UP_RE.match(lines[i])
+        if not m:
+            continue
+        parts = [m.group(1)]
+        for ln in lines[i + 1:i + 1 + HEADS_UP_LINES]:
+            if HEADS_UP_KEYS_RE.match(ln):
+                text = " ".join(" ".join(parts).split())
+                return text[:HEADS_UP_MAX] or None
+            parts.append(ln.strip(" │|"))
+        return None
+    return None
+
+
+def heads_up_on_screen(tmux_name, screen):
+    """Il pannello si rilegge con -J (righe a capo unite) solo se la nota c'e': un'altra cattura a ogni giro costerebbe. Nessun tasto."""
+    if "Heads up" not in str(screen or ""):
+        return None
+    return heads_up_of(tmux("capture-pane", "-p", "-J", "-t", tmux_name))
+
+
 def suggestion_on_screen(tmux_name, colored=None):
     """1.23 (30/09): il prompt suggerito che Claude Code scrive in grigio (SGR 2) dopo «❯» a casella vuota, o None.
     Mai il testo digitato: basta un carattere non attenuato dopo «❯» e non c'e' suggerimento. None anche a turno in
@@ -655,6 +686,7 @@ def collect(read_screen=True):
         # bassa priorita' (lenta ma viva) e goal nativo: informazione, mai azione
         row["low_priority"] = low_priority_on_screen(tm, screen) if read_screen else None
         row["suggestion"] = suggestion_on_screen(tm) if read_screen and tm else None
+        row["heads_up"] = heads_up_on_screen(tm, screen) if read_screen and tm else None
         a = status_age_min(row)
         row["status_age_min"] = round(a) if a is not None else None
         g = goal_of(row)

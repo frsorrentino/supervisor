@@ -254,6 +254,9 @@ T.check("S11 the digest: under 2 KB, the queue by kind, the 14-day rate by kind,
 
 # ------------------------------------------------------------------ S13 suggest_observe (28/10): le note di claude-observe
 # si accumulavano senza che nessuno le leggesse (190 per supervisor). fill propone lo smistamento per plugin
+# 01/11 22:40: fill gira fino a NOW + 9000 e la chiave ha la settimana: la domenica sera la attraversava. Il tempo si tiene dentro la settimana
+while time.strftime("%G-W%V", time.localtime(NOW)) != time.strftime("%G-W%V", time.localtime(NOW + 4 * 3600)):
+    NOW -= 3600
 OBS = tmp / "observe"
 OBS.mkdir()
 os.environ["CM_OBSERVE_DIR"] = str(OBS)

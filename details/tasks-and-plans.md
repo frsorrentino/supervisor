@@ -59,7 +59,11 @@ before delivering); the hook's own records never make a repeated text a
 duplicate. Only `terminal` and `relay` are good for an ok; `cron`,
 `unverified` and `session` are refused with the origin named. The ok quotes
 the message with its id, origin and recipient.
-The relay's own oks («Approve» on the phone) are recorded as before. Once an
+The relay's own oks («Approve» on the phone) are recorded inside the relay's
+process. Since 01/11/2026 `--text` alone is refused from every shell: no
+environment variable stands in for the person. This raises the bar and does not
+close it: sessions and relay run as the same user, so one that sets out to can
+still write to the registry's file or forge a touch with the bus key. Once an
 hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
 check is green (`supervisor task auto-close`); a red check there leaves the task
 as it is and counts no attempt.
@@ -124,6 +128,26 @@ tells the master and clears the session's «waiting for you». `supervisor
 task closed [YYYY-MM-DD] [--json]` lists the tasks closed that day (green,
 cancelled, failed) with one proof each (release, commit, file or the check)
 and the earlier days with a count: the app's «Fatto» block (contract 1.77).
+
+What waits for the person (01/11/2026, contract 1.99). A session that ships
+something for the person to try writes the test: `task prova ID --build TAG
+--dove SCREEN --fai T --atteso T`, never a credential or a private URL. Tests go
+by version: a new build retires the task's earlier ones. Only a touch on a paired
+device gives the outcome (op `prova`): no command does, from a session or a shell.
+When every test of a task is ok, the person's confirmation is recorded and
+`task settle` reruns the check: green closes the task, red leaves it open, says so
+and spends no attempt. The hourly auto-close leaves a task with a test to do.
+`task decisioni` gathers the pauses for the person, the oks and the needs-you,
+grouped by `task pause --cause C` or else by the pause's words; the weight is how
+many tasks a group unblocks. Each item says «from here» or «at the PC»: `--al-pc`
+or `--da-qui` on `task pause`, otherwise from its words (a login, a fingerprint, a
+panel). `task cause ID... --cause C --note SENTENCE` lets the master join groups
+written in different words. `task wait-ok` takes `--untested T`, `--undo
+si|no|in-parte` and `--undo-how T`, and `task add --defect-of ID` records the only
+kind of precedent a card shows. `task wait-ok ID … --also ID2,ID3` lists on the
+card the separate tasks a plan foresees: the ok of that card reaches them, quoting
+it; a task not declared, or declared after the ok, gets nothing, and declaring
+writes no ok.
 
 fable-director is optional. When it is installed and enabled in the session's
 account, the unit's brief asks it to open its budget with the unit's check as

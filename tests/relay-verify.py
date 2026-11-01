@@ -227,10 +227,10 @@ SRC1 = {
         {"event": "prompt", "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "ts": iso(1789210380)},
         {"event": "waiting", "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "ts": iso(1789210500), "tool": "AskUserQuestion"},
         {"event": "start", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789209000)},
-        {"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210300), "last": "x", "esito": "Esito: migrations 008-011 applied, tests green.", "tail": "Esito: migrations 008-011 applied, tests green.\nThe test seeds and the admin page are still to review.\nProssimi: !ok to deploy on staging · review the test seeds\nWatch: Migrations 008-011 applied, tests green", "watch": "Watch: Migrations 008-011 applied, tests green"},
+        {"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210300), "last": "x", "esito": "Esito: migrations 008-011 applied, tests green.", "tail": "Esito: migrations 008-011 applied, tests green.\nSeeds still to review.\nProssimi: !ok to deploy on staging · review the test seeds\nWatch: Migrations 008-011 applied, tests green", "watch": "Watch: Migrations 008-011 applied, tests green"},
         {"event": "prompt", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210700)},
         {"event": "start", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789120000)},
-        {"event": "stop", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789121000), "last": "x", "esito": "Esito: README rewritten with the three sections asked for.", "tail": "Esito: README rewritten with the three sections asked for.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.\nWatch: README rewritten", "watch": "Watch: README rewritten"},
+        {"event": "stop", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789121000), "last": "x", "esito": "Esito: README rewritten.", "tail": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.\nWatch: README rewritten", "watch": "Watch: README rewritten"},
     ],
     # 1.53: la consigliata e le spiegazioni dal payload dell'hook; 1.56: un token nel testo → question.preview
     "questions": {"work-ledger-api": {"tool": "AskUserQuestion", "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
@@ -374,7 +374,9 @@ SRC2["commitments"] = F2["commitments"]   # 1.76
 SRC2["home_order"] = F2["home_order"]   # 1.97
 # 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
 SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
-                      "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"]}]
+                      "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"],
+                      "untested": "a real phone", "undo": "in-parte", "undo_how": "pull the build", "also": [{"task": "atlas-seo-pages", "short": "SEO pages"}]}]   # 1.99
+SRC2["decisions"], SRC2["prove"] = F2["decisions"], F2["prove"]   # 1.99
 SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP passano a /state cosi' come sono
 # 1.84 (24/10): tre suggerimenti della master di tipo diverso, i token di oggi su due account, e una richiesta per la persona
 # che la master ha legato a un compito di atlas-shop (needs-you --task)
@@ -1497,11 +1499,18 @@ tasks31.write_text(json.dumps([
     "contract": {"task": {"where": {"session": "atlas-shop"}}}, "approvals": [{"what": "tag v2.4 and push to origin main", "by_": None}]}))
 (state_dir / "needs-you").mkdir(parents=True, exist_ok=True)
 (state_dir / "needs-you" / "S-A.json").write_text(json.dumps({"reason": "ok per il push", "at": 1789210600, "name": "atlas-shop"}))
+# 01/11 (ok_variabile): l'ok del tocco si scrive nel processo del relay, su un registro vero: non passa piu' dalla CLI
+_c31 = {"schema_version": 1, "task": {"id": "atlas-release-2-4", "title": "Release 2.4", "plan": None, "where": {"project": str(ws / "personal" / "atlas-shop"), "session": "atlas-shop", "host": "local", "account": None},
+        "check": {"cmd": "true", "cwd": None, "timeout_s": 30}, "perimeter": [], "lane": "closed", "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
+_t31 = lambda *a, **k: subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), *a], capture_output=True, text=True, env=ENV, timeout=30, **k)  # noqa: E731
+_t31("add", "-", input=json.dumps(_c31))
+_t31("wait-ok", "atlas-release-2-4", "--what", "tag v2.4", "--where", "production")
+_oks31 = lambda: [(a["by_"], a["text"]) for a in json.loads(_t31("show", "atlas-release-2-4", "--json").stdout)["approvals"] if a["by_"]]  # noqa: E731
 n_calls = len(cm_calls())
 r31a = send_cmd(CMDS[32])
 r31b = send_cmd(CMDS[33])
 T.check("R31 (1.37) approve of a task waiting for an ok → `task approve <task> --by <by> --text \"<text> (dal telefono)\"`, as in the fixture; a task not waiting → refused, nothing recorded",
-        r31a and r31a["ok"] is True and r31a["text"] == RES[32]["text"] and "task approve atlas-release-2-4 --by phone-pixel8 --text ok, go ahead (dal telefono)" in cm_calls()[n_calls:]
+        r31a and r31a["ok"] is True and r31a["text"] == RES[32]["text"] and ("phone-pixel8", "ok, go ahead (dal telefono)") in _oks31()
         and r31b and r31b["ok"] is False and r31b["text"] == RES[33]["text"] and not any(c.startswith("task approve atlas-old-task") for c in cm_calls()), str([r31a, r31b]) + str(cm_calls()[n_calls:]))
 # R63 (1.76, P4, 22/10): «Approva» risveglia — talk alla sessione responsabile e alla master (staccati), il «ferma per te» della sessione tolto
 T.check("R63 (1.76) after the ok: `talk atlas-shop «l'utente ha approvato atlas-release-2-4 alle HH:MM: tag v2.4 … Prosegui, e chiudi con task done …» --no-wait`, `talk master «… atlas-shop ha ricevuto il via.»`, and needs-you/S-A.json removed",
@@ -1558,7 +1567,7 @@ alive.write_text(_alive_bak34)
 n_calls = len(cm_calls())
 r34c = send_cmd(CMDS[38])
 T.check("R35 (1.42) approve via live with 2 confirmations → `task approve <task> --by <by> --text \"<text> (dal telefono, modalità live, doppia conferma)\"`, as in the fixture",
-        r34c and r34c["ok"] is True and r34c["text"] == RES[38]["text"] and "task approve atlas-release-2-4 --by phone-pixel8 --text ok (dal telefono, modalità live, doppia conferma)" in cm_calls()[n_calls:],
+        r34c and r34c["ok"] is True and r34c["text"] == RES[38]["text"] and ("phone-pixel8", "ok (dal telefono, modalità live, doppia conferma)") in _oks31(),
         str(r34c) + str(cm_calls()[n_calls:]))
 n_calls = len(cm_calls())
 r34d = send_cmd(CMDS[39])
@@ -1603,15 +1612,17 @@ d67 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R67 (1.81) approvals[] carries options (the labels, in order) for a task whose request has them; state-2 shows one",
         d67["approvals"] == [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789211700, "options": ["Strada A", "Strada B"]}]
         and (F2["approvals"] or [{}])[0].get("options") == ["Strada A", "Strada B"], str(d67["approvals"]))
+_t31("add", "-", input=json.dumps({"schema_version": 1, "task": dict(_c31["task"], id="atlas-checkout-layout")}))
+_t31("wait-ok", "atlas-checkout-layout", "--what", "pick", "--where", "branch", "--options", "Strada A|Strada B")
 n67 = len(cm_calls())
 r67a = send_cmd(CMDS[78])
 r67b = send_cmd(CMDS[79])
 r67c = send_cmd(dict(CMDS[78], id="6f1c2d3e-0782-4000-8000-000000000782", choice=None))
 T.check("R67 (1.81) approve with a choice among the options → `task approve … --choice Strada B`, «approved <task> (Strada B)» as in the fixture, the session woken with «; scelta: Strada B»; a label not among them → refused as in the fixture; no choice → «choose one of …»; nothing recorded for the refused ones",
-        r67a and r67a["ok"] is True and r67a["text"] == RES[78]["text"] and "task approve atlas-checkout-layout --by phone-pixel8 --text ok (dal telefono) --choice Strada B" in cm_calls()[n67:]
+        r67a and r67a["ok"] is True and r67a["text"] == RES[78]["text"] and [(a["by_"], a["text"], a["choice"]) for a in json.loads(_t31("show", "atlas-checkout-layout", "--json").stdout)["approvals"] if a["by_"]] == [("phone-pixel8", "ok (dal telefono)", "Strada B")]
         and T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha approvato atlas-checkout-layout alle ") and ": pick the checkout layout; scelta: Strada B. Prosegui, e chiudi con task done atlas-checkout-layout. --no-wait" in c for c in cm_calls()[n67:]), 10)
         and r67b and r67b["ok"] is False and r67b["text"] == RES[79]["text"] and r67c and r67c["ok"] is False and r67c["text"] == "atlas-checkout-layout: choose one of Strada A, Strada B"
-        and len([c for c in cm_calls()[n67:] if c.startswith("task approve")]) == 1, str((r67a, r67b, r67c, cm_calls()[n67:])))
+        , str((r67a, r67b, r67c, cm_calls()[n67:])))
 tasks31.unlink()
 (tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
 # R69 (1.82, 24/10, «ogni scheda cliccabile» del rapporto della notte): transcript di una conversazione chiusa, dal suo id
@@ -1673,7 +1684,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-11:-8] == ["suggestion", "close_preview", "close"] and all(s["ops"][-11:-8] == R_OPS[-11:-8] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-15:-12] == ["suggestion", "close_preview", "close"] and all(s["ops"][-15:-12] == R_OPS[-15:-12] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3593,7 +3604,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-14] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-18] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3622,7 +3633,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-13] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-13:-11] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-17] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-17:-15] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -3723,7 +3734,7 @@ T.check("R61 (1.75) published_cached: a fresh copy of today is served as is with
         _c1 == _it61 and _n1 == 0 and _c2 == [] and _c3 == [] and len(_spawn61) == 1 and _spawn61[0][-1] == "published-refresh", str((_c1, _c2, _spawn61)))
 _pub61 = F2["published_today"]
 _st2n = S.build_state(dict(SRC2, needs_you={}), 1789214400)   # 1.84: le sessioni di state-2 senza la richiesta per la persona, tolta qui per il peso
-_big61 = S.build_state(dict(SRC2, elicitations=[], suggestions=[], usage_today=[], needs_you={}, published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
+_big61 = S.build_state(dict(SRC2, decisions={}, prove={}, approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
 T.check("R61 (1.75) /state carries at most 30 published items, and fit_state cuts them to the 10 most recent before touching projects or sessions",
         len(S.build_state(dict(SRC2, published_today=[_pub61[0]] * 40), 1789214400, fit=False)["published_today"]) == 30
         and [x["at"] for x in _big61["published_today"]] == [1789214000 - i for i in range(10)] and _big61["sessions"] == _st2n["sessions"]
@@ -3748,7 +3759,7 @@ T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, 
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
 _small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
 # 24/10: senza i ricorrenti — fit_state tiene il posto di published_at e il taglio a 10 non entrava piu'
-_big62 = S.build_state(dict(SRC2, recurring=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
+_big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
         len(S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
         and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == _st2n["sessions"] and _big62["projects"] == st2["projects"]
@@ -4170,7 +4181,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-2] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-6] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

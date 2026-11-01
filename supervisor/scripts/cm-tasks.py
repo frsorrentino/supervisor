@@ -10,11 +10,14 @@
   supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
-  supervisor task wait-ok ID --what W --where D [--options "A|B"]   attende ok (corsia chiusa fuori da un piano
+  supervisor task wait-ok ID --what W --where D [--options "A|B"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3]
+                                                attende ok; --also (1.99): i compiti a parte previsti dal piano, elencati nella
+                                                carta; l'ok della carta arriva a loro citandola, e una regola permanente non la
+                                                approva mai; 1.99 (ok informato): --untested cosa non e' provato, --undo se si
+                                                torna indietro, --undo-how come; senza, la card dice «non dichiarato»; (corsia chiusa fuori da un piano
                                                 approvato); --options (1.81, 23/10): il compito chiede una scelta, da
                                                 2 a 4 etichette di 1-24 caratteri: l'app mostra un tasto per opzione e
                                                 l'ok arriva con --choice; una regola permanente non sceglie mai
-  supervisor task approve ID --by B --text T [--what W] [--where D] [--choice C]
   supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D] [--choice C]
                                                 da una sessione Claude l'ok a nome di una persona passa cosi': la
                                                 sessione che ha ricevuto l'ok (casella sua: supervisor inbox NOME --all)
@@ -37,6 +40,9 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 ultimo passo, prossimo passo, chi aspetta chi, pausa; --brief per l'hook
   supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
   supervisor task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]
+                       [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui]
+                                                1.99: --cause la stessa causa per piu' compiti (senza, vale il testo della
+                                                pausa); --al-pc / --da-qui dove si puo' fare (senza, dalle parole del motivo)
                                                 «salvo altre priorita'», visibile, mai in allarme; --waits person = la pausa
   supervisor task resume ID                     aspetta l'utente (waits.on = person), --since = l'inizio vero (contratto 1.77)
                                                 --waits external = aspetta fuori (un ticket, un cliente) fino a --recheck,
@@ -47,7 +53,7 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 corregge il contratto di un compito aperto (validato di nuovo)
   supervisor task short ID "testo" [--by B]     il titolo breve (task.short, 1-28 caratteri, una riga nell'app: contratto
                                                 1.79); senza, impegni e closed ne ricavano uno dal titolo (parole intere)
-  supervisor task confirm ID --by B (--text T | --inbox MSG)   la conferma della persona (come approve); `task
+  supervisor task confirm ID --by B (--inbox MSG | --pin P)   la conferma della persona (come approve); `task
   supervisor task confirmed ID                  confirmed ID` esce 0 se c'e': un controllo valido per un esito install
   supervisor task standing add --by B --inbox MSG --project DIR --kind K
                                                 (23/10 20:00, «Quando ci sono aggiornamenti di supervisor, effettuali
@@ -59,12 +65,28 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
   supervisor task stall-check [--json]          gli impegni fermi da piu' di tasks.stall_hours non ancora avvisati
                                                 (task-alerts.json accanto al registro); lo chiama guard run
 
+Fase A del programma del 01/11 (contratto 1.99):
+  supervisor task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]
+                                                una prova per la persona, scritta da chi fa la release: mai credenziali ne' URL
+                                                privati. Una build nuova ritira le prove di prima del compito; stessa build,
+                                                dove e fai sostituisce. L'esito nasce solo da un tocco sul dispositivo (op prova)
+  supervisor task prove [--json]                le prove da fare per build, quelle che non vanno, e i compiti con tutte le prove
+                                                ok e il controllo rosso
+  supervisor task settle ID                     tutte le prove ok: riesegue il controllo, verde chiude; rosso resta aperto, lo
+                                                dice a sessione e master e non conta tentativi. Altrimenti exit 3, non cambia niente
+  supervisor task decisioni [--json]            cio' che aspetta la persona per causa: pause, ok, needs-you; le fattibili da qui
+                                                prima, poi le piu' pesanti (peso = quanti compiti sblocca)
+  supervisor task cause ID [ID...] --cause C [--note FRASE] [--by B]
+                                                unisce pause con la stessa causa scritta in parole diverse e dice cosa sbloccano
+  supervisor task add FILE|- --defect-of ID     il compito corregge un difetto di ID: il precedente sulle card dell'ok
+
 Il contratto e' schemas/task-contract.v1.json, condiviso con fable-director (copiato, mai importato). Il
 registro e' SQLite in ~/.config/cc-supervisor/tasks.db (CM_TASKS_DB per i test). Nessun «fatto» a giudizio:
 solo il controllo rieseguito e verde. Senza registro nessun altro comando di supervisor cambia.
 Esito atteso (task.outcome, facoltativo): le parole dell'ok e un kind; il controllo deve toccarlo (OUTCOME_MARKERS),
 altrimenti add e done lo rifiutano: un compito non si chiude su un passo intermedio.
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -215,6 +237,11 @@ CREATE TABLE IF NOT EXISTS steps (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, 
 CREATE TABLE IF NOT EXISTS pauses (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, reason TEXT, resumed_at INTEGER);
 CREATE TABLE IF NOT EXISTS standing (n INTEGER PRIMARY KEY, project TEXT, kind TEXT, by_ TEXT, text TEXT, inbox_id TEXT,
     created_at INTEGER, revoked_at INTEGER);
+CREATE TABLE IF NOT EXISTS prove (n INTEGER PRIMARY KEY, task TEXT, build TEXT, dove TEXT, fai TEXT, atteso TEXT, at INTEGER, by_ TEXT,
+    result TEXT, result_at INTEGER, result_by TEXT, result_text TEXT, superseded_at INTEGER);
+CREATE TABLE IF NOT EXISTS defects (task TEXT PRIMARY KEY, defect_of TEXT, at INTEGER);
+CREATE TABLE IF NOT EXISTS decision_snooze (key TEXT PRIMARY KEY, at INTEGER, by_ TEXT, until INTEGER, refs TEXT, reason TEXT);
+CREATE TABLE IF NOT EXISTS cause_notes (key TEXT PRIMARY KEY, note TEXT, at INTEGER, by_ TEXT);
 """
 
 
@@ -235,10 +262,21 @@ def connect(create=True):
     if "recheck" not in cols:   # 1.88 (27/10): un'attesa esterna e quando ricontrollarla
         con.execute("ALTER TABLE pauses ADD COLUMN recheck INTEGER")
         con.commit()
+    if "cause" not in cols:   # 1.99 (01/11): la causa comune, se si torna indietro, dove si puo' fare
+        for c in ("cause", "undo", "undo_how", "at_pc"):
+            con.execute(f"ALTER TABLE pauses ADD COLUMN {c} TEXT")
+        con.commit()
     cols = {r[1] for r in con.execute("PRAGMA table_info(approvals)")}   # 1.81 (23/10): le opzioni di una scelta e quella presa
     if "options" not in cols:
         con.execute("ALTER TABLE approvals ADD COLUMN options TEXT")
         con.execute("ALTER TABLE approvals ADD COLUMN choice TEXT")
+        con.commit()
+    if "untested" not in cols:   # 1.99 (01/11, ok informato)
+        for c in ("untested", "undo", "undo_how"):
+            con.execute(f"ALTER TABLE approvals ADD COLUMN {c} TEXT")
+        con.commit()
+    if "also" not in cols:   # 1.99 (01/11, compito dal piano)
+        con.execute("ALTER TABLE approvals ADD COLUMN also TEXT")
         con.commit()
     return con
 
@@ -306,8 +344,8 @@ def run_check(task):
         return 127, str(e)
 
 
-def done(con, tid, constraint=None):
-    """Accettazione dal codice: riesegue il controllo. (verde, result)."""
+def done(con, tid, constraint=None, checked=None):
+    """Accettazione dal codice: riesegue il controllo (`checked` = il suo esito appena preso, per non rifarlo). (verde, result)."""
     row = get_task(con, tid)
     if row["state"] not in OPEN_STATES:
         sys.exit(f"task {tid}: already {row['state']}")
@@ -316,7 +354,7 @@ def done(con, tid, constraint=None):
     if oe:   # P1: entrato prima della regola o cambiato: niente done su un passo intermedio (task amend lo corregge)
         print("\n".join(oe), file=sys.stderr)
         sys.exit(3)
-    rc, tail = run_check(task)
+    rc, tail = checked or run_check(task)
     n = attempts(con, tid) + 1
     green = rc == 0
     last = (tail.splitlines() or [""])[-1][:300]
@@ -369,8 +407,46 @@ def request_options(con, tid):
     return json.loads(a["options"]) if a and a["options"] else None
 
 
-def approve(con, tid, by, text, what=None, where=None, choice=None):
+def parse_also(con, tid, s):
+    """wait-ok --also: «ID2,ID3», compiti che esistono gia' e sono aperti; esce con il motivo. Dichiararli non scrive nessun ok."""
+    ids = list(dict.fromkeys(x.strip() for x in str(s).split(",") if x.strip()))
+    if not ids:
+        sys.exit("task wait-ok --also: the ids of the tasks, separated by commas")
+    for x in ids:
+        if x == tid:
+            sys.exit(f"task wait-ok --also: {x} is the task itself")
+        if get_task(con, x)["state"] not in OPEN_STATES:
+            sys.exit(f"task wait-ok --also: {x} is closed")
+    return ids
+
+
+def request_also(con, tid):
+    """I compiti dichiarati nell'ultima carta del compito, con l'ora della carta: ([id], at)."""
+    a = con.execute("SELECT also, at FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    return (json.loads(a["also"]), a["at"]) if a and a["also"] else ([], None)
+
+
+def also_approve(con, parent, ids, by, text):
+    """L'ok della carta ai compiti che dichiarava: cita il padre. Niente catena (un figlio non passa l'ok ai suoi), niente
+    scelta al posto della persona, e un compito chiuso o gia' approvato resta com'e'."""
+    for x in ids:
+        r = con.execute("SELECT plan, state, session FROM tasks WHERE id=?", (x,)).fetchone()
+        if not r or r["state"] not in OPEN_STATES or request_options(con, x) \
+                or con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL AND (what IS NULL OR what<>'confirmed')", (x,)).fetchone():
+            continue
+        con.execute("INSERT INTO approvals (task, plan, by_, at, text) VALUES (?,?,?,?,?)", (x, r["plan"], by, now(), f"ok of {parent}, whose card lists this task: {text}"[:900]))
+        if r["state"] == "awaiting_ok":
+            set_state(con, x, "approved")
+        if r["session"]:
+            _talk(r["session"], M("tasks.also_ok", task=x, parent=parent))
+
+
+def approve(con, tid, by, text, what=None, where=None, choice=None, ok_at=None, inherit=True):
+    """`ok_at` = quando la persona ha scritto l'ok, se non adesso (--inbox): il collegamento vale solo se la carta era gia' li'.
+    `inherit` False: l'ok vale per il padre solo (un'app che non ha mostrato l'elenco)."""
     row = get_task(con, tid)
+    also, card_at = request_also(con, tid)
+    also = also if also and inherit and row["state"] == "awaiting_ok" and (ok_at is None or card_at <= ok_at) else []
     opts = request_options(con, tid)   # 1.81: un compito che chiede una scelta si approva con una delle sue opzioni
     if opts and choice not in opts:
         sys.exit(f"task approve {tid}: " + (f"choice {choice} not among {', '.join(opts)}" if choice else f"choose one of {', '.join(opts)} (--choice)"))
@@ -380,6 +456,15 @@ def approve(con, tid, by, text, what=None, where=None, choice=None):
                 (tid, row["plan"], by, now(), text, what, where, choice))
     if row["state"] == "awaiting_ok":
         set_state(con, tid, "approved")
+    also_approve(con, tid, also, by, text)
+    con.commit()
+
+
+def confirm(con, tid, by, text):
+    """P1 (22/10): la conferma della persona («lo vedo sul telefono»); `task confirmed ID` la legge: e' un controllo valido per
+    un esito install. Lo stato non cambia."""
+    con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,'confirmed',NULL)",
+                (tid, get_task(con, tid)["plan"], by, now(), text))
     con.commit()
 
 
@@ -508,7 +593,7 @@ def standing_match(con, row):
 def standing_apply(con, tid):
     """Al wait-ok: se una regola copre il compito, l'approvazione nasce subito, a nome della persona, citando il
     messaggio e la regola. Torna la regola o None."""
-    if request_options(con, tid):   # 1.81: una scelta la fa la persona, mai una regola permanente
+    if request_options(con, tid) or request_also(con, tid)[0]:   # 1.81: una scelta la fa la persona, mai una regola; 1.99: anche una carta con altri compiti
         return None
     r = standing_match(con, get_task(con, tid))
     if r is None:
@@ -527,6 +612,8 @@ def auto_close(con, hours=AUTO_CLOSE_H):
                          % ",".join("?" * len(OPEN_STATES)), (*OPEN_STATES, cutoff)).fetchall():
         task = json.loads(r["contract"])["task"]
         if outcome_errors(task):   # P1: un controllo che non tocca l'esito non chiude niente da solo
+            continue
+        if prove_pending(con, r["id"]):   # 1.99: una prova da fare tiene aperto il compito: la persona deve ancora vederla
             continue
         rc, _ = run_check(task)
         if rc == 0:
@@ -636,6 +723,324 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
                     "stalled": bool(approved and not pz and idle >= stall_s)})
     out.sort(key=lambda x: (not x["stalled"], -x["idle_s"], x["task"]))
     return out
+
+
+# ------------------------------------------------------------------ fase A del 01/11/2026 (contratto 1.99)
+UNDO_VALUES = {"si": "si", "sì": "si", "yes": "si", "no": "no", "in-parte": "in-parte", "partly": "in-parte"}
+INFO_MAX = 300
+CAUSE_MAX = 120
+SNOOZE_DEFAULT_H = 24
+# Dove si puo' fare, se la sessione non l'ha detto: un accesso, un'impronta o un pannello vogliono il PC
+AT_PC_RE = re.compile(r"\b(login|log in|accedi|accesso|accessi|password|credenzial\w*|impronta|fingerprint|pannello|panel|al pc|sul pc|at the pc|on the pc)\b", re.I)
+
+
+def parse_undo(args, verb):
+    """(undo, undo_how) da --undo e --undo-how; esce con il motivo su un valore sconosciuto o su un come senza un se."""
+    undo, how = _opt(args, "--undo"), _opt(args, "--undo-how")
+    if undo is not None and str(undo).strip().lower() not in UNDO_VALUES:
+        sys.exit(f"task {verb}: --undo takes si, no or in-parte")
+    if how is not None and undo is None:
+        sys.exit(f"task {verb}: --undo-how goes with --undo")
+    if how is not None and len(how) > INFO_MAX:
+        sys.exit(f"task {verb}: --undo-how over {INFO_MAX} characters")
+    return (UNDO_VALUES[str(undo).strip().lower()] if undo is not None else None), (" ".join(how.split()) if how else None)
+
+
+def _contract_task(row):
+    return json.loads(row["contract"])["task"]
+
+
+def _live_prove(con, tid):
+    """Le prove in vigore di un compito: quelle non ritirate da una build nuova."""
+    return con.execute("SELECT * FROM prove WHERE task=? AND superseded_at IS NULL ORDER BY n", (tid,)).fetchall()
+
+
+def prove_pending(con, tid):
+    """Le prove in vigore che non sono ok."""
+    return [r for r in _live_prove(con, tid) if r["result"] != "ok"]
+
+
+def prova_add(con, tid, build, dove, fai, atteso, by=None):
+    """Una prova per la persona. Per versione: una build nuova ritira tutte quelle di prima del compito (un ok su una build
+    vecchia non dice niente della nuova); stessa build, dove e fai sostituisce. Nessun esito: quello nasce solo da prove_mark."""
+    row = get_task(con, tid)
+    if row["state"] not in OPEN_STATES:
+        sys.exit(f"task {tid}: already {row['state']}")
+    build, dove, fai, atteso = (" ".join(str(x).split()) for x in (build, dove, fai, atteso))
+    if not (1 <= len(build) <= 80 and 1 <= len(dove) <= 80 and 1 <= len(fai) <= INFO_MAX and 1 <= len(atteso) <= INFO_MAX):
+        sys.exit(f"task prova: --build and --dove 1-80 characters, --fai and --atteso 1-{INFO_MAX}")
+    t = now()
+    con.execute("UPDATE prove SET superseded_at=? WHERE task=? AND superseded_at IS NULL AND (build<>? OR (dove=? AND fai=?))", (t, tid, build, dove, fai))
+    cur = con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_) VALUES (?,?,?,?,?,?,?)", (tid, build, dove, fai, atteso, t, by))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (tid, t, by, "prova", f"{build} · {dove}: {fai}"[:500]))
+    con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (t, tid))
+    con.commit()
+    return cur.lastrowid
+
+
+def prova_info(con, n):
+    """La prova `n` se si puo' ancora toccare: in vigore, di un compito aperto. Altrimenti None."""
+    r = con.execute("SELECT p.*, t.state AS task_state FROM prove p JOIN tasks t ON t.id=p.task WHERE p.n=? AND p.superseded_at IS NULL", (n,)).fetchone()
+    return r if r and r["task_state"] in OPEN_STATES else None
+
+
+def prove_mark(con, ids, result, by, where, text=None):
+    """L'esito di una o piu' prove. La chiama SOLO il relay, per un tocco su un dispositivo (op prova): la CLI non ha una
+    strada per arrivarci, come non ne ha una sessione per dire ok. Tutto o niente. Quando tutte le prove in vigore di un compito
+    sono ok, registra la conferma della persona: e' quella che `task confirmed` legge. Torna {error} o {complete: [compiti]}."""
+    rows = []
+    for n in ids:
+        r = prova_info(con, n)
+        if r is None or (result == "ok" and r["result"] == "ok"):
+            return {"error": n}
+        rows.append(r)
+    t = now()
+    for r in rows:
+        con.execute("UPDATE prove SET result=?, result_at=?, result_by=?, result_text=? WHERE n=?", (result, t, by, text, r["n"]))
+    complete = []
+    if result == "ok":
+        for tid in sorted({r["task"] for r in rows}):
+            if not prove_pending(con, tid):
+                nums = ", ".join(str(x["n"]) for x in _live_prove(con, tid))
+                con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,'confirmed',NULL)",
+                            (tid, get_task(con, tid)["plan"], by, t, f"{by}, {time.strftime('%d/%m %H:%M', time.localtime(t))}: prove {nums} ok ({where}) (origin relay)"))
+                complete.append(tid)
+    con.commit()
+    return {"complete": complete}
+
+
+def root_session():
+    return str((_cfg()[1].get("workspace") or {}).get("root_session_name") or "master")
+
+
+def _talk(name, text):
+    """Un avviso staccato: chi chiude o non chiude un compito non aspetta nessuno. Sessione chiusa: resta in casella."""
+    try:
+        subprocess.Popen([os.environ.get("CM_TASK_TALK_BIN") or str(HERE / "supervisor"), "talk", name, text, "--no-wait"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def _tell(row, text):
+    """La sessione del compito e la master."""
+    sess = row["session"] or (_contract_task(row).get("where") or {}).get("session")
+    for name in dict.fromkeys(x for x in (sess, root_session()) if x):
+        _talk(name, text)
+
+
+def settle(con, tid):
+    """Dopo l'ultima prova ok: il controllo decide. Verde: chiude con done. Rosso: resta aperto, lo dice, nessun tentativo
+    speso (la persona ha fatto la sua parte: non e' un fallimento della sessione) e la pausa per la persona si chiude, il
+    prossimo passo e' della sessione. (exit, testo)."""
+    row = get_task(con, tid)
+    live = _live_prove(con, tid)
+    if row["state"] not in OPEN_STATES:
+        return 3, f"task settle {tid}: already {row['state']}"
+    if not live or any(r["result"] != "ok" for r in live):
+        return 3, f"task settle {tid}: not every test is ok"
+    task = _contract_task(row)
+    oe = outcome_errors(task)
+    rc, tail = (2, "; ".join(oe)) if oe else run_check(task)
+    if rc == 0:
+        done(con, tid, checked=(rc, tail))
+        _tell(row, M("tasks.prove_closed", task=tid))
+        return 0, f"{tid}: green — every test ok, check green"
+    why = (tail.splitlines() or [""])[-1][:300] or f"exit {rc}"
+    t = now()
+    con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (t, tid))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,NULL,'prova-red',?,?)", (tid, t, why, M("tasks.prove_red_next")))
+    con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (t, tid))
+    con.commit()
+    _tell(row, M("tasks.prove_red", task=tid, why=why))
+    return 1, f"{tid}: red — every test ok, check exit {rc}: {why}; the task stays open"
+
+
+def prove_list(con, now_=None):
+    """{at, n, builds, groups, ko, red}: le prove da fare per build, dalla build piu' recente; quelle che non vanno; i compiti con
+    tutte le prove ok ancora aperti (reason null = il controllo sta girando)."""
+    out, ko, red = {}, [], []
+    q = "SELECT * FROM tasks WHERE state IN (%s) AND id IN (SELECT task FROM prove WHERE superseded_at IS NULL) ORDER BY created_at, id" % ",".join("?" * len(OPEN_STATES))
+    for row in con.execute(q, OPEN_STATES).fetchall():
+        task = _contract_task(row)
+        short = short_of(task)
+        live = _live_prove(con, row["id"])
+        for r in live:
+            base = {"id": r["n"], "task": row["id"], "short": short, "build": r["build"], "dove": r["dove"], "fai": r["fai"], "atteso": r["atteso"]}
+            if r["result"] == "ko":
+                ko.append(dict(base, text=r["result_text"], at=r["result_at"]))
+            elif r["result"] is None:
+                g = out.setdefault(r["build"], {"build": r["build"], "n": 0, "at": 0, "tasks": [], "prove": []})
+                g["n"] += 1
+                g["at"] = max(g["at"], r["at"])
+                if row["id"] not in g["tasks"]:
+                    g["tasks"].append(row["id"])
+                g["prove"].append(dict(base, title=row["title"], session=row["session"] or (task.get("where") or {}).get("session"), project=row["project"], at=r["at"]))
+        if live and all(r["result"] == "ok" for r in live):
+            st = con.execute("SELECT text, at FROM steps WHERE task=? AND kind='prova-red' AND at>=? ORDER BY n DESC LIMIT 1", (row["id"], max(r["result_at"] for r in live))).fetchone()
+            red.append({"task": row["id"], "short": short, "reason": st["text"] if st else None, "at": st["at"] if st else None})
+    groups = sorted(out.values(), key=lambda g: (-g["at"], g["build"]))
+    return {"at": int(now_ or now()), "n": sum(g["n"] for g in groups), "builds": len(groups), "groups": groups, "ko": ko, "red": red}
+
+
+def precedent_of(con, tid):
+    """Il precedente di una card: solo un difetto vero collegato (--defect-of), citato per nome; mai una somiglianza."""
+    r = con.execute("SELECT defect_of FROM defects WHERE task=?", (tid,)).fetchone()
+    other, rel = (r["defect_of"], "fixes") if r else (None, None)
+    if not other:
+        r = con.execute("SELECT task FROM defects WHERE defect_of=? ORDER BY at DESC, task LIMIT 1", (tid,)).fetchone()
+        other, rel = (r["task"], "defect") if r else (None, None)
+    row = con.execute("SELECT * FROM tasks WHERE id=?", (other,)).fetchone() if other else None
+    return {"task": other, "short": short_of(_contract_task(row)), "relation": rel} if row else None
+
+
+def _decision_key(prefix, text):
+    return hashlib.sha1(f"{prefix}:{' '.join(str(text).casefold().split())}".encode()).hexdigest()[:12]
+
+
+def _at_pc(at_pc, text):
+    """«pc» o «here»: quello che la sessione ha dichiarato, altrimenti dalle parole."""
+    return at_pc if at_pc in ("pc", "here") else ("pc" if AT_PC_RE.search(str(text or "")) else "here")
+
+
+def _needs_you_open(now_):
+    """Le richieste di `supervisor needs-you` non scadute. La loro vita (--until, chiusura) resta del relay."""
+    cm_, cfg = _cfg()
+    if not cm_:
+        return []
+    d = Path(cm_.expand(cfg["state_dir"])) / "needs-you"
+    out = []
+    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+        try:
+            rec = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(rec, dict) and rec.get("reason") and not (rec.get("expires_at") and now_ >= float(rec["expires_at"])):
+            out.append(rec)
+    return out
+
+
+def decisions(con, now_=None, snoozed=False):
+    """Cinque minuti: cio' che aspetta la persona, per causa. Una voce per pausa con waits person, per ok da dare, per
+    needs-you. La chiave del gruppo e' --cause, altrimenti il testo; un ok fa gruppo da solo. Peso = i compiti che sblocca:
+    i suoi e chi ne dipende. Un compito con una prova da fare sta in «Da provare», non qui. `snoozed`: anche i «Non ora»."""
+    now_ = int(now_ or now())
+    rows = {r["id"]: r for r in con.execute("SELECT * FROM tasks WHERE state IN (%s)" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall()}
+    contracts = {k: _contract_task(r) for k, r in rows.items()}
+    deps = {}
+    for k, t in contracts.items():
+        for d in t.get("depends_on") or []:
+            deps.setdefault(d.get("task"), set()).add(k)
+    items = []
+    for tid, r in rows.items():
+        t = contracts[tid]
+        base = {"task": tid, "short": short_of(t), "title": r["title"], "session": r["session"] or (t.get("where") or {}).get("session"), "project": r["project"]}
+        if r["state"] == "awaiting_ok":
+            a = con.execute("SELECT * FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+            items.append((("o", tid), None, dict(base, kind="ok", what=a["what"] if a else None, where_to=a["where_"] if a else None,
+                                                 options=json.loads(a["options"]) if a and a["options"] else None, since=int(a["at"]) if a else int(r["updated_at"]),
+                                                 where="here", untested=a["untested"] if a else None, undo=a["undo"] if a else None, undo_how=a["undo_how"] if a else None,
+                                                 precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None)))
+            continue
+        pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+        if pz and pz["waits"] == "person" and not prove_pending(con, tid):
+            key = ("c", pz["cause"]) if pz["cause"] else ("t", pz["reason"])
+            items.append((key, pz["cause"], dict(base, kind="pause", reason=pz["reason"], since=int(pz["since"] or pz["at"]), where=_at_pc(pz["at_pc"], pz["reason"]),
+                                                 undo=pz["undo"], undo_how=pz["undo_how"], needs_you=None)))
+    by_task = {it[2]["task"]: it[2] for it in items}
+    for rec in _needs_you_open(now_):
+        tid, reason = rec.get("task"), " ".join(str(rec["reason"]).split())
+        if tid in by_task:
+            by_task[tid]["needs_you"] = reason
+            continue
+        items.append((("n", f"{rec.get('name')} {reason}"), None, {"kind": "needs_you", "task": tid if tid in rows else None, "session": rec.get("name"), "reason": reason,
+                                                                  "since": int(rec.get("at") or now_), "where": _at_pc(None, reason)}))
+    groups = {}
+    for key, cause, it in items:
+        k = _decision_key(*key)
+        g = groups.setdefault(k, {"key": k, "title": cause or it.get("reason") or it.get("what") or it.get("title"), "cause": cause, "items": []})
+        g["items"].append(it)
+    marks = {r["key"]: r for r in con.execute("SELECT * FROM decision_snooze WHERE until>?", (now_,)).fetchall()}
+    notes = {r["key"]: r["note"] for r in con.execute("SELECT key, note FROM cause_notes").fetchall()}
+    out, hidden = [], 0
+    for k, g in groups.items():
+        unblocks, todo = set(), [i["task"] for i in g["items"] if i.get("task")]
+        while todo:
+            x = todo.pop()
+            if x not in unblocks:
+                unblocks.add(x)
+                todo += [d for d in deps.get(x, ()) if d in rows]
+        g["unblocks"] = sorted(unblocks)
+        g["weight"] = max(1, len(unblocks))
+        g["where"] = "pc" if any(i["where"] == "pc" for i in g["items"]) else "here"
+        g["since"] = min(i["since"] for i in g["items"])
+        g["note"] = notes.get(k)
+        g["refs"] = sorted(i.get("task") or f"needs:{i['session']}" for i in g["items"])
+        m = marks.get(k)
+        if m and set(g["refs"]) <= set(json.loads(m["refs"])):   # un compito nuovo nel gruppo lo riporta su
+            hidden += 1
+            if not snoozed:
+                continue
+        out.append(g)
+    out.sort(key=lambda g: (g["where"] != "here", -g["weight"], g["since"], g["key"]))
+    return {"at": now_, "n": len(out), "here": sum(1 for g in out if g["where"] == "here"), "tasks": len({t for g in out for t in g["unblocks"]}), "snoozed": hidden, "groups": out}
+
+
+def decision_snooze(con, key, refs, by, hours, reason=None):
+    """«Non ora», dal relay: il gruppo sparisce per `hours` ore, finche' non ci entra un compito nuovo."""
+    t = now()
+    con.execute("INSERT OR REPLACE INTO decision_snooze (key, at, by_, until, refs, reason) VALUES (?,?,?,?,?,?)",
+                (key, t, by, t + int(hours * 3600), json.dumps(refs, ensure_ascii=False), reason))
+    con.commit()
+
+
+def decision_drop(con, tid, by, text):
+    """«Lascia perdere», dal relay: il compito cancellato, la pausa chiusa, la ragione nel registro."""
+    t = now()
+    con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (t, tid))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'dropped',?,NULL)", (tid, t, by, text[:500]))
+    set_state(con, tid, "cancelled")
+    con.commit()
+
+
+def cause_set(con, ids, cause, note=None, by=None):
+    """La master unisce pause con la stessa causa scritta in parole diverse e dice cosa sbloccano; il motivo resta."""
+    cause = " ".join(str(cause).split())
+    if not 1 <= len(cause) <= CAUSE_MAX:
+        sys.exit(f"task cause: --cause 1-{CAUSE_MAX} characters")
+    for tid in ids:
+        get_task(con, tid)
+        if not con.execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL", (tid,)).fetchone():
+            sys.exit(f"task cause: {tid} has no open pause")
+    for tid in ids:
+        con.execute("UPDATE pauses SET cause=? WHERE task=? AND resumed_at IS NULL", (cause, tid))
+    if note:
+        con.execute("INSERT OR REPLACE INTO cause_notes (key, note, at, by_) VALUES (?,?,?,?)", (_decision_key("c", cause), " ".join(note.split())[:INFO_MAX], now(), by))
+    con.commit()
+
+
+def render_decisions(d):
+    if not d["groups"]:
+        return M("tasks.decisions_none", snoozed=d["snoozed"])
+    lines = [M("tasks.decisions_header", n=d["n"], tasks=d["tasks"], here=d["here"], snoozed=d["snoozed"])]
+    for g in d["groups"]:
+        lines.append(M("tasks.decisions_line", where=M(f"tasks.where_{g['where']}"), weight=g["weight"], title=str(g["title"])[:120],
+                       tasks=", ".join(i.get("task") or str(i.get("session")) for i in g["items"])))
+        if g["note"]:
+            lines.append("  " + g["note"])
+    return "\n".join(lines)
+
+
+def render_prove(p):
+    if not (p["groups"] or p["ko"] or p["red"]):
+        return M("tasks.prove_none")
+    lines = []
+    for g in p["groups"]:
+        lines.append(f"{g['build']} ({g['n']}):")
+        lines += [f"  #{x['id']} {x['task']} · {x['dove']}: {x['fai']} → {x['atteso']}" for x in g["prove"]]
+    lines += [f"KO #{x['id']} {x['task']}: {x['text']}" for x in p["ko"]]
+    lines += [f"RED {x['task']}: {x['reason'] or '…'}" for x in p["red"]]
+    return "\n".join(lines)
 
 
 # ------------------------------------------------------------------ chiusi per giorno (contratto 1.77, 22/10/2026)
@@ -885,13 +1290,18 @@ def main(argv):
         return 3
     con = connect()
     if verb == "add":
-        topic = _opt(args, "--topic")
+        topic, defect_of = _opt(args, "--topic"), _opt(args, "--defect-of")
         if len(args) != 1:
-            sys.exit("usage: task add FILE|- [--topic T]")
+            sys.exit("usage: task add FILE|- [--topic T] [--defect-of ID]")
+        if defect_of:
+            get_task(con, defect_of)   # 1.99: il difetto di un compito che c'e'
         tid, errs = add(con, _read(args[0]), topic)
         if errs:
             print("\n".join(errs), file=sys.stderr)
             return 2
+        if defect_of:
+            con.execute("INSERT OR REPLACE INTO defects (task, defect_of, at) VALUES (?,?,?)", (tid, defect_of, now()))
+            con.commit()
         print(tid)
         return 0
     if verb == "list":
@@ -909,6 +1319,15 @@ def main(argv):
                 r["request"] = {"what": a["what"], "where": a["where_"], "at": a["at"]} if a else None
                 if a and a["options"]:   # 1.81: le opzioni di una scelta
                     r["request"]["options"] = json.loads(a["options"])
+                if a:   # 1.99: ok informato, solo quando ci sono
+                    b = con.execute("SELECT untested, undo, undo_how FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+                    r["request"].update({k: b[k] for k in ("untested", "undo", "undo_how") if b[k]})
+                    also = request_also(con, r["id"])[0]
+                    if also:
+                        r["request"]["also"] = [{"task": x, "short": short_of(_contract_task(get_task(con, x)))} for x in also]
+                    pre = precedent_of(con, r["id"])
+                    if pre:
+                        r["request"]["precedent"] = pre
         print(json.dumps(rows, ensure_ascii=False) if as_json else "\n".join(f"{r['id']}  {r['state']:<11} {r['lane']:<6} {r['title']}" for r in rows))
         return 0
     if verb == "show":
@@ -919,6 +1338,9 @@ def main(argv):
         out["approvals"] = [dict(r, options=json.loads(r["options"]) if r["options"] else None) for r in con.execute("SELECT * FROM approvals WHERE task=? ORDER BY n", (args[0],))]
         out["steps"] = [dict(r) for r in con.execute("SELECT * FROM steps WHERE task=? ORDER BY n", (args[0],))]
         out["pauses"] = [dict(r) for r in con.execute("SELECT * FROM pauses WHERE task=? ORDER BY n", (args[0],))]
+        out["prove"] = [dict(r) for r in con.execute("SELECT * FROM prove WHERE task=? ORDER BY n", (args[0],))]
+        d = con.execute("SELECT defect_of FROM defects WHERE task=?", (args[0],)).fetchone()
+        out["defect_of"] = d["defect_of"] if d else None
         print(json.dumps(out, ensure_ascii=False, indent=None if as_json else 2))
         return 0
     if verb == "impegni":
@@ -927,6 +1349,32 @@ def main(argv):
         if stalled_only:
             items = [x for x in items if x["stalled"]]
         print(json.dumps(items, ensure_ascii=False) if as_json else render_commitments(items, brief=brief))
+        return 0
+    if verb == "prova":
+        build, dove, fai, atteso, by = _opt(args, "--build"), _opt(args, "--dove"), _opt(args, "--fai"), _opt(args, "--atteso"), _opt(args, "--by")
+        if len(args) != 1 or not (build and dove and fai and atteso):
+            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]")
+        print(prova_add(con, args[0], build, dove, fai, atteso, by))
+        return 0
+    if verb == "prove":
+        p = prove_list(con)
+        print(json.dumps(p, ensure_ascii=False) if as_json else render_prove(p))
+        return 0
+    if verb == "settle":
+        if len(args) != 1:
+            sys.exit("usage: task settle ID")
+        rc, text = settle(con, args[0])
+        print(text, file=sys.stderr if rc == 3 else sys.stdout)
+        return rc
+    if verb == "decisioni":
+        d = decisions(con)
+        print(json.dumps(d, ensure_ascii=False) if as_json else render_decisions(d))
+        return 0
+    if verb == "cause":
+        cause, note, by = _opt(args, "--cause"), _opt(args, "--note"), _opt(args, "--by")
+        if not args or not cause:
+            sys.exit('usage: task cause ID [ID...] --cause C [--note "frase"] [--by B]')
+        cause_set(con, args, cause, note, by)
         return 0
     if verb == "stall-check":
         new = stall_check(con)
@@ -944,9 +1392,14 @@ def main(argv):
         return 0
     if verb == "pause":
         reason, by, waits, since = _opt(args, "--reason"), _opt(args, "--by"), _opt(args, "--waits"), _opt(args, "--since")
-        recheck = _opt(args, "--recheck")
+        recheck, cause = _opt(args, "--recheck"), _opt(args, "--cause")
+        undo, undo_how = parse_undo(args, "pause")
+        at_pc = "pc" if _flag(args, "--al-pc") else ("here" if _flag(args, "--da-qui") else None)
         if not args or not reason:
-            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]")
+            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO] [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui]")
+        cause = " ".join(cause.split()) if cause else None
+        if cause and len(cause) > CAUSE_MAX:
+            sys.exit(f"task pause: --cause over {CAUSE_MAX} characters")
         if waits not in (None, "person", "user", "external"):
             sys.exit("task pause: --waits takes person or external")
         if recheck is not None and waits != "external":
@@ -968,8 +1421,8 @@ def main(argv):
         if row["state"] not in OPEN_STATES:
             sys.exit(f"task {args[0]}: already {row['state']}")
         con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
-        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since, recheck) VALUES (?,?,?,?,NULL,?,?,?)",
-                    (args[0], now(), by, reason[:300], waits if waits == "external" else ("person" if waits else None), since_at, recheck_at))
+        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since, recheck, cause, undo, undo_how, at_pc) VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?)",
+                    (args[0], now(), by, reason[:300], waits if waits == "external" else ("person" if waits else None), since_at, recheck_at, cause, undo, undo_how, at_pc))
         con.commit()
         return 0
     if verb == "closed":
@@ -1021,6 +1474,7 @@ def main(argv):
     if verb == "confirmed":
         get_task(con, args[0])
         hit = con.execute("SELECT 1 FROM approvals WHERE task=? AND what='confirmed' AND by_ IS NOT NULL LIMIT 1", (args[0],)).fetchone()
+        hit = hit and not prove_pending(con, args[0])   # 1.99: una prova da fare: la conferma di prima non copre questa build
         print(M("tasks.confirmed_yes" if hit else "tasks.confirmed_no", task=args[0]))
         return 0 if hit else 1
     if verb == "start":
@@ -1054,12 +1508,18 @@ def main(argv):
         return 0 if green else 1
     if verb == "wait-ok":
         what, where, options = _opt(args, "--what"), _opt(args, "--where"), _opt(args, "--options")
+        untested, also = _opt(args, "--untested"), _opt(args, "--also")
+        undo, undo_how = parse_undo(args, "wait-ok")
         if not what or not where or not args:
-            sys.exit("usage: task wait-ok ID --what W --where D [--options \"A|B\"]")
+            sys.exit("usage: task wait-ok ID --what W --where D [--options \"A|B\"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3]")
+        also = parse_also(con, args[0], also) if also is not None else None
+        if untested is not None and len(untested) > INFO_MAX:
+            sys.exit(f"task wait-ok: --untested over {INFO_MAX} characters")
+        untested = " ".join(untested.split()) if untested else None
         opts = parse_options(options) if options is not None else None   # 1.81: il compito chiede una scelta
         get_task(con, args[0])
-        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options) VALUES (?,?,NULL,?,NULL,?,?,?)",
-                    (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None))   # la richiesta: by NULL finche' nessuno approva
+        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?)",
+                    (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None, untested, undo, undo_how, json.dumps(also) if also else None))   # la richiesta: by NULL finche' nessuno approva
         set_state(con, args[0], "awaiting_ok")
         con.commit()
         r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
@@ -1101,25 +1561,24 @@ def main(argv):
         sys.exit("usage: task standing add --by B --inbox MSG --project DIR --kind K | list [--json] | remove N")
     if verb in ("approve", "confirm"):
         by, text, rec_id, pin, choice = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox"), _opt(args, "--pin"), _opt(args, "--choice")
-        if not (by or pin) or not (text or rec_id or pin) or not args:
-            sys.exit(f"usage: task {verb} ID --by B (--text T | --inbox MSG [--text NOTE] | --pin P [--text NOTE])" + (" [--what W] [--where D] [--choice C]" if verb == "approve" else ""))
+        if not (by or pin) or not args:
+            sys.exit(f"usage: task {verb} ID --by B (--inbox MSG [--text NOTE] | --pin P [--text NOTE])" + (" [--what W] [--where D] [--choice C]" if verb == "approve" else ""))
+        ok_at = None
         row = get_task(con, args[0])
         if pin:
             by, text = pin_approval_text(by, pin, text)   # 23/10 17:14: la prova e' il PIN, da qualunque sessione o shell
         elif rec_id:
             text = inbox_approval_text(by, rec_id, text, row["session"] or json.loads(row["contract"])["task"]["where"].get("session"))
-        elif os.environ.get("CLAUDECODE") and os.environ.get("CM_APPROVE_VIA") != "relay":
-            # una sessione Claude (anche la master) non scrive un ok a nome d'altri senza la prova: il PIN della persona
-            # o il messaggio del relay; il relay eredita CLAUDECODE da chi l'ha avviato, e si dichiara con CM_APPROVE_VIA
-            sys.exit(f"task {verb}: from a Claude session an ok needs --inbox MSG (a message of the person from the last hour in this session's inbox) or --pin P")
+            ok_at = float(_load("cm-inbox").load(rec_id)["created"])   # 1.99: la carta deve essere nata prima del messaggio
+        else:
+            # 01/11 (ok_variabile): prima bastava una variabile d'ambiente, o togliere CLAUDECODE, e una sessione
+            # scriveva un ok a nome della persona. Da riga di comando ora non c'e' un --text che basti, da nessuna shell. Il tocco su un
+            # dispositivo passa dal processo del relay, senza questa CLI
+            sys.exit(f"task {verb}: an ok needs --inbox MSG (a message of the person from the last hour in this session's inbox) or --pin P; a device's ok arrives through the relay")
         if verb == "confirm":
-            # P1 (22/10): la conferma della persona («lo vedo sul telefono»), registrata con le regole dell'ok; `task
-            # confirmed ID` la legge: e' un controllo valido per un esito install. Lo stato non cambia
-            con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,'confirmed',NULL)",
-                        (args[0], row["plan"], by, now(), text))
-            con.commit()
+            confirm(con, args[0], by, text)
             return 0
-        approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"), choice)
+        approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"), choice, ok_at=ok_at)
         return 0
     if verb == "auto-close":
         hours = float(_opt(args, "--hours", AUTO_CLOSE_H))

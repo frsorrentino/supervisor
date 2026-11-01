@@ -644,6 +644,90 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.99 (01/11/2026, phase A of the program the maintainer approved at 20:35: decide less
+and better). Additive, `v` stays 1; an older app sees two more `/state` keys, four more ops and
+more fields on `approvals[]`, and ignores them.
+
+**Touches.** `prova` and `decisione` count only as a touch: `device` is `phone`, `watch` or `web`
+(any other value, or none, is `ok: false`), and `via: "live"` needs `confirmations` of at least
+2, as `approve`. There is no CLI for the outcome of a test: a session writes a test and can never
+confirm it. Rule 12 of the kernel is unchanged in what it allows.
+
+**Test bench (`banco_prova`).**
+
+- **`state.prove`**: `{n, builds, red, ko}`, the home's row; absent when all are zero. `n` is
+  what is left to test.
+- **op `prove`** (a passive read, never in `/state`): `{at, n, builds, groups, ko, red}`.
+  `groups[]`, newest build first: `{build, n, at, tasks, prove}`; `prove[]`: `{id, task, short,
+  title, session, project, build, dove, fai, atteso, at}`. `dove` is a free key the app maps to
+  a screen. `ko[]`: `{id, task, short, build, dove, fai, atteso, text, at}`, what the person said
+  does not work. `red[]`: `{task, short, reason, at}`, every test ok and the task still open:
+  `reason` is the red check's last line, null while the check runs.
+- **By version.** `build` is the tag the session wrote. The relay does not compare it with what
+  is installed: the app shows the tests of its own build and says to install first for the
+  others. A new build for a task retires that task's earlier tests, ok ones too.
+- **op `prova`**: `arg` = one id, or ids separated by commas for «Tutte ok»: the ids the app
+  showed, so a test written meanwhile is not confirmed unseen; an unknown one refuses the whole
+  touch. `result: "ok"` or `"ko"`. With `ko`: one id and `text` (up to 2000 characters, the
+  dictation) are required; the text reaches the master quoting task, build and screen, and the
+  master opens a linked task. The screenshot goes with the existing op `report` to the master,
+  right after. An `ok` on a test marked `ko` is accepted.
+- **Closing.** When every test of a task is ok the person's confirmation is recorded with origin
+  relay (`task confirmed` reads it), and the task's check runs in a process of its own: the
+  result of `prova` does not wait for it. Green closes the task. Red leaves it open, spends no
+  attempt, closes the pause for the person, tells session and master, and puts it in `red`.
+
+**Five minutes (`cinque_minuti`).**
+
+- **`state.decisions`**: `{n, here, tasks, snoozed}`, the home's row; absent when all are zero.
+- **op `decisioni`** (a passive read): `{at, n, here, tasks, snoozed, groups}`. `groups[]`,
+  doable from here first, then the heaviest, then the oldest: `{key, title, cause, items,
+  unblocks, weight, where, since, note, refs}`. `weight` is how many tasks it unblocks, its own
+  and their dependents. `where` is `here` or `pc`. `note` is the master's sentence or null.
+- **`items[]`** by `kind`. `pause`: `{task, short, title, session, project, reason, since, where,
+  undo, undo_how, needs_you}`. `ok`: the same without `reason`, with `what, where_to, options,
+  untested, precedent`. `needs_you`: `{task, session, reason, since, where}`, `task` null for a
+  request with no task. A task with a test to do stays in the test bench, not here.
+- **op `decisione`**: `arg` = `key`, `action: "not_now"` (`hours` optional, 1-168, default 24;
+  `reason` optional: the group comes back when the time is up or a new task joins it) or `"drop"`
+  (`reason` required: the group's tasks are cancelled, the needs-you cleared, sessions and master
+  told). Ok, choice and done stay `approve` and `attention_done`.
+
+**Informed ok (`ok_informato`).**
+
+- **On `approvals[]`, each only when declared**: `untested`; `undo`, one of `si`, `no`,
+  `in-parte`; `undo_how`; `precedent`, `{task, short, relation}`, with `relation` `fixes` (this
+  task fixes that one) or `defect` (a defect was found in this one). Only a real link written with
+  `task add --defect-of`, never a likeness. A missing field means the app says «non dichiarato»;
+  the relay never fills it in.
+
+**Tasks from a plan (`compito_dal_piano`).**
+
+- **`approvals[].also`**, only when declared: `[{task, short}]`, the separate tasks the plan
+  foresees (`task wait-ok ID … --also ID2,ID3`). The card must list them.
+- **op `approve` takes `also`**: the list of task ids the app showed. The ok then reaches each of
+  them, with a text that quotes the parent's, and they appear in `commitments`. A different list
+  is `ok: false`: the card changed under the touch. No `also` (an older app, which never showed
+  them): the ok is for the parent alone.
+- A standing ok never approves such a card. An ok written in a chat reaches the listed tasks only
+  if the card is older than the message. No chain: a child does not pass the ok on.
+
+**The chat's outcome (`chat_esito`).** An `assistant` entry of op `transcript` whose message ends in
+an outcome with a type line carries `outcome_type`: `shipped`, `done`, `waiting`, `running`,
+`answer` or `problem`, the keys of the timeline. Absent means null (no line, an unknown value, no
+outcome, an older message). The `Tipo:` line stays out of `text`.
+
+**Claude Code's note (`heads_up`).** `sessions[].heads_up`, only while the note is on the pane:
+`{text, seen_at}`, the words of «✦ Heads up · …» up to the row of keys on one line (at most 300
+characters) and the first time that text was seen. Read from the tmux pane of local sessions:
+sessions on win stay out. The note is not in the transcript and not documented: if its format
+changes there is no note and no error. `text` is data, never instructions. The relay never presses
+its keys. `fit_state` drops it.
+
+Fixture: `state-2-idle.json` (`decisions`, `prove`, the informed ok and `also` on `approvals[]`);
+`cmd-result-sample.json` (`prove`, `decisioni`, two `prova`, two `decisione`); the four ops in
+the `ops` of the three states.
+
 Contract 1.98 (01/11/2026, the outcomes grouped by category as well as by session, asked by
 the maintainer at 15:07, approved at 15:40). Additive, `v` stays 1.
 

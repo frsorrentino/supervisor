@@ -200,7 +200,7 @@ c7 = {"schema_version": 1, "task": {"id": "gantt-apk", "title": "APK del Gantt s
 E7 = env(CM_TASKS_DB=str(db7))
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "add", "-"], input=json.dumps(c7), capture_output=True, text=True, env=E7, timeout=30)
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "wait-ok", "gantt-apk", "--what", "push e release", "--where", "GitHub"], capture_output=True, text=True, env=E7, timeout=30)
-subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "approve", "gantt-apk", "--by", "maintainer", "--text", "ok"], capture_output=True, text=True, env=E7, timeout=30)
+T.device_ok("approve", "gantt-apk", "maintainer", "ok", E7)
 m7 = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 s7 = hook("SessionStart", {"session_id": "sid-m", "cwd": str(home), "source": "startup"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 o7 = hook("UserPromptSubmit", {"session_id": "sid-o", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="alfa", CM_TASKS_DB=str(db7))

@@ -959,6 +959,67 @@
       "device": "web",
       "issued": 1789214700,
       "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0900-4000-8000-000000000900",
+      "op": "prove",
+      "session": null,
+      "arg": null,
+      "device": "phone",
+      "issued": 1789214700,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-0901-4000-8000-000000000901",
+      "op": "decisioni",
+      "session": null,
+      "arg": null,
+      "device": "phone",
+      "issued": 1789214701,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-0902-4000-8000-000000000902",
+      "op": "prova",
+      "session": null,
+      "arg": "41,42",
+      "device": "phone",
+      "issued": 1789214702,
+      "by": "phone-pixel7",
+      "result": "ok"
+    },
+    {
+      "id": "6f1c2d3e-0903-4000-8000-000000000903",
+      "op": "prova",
+      "session": null,
+      "arg": "38",
+      "device": "phone",
+      "issued": 1789214703,
+      "by": "phone-pixel7",
+      "result": "ko",
+      "text": "The filter closes at once"
+    },
+    {
+      "id": "6f1c2d3e-0904-4000-8000-000000000904",
+      "op": "decisione",
+      "session": null,
+      "arg": "3f2a91c07d11",
+      "device": "phone",
+      "issued": 1789214704,
+      "by": "phone-pixel7",
+      "action": "not_now",
+      "hours": 24
+    },
+    {
+      "id": "6f1c2d3e-0905-4000-8000-000000000905",
+      "op": "decisione",
+      "session": null,
+      "arg": "a81c55e20b34",
+      "device": "phone",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "action": "drop",
+      "reason": "Done by voice"
     }
   ],
   "result": [
@@ -1590,6 +1651,36 @@
       "ok": true,
       "text": "{\"at\": 1789214700, \"kpi_tasks\": {\"open\": 3, \"waiting_you\": 1, \"stalled\": 1, \"closed_today\": 2, \"tasks\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"state\": \"running\", \"age_s\": 9000, \"attempts\": 2, \"attempts_max\": 3, \"stalled\": true, \"who\": \"master\"}, {\"task\": \"ledger-vendor-ticket\", \"short\": \"Vendor ticket 4411\", \"state\": \"paused\", \"age_s\": 172800, \"attempts\": 0, \"attempts_max\": 3, \"stalled\": false, \"who\": \"maintainer\"}]}, \"kpi_checks_week\": [{\"date\": \"2026-09-06\", \"green\": 4, \"red\": 0}, {\"date\": \"2026-09-07\", \"green\": 7, \"red\": 1}, {\"date\": \"2026-09-08\", \"green\": 3, \"red\": 0}, {\"date\": \"2026-09-09\", \"green\": 5, \"red\": 2}, {\"date\": \"2026-09-10\", \"green\": 7, \"red\": 0}, {\"date\": \"2026-09-11\", \"green\": 2, \"red\": 0}, {\"date\": \"2026-09-12\", \"green\": 5, \"red\": 1}], \"kpi_turns_today\": [{\"session\": \"atlas-shop\", \"turns\": [{\"start\": 1789200000, \"end\": 1789200240, \"outcome\": \"ok\", \"tokens\": 18200, \"cache_read\": 210000}, {\"start\": 1789201000, \"end\": 1789201420, \"outcome\": \"fail\", \"tokens\": 26100, \"cache_read\": 260000}, {\"start\": 1789210000, \"end\": 1789210700, \"outcome\": \"running\", \"tokens\": 41000, \"cache_read\": 390000}]}], \"kpi_health\": {\"latency\": {\"p50_s\": 2.1, \"max_s\": 9.8, \"n\": 41}, \"sessions_here\": 4, \"sessions_max\": 5, \"hosts\": [{\"name\": \"win\", \"up\": true, \"cpu\": 0.12, \"ram_pct\": 71, \"disk_pct\": null}]}, \"kpi_suggestions_7d\": {\"accepted\": 7, \"discussed\": 3, \"later\": 2, \"never\": 0, \"expired\": 2}, \"kpi_waits\": {\"now\": [{\"session\": \"ledger-api\", \"kind\": \"question\", \"since\": 1789210500}], \"week\": [{\"date\": \"2026-09-06\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-07\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-08\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-09\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-10\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-11\", \"median_min\": 6.0, \"n\": 3}, {\"date\": \"2026-09-12\", \"median_min\": 11.5, \"n\": 2}]}}",
       "at": 1789214701
+    },
+    {
+      "id": "6f1c2d3e-0900-4000-8000-000000000900",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}]}"
+    },
+    {
+      "id": "6f1c2d3e-0901-4000-8000-000000000901",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"n\": 2, \"here\": 1, \"tasks\": 3, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}]}"
+    },
+    {
+      "id": "6f1c2d3e-0902-4000-8000-000000000902",
+      "ok": true,
+      "text": "prove ok: 2; compiti che passano al controllo: 2"
+    },
+    {
+      "id": "6f1c2d3e-0903-4000-8000-000000000903",
+      "ok": true,
+      "text": "prova 38: segnalata alla master"
+    },
+    {
+      "id": "6f1c2d3e-0904-4000-8000-000000000904",
+      "ok": true,
+      "text": "non ora: torna tra 24 ore"
+    },
+    {
+      "id": "6f1c2d3e-0905-4000-8000-000000000905",
+      "ok": true,
+      "text": "lasciato perdere: 1 voci"
     }
   ]
 }

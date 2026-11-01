@@ -2,6 +2,15 @@
 
 ## 0.3.x
 
+- **0.8.92 — 2026-11-01: decide less and better: tests by version, decisions by cause, oks that say what they leave open (contract 1.99).**
+  - `task prova` writes a test for a build; a touch on a paired device confirms it (op `prova`), and when all are ok the task closes with its check. A red check leaves it open, says so and spends no attempt. No command confirms a test.
+  - `task decisioni` groups what waits for the person by `--cause` or by the words of the pause, with how many tasks each group unblocks and whether it can be done from here; op `decisione` adds «not now» and «drop it» with the reason.
+  - `task wait-ok --untested --undo --undo-how` reach the card with no model in between; `task add --defect-of` is the only precedent it names. Rule 12 of the kernel asks for them.
+  - `task wait-ok --also ID2,ID3` lists on the card the separate tasks a plan foresees; the ok of the card reaches them, quoting it, and they appear in the commitments. A session still cannot write an ok, and a standing ok never approves such a card.
+  - **An ok no longer rests on an environment variable.** `CM_APPROVE_VIA=relay`, or removing `CLAUDECODE`, let a session record an ok in the person's name with `task approve --text`; `task confirm` too. `--text` alone is now refused from every shell: the command line takes `--inbox` or `--pin`, and a device's ok is recorded inside the relay's process. **Not fully closed:** sessions and relay run as the same user, so a session that sets out to do it can still write to the SQLite registry, import the module, or read the bus key or the web token and forge a touch. Closing that takes a key that never sits on this machine, such as a signature made on the device. A plain shell without a PIN set has no way left to record an ok. `plan approve --by --text` has no such check and is unchanged.
+  - `sessions[].heads_up` shows Claude Code's «Heads up» note from the pane of local sessions, as data; sessions on win stay out, and a changed format gives no note and no error.
+  - A photo recompressed to fit the relay's envelope keeps its orientation.
+  - The chat's assistant entries carry `outcome_type`, the keys of the timeline; the `Tipo:` line stays out of the text.
 - **0.8.91 — 2026-11-01: every outcome declares a type, so the list can be grouped by type as well as by session.**
   - Rule 9 of the kernel adds one line under the outcome: `Tipo: pubblicato|fatto|aspetta|in corso|risposta|problema`, in English `Type: shipped|done|waiting|running|answer|problem`. No extra model call: the session writes it.
   - The timeline's outcome events carry `type` (fixed keys, null when absent or unknown) and the page carries `outcomes_n` and `outcomes_settled_n`, the second without «in corso» (contract 1.98, timeline-verify TY).

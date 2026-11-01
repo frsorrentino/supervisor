@@ -159,7 +159,13 @@
     "max_parts_bytes": 52428800,
     "multi": 5
   },
-  "home_order": ["suggestions", "sessions", "lavori", "esiti", "altro"],
+  "home_order": [
+    "suggestions",
+    "sessions",
+    "lavori",
+    "esiti",
+    "altro"
+  ],
   "ops": [
     "answer",
     "prompt",
@@ -210,7 +216,11 @@
     "plugin_update",
     "plugin_update_all",
     "kpi",
-    "home_order"
+    "home_order",
+    "prove",
+    "prova",
+    "decisioni",
+    "decisione"
   ],
   "slash": [
     "compact",
@@ -268,6 +278,15 @@
       "options": [
         "Strada A",
         "Strada B"
+      ],
+      "untested": "a real phone",
+      "undo": "in-parte",
+      "undo_how": "pull the build",
+      "also": [
+        {
+          "task": "atlas-seo-pages",
+          "short": "SEO pages"
+        }
       ]
     }
   ],
@@ -528,5 +547,17 @@
       "tokens": 30000,
       "share": 0.03
     }
-  ]
+  ],
+  "decisions": {
+    "n": 3,
+    "here": 2,
+    "tasks": 7,
+    "snoozed": 1
+  },
+  "prove": {
+    "n": 5,
+    "builds": 2,
+    "red": 1,
+    "ko": 1
+  }
 }

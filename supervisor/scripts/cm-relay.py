@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1282,6 +1282,7 @@ def collect_sources(now=None):
         "system": system_status(rows, runtime),   # 1.90
         "plugins": plugins_summary(),   # 1.95
         "home_order": home_order_read(),   # 1.97
+        **decisions_summary(), "heads_up": heads_up_seen(rows, now),   # 1.99
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -1495,6 +1496,12 @@ def approvals_list():
         opts = req.get("options")
         if isinstance(opts, list) and opts:
             a["options"] = [S.one_line(str(o))[:24] for o in opts[:4]]
+        # 1.99 (ok informato): cosa non e' provato, se si torna indietro, il difetto collegato; solo quando ci sono
+        a.update({k: S.one_line(str(req[k]))[:300] for k in ("untested", "undo", "undo_how") if req.get(k)})
+        if isinstance(req.get("also"), list) and req["also"]:   # compito dal piano
+            a["also"] = [{"task": str(x.get("task")), "short": str(x.get("short") or "")} for x in req["also"]]
+        if isinstance(req.get("precedent"), dict):
+            a["precedent"] = req["precedent"]
         out.append(a)
     return sorted(out, key=lambda a: (a["requested_at"] or 0, a["task"] or ""))
 
@@ -2894,7 +2901,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):

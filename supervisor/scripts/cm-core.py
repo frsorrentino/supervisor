@@ -1134,6 +1134,9 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
                 if b.get("type") == "text" and str(b.get("text") or "").strip():
                     # 1.98: la riga «Tipo:» e' per il relay, non per chi legge la chat; un messaggio fatto solo di quella resta
                     out.append(_entry(f"{uid}.{i}", "assistant", _rs().without_type(b["text"].strip()) or b["text"].strip(), at))
+                    ty = _rs().outcome_type(b["text"])   # 1.99 (chat_esito): il valore resta, la riga no
+                    if ty:
+                        out[-1]["outcome_type"] = ty
                 elif b.get("type") == "tool_use":
                     name = str(b.get("name") or "?")
                     detail = tool_line(name, b.get("input"), width=200)[len(name):].strip()   # il nome e' gia' in `tool`
