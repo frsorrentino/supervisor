@@ -201,6 +201,60 @@ def esito_line(text):
     return ""
 
 
+# 1.98 (01/11, il maintainer: gli esiti raggruppati per categoria): la riga «Tipo:»/«Type:» che segue «Esito:» (kernel, regola 9).
+# Letta qui, una volta: in due lingue, su chiavi fisse; sconosciuta o assente = None, mai un errore. Fuori dai testi.
+TYPE_KEYS = {"pubblicato": "shipped", "shipped": "shipped", "fatto": "done", "done": "done", "aspetta": "waiting", "waiting": "waiting",
+             "in corso": "running", "running": "running", "risposta": "answer", "answer": "answer", "problema": "problem", "problem": "problem"}
+TYPE_LINE_RE = re.compile(r"^\W{0,4}(?:tipo|type)\W{0,4}:(.*)$", re.I)
+OUTCOME_LINE_RE = re.compile(r"^\W{0,4}(?:esito|outcome)\W{0,4}:", re.I)
+AFTER_TYPE_RE = re.compile(r"^\W{0,4}(?:prossimi|watch)\W{0,4}:", re.I)
+
+
+def _type_key(value):
+    v = re.sub(r"^\W+|\W+$", "", value or "")
+    return TYPE_KEYS.get(" ".join(v.lower().split()))
+
+
+def type_after(text):
+    """La chiave del tipo nelle righe che seguono l'esito (`text` = quel che viene dopo la sua riga), o None: conta solo se
+    prima ci sono righe vuote o i seguiti; un «Tipo:» lontano dall'esito non e' il suo."""
+    for ln in str(text or "").split("\n"):
+        m = TYPE_LINE_RE.match(ln)
+        if m:
+            return _type_key(m.group(1))
+        if ln.strip() and not AFTER_TYPE_RE.match(ln):
+            return None
+    return None
+
+
+def outcome_type(text):
+    """Il tipo dell'ultima riga di esito del testo, o None."""
+    lines = str(text or "").split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        if OUTCOME_LINE_RE.match(lines[i]):
+            return type_after("\n".join(lines[i + 1:]))
+    return None
+
+
+def without_type(text):
+    """Il testo senza la riga del tipo: quella subito sotto l'esito, qualunque valore abbia, o una col valore noto in
+    coda al messaggio (sotto solo i seguiti). Un «Type: x» nel mezzo di una spiegazione resta."""
+    text = str(text or "")
+    if not re.search(r"(?i)\b(?:tipo|type)\W{0,4}:", text):
+        return text
+    lines, kept, cut = text.split("\n"), [], False
+    for i, ln in enumerate(lines):
+        m = TYPE_LINE_RE.match(ln)
+        if m:
+            prev = next((x for x in reversed(kept) if x.strip()), "")
+            tail = all(not x.strip() or AFTER_TYPE_RE.match(x) for x in lines[i + 1:])
+            if OUTCOME_LINE_RE.match(prev) or (tail and _type_key(m.group(1))):
+                cut = True
+                continue
+        kept.append(ln)
+    return "\n".join(kept).rstrip() if cut else text
+
+
 def project_of(cwd, root):
     c, r = str(cwd or "").rstrip("/"), str(root or "").rstrip("/")
     if r and c.startswith(r + "/"):
@@ -343,7 +397,7 @@ def _outcome(events):
     if not stops:
         return None
     r = stops[-1]
-    tail = str(r.get("tail") or r.get("last") or "")
+    tail = without_type(r.get("tail") or r.get("last") or "")   # 1.98
     esito = str(r.get("esito") or "")
     full_src = tail if esito and esito.splitlines()[0] in tail else (esito + ("\n" if esito and tail else "") + tail)
     full = _unbang(strip_markdown(without_watch(full_src)))[:600]

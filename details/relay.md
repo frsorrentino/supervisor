@@ -644,6 +644,29 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.98 (01/11/2026, the outcomes grouped by category as well as by session, asked by
+the maintainer at 15:07, approved at 15:40). Additive, `v` stays 1.
+
+- **Rule 9 of the kernel.** A session writes one line under its outcome: `Tipo:
+  pubblicato|fatto|aspetta|in corso|risposta|problema` or `Type:
+  shipped|done|waiting|running|answer|problem`, the one that prevails. The order is outcome,
+  type, `Prossimi:`, `Watch:`.
+- **`type` on the `outcome` events of op `timeline`**: `shipped`, `done`, `waiting`,
+  `running`, `answer`, `problem`, in both languages, or null (no line, an unknown value, or
+  an outcome written before this version). The other kinds of event do not carry it.
+- **`outcomes_n` and `outcomes_settled_n` on the timeline page**, beside `since`, `sessions`,
+  `more`: the outcomes in the window, and those that are not `running` (null counts). They
+  are counted before the per-session cap and the 60 KB cut, so they can exceed the events
+  sent. Ask from local midnight to get today's; the count an app makes from the events still
+  works.
+- **The line is never text.** It stays out of `outcome.short`, `outcome.full`, `watch`,
+  `next`, the recap and the chat's entries of op `transcript`. A line that merely looks like
+  it, in the middle of a message, stays. An older app sees clean text and nothing else.
+- `/state` is unchanged: the type does not reach `sessions[].outcome`.
+
+Fixture: `cmd-result-sample.json` (`type` on the outcomes of the `timeline` result, the two
+counts).
+
 Contract 1.97 (30/10/2026, the order of the home's sections, asked by the maintainer at
 17:22, shape from supervisor-app). Additive, `v` stays 1.
 

@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.91 — 2026-11-01: every outcome declares a type, so the list can be grouped by type as well as by session.**
+  - Rule 9 of the kernel adds one line under the outcome: `Tipo: pubblicato|fatto|aspetta|in corso|risposta|problema`, in English `Type: shipped|done|waiting|running|answer|problem`. No extra model call: the session writes it.
+  - The timeline's outcome events carry `type` (fixed keys, null when absent or unknown) and the page carries `outcomes_n` and `outcomes_settled_n`, the second without «in corso» (contract 1.98, timeline-verify TY).
+  - The line stays out of the outcome's text, the watch line, `next`, the recap and the chat (hooks-restart-verify H4e).
 - **0.8.90 — 2026-11-01: a usage reading whose number has not changed no longer goes old while the account is working.**
   - The status line rewrites the quota file only when the number changes. Without the five-hour window the weekly number can stay still for hours, so the file's age marked it old and the phone hid it. The age now runs from the latest model reply to an interactive session of the account, if more recent than the file: on this machine and, through the local transcript copies, on other hosts. A closed session's last reply still counts.
   - Not counted: a redraw of the status line, a turn with no reply, a synthetic error message, `claude -p` (no status line). With no reply for two hours the reading stays old (quota-verify Q8).

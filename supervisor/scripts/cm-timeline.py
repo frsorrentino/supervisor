@@ -45,6 +45,15 @@ FULL_PROMPTS = False   # cm-night-report sets it on its own copy: prompt events 
 WINDOWS = (4 * 1024 * 1024, 32 * 1024 * 1024, None)
 
 
+_S = None
+
+
+def _state():
+    global _S
+    _S = _S or _load("cm-relay-state")
+    return _S
+
+
 def parse_since(s):
     m = re.fullmatch(r"\s*(\d+)\s*([mhd])\s*", str(s or "6h"))
     if not m:
@@ -176,7 +185,9 @@ def transcript_events(path, since):
                         tests[b.get("id")] = e
                 elif b.get("type") == "text":
                     for m in OUTCOME_RE.finditer(str(b.get("text") or "")):
-                        out.append({"at": at, "kind": "outcome", "text": one_line(m.group(1)), "ok": None, "ref": None})
+                        # 1.98: type = la chiave fissa della riga «Tipo:»/«Type:» che segue, o null
+                        out.append({"at": at, "kind": "outcome", "text": one_line(m.group(1)), "ok": None, "ref": None,
+                                    "type": _state().type_after(m.string[m.end():])})
         o = d.get("origin") or ((d.get("attachment") or {}).get("origin") if d.get("type") == "attachment" else None)
         if isinstance(o, dict) and o.get("kind") == "peer" and o.get("msg_id") not in peers:
             # un prompt del relay arriva come messaggio peer con il prefisso del dispositivo: e' della persona
@@ -311,12 +322,16 @@ def timeline(since_s, name=None, limit=40, now=None, live=None):
         for e in extra:
             best = min(group, key=lambda r: min((abs(x["at"] - e["at"]) for x in r["events"]), default=10 ** 9) - (10 ** 8 if r["live"] else 0))
             best["events"].append(e)
+    outcomes_n = settled_n = 0   # 1.98: prima dei tagli, che tolgono gli eventi piu' vecchi; «in corso» non e' un esito chiuso
     for r in rows:
         r["events"] = [e for e in r["events"] if e["at"] <= now]   # niente dal futuro dell'istante chiesto
         r["events"].sort(key=lambda e: e["at"])
+        done = [e for e in r["events"] if e["kind"] == "outcome"]
+        outcomes_n += len(done)
+        settled_n += sum(1 for e in done if e.get("type") != "running")
         r["events"] = r["events"][-limit:]
     rows.sort(key=lambda r: -(r["events"][-1]["at"] if r["events"] else 0))
-    return {"since": since, "sessions": [r for r in rows if r["events"]]}
+    return {"since": since, "sessions": [r for r in rows if r["events"]], "outcomes_n": outcomes_n, "outcomes_settled_n": settled_n}
 
 
 MARK = {True: "✓", False: "✗", None: " "}

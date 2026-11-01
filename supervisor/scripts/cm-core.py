@@ -997,6 +997,15 @@ def transcript_diffs(path, diff_cap):
     return out
 
 
+_RS = None
+
+
+def _rs():
+    global _RS
+    _RS = _RS or _load("cm-relay-state")
+    return _RS
+
+
 def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat_only=False, diff_cap=None):
     """1.22 (30/09): la conversazione di una sessione come chat, dal transcript dopo `offset` byte. Voci in ordine:
     user (quello che la persona ha scritto), assistant (il testo di Claude), tool (una per chiamata: nome, dettaglio
@@ -1123,7 +1132,8 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
                 if not isinstance(b, dict):
                     continue
                 if b.get("type") == "text" and str(b.get("text") or "").strip():
-                    out.append(_entry(f"{uid}.{i}", "assistant", b["text"].strip(), at))
+                    # 1.98: la riga «Tipo:» e' per il relay, non per chi legge la chat; un messaggio fatto solo di quella resta
+                    out.append(_entry(f"{uid}.{i}", "assistant", _rs().without_type(b["text"].strip()) or b["text"].strip(), at))
                 elif b.get("type") == "tool_use":
                     name = str(b.get("name") or "?")
                     detail = tool_line(name, b.get("input"), width=200)[len(name):].strip()   # il nome e' gia' in `tool`

@@ -2193,7 +2193,7 @@ def _l27(kind, uid, t, content, **kw):
     _l27("user", "l3", 1789205660, [{"type": "tool_result", "tool_use_id": "x1", "is_error": False, "content": "3/4 OK, FAIL: A2 invoices"}]),
     _l27("assistant", "l4", 1789206600, [{"type": "tool_use", "id": "x2", "name": "Bash", "input": {"command": "python3 tests/api-verify.py"}}]),
     _l27("user", "l5", 1789206660, [{"type": "tool_result", "tool_use_id": "x2", "is_error": False, "content": "4/4 OK"}]),
-    _l27("assistant", "l6", 1789207800, [{"type": "text", "text": "Done.\n\nEsito: invoices endpoint added, api suite green"}]),
+    _l27("assistant", "l6", 1789207800, [{"type": "text", "text": "Done.\n\nEsito: invoices endpoint added, api suite green\nTipo: fatto"}]),
 ]) + "\n")
 _g27 = lambda *a, t=None: subprocess.run(["git", "-C", str(_la), *a], capture_output=True, text=True, env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
     GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", **({"GIT_AUTHOR_DATE": f"@{t}", "GIT_COMMITTER_DATE": f"@{t}"} if t else {})))  # noqa: E731

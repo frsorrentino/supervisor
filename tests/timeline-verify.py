@@ -185,4 +185,58 @@ comp = [e for e in tlm.transcript_events(str(d1 / "S-C.jsonl"), NOW - 6 * 3600) 
 T.check("TL13 an idle compaction (auto, 54 minutes after the last message) is a `compact` event with the tokens before and after; a full-context one and a manual one are not",
         comp == [{"at": T0 + 10 + 54 * 60 + 65, "kind": "compact", "text": "compacted after 54 min idle: 916k → 15k tokens", "ok": None, "ref": None}], str(comp))
 
+# 1.98 (01/11, il maintainer: gli esiti raggruppati per categoria): la riga «Tipo:»/«Type:» subito dopo l'esito
+def _tmod(name):
+    sp = __import__("importlib.util").util.spec_from_file_location(name.replace("-", "_"), T.SCRIPTS / f"{name}.py")
+    m = __import__("importlib.util").util.module_from_spec(sp)
+    sp.loader.exec_module(m)
+    return m
+
+
+S = _tmod("cm-relay-state")
+core = _tmod("cm-core")
+hosts = _tmod("cm-hosts")
+TY = [("Esito: release fuori\nTipo: pubblicato", "shipped"), ("Esito: file scritto\nTipo: fatto\nProssimi: rileggi · apri", "done"),
+      ("Esito: serve un ok\n\nTipo: aspetta", "waiting"), ("Esito: CI partita\nTipo: in corso\nWatch: CI partita", "running"),
+      ("Esito: spiegato\n**Tipo:** **risposta**", "answer"), ("Esito: rosso\nTipo: Problema.", "problem"),
+      ("Outcome: shipped it\nType: shipped", "shipped"), ("Outcome: wrote it\nType: done", "done"), ("Outcome: asked\nType: waiting", "waiting"),
+      ("Outcome: CI\nType: running", "running"), ("Outcome: told\nType: answer", "answer"), ("Outcome: red\nType: problem", "problem"),
+      ("Esito: senza tipo", None), ("Esito: tipo ignoto\nTipo: boh", None), ("Esito: due tipi\nTipo: fatto e pubblicato", None),
+      ("Tipo: fatto\n\nun paragrafo dopo\n\nEsito: tipo lontano, prima dell'esito", None)]
+pt = conf / "projects" / slug(tmp / "ws" / "typed")
+pt.mkdir(parents=True)
+(pt / "S-T.jsonl").write_text("\n".join(line("assistant", f"ty{i}", NOW - 500 + i, [{"type": "text", "text": txt}], tmp / "ws" / "typed") for i, (txt, _) in enumerate(TY)) + "\n")
+evs = [e for e in tlm.transcript_events(str(pt / "S-T.jsonl"), NOW - 3600) if e["kind"] == "outcome"]
+got = [e.get("type", "MISSING") for e in evs]
+T.check("TY1 outcome type: Italian and English read to the fixed keys, «in corso» with its space, bold and a final stop tolerated; absent, unknown, two words or a line far from the outcome are null, never an error",
+        got == [w for _, w in TY], str(got))
+T.check("TY2 outcome type: the event's text is the outcome alone, the line does not enter it",
+        not any(re.search(r"(?i)\b(tipo|type)\s*:", e["text"]) for e in evs) and evs[3]["text"] == "CI partita" and evs[3]["type"] == "running", str(evs[3:4]))
+stop = lambda tail, **kw: [dict({"event": "stop", "ts": "2026-11-01T10:00:00", "tail": tail}, **kw)]  # noqa: E731
+o1 = S._outcome(stop("Corpo.\nEsito: release fuori\nTipo: pubblicato\nProssimi: a · !b", esito="Esito: release fuori"))
+o2 = S._outcome(stop("Corpo finale\nType: done"))
+o3 = S._outcome(stop("Outcome: wrote it\nType: done\nWatch: wrote it", watch="Watch: wrote it"))
+o4 = S._outcome(stop("Esito: x\nTipo: boh"))
+T.check("TY3 outcome type: the line leaves short and full of the session's outcome, also unknown or with no «Esito:» above; Esito and Prossimi stay",
+        o1["short"] == "release fuori" and "Tipo" not in o1["full"] and "Prossimi: a · b" in o1["full"] and "Esito: release fuori" in o1["full"]
+        and o2["short"] == "Corpo finale" and "Type" not in o2["full"] and o3["short"] == "wrote it" and "Type" not in o3["full"]
+        and o4["short"] == "x" and "boh" not in o4["full"], str([o1, o2, o3, o4]))
+T.check("TY4 outcome type: a body line that only looks like one stays — known value in the middle, unknown value away from the outcome; `next` reads the steps past the line",
+        S.without_type("Tipo: fatto\ne poi altro\nEsito: x") == "Tipo: fatto\ne poi altro\nEsito: x" and S.without_type("Type: Foo\nEsito: x") == "Type: Foo\nEsito: x"
+        and S.without_type("Tipo: risposta") == "" and [x["text"] for x in S.next_steps("Esito: x\nTipo: aspetta\nProssimi: a · !b")] == ["a", "b"]
+        and S.outcome_type("nothing here") is None and S.outcome_type(None) is None, S.without_type("Tipo: fatto\ne poi altro\nEsito: x"))
+ents = core.transcript_entries(str(pt / "S-T.jsonl"))
+said = [e["text"] for e in ents if e["role"] == "assistant"]
+T.check("TY5 outcome type: the chat (transcript entries) never shows the line, «Esito:» stays; the ledger rows rebuilt for a remote session have it out too",
+        said[0] == "Esito: release fuori" and said[1] == "Esito: file scritto\nProssimi: rileggi · apri" and not any(re.search(r"(?m)^\W*(tipo|type)\W*:\W*(pubblicato|fatto|aspetta|in corso|risposta|problema|shipped|done|waiting|running|answer|problem)\W*$", x, re.I) for x in said[:15]), str(said[:4]))
+hb = tmp / "S-H.jsonl"
+hb.write_text(line("assistant", "hb", NOW - 400, [{"type": "text", "text": "Per la master: guarda qui\nEsito: x\nTipo: fatto\nProssimi: a"}], tmp / "ws" / "typed") + "\n")
+blocks, _ = hosts.master_blocks(hb, 0)
+T.check("TY6 outcome type: a «Per la master:» block forwarded from another host ends without the tail, the type line with it", [b[1] for b in blocks] == ["Per la master: guarda qui"], str(blocks))
+tld = tlm.timeline(3600, "typed", now=NOW, live=[])
+T.check("TY7 outcome type: the timeline page counts the outcomes in the window and those not «in corso» (unknown and absent count), past the events' cap",
+        tld.get("outcomes_n") == 16 and tld.get("outcomes_settled_n") == 14, str({k: tld.get(k) for k in ("outcomes_n", "outcomes_settled_n")}))
+tl6 = tlm.timeline(3600, "typed", limit=2, now=NOW, live=[])
+T.check("TY8 outcome type: the counts do not drop with the per-session cap of the events", tl6.get("outcomes_n") == 16 and tl6.get("outcomes_settled_n") == 14 and len(tl6["sessions"][0]["events"]) == 2, str(tl6.get("outcomes_n")))
+
 T.finish()

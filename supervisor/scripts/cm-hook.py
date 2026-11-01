@@ -518,6 +518,13 @@ def main(argv):
         except Exception:   # noqa: BLE001
             pass
         msg = p.get("last_assistant_message") or ""
+        try:   # 1.98: la riga «Tipo:» resta fuori dal ledger, da cui leggono recap, `next` e stato
+            spec = importlib.util.spec_from_file_location("cm_relay_state", HERE / "cm-relay-state.py")
+            rs = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(rs)
+            msg = rs.without_type(msg)
+        except Exception:   # noqa: BLE001
+            pass
         last = msg[:300]
         # per il polso (regola 9): l'ultima riga di testo e, se c'e', la riga «Esito:» — i primi 300
         # caratteri non la contengono mai, sta in coda al messaggio

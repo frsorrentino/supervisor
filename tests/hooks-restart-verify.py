@@ -109,7 +109,8 @@ k = r.stdout
 # 14/10: 2400 caratteri, con la regola 11 (needs-you); 22/10: 2700 e 14 righe, con la regola 12 (l'ok scritto nella sessione);
 # 23/10: 2800, la regola 12 con il PIN; 23/10 18:53: 2900, la regola 12 «un ok vale sempre, anche d'altra sessione»;
 # 23/10 19:40: 3000, la regola 11 con --until/--expires
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3400 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 01/11: 3700, la regola 9 con «Tipo:» e le sei definizioni (il maintainer: esiti raggruppati per categoria)
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3700 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
@@ -152,6 +153,11 @@ T.check("H4c stop row carries tail and esito (the «Esito:» line), last still �
 r = hook("StopFailure", {"session_id": "sid3", "error": "boom"})
 rows = [json.loads(l) for l in ledger.read_text().splitlines()]
 T.check("H5 StopFailure in the ledger", rows[-1]["event"] == "stop-failure" and rows[-1]["error"] == "boom", str(rows[-1]))
+# H4e (1.98, 01/11): la riga «Tipo:» non entra nel ledger: da li' leggono recap, `next` e lo stato del relay
+r = hook("Stop", {"session_id": "sid-tipo", "cwd": str(home), "last_assistant_message": "Breve.\nEsito: tre file\nTipo: fatto\nProssimi: rileggi\n"})
+rows = [json.loads(l) for l in ledger.read_text().splitlines()]
+T.check("H4e stop row: the «Tipo:» line is out of last and tail (the recap reads them), Esito and Prossimi stay",
+        "Tipo" not in rows[-1]["last"] and "Tipo" not in rows[-1]["tail"] and rows[-1]["esito"] == "Esito: tre file" and "Prossimi: rileggi" in rows[-1]["tail"], str(rows[-1]))
 # H5d (22/10/2026, 0.8.41): il motivo vero sta in last_assistant_message quando error_details manca
 r = hook("StopFailure", {"session_id": "sid3d", "error": "server_error", "error_details": "", "last_assistant_message": "API Error: 529  overloaded\n{\"type\":\"error\"}"})
 rows = [json.loads(l) for l in ledger.read_text().splitlines()]

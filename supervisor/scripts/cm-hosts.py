@@ -681,7 +681,8 @@ def poll_one(name, force=False):
 
 
 MASTER_MARK = re.compile(r"^\W{0,4}(Per la master|For the master)\W{0,4}:", re.I)
-TAIL_LINE = re.compile(r"^\W{0,4}(Esito|Prossimi|Watch|Outcome|Next)\W{0,4}:", re.I)
+TAIL_LINE = re.compile(r"^\W{0,4}((Esito|Prossimi|Watch|Outcome|Next)\W{0,4}:|(Tipo|Type)\W{0,4}:\W{0,4}"   # 1.98
+                       r"(pubblicato|fatto|aspetta|in corso|risposta|problema|shipped|done|waiting|running|answer|problem)\W{0,4}$)", re.I)
 FORWARD_KEEP = 500
 
 
