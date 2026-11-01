@@ -941,6 +941,18 @@ def remote_consumers():
     return out
 
 
+def remote_transcripts(account):
+    """Le copie locali dei transcript delle sessioni interattive vive di `account` sugli altri host (per l'eta' della quota)."""
+    out = []
+    for name, snap in remote_snapshots().items():
+        for s in (snap.get("status") or {}).get("sessions") or []:
+            e = s.get("entry") or {}
+            if s.get("alive") and e.get("kind") == "interactive" and e.get("sessionId") \
+                    and local_account_of_dir(s.get("config_dir") or ".claude") == account:
+                out.append(str(mirror_path(name, e["sessionId"])))
+    return out
+
+
 def poll_round(names, force):
     for name in names:
         try:

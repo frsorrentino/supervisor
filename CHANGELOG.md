@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.90 — 2026-11-01: a usage reading whose number has not changed no longer goes old while the account is working.**
+  - The status line rewrites the quota file only when the number changes. Without the five-hour window the weekly number can stay still for hours, so the file's age marked it old and the phone hid it. The age now runs from the latest model reply to an interactive session of the account, if more recent than the file: on this machine and, through the local transcript copies, on other hosts. A closed session's last reply still counts.
+  - Not counted: a redraw of the status line, a turn with no reply, a synthetic error message, `claude -p` (no status line). With no reply for two hours the reading stays old (quota-verify Q8).
+  - `letta_alle` remains the file's time, so the weekly samples do not change; between hosts the number still comes from the file written last. `stale` in the contract is unchanged.
 - **0.8.89 — 2026-10-31: a /clear from the phone no longer comes back as an error, and a check /bin/sh cannot run is refused when it enters.**
   - The SessionStart hook and `talk` mark the same inbox record at the same moment on `/clear`. They shared one temporary file, so the second one crashed after the delivery; each writer now has its own (inbox-verify IB14). This race is the likely cause of the error seen on 30/10: the original exception was not kept.
   - When a relay command crashes, the phone and the log now get the exception instead of the words «Traceback (most recent call last):» (relay-verify R99).

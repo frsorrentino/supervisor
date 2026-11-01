@@ -18,6 +18,14 @@ fresco e' peggio dell'ignoranza: si decide con sicurezza sulla cosa sbagliata.
 Per questo l'eta' della lettura sta in tabella accanto al numero, e una
 finestra gia' scaduta viene detta a chiare lettere.
 
+IL NUMERO INVARIATO (01/11/2026): la statusline riscrive il file solo se il numero cambia. Senza finestra delle 5 ore
+la settimana resta ferma per ore mentre l'account lavora, e l'eta' del file la dava per vecchia. Ogni risposta del
+modello a una sessione interattiva porta alla sua statusline il numero del momento: se il file non cambia, il numero e'
+ancora quello. L'eta' parte quindi dalla piu' recente fra il file e quella risposta, letta in coda alle trascrizioni
+delle sessioni nel registro (qui e, dalle copie locali, sugli altri host). Il ridisegno della statusline non conta: una
+sessione ferma ridisegna ogni 5 secondi con la sua vecchia lettura. `claude -p` non conta: non ha statusline.
+letta_alle resta l'ora del file, cioe' del campione della settimana: una risposta non aggiunge campioni.
+
 LA SETTIMANA (26/10/2026, grafici 2A e 2B di Utilizzo): ogni lettura lascia un campione della percentuale
 settimanale in <state_dir>/quota-week.json, uno per ora dal rinnovo (l'ultima lettura di quell'ora), tenuti fino al
 rinnovo dopo. L'ora del campione e' quella della lettura (il file della statusline), non quella in cui la si guarda:
@@ -28,9 +36,12 @@ trascrizioni dell'account: cm-master-usage.week_origins).
 Uso: cm-quota.py [--json] [--no-screen]   (--no-screen: non legge gli schermi tmux per la bassa priorita')
      cm-quota.py --master [--json] [--days N] [--notify]   (il consumo della master per origine: cm-master-usage.py)
 """
+import glob
 import hashlib
 import importlib.util
 import json
+import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -46,6 +57,7 @@ SOURCE = Path(cm.expand(CFG["quota"]["source"]))
 # Oltre questa eta' la lettura viene marcata. Due ore sono tarate sulla
 # finestra da 5 ore: e' la piu' veloce a muoversi.
 SOGLIA_VECCHIA = 2 * 3600
+CODA_TRASCRIZIONE = 256 * 1024   # dove cercare l'ultima risposta: gira spesso, non si legge mai il file intero
 
 
 def eta_umana(secondi):
@@ -59,6 +71,82 @@ def eta_umana(secondi):
     return m("quota.age_days", n=round(secondi / 86400))
 
 
+def ultima_risposta(path):
+    """L'epoch dell'ultima risposta vera del modello in coda alla trascrizione, o 0. Un errore mostrato come messaggio
+    (<synthetic>: anche il muro del limite) e i sottoagenti non hanno portato un numero alla statusline della sessione."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - CODA_TRASCRIZIONE))
+            righe = f.read().split(b"\n")
+    except OSError:
+        return 0
+    for r in reversed(righe):
+        if b'"assistant"' not in r:
+            continue
+        try:
+            d = json.loads(r)
+            msg = d.get("message") or {}
+            if d.get("type") != "assistant" or d.get("isSidechain") or d.get("isApiErrorMessage") or msg.get("model") in (None, "<synthetic>"):
+                continue
+            return datetime.fromisoformat(d["timestamp"].replace("Z", "+00:00")).timestamp()
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return 0
+
+
+def risposta_recente(acct, trascrizioni):
+    """L'ultima risposta nota dell'account (epoch, 0 se nessuna). Si tiene in <state_dir>/quota-replies.json per due
+    motivi: una sessione chiusa esce dal registro ma la sua risposta resta vera, e una trascrizione non piu' recente
+    di quanto gia' si sa costa una stat, senza leggerla."""
+    p = Path(cm.expand(CFG.get("state_dir") or "~/.local/state/cc-supervisor")) / "quota-replies.json"
+    try:
+        db = json.loads(p.read_text())
+    except (OSError, ValueError):
+        db = {}
+    if not isinstance(db, dict):
+        db = {}
+    nota = db.get(acct) if isinstance(db.get(acct), (int, float)) else 0
+    ora, trovata = time.time(), nota
+    for t in trascrizioni:
+        try:
+            if os.path.getmtime(t) <= trovata:
+                continue
+        except OSError:
+            continue
+        r = ultima_risposta(t)
+        if trovata < r <= ora + 60:
+            trovata = r
+    if trovata > nota:
+        db[acct] = trovata
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(db))
+            tmp.replace(p)
+        except OSError:
+            pass
+    return trovata
+
+
+def trascrizioni_locali(config_dir):
+    """Le trascrizioni delle sessioni interattive nel registro dell'account: <config_dir>/projects/<slug>/<id>.jsonl."""
+    out = []
+    for f in glob.glob(glob.escape(str(config_dir)) + "/sessions/*.json"):
+        try:
+            e = json.loads(Path(f).read_text())
+            if e.get("kind") == "interactive" and e.get("sessionId") and e.get("cwd"):
+                slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(e["cwd"]))
+                out.append(f"{config_dir}/projects/{slug}/{e['sessionId']}.jsonl")
+        except (OSError, ValueError, AttributeError, TypeError):
+            continue
+    return out
+
+
+def account_hash(config_dir):
+    return hashlib.sha256(str(config_dir).encode()).hexdigest()[:8]
+
+
 def leggi(config_dir):
     """Stato della quota per un account, o il motivo per cui non c'e'.
 
@@ -66,7 +154,7 @@ def leggi(config_dir):
     lo stesso criterio con cui la statusline sceglie il file, quindi i due non
     possono divergere.
     """
-    acct = hashlib.sha256(str(config_dir).encode()).hexdigest()[:8]
+    acct = account_hash(config_dir)
     f = SOURCE / f"quota-{acct}.json"
     if not f.is_file():
         return {"stato": "mai visto", "file": str(f)}
@@ -75,7 +163,7 @@ def leggi(config_dir):
     except (json.JSONDecodeError, OSError) as e:
         return {"stato": f"illeggibile ({e.__class__.__name__})", "file": str(f)}
     mtime = f.stat().st_mtime
-    eta = time.time() - mtime
+    eta = time.time() - max(mtime, risposta_recente(acct, trascrizioni_locali(config_dir)))
     reset = d.get("weekly_resets_at")
     scaduta = bool(reset) and reset < time.time()
     return {
@@ -125,7 +213,8 @@ def bassa_priorita():
 
 def unisci_remote(nome, q):
     """Lettura unita (piano multi-PC 6): i limiti sono per account, non per macchina. Fra la lettura locale e quelle
-    degli altri host (negli snapshot del sondatore) vince la piu' fresca, e se ne dice la provenienza."""
+    degli altri host (negli snapshot del sondatore) il numero viene dal file riscritto per ultimo, e se ne dice la
+    provenienza; l'eta' viene dall'ultima risposta all'account, su qualunque host, se e' piu' recente del file."""
     if not CFG.get("hosts"):
         return q
     try:
@@ -134,17 +223,19 @@ def unisci_remote(nome, q):
         spec.loader.exec_module(hm)
         remote = hm.remote_quota(nome)
         q["consumatori"] = hm.remote_consumers().get(nome, {})
+        risposta = risposta_recente(account_hash(cm.expand(CFG["accounts"][nome]["config_dir"])), hm.remote_transcripts(nome))
     except Exception:  # noqa: BLE001 — la quota locale si stampa comunque
         return q
     q.setdefault("provenienza", "local")
     for host, mtime, d in remote:
-        eta = time.time() - mtime
-        if q.get("stato") != "ok" or eta < q["eta_secondi"]:
+        if q.get("stato") != "ok" or mtime > q["letta_alle"]:
             reset = d.get("weekly_resets_at")
             q.update({"stato": "ok", "cinque_ore_pct": d.get("five_hour_used_pct"), "settimana_pct": d.get("weekly_used_pct"),
-                      "reset_settimanale": reset, "reset_cinque_ore": d.get("five_hour_resets_at"), "eta_secondi": round(eta), "letta_alle": int(mtime),
-                      "vecchia": eta > SOGLIA_VECCHIA, "finestra_scaduta": bool(reset) and reset < time.time(),
-                      "provenienza": host})
+                      "reset_settimanale": reset, "reset_cinque_ore": d.get("five_hour_resets_at"), "letta_alle": int(mtime),
+                      "finestra_scaduta": bool(reset) and reset < time.time(), "provenienza": host})
+    if q.get("stato") == "ok":
+        eta = time.time() - max(q["letta_alle"], risposta)
+        q.update({"eta_secondi": round(eta), "vecchia": eta > SOGLIA_VECCHIA})
     return q
 
 

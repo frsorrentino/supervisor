@@ -656,8 +656,10 @@ Contract 1.97 (30/10/2026, the order of the home's sections, asked by the mainta
   `/state` with the push that follows the command.
 - The relay does not check the list of keys: it keeps what it gets, so a new section needs
   no release. The app ignores unknown keys and appends the missing ones. Today's keys, in
-  default order: sessions, suggestions, lavori, esiti, altro; the scoreboard and «Ti
-  aspettano» have no key and stay on top.
+  default order: sessions, suggestions, lavori, esiti, usage, system, plugins, closed (from
+  31/10/2026 the rows of Usage, System, Plugins and Closed move one by one); the scoreboard
+  and «Ti aspettano» have no key and stay on top. In an order already saved, the old key
+  `altro` is expanded by the app in its place, in that order.
 
 Fixture: `state-2-idle.json` (`home_order`); `home_order` in the `ops` of the three states.
 

@@ -9,3 +9,14 @@ tests/.scratch/
 
 # plugin eval: rapporti locali di `claude plugin eval` (tracce con prompt e costi), mai nel repo
 supervisor/evals/results/
+
+# local working notes: operational state and generated files
+docs/recap.md
+docs/segnalazioni/
+docs/handoff-*.md
+docs/notte/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*.md
+docs/review-2026-09/docs/
+docs/BRIEF-2026-09-18.md
+docs/notte/2026-10-21-contratto-1.75.md
+docs/notte/2026-10-21-notte-riepilogo.md
+docs/plans/2026-10-07-pagina-notte-esito.md

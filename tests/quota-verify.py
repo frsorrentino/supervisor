@@ -12,6 +12,10 @@ Q6 settimana_origini: tutte le trascrizioni dell'account dal rinnovo, ogni turno
    le compattazioni → automazioni; i risultati in sottofondo restano a chi li ha avviati), in punti con somma = pct;
    le righe prima del rinnovo non contano; completo True
 Q7 la lettura si spezza: con un tempo esaurito completo False, la chiamata dopo finisce e da' lo stesso conto
+Q8 (01/11/2026) il file si riscrive solo se il numero cambia: una risposta del modello a una sessione interattiva
+   dell'account dice che il numero invariato e' ancora quello. L'eta' parte da li', anche dopo la chiusura della
+   sessione e per le sessioni su un altro host; letta_alle resta l'ora del file e i campioni non si muovono. Non contano
+   un turno senza risposta, un errore <synthetic>, `claude -p` (nessuna statusline) ne' una risposta oltre le 2 ore
 """
 import hashlib
 import importlib.util
@@ -165,6 +169,88 @@ w2 = mu.week_origins({"personale": (str(home / ".claude"), RESET)})
 T.check("Q7 out of time → completo False and nothing counted yet; the next call finishes with the same count",
         w1["personale"]["completo"] is False and w2["personale"]["completo"] is True
         and {k: w2["personale"][k] for k in EQ} == EQ, f"{w1} {w2}")
+
+# ------------------------------------------------------------------ Q8 il numero invariato non e' vecchio
+OLD = now - 3 * 3600
+f2.write_text(json.dumps({"weekly_used_pct": 39.0, "weekly_resets_at": now + 86400}))
+os.utime(f2, (OLD, OLD))
+pix = home / ".claude-pixel"
+(pix / "sessions").mkdir()
+pdir = pix / "projects" / "-ws-q8"
+pdir.mkdir(parents=True)
+reg = pix / "sessions" / "4242.json"
+
+
+def session(lines, kind="interactive"):
+    reg.write_text(json.dumps({"pid": 4242, "sessionId": "q8", "cwd": "/ws/q8", "kind": kind}))
+    (pdir / "q8.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def pix_reading():
+    return json.loads(run("--json", "--no-screen").stdout)["professionale"]
+
+
+synthetic = json.dumps({"type": "assistant", "timestamp": iso(now - 60), "message": {"id": "e1", "model": "<synthetic>", "role": "assistant",
+                        "usage": {"input_tokens": 0, "output_tokens": 0}, "content": [{"type": "text", "text": "limit"}]}})
+session([reply(now - 3 * 3600, "q0"), user(now - 60, "ci sei?", "human"), synthetic])
+q = pix_reading()
+T.check("Q8 a recent prompt and a synthetic error are not model replies: the reading stays old", q["vecchia"] is True, json.dumps(q)[:300])
+session([reply(now - 60, "q1")], kind="sdk")
+q = pix_reading()
+T.check("Q8 `claude -p` draws no statusline: its reply says nothing about the number, the reading stays old", q["vecchia"] is True, json.dumps(q)[:300])
+session([reply(OLD - 60, "q2")])
+q = pix_reading()
+T.check("Q8 no reply for over 2 hours: the reading stays old", q["vecchia"] is True and q["eta_secondi"] >= 3 * 3600 - 5, json.dumps(q)[:300])
+session([reply(now - 600, "q3"), user(now - 60, "ci sei?", "human")])
+pts = len(json.loads(wk.read_text()).get("professionale", {}).get("points") or [])
+q = pix_reading()
+T.check("Q8 unchanged reading: a file over 2 hours old with a recent model reply to a session of the account is not old",
+        q["vecchia"] is False and 595 <= q["eta_secondi"] <= 630, json.dumps(q)[:300])
+T.check("Q8 letta_alle stays the file's time and a reply adds no weekly sample",
+        q["letta_alle"] == int(OLD) and len(q["settimana_punti"]) == pts and all(x[0] <= OLD + 1 for x in q["settimana_punti"]), json.dumps(q)[:400])
+reg.unlink()
+q = pix_reading()
+T.check("Q8 the session closes: its last reply still counts", q["vecchia"] is False and 595 <= q["eta_secondi"] <= 630, json.dumps(q)[:300])
+
+# su un altro host: la risposta arriva dalla copia del transcript, il numero piu' fresco resta quello scelto dal file
+qh = hashlib.sha256("/rh/.claude".encode()).hexdigest()[:8]
+snap = home / ".local" / "state" / "cc-supervisor" / "hosts" / "box.json"
+snap.parent.mkdir(parents=True, exist_ok=True)
+mirror = snap.parent / "transcripts" / "box" / "rq8.jsonl"
+mirror.parent.mkdir(parents=True)
+os.utime(f1, (OLD, OLD))
+f1.write_text(json.dumps({"weekly_used_pct": 20.0, "weekly_resets_at": RESET}))
+os.utime(f1, (OLD, OLD))
+
+
+def box_status(file_mtime, kind="interactive"):
+    snap.write_text(json.dumps({"name": "box", "read_at": now, "status": {
+        "sessions": [{"alive": True, "config_dir": ".claude", "entry": {"name": "box-q8", "sessionId": "rq8", "kind": kind}}],
+        "quota": [{"file": f"quota-{qh}.json", "mtime": file_mtime, "data": {"weekly_used_pct": 21.0, "weekly_resets_at": RESET}}]}}))
+    d_ = json.loads(run_hosts().stdout)["personale"]
+    return d_
+
+
+cfg2 = Path(tmp) / "config2.json"
+cfg2.write_text(json.dumps(dict(json.loads(cfg.read_text()), hosts={"box": {"kind": "linux-tmux", "transport": {"ssh": "box"}, "measured": {"home": "/rh"}}})))
+
+
+def run_hosts():
+    env = {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg2)}
+    return subprocess.run([sys.executable, str(T.SCRIPTS / "cm-quota.py"), "--json", "--no-screen"], capture_output=True, text=True, env=env, timeout=30)
+
+
+mirror.write_text(reply(now - 4 * 3600, "b0") + "\n")
+q = box_status(now - 4 * 3600)
+T.check("Q8 other host, no recent reply: the local number wins by its file time and stays old",
+        q["provenienza"] == "local" and q["settimana_pct"] == 20.0 and q["vecchia"] is True, json.dumps(q)[:300])
+mirror.write_text(reply(now - 300, "b1") + "\n")
+q = box_status(now - 4 * 3600)
+T.check("Q8 other host: a reply there keeps the unchanged reading fresh, but an older file there does not win the number",
+        q["provenienza"] == "local" and q["settimana_pct"] == 20.0 and q["vecchia"] is False and 295 <= q["eta_secondi"] <= 330, json.dumps(q)[:300])
+q = box_status(now - 2.5 * 3600)
+T.check("Q8 other host: the fresher file wins the number with its own letta_alle; the age is still from the reply",
+        q["provenienza"] == "box" and q["settimana_pct"] == 21.0 and q["letta_alle"] == int(now - 2.5 * 3600) and q["vecchia"] is False, json.dumps(q)[:300])
 
 T.rm(tmp)
 T.finish()
