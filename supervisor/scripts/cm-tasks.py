@@ -29,7 +29,7 @@
   supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D] [--choice C]
                                                 facoltativo (23/10 17:14): con il PIN della persona (supervisor pin set)
                                                 l'ok vale anche da una shell; il PIN non si scrive da nessun'altra parte
-  supervisor task auto-close [--hours 6] [--json]   chiude i compiti aperti da piu' di 6 ore col controllo verde
+  supervisor task auto-close [--hours 6] [--json]   chiude i compiti avviati, non in pausa, aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
   supervisor task constraint add (--project P | --topic T) TESTO
@@ -605,8 +605,16 @@ def standing_apply(con, tid):
     return r
 
 
+def ever_worked(con, tid):
+    """Una traccia di lavoro: in corso adesso, un `task start`, un passo o una prova scritti, un esito mandato dalla sessione."""
+    if get_task(con, tid)["state"] == "running":
+        return True
+    return bool(con.execute("SELECT 1 FROM steps WHERE task=? AND kind IN ('start', 'step', 'prova') UNION ALL "
+                            "SELECT 1 FROM results WHERE task=? LIMIT 1", (tid, tid)).fetchone())
+
+
 def auto_close(con, hours=AUTO_CLOSE_H):
-    """16/10/2026: i compiti aperti da piu' di `hours` ore col controllo verde si chiudono da soli (lo stesso `done`:
+    """16/10/2026: i compiti aperti da piu' di `hours` ore, avviati e non in pausa, col controllo verde si chiudono da soli (lo stesso `done`:
     il controllo rieseguito, mai un giudizio). Un controllo rosso qui non conta come tentativo: resta com'era.
     Torna [(id, verde)] dei compiti controllati."""
     cutoff = now() - int(hours * 3600)
@@ -617,6 +625,10 @@ def auto_close(con, hours=AUTO_CLOSE_H):
         if outcome_errors(task):   # P1: un controllo che non tocca l'esito non chiude niente da solo
             continue
         if prove_pending(con, r["id"]):   # 1.99: una prova da fare tiene aperto il compito: la persona deve ancora vederla
+            continue
+        # 02/11 (chiusi alle 03:38 tre compiti approvati a lavoro non fatto): un controllo verde non dice che il lavoro c'e'.
+        # Una pausa ferma il compito; un ok della persona non e' lavoro. `task done` a mano resta com'era.
+        if con.execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL", (r["id"],)).fetchone() or not ever_worked(con, r["id"]):
             continue
         rc, _ = run_check(task)
         if rc == 0:
@@ -1489,6 +1501,8 @@ def main(argv):
         if sess:
             con.execute("UPDATE tasks SET session=? WHERE id=?", (sess, args[0]))
         set_state(con, args[0], "running")
+        # 02/11: lo stato cambia dopo (wait-ok, approve): che sia partito deve restare scritto
+        con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (args[0], now(), sess, "start", "started"))
         con.commit()
         return 0
     if verb == "result":

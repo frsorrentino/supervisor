@@ -66,7 +66,9 @@ close it: sessions and relay run as the same user, so one that sets out to can
 still write to the registry's file or forge a touch with the bus key. Once an
 hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
 check is green (`supervisor task auto-close`); a red check there leaves the task
-as it is and counts no attempt.
+as it is and counts no attempt. It skips a paused task and one with no trace of
+work: no `task start`, step, test or result. An ok is not work. `task done` by
+hand is unchanged.
 
 A standing ok (since 23/10/2026 20:00, the maintainer from the phone:
 «Quando ci sono aggiornamenti di supervisor, effettuali direttamente»):

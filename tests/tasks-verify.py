@@ -211,6 +211,7 @@ add(contract("ac_green"))
 add(contract("ac_red", cmd="false"))
 add(contract("ac_new"))
 cm("start", "ac_green")
+cm("start", "ac_red")
 con9 = sqlite3.connect(str(tmp / "tasks.db"))
 con9.execute("UPDATE tasks SET created_at=? WHERE id IN ('ac_green', 'ac_red')", (int(time.time()) - 7 * 3600,))
 con9.commit()
@@ -218,7 +219,7 @@ con9.close()
 rc, out, err = cm("auto-close", "--json")
 res = {r["task"]: r["green"] for r in json.loads(out or "[]")}
 T.check("T10 auto-close: open for more than 6 hours with a green check → done; a red one stays open with no attempt counted; a new one is not checked",
-        rc == 0 and show("ac_green")["state"] == "done" and show("ac_red")["state"] == "proposed" and not show("ac_red")["results"]
+        rc == 0 and show("ac_green")["state"] == "done" and show("ac_red")["state"] == "running" and not show("ac_red")["results"]
         and "ac_new" not in res and show("ac_new")["state"] == "proposed" and res.get("ac_green") is True and res.get("ac_red") is False, out + err)
 
 # T11 (22/10/2026, P1 — the day lost on the Gantt APK): the expected outcome in the contract, and a check that touches it
@@ -237,6 +238,37 @@ con11.execute("UPDATE tasks SET contract=?, state='running' WHERE id='o2'", (jso
 rc, out, err = cm("done", "o2")
 T.check("T11 done refuses a check that does not touch the outcome: exit 3, state unchanged, no result, no attempt",
         rc == 3 and "does not touch the outcome" in err and show("o2")["state"] == "running" and show("o2")["results"] == [], err)
+# auto_close_salta (02/11/2026, chiusi alle 03:38 tre compiti approvati a lavoro non fatto): verde il controllo, nessun lavoro
+for _t in ("as_never", "as_paused", "as_ok", "as_worked", "as_resumed"):
+    add(contract(_t))
+cm("start", "as_paused")
+cm("pause", "as_paused", "--reason", "in coda nel programma")
+cm("wait-ok", "as_ok", "--what", "x", "--where", "y")
+_con = sqlite3.connect(str(tmp / "tasks.db"))
+_con.execute("UPDATE tasks SET state='approved' WHERE id='as_ok'")
+_con.commit()
+cm("step", "as_worked", "scritto il modulo")
+add(contract("as_startok"))
+cm("start", "as_startok")
+cm("wait-ok", "as_startok", "--what", "x", "--where", "y")
+_con.execute("UPDATE tasks SET state='approved' WHERE id='as_startok'")
+_con.commit()
+cm("start", "as_resumed")
+cm("pause", "as_resumed", "--reason", "aspetto")
+cm("resume", "as_resumed")
+_con.execute("UPDATE tasks SET created_at=? WHERE id LIKE 'as_%'", (int(time.time()) - 7 * 3600,))
+_con.commit()
+_con.close()
+rc, out, err = cm("auto-close", "--json")
+_as = {r["task"]: r["green"] for r in json.loads(out or "[]")}
+T.check("auto_close_salta a task never started stays open, its check not even run", show("as_never")["state"] == "proposed" and "as_never" not in _as, out + err)
+T.check("auto_close_salta a paused task stays paused, with a green check", show("as_paused")["state"] != "done" and "as_paused" not in _as, out + err)
+T.check("auto_close_salta an ok of the person with no work recorded does not close", show("as_ok")["state"] == "approved" and "as_ok" not in _as, out + err)
+T.check("auto_close_salta a step of work still closes", show("as_worked")["state"] == "done" and _as.get("as_worked") is True, out + err)
+T.check("auto_close_salta started, then an ok: the start stays written, it closes", show("as_startok")["state"] == "done", out + err)
+T.check("auto_close_salta a started task resumed from a pause still closes", show("as_resumed")["state"] == "done" and _as.get("as_resumed") is True, out + err)
+rc, out, err = cm("done", "as_never")
+T.check("auto_close_salta `task done` by hand is unchanged: the session's own closure still works", show("as_never")["state"] == "done", out + err)
 rc, out, err = cm("auto-close", "--json")
 T.check("T11 auto-close skips it (never closes on an intermediate step)", "o2" not in [r["task"] for r in json.loads(out or "[]")] and show("o2")["state"] == "running", out + err)
 # T12 amend: il controllo corretto, poi done verde; un passo «amend» registrato

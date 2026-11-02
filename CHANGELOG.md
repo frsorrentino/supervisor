@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.95 — 2026-11-02: auto-close no longer closes work that was not done.**
+  - `task auto-close` skips a paused task and one with no trace of work (no `task start`, step, test or result): a green check does not prove the work exists, and an ok of the person is not work. `task start` now leaves a trace. `task done` by hand is unchanged.
 - **0.8.94 — 2026-11-02: a permission card says what you approve (contract 1.101).**
   - A permission dialog reaches the app and the notification with what it approves in one line, description first and then the command (`question.what`), and the dialog's text (`question.body`), both masked. Tested on the text of a real dialog; the dashed box above the question no longer leaks into `text`.
 - **0.8.93 — 2026-11-02: the start at full speed (contract 1.100).**
