@@ -229,7 +229,10 @@
     "conti_azione",
     "feedback_consent",
     "feedback_send",
-    "feedback_text"
+    "feedback_text",
+    "results",
+    "result_seen",
+    "result_note"
   ],
   "slash": [
     "compact",
@@ -353,7 +356,7 @@
       "kind": "push",
       "project": "personal/atlas-shop",
       "text": "origin/feature/checkout",
-      "url": "https://github.com/example/atlas-shop/tree/feature/checkout"
+      "url": "https://github.com/example/atlas-shop/tree/checkout"
     }
   ],
   "commitments": [
@@ -409,7 +412,7 @@
         "text": "push and deploy"
       },
       "idle_s": 600,
-      "next": "atlas-shop resumes and closes with task done atlas-seo-pages",
+      "next": "atlas-shop closes atlas-seo-pages",
       "waits": {
         "who": "person",
         "on": "atlas-shop"

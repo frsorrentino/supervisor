@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.100 — 2026-11-02: what the sessions delivered, for «Da guardare» (contract 1.106).**
+  - The relay keeps an index of the files the sessions sent you (videos, mockups, images, documents), with their versions grouped by work, and publishes the ones not yet seen. It outlives the session.
+  - From the app: the whole list with past versions and notes, «Visto», and a note on a result (at a second of the video) that reaches the session as a prompt from the phone, or waits in its inbox if it is closed. The file opens from the app even after the session closed.
 - **0.8.99 — 2026-11-02: the notes of every plugin, from the phone (contract 1.105).**
   - The relay publishes, for each installed plugin that carries claude-observe, the notes to sort, what a send would carry, the three most frequent errors already cleaned, the «Always anonymous» consent and the last send.
   - From the app: turn «Always anonymous» on or off (the touch is your yes), send the waiting notes anonymously after a preview of exactly what leaves, or write a suggestion that becomes a public issue. Nothing leaves without the consent or a touch.

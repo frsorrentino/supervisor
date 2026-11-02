@@ -788,6 +788,8 @@ def build_state(src, now, fit=True):
     # gia' a zero), quindi un taglio qui scatterebbe sempre e il telefono non vedrebbe mai gli errori
     if src.get("feedback"):
         state["feedback"] = json.loads(json.dumps(src["feedback"]))
+    if src.get("results"):   # 1.106: fit_state non lo taglia, come feedback (al piu' 10 voci)
+        state["results"] = json.loads(json.dumps(src["results"]))
     # 1.102: i tre numeri della fase B; le liste stanno nell'op seguiti
     if src.get("seguiti"):
         state["seguiti"] = dict(src["seguiti"])

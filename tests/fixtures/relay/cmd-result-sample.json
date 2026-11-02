@@ -1150,6 +1150,34 @@
       "op": "feedback_text",
       "text": "A button to retry a failed send",
       "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0919-4000-8000-0000000000919",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "results"
+    },
+    {
+      "id": "6f1c2d3e-0920-4000-8000-0000000000920",
+      "session": null,
+      "arg": "9c1e4a7b2d3f5e60",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "result_seen",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0921-4000-8000-0000000000921",
+      "session": null,
+      "arg": "9c1e4a7b2d3f5e60",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "result_note",
+      "text": "The intro still cuts the title",
+      "pos_s": 3.5,
+      "device": "phone"
     }
   ],
   "result": [
@@ -1894,6 +1922,24 @@
       "id": "6f1c2d3e-0918-4000-8000-0000000000918",
       "ok": true,
       "text": "sent anonymously for supervisor: https://github.com/frsorrentino/supervisor/issues/42",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0919-4000-8000-0000000000919",
+      "ok": true,
+      "text": "{\"groups\": [{\"title\": \"Docs tour\", \"project\": \"work/own/orbit-docs\", \"session\": \"orbit-docs\", \"kind\": \"video\", \"at\": 1789199800, \"versions\": 3, \"unseen\": true, \"items\": [{\"id\": \"9c1e4a7b2d3f5e60\", \"session\": \"orbit-docs\", \"title\": \"Docs tour\", \"kind\": \"video\", \"mime\": \"video/mp4\", \"path\": \"/home/dev/orbit-docs/tour.mp4\", \"size\": 4812345, \"at\": 1789199800, \"duration_s\": 36.7, \"version\": 3, \"versions\": 3, \"changed\": \"Shorter intro\", \"seen_at\": null, \"caption\": \"Docs tour, version 3: shorter intro\", \"files\": [], \"notes\": [], \"replaced\": false}, {\"id\": \"4b2d9e1f0a7c3e15\", \"session\": \"orbit-docs\", \"title\": \"Docs tour\", \"kind\": \"video\", \"mime\": \"video/mp4\", \"path\": \"/home/dev/orbit-docs/tour.mp4\", \"size\": 5120000, \"at\": 1789196200, \"duration_s\": 36.7, \"version\": 2, \"versions\": 3, \"changed\": \"New voice\", \"seen_at\": 1789197000, \"caption\": \"Docs tour, version 2: new voice\", \"files\": [], \"notes\": [{\"at\": 1789197100, \"text\": \"The logo flickers here\", \"pos_s\": 12.4}], \"replaced\": true}]}], \"n_unseen\": 1, \"more\": false}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0920-4000-8000-0000000000920",
+      "ok": true,
+      "text": "seen",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0921-4000-8000-0000000000921",
+      "ok": true,
+      "text": "note sent to orbit-docs",
       "at": 1789214706
     }
   ]

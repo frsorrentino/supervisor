@@ -172,7 +172,10 @@
     "conti_azione",
     "feedback_consent",
     "feedback_send",
-    "feedback_text"
+    "feedback_text",
+    "results",
+    "result_seen",
+    "result_note"
   ],
   "slash": [
     "compact",
@@ -312,7 +315,7 @@
       "id": "s-2d9b4c7e30",
       "kind": "followup",
       "key": "followup:atlas-shop:5e1f0a2b",
-      "text": "atlas-shop is idle, next step offered: Open the PR for the checkout fix",
+      "text": "atlas-shop idle, next: Open the PR for the checkout fix",
       "at": 1789199400,
       "expires_at": 1789293000,
       "rank": 4,
@@ -342,7 +345,7 @@
       "id": "s-7c4a9b1d85",
       "kind": "observe",
       "key": "observe:chrome-bridge:2026-W38",
-      "text": "chrome-bridge: 12 new error notes since 10/09, the most frequent «No tab with id»: shall I hand them to its session for sorting?",
+      "text": "chrome-bridge: 12 new error notes, top «No tab with id»: sort them?",
       "at": 1789199150,
       "expires_at": 1789292750,
       "rank": 5,
@@ -352,7 +355,7 @@
       "id": "s-5a6e7f9b67",
       "kind": "idea",
       "key": "idea:field-notes-on-phone",
-      "text": "Try field-notes on the phone, as planned after the 12th",
+      "text": "Try field-notes on the phone",
       "at": 1789199100,
       "expires_at": 1789242300,
       "rank": 6,
@@ -362,7 +365,7 @@
       "id": "s-6b5f8a0c76",
       "kind": "proposal",
       "key": "proposal:release-notes-script",
-      "text": "The release notes were written by hand three times this week: make them a script?",
+      "text": "Release notes written by hand three times: a script?",
       "at": 1789199000,
       "expires_at": 1789242200,
       "rank": 6,
@@ -421,7 +424,7 @@
         "id": "stuck_loop:cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
         "kind": "stuck_loop",
         "level": "red",
-        "text": "3 graphic bridge services in a restart loop (up to 58 restarts): each round leaves stuck processes",
+        "text": "3 graphic bridge services in a restart loop (up to 58 restarts)",
         "action": {
           "op": "sys_unit_stop",
           "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
@@ -443,21 +446,21 @@
         "id": "low_memory:mem",
         "kind": "low_memory",
         "level": "red",
-        "text": "memory available 0.8 GB: move heavy work to win; the heaviest are claude 2.3 GB, other 1.4 GB",
+        "text": "memory available 0.8 GB: move heavy work to win",
         "action": null
       },
       {
         "id": "stuck:graphic",
         "kind": "stuck",
         "level": "yellow",
-        "text": "48 processes stuck on the graphic bridge since 12:00 (161 MB): no CPU, but they inflate the load; only restarting Linux frees them, and that closes every session",
+        "text": "48 processes stuck on the graphic bridge (161 MB): only restarting Linux frees them",
         "action": null
       },
       {
         "id": "orphan:13277:870211",
         "kind": "orphan",
         "level": "yellow",
-        "text": "«master» lost its tmux (pid 13277): a duplicate that does not answer",
+        "text": "«master» lost its tmux (pid 13277)",
         "action": {
           "op": "sys_kill",
           "arg": "13277:870211",
@@ -521,5 +524,25 @@
       }
     ],
     "notice": "The text becomes a public GitHub issue, opened without your name: do not write personal data."
+  },
+  "results": {
+    "n_unseen": 1,
+    "items": [
+      {
+        "id": "9c1e4a7b2d3f5e60",
+        "session": "orbit-docs",
+        "title": "Docs tour",
+        "kind": "video",
+        "mime": "video/mp4",
+        "path": "/home/dev/orbit-docs/tour.mp4",
+        "size": 4812345,
+        "at": 1789199800,
+        "duration_s": 36.7,
+        "version": 3,
+        "versions": 3,
+        "changed": "Shorter intro",
+        "seen_at": null
+      }
+    ]
   }
 }

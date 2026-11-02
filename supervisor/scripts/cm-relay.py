@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "results", "result_seen", "result_note")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1305,6 +1305,7 @@ def collect_sources(now=None):
         "prima_raccolta": raccolta_summary(),   # 1.100
         "seguiti": seguiti_summary(),   # 1.102
         "feedback": feedback_summary(),   # 1.105
+        "results": results_summary(live),   # 1.106
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -2924,7 +2925,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):
@@ -3071,6 +3072,59 @@ def feedback_summary(fresh=False):
         return _FB_LAST[1]
     _FB_LAST = (time.time(), v)
     return v
+
+
+_RS = [None]
+
+
+def results_mod():
+    if _RS[0] is None:
+        _RS[0] = _load("cm-results")
+    return _RS[0]
+
+
+def results_summary(live=None):
+    """1.106: i risultati non visti dall'indice persistente (cm-results). Al piu' ogni SCAN_EVERY_S un processo staccato,
+    a bassa priorita', legge i byte nuovi delle trascrizioni; le righe di questa push gli arrivano su stdin, cosi' non
+    rilegge `sessions`. Un extra: mai bloccare la push."""
+    try:
+        RS = results_mod()
+        if live is not None and RS.scan_due():
+            lock = rdir() / "results-scan.lock"
+            if not (lock.exists() and time.time() - lock.stat().st_mtime < 600):
+                lock.touch()
+                p = subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "results-scan"], stdin=subprocess.PIPE,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                try:
+                    p.stdin.write(json.dumps(live).encode())
+                    p.stdin.close()
+                except OSError:
+                    pass
+        return RS.summary()
+    except Exception as e:   # noqa: BLE001
+        log(f"results: {e}")
+        return None
+
+
+def results_scan():
+    """Il processo staccato di results_summary: la scansione, poi via il lucchetto."""
+    try:
+        raw = sys.stdin.read()
+        live = json.loads(raw) if raw.strip() else None
+    except (OSError, ValueError):
+        live = None
+    try:
+        os.nice(19)
+    except OSError:
+        pass
+    try:
+        results_mod().scan(live)
+        return 0
+    except Exception as e:   # noqa: BLE001
+        log(f"results-scan: {e}")
+        return 1
+    finally:
+        (rdir() / "results-scan.lock").unlink(missing_ok=True)
 
 
 def seguiti_summary():
@@ -4182,6 +4236,8 @@ def main(argv):
         return stats(rest)
     if cmd == "published-refresh":   # 1.75: lanciato da published_cached, staccato
         return published_refresh()
+    if cmd == "results-scan":   # 1.106: lanciato da results_summary, staccato
+        return results_scan()
     if cmd == "turn-failed":   # 1.61: lanciato dall'hook di StopFailure, in background
         return turn_failed(rest[0], rest[1] if len(rest) > 1 else "") if rest and R.get("enabled") else 0
     if cmd == "quota-limit":   # 1.58: lanciato dall'hook di StopFailure, in background

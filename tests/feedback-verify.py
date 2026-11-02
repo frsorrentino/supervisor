@@ -213,9 +213,9 @@ T.check("always_anonymous_consent AC9 with no endpoint the consent and the text 
 # il contratto: le fixture hanno le chiavi che il codice manda
 F3 = json.loads((T.ROOT / "tests/fixtures/relay/state-3-stale.json").read_text())
 F1, F2 = (json.loads((T.ROOT / f"tests/fixtures/relay/{f}.json").read_text()) for f in ("state-1-question", "state-2-idle"))
-T.check("feedback_state FS13 state-3 carries feedback with the code's keys, and every state's ops end with the three feedback ops",
+T.check("feedback_state FS13 state-3 carries feedback with the code's keys, and every state's ops carry the three feedback ops in a row",
         list(F3.get("feedback") or {}) == list(st) and list(F3["feedback"]["plugins"][0]) == list(sv) and list(F3["feedback"]["plugins"][0]["consent"]) == ["on", "since"]
-        and all(F["ops"][-3:] == ["feedback_consent", "feedback_send", "feedback_text"] for F in (F1, F2, F3)), str(F3.get("feedback"))[:300])
+        and all(F["ops"][F["ops"].index("feedback_consent"):][:3] == ["feedback_consent", "feedback_send", "feedback_text"] for F in (F1, F2, F3)), str(F3.get("feedback"))[:300])
 _fp = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())
 T.check("feedback_send SE8 cmd-result-sample has the three ops and the preview with the code's keys",
         {"feedback_consent", "feedback_send", "feedback_text"} <= {c["op"] for c in _fp["cmd"]}

@@ -448,23 +448,33 @@ def file_open(cmd, session, tm, arg):
     path = str(arg or "").strip()
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
     tr = core.transcript_of(row) if row else None
-    if not row or not tr:
+    listed, host = False, (row or {}).get("host")
+    if row and tr:
+        size = os.path.getsize(tr)
+        for window in TRANSCRIPT_WINDOWS:
+            start = 0 if window is None or window >= size else size - window
+            listed = any(fr.get("path") == path for e in core.transcript_entries(tr, start) for fr in (e.get("files") or []))
+            if listed or not start:
+                break
+    if path and not listed:
+        # 1.106: il file di un risultato dell'indice (cm-results), anche a sessione chiusa: gli stessi percorsi che una
+        # trascrizione ha elencato, mai uno nuovo
+        try:
+            hit = results_mod().find_path(path)
+        except Exception:   # noqa: BLE001 — indice illeggibile: come se non ci fosse
+            hit = None
+        if hit:
+            listed, host = True, hit.get("host")
+    if not listed and (not row or not tr):
         return False, M("relay.cmd_file_no_session", name=session or "?")
-    size = os.path.getsize(tr)
-    listed = False
-    for window in TRANSCRIPT_WINDOWS:
-        start = 0 if window is None or window >= size else size - window
-        listed = any(fr.get("path") == path for e in core.transcript_entries(tr, start) for fr in (e.get("files") or []))
-        if listed or not start:
-            break
     if not path or not listed:
         return False, M("relay.cmd_file_not_listed")
     src, name = path, re.split(r"[\\/]", path)[-1]
-    if row.get("host") and row.get("host") != "local":
+    if host and host != "local":
         # 10/10: il file sta sull'host della sessione (D:\… su win): misurato la' contro FILE_PARTS_MAX, poi copiato
         # qui; da li' la strada di sempre, e la web locale riceve il percorso della copia
         try:
-            got, size = _load("cm-hosts").fetch_file(row["host"], path, FILE_PARTS_MAX)
+            got, size = _load("cm-hosts").fetch_file(host, path, FILE_PARTS_MAX)
         except Exception:   # noqa: BLE001 — host irraggiungibile, scp fallito: per il telefono e' illeggibile
             got, size = None, -1
         if got is None:
@@ -508,6 +518,52 @@ def file_open(cmd, session, tm, arg):
         return False, M("relay.cmd_file_unreadable")
     rtdb("PUT", f"file/{cid}", doc, {"print": "silent"})
     return True, M("relay.cmd_file_ready", mime=mime, size=len(data))
+
+
+RESULT_NOTE_MAX = 2000
+
+
+def result_seen(arg):
+    """1.106: «Visto» su un risultato; vale anche per le versioni prima. La push dopo lo toglie da /state.results."""
+    rid = str(arg or "").strip()
+    if not results_mod().seen(rid):
+        return False, M("relay.result_unknown", id=rid or "?")
+    push_async()
+    return True, M("relay.result_seen")
+
+
+def _pos_text(pos_s):
+    v = f"{pos_s:.1f}".rstrip("0").rstrip(".")
+    return v.replace(".", ",") if str(CFG.get("language") or "it").lower().startswith("it") else v
+
+
+def result_note(cmd, arg):
+    """1.106: una nota sul risultato `arg`, `text` e `pos_s` facoltativo (il secondo del video). Arriva alla sessione come
+    gli altri prompt dal telefono (prefisso del dispositivo, origin relay), con il titolo, la versione, il secondo e il
+    file; a sessione chiusa resta nella sua casella. Si salva nelle `notes` del risultato solo se `talk` l'ha presa."""
+    rid = str(arg or "").strip()
+    x, versions = results_mod().get(rid)
+    if not x:
+        return False, M("relay.result_unknown", id=rid or "?")
+    text = str(cmd.get("text") or "").strip()
+    if not text:
+        return False, M("relay.cmd_empty_text")
+    if len(text) > RESULT_NOTE_MAX:
+        return False, M("relay.result_note_long", max=RESULT_NOTE_MAX)
+    pos = cmd.get("pos_s")
+    if pos is not None:
+        if isinstance(pos, bool) or not isinstance(pos, (int, float)) or pos < 0 \
+                or (x.get("duration_s") is not None and pos > float(x["duration_s"]) + 1):
+            return False, M("relay.result_bad_pos")
+        pos = round(float(pos), 1)
+    tm = x.get("tmux") or x.get("session")
+    at = M("relay.result_note_at", s=_pos_text(pos)) if pos is not None else ""
+    msg = M("relay.result_note_prompt", title=x["title"], version=x["version"], versions=versions, at=at, path=x["path"], text=text)
+    rc, out = relay_talk(tm, prefix_for(cmd, tm) + " " + msg, "--no-wait")
+    if rc != 0:
+        return False, fail_line(out, "talk failed")
+    results_mod().add_note(rid, text, pos)
+    return True, M("relay.result_note_inbox" if saved_in_inbox(out) else "relay.result_note_sent", name=x["session"])
 
 
 SLASH_RE = re.compile(r"[a-z][a-z0-9-]{0,40}")
@@ -2170,6 +2226,12 @@ def execute(cmd):
             return conti_azione(cmd, arg)
         if op in ("feedback_consent", "feedback_send", "feedback_text"):   # 1.105
             return feedback_op(cmd, op)
+        if op == "results":   # 1.106
+            return True, json.dumps(results_mod().view(TRANSCRIPT_MAX_BYTES), ensure_ascii=False)
+        if op == "result_seen":   # 1.106
+            return result_seen(arg)
+        if op == "result_note":   # 1.106
+            return result_note(cmd, arg)
         if op == "seguiti":   # 1.102
             return True, json.dumps(_load("cm-seguiti").view(), ensure_ascii=False)
         if op == "seguiti_azione":   # 1.102

@@ -75,7 +75,7 @@
       "question": null,
       "outcome": {
         "short": "Migrations 008-011 applied, tests green",
-        "full": "Esito: migrations 008-011 applied, tests green.\nSeeds still to review.\nProssimi: ok to deploy on staging · review the test seeds",
+        "full": "Esito: migrations 008-011 applied, tests green.\nProssimi: ok to deploy on staging · review the test seeds",
         "at": 1789210300
       },
       "next": "Review the seeds and the admin page",
@@ -92,7 +92,7 @@
       "low_priority": "active",
       "suggestion": null,
       "goal": {
-        "text": "All checkout tests green and the release tagged",
+        "text": "Checkout tests green, release tagged",
         "since": 1789210700,
         "met": false
       },
@@ -388,7 +388,10 @@
     "conti_azione",
     "feedback_consent",
     "feedback_send",
-    "feedback_text"
+    "feedback_text",
+    "results",
+    "result_seen",
+    "result_note"
   ],
   "slash": [
     "compact",
