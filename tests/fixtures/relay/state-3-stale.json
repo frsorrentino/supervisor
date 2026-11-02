@@ -169,7 +169,10 @@
     "seguiti",
     "seguiti_azione",
     "conti",
-    "conti_azione"
+    "conti_azione",
+    "feedback_consent",
+    "feedback_send",
+    "feedback_text"
   ],
   "slash": [
     "compact",
@@ -489,5 +492,34 @@
     "rimasto": 2,
     "altrove": 1,
     "promemoria": 1
+  },
+  "feedback": {
+    "at": 1789199880,
+    "plugins": [
+      {
+        "plugin": "supervisor",
+        "version": "0.8.99",
+        "new": 2,
+        "pending": 5,
+        "security": 0,
+        "anonymous": true,
+        "consent": {
+          "on": false,
+          "since": null
+        },
+        "last_sent": {
+          "at": 1789113600,
+          "url": "https://github.com/acme/tool/issues/12"
+        },
+        "top": [
+          {
+            "call": "relay agenda",
+            "error": "no agenda file",
+            "count": 146
+          }
+        ]
+      }
+    ],
+    "notice": "The text becomes a public GitHub issue, opened without your name: do not write personal data."
   }
 }

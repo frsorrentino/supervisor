@@ -1558,6 +1558,28 @@ def conti_azione(cmd, arg):
     return code == 0, M("conti.draft_sent") if code == 0 else str(out)[:200]
 
 
+def feedback_op(cmd, op):
+    """1.105: le note di observe dal telefono, solo da un tocco. `arg` il plugin. feedback_consent: `on` true/false, il
+    si' dell'utente a «Sempre in forma anonima». feedback_send: senza `hash` l'anteprima, con l'hash dell'anteprima
+    l'invio anonimo. feedback_text: `text`, un suggerimento scritto all'endpoint anonimo (una issue pubblica)."""
+    why = _touch_refused(cmd, op)
+    if why:
+        return False, why
+    fb = _load("cm-feedback")
+    plugin = str(cmd.get("arg") or "")
+    if op == "feedback_consent":
+        if not isinstance(cmd.get("on"), bool):
+            return False, M("feedback.bad_on")
+        ok, out = fb.consent(plugin, cmd["on"])
+    elif op == "feedback_send":
+        ok, out = fb.send(plugin, str(cmd.get("hash") or "") or None)
+    else:
+        ok, out = fb.text(plugin, str(cmd.get("text") or ""))
+    if ok:
+        feedback_summary(fresh=True)
+    return ok, out
+
+
 def seguiti_azione(cmd):
     """1.102: «Allinea» e «Va bene così» su una voce rimasta indietro, «Togli» su un promemoria. Solo da un tocco."""
     why = _touch_refused(cmd, "seguiti_azione")
@@ -2146,6 +2168,8 @@ def execute(cmd):
             return True, json.dumps(conti_op(cmd, arg), ensure_ascii=False)
         if op == "conti_azione":   # 1.103
             return conti_azione(cmd, arg)
+        if op in ("feedback_consent", "feedback_send", "feedback_text"):   # 1.105
+            return feedback_op(cmd, op)
         if op == "seguiti":   # 1.102
             return True, json.dumps(_load("cm-seguiti").view(), ensure_ascii=False)
         if op == "seguiti_azione":   # 1.102

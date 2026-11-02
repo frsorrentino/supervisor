@@ -782,6 +782,12 @@ def build_state(src, now, fit=True):
     # 1.100: la prima raccolta; l'elenco delle sezioni sta nell'op prima_raccolta
     if src.get("prima_raccolta"):
         state["prima_raccolta"] = dict(src["prima_raccolta"])
+    # 1.105: le note di observe per plugin ({at, plugins: [{plugin, version, new, pending, security, anonymous, consent,
+    # last_sent, top}], notice}); assente senza plugin con observe. fit_state non lo tocca: e' piccolo (call ≤ 60, error
+    # ≤ 100, tre errori per plugin), e lo stato vero sta gia' sopra il tetto con le sessioni vive (02/11: 19 KB, progetti
+    # gia' a zero), quindi un taglio qui scatterebbe sempre e il telefono non vedrebbe mai gli errori
+    if src.get("feedback"):
+        state["feedback"] = json.loads(json.dumps(src["feedback"]))
     # 1.102: i tre numeri della fase B; le liste stanno nell'op seguiti
     if src.get("seguiti"):
         state["seguiti"] = dict(src["seguiti"])

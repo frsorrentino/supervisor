@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.99 — 2026-11-02: the notes of every plugin, from the phone (contract 1.105).**
+  - The relay publishes, for each installed plugin that carries claude-observe, the notes to sort, what a send would carry, the three most frequent errors already cleaned, the «Always anonymous» consent and the last send.
+  - From the app: turn «Always anonymous» on or off (the touch is your yes), send the waiting notes anonymously after a preview of exactly what leaves, or write a suggestion that becomes a public issue. Nothing leaves without the consent or a touch.
 - **0.8.98 — 2026-11-02: a decision says what is proposed (contract 1.104).**
   - Every item of `task decisioni` carries the task's whole title and the start of its plan, masked, and what it waits for: an ok, a choice or an action at the PC. Rule 12 and `task pause`: a pause for the person says in words what is asked.
 - **0.8.97 — 2026-11-02: the accounts (contract 1.103).**

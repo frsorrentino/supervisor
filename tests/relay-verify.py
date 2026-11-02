@@ -241,7 +241,7 @@ SRC1 = {
     "projects": [{"path": ROOT_WS + "/work/own/orbit-docs", "name": "orbit-docs", "account": "work", "last_used": 1789203600}, {"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789210700}, {"path": ROOT_WS + "/work/clients/ledger-api", "name": "ledger-api", "account": "work", "last_used": 1789210500}],
     # 1.17: le righe della coda come le scrive `night add` (added ISO locale, prompt intero)
     "night": {"queued": 2, "running": None, "master": True, "items": [
-        {"id": "a3f09c1e", "dir": ROOT_WS + "/personal/atlas-shop", "prompt": "Go through the open issues labelled flaky, reproduce each one locally with the seed from its report, fix the ones that are real and write a short note in docs/notte for the others, then run the full suite twice", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789207200)},
+        {"id": "a3f09c1e", "dir": ROOT_WS + "/personal/atlas-shop", "prompt": "Reproduce the flaky issues with their seeds, fix the real ones, run the suite twice and write the notes to docs/notte/flaky-issues-reproduced-with-seeds-fixed-or-explained.md", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789207200)},
         {"id": "7b21d4e8", "dir": ROOT_WS + "/work/clients/ledger-api", "prompt": "Update the changelog for 2.4", "account": "work", "model": "", "effort": "", "max_turns": 40, "added": iso(1789210620)}]},
     "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": [{"project": "atlas-shop", "done": "Migrations 008-011 applied, tests green", "next": "Review the seeds and the admin page"}, {"project": "ledger-api", "done": "Deploy ready", "next": "Wait for the go"}]},
     "follow": {"work-ledger-api"}, "awaiting": set(),
@@ -407,6 +407,7 @@ SRC3["seguiti"] = F3["seguiti"]   # 1.102
 SRC3["commitments"] = F3["commitments"]   # 1.76
 SRC3["system"] = F3["system"]   # 1.90
 SRC3["plugins"] = F3["plugins"]   # 1.95
+SRC3["feedback"] = F3["feedback"]   # 1.105
 # 1.84 (24/10): orbit-docs chiusa dall'app prima che il PC si fermasse — lo stato salvato, con due file non committati
 SRC3["rows"] = [{"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs",
                  "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789199000}]
@@ -1686,7 +1687,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-21:-18] == ["suggestion", "close_preview", "close"] and all(s["ops"][-21:-18] == R_OPS[-21:-18] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-24:-21] == ["suggestion", "close_preview", "close"] and all(s["ops"][-24:-21] == R_OPS[-24:-21] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3606,7 +3607,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-24] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-27] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3635,7 +3636,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-23] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-23:-21] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-26] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-26:-24] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4183,7 +4184,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-12] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-15] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

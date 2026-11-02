@@ -261,7 +261,7 @@
         "id": "a3f09c1e",
         "dir": "/home/demo/workspaces/personal/atlas-shop",
         "name": "atlas-shop",
-        "prompt": "Go through the open issues labelled flaky, reproduce each one locally with the seed from its report, fix the ones that are real and write a short note in",
+        "prompt": "Reproduce the flaky issues with their seeds, fix the real ones, run the suite twice and write the notes to",
         "added": 1789207200,
         "started": null
       },
@@ -385,7 +385,10 @@
     "seguiti",
     "seguiti_azione",
     "conti",
-    "conti_azione"
+    "conti_azione",
+    "feedback_consent",
+    "feedback_send",
+    "feedback_text"
   ],
   "slash": [
     "compact",

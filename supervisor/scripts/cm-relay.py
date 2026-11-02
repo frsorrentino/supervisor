@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1304,6 +1304,7 @@ def collect_sources(now=None):
         **decisions_summary(), "heads_up": heads_up_seen(rows, now),   # 1.99
         "prima_raccolta": raccolta_summary(),   # 1.100
         "seguiti": seguiti_summary(),   # 1.102
+        "feedback": feedback_summary(),   # 1.105
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -3052,6 +3053,24 @@ def raccolta_summary():
         return _load("cm-raccolta").summary()
     except Exception:   # noqa: BLE001
         return None
+
+
+_FB_LAST = (0.0, None)
+
+
+def feedback_summary(fresh=False):
+    """1.105: le note di observe per plugin. Un processo per plugin: riletto al piu' ogni 5 minuti, o subito dopo un'op
+    feedback_*. Un extra: mai bloccare la push."""
+    global _FB_LAST
+    if not fresh and _FB_LAST[0] and time.time() - _FB_LAST[0] < 300:
+        return _FB_LAST[1]
+    try:
+        v = _load("cm-feedback").state()
+    except Exception as e:   # noqa: BLE001
+        log(f"feedback: lettura fallita ({e})")
+        return _FB_LAST[1]
+    _FB_LAST = (time.time(), v)
+    return v
 
 
 def seguiti_summary():

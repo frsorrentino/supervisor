@@ -32,10 +32,15 @@ Four things are worth knowing before you turn them on.
   one line with a count. Of a command only its name, subcommand and option
   names are kept: arguments become `<ARG>`, error texts are cleaned of the
   home path, emails, URL queries and secrets, and no parameter value is ever
-  stored. Nothing leaves the computer on its own: the only way out is a
-  GitHub issue, which Claude offers once a few errors have piled up, shows
-  you anonymized, and sends only after your yes (with `gh`, or as a
-  prefilled link you open). Turn it
+  stored. Nothing leaves the computer unless you say yes: the only way out
+  is a GitHub issue, which Claude offers once a few errors have piled up,
+  shows you anonymized, and sends only after your yes (with `gh`, as a
+  prefilled link you open, or anonymously through the claude-observe
+  service). If you choose «Always anonymous» (in the terminal or with a
+  touch in the app), new errors leave anonymously from then on without
+  asking, never the notes; `supervisor observe anonymous off` or the app
+  turns it off. From the app you can also send the waiting notes after a
+  preview, or write a suggestion: each needs a touch. Turn it
   off with `{"enabled": false}` in `~/.config/claude-observe/config.json`;
   `{"propose": false}` keeps the file and stops the offers.
 

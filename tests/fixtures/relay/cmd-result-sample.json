@@ -1111,6 +1111,45 @@
       "op": "conti_azione",
       "project": "work/acme-site",
       "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0915-4000-8000-0000000000915",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_consent",
+      "on": true,
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0916-4000-8000-0000000000916",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_send",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0917-4000-8000-0000000000917",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_send",
+      "hash": "3fa1c09b2e",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0918-4000-8000-0000000000918",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_text",
+      "text": "A button to retry a failed send",
+      "device": "phone"
     }
   ],
   "result": [
@@ -1831,6 +1870,30 @@
       "id": "6f1c2d3e-0914-4000-8000-0000000000914",
       "ok": true,
       "text": "draft asked of the master",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0915-4000-8000-0000000000915",
+      "ok": true,
+      "text": "«Always anonymous» on for supervisor: new errors are sent anonymously without asking, never the notes",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0916-4000-8000-0000000000916",
+      "ok": true,
+      "text": "{\"plugin\": \"supervisor\", \"n\": 2, \"title\": \"[supervisor] field observations: 2 error(s), most frequent `relay agenda`\", \"body\": \"Collected on 2026-09-12 by claude-observe (https://github.com/frsorrentino/claude-observe): errors recorded by a hook and notes added by hand; parameter values are never stored.\\n\\n- `relay agenda` — no agenda file (×146, 01/09 08:00–12/09 07:55; supervisor 0.8.99)\\n- `relay file` — too large: <N> max 26214400 (×140, 02/09 10:11–12/09 07:40; supervisor 0.8.99)\", \"hash\": \"3fa1c09b2e\"}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0917-4000-8000-0000000000917",
+      "ok": true,
+      "text": "sent anonymously for supervisor: https://github.com/frsorrentino/supervisor/issues/41",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0918-4000-8000-0000000000918",
+      "ok": true,
+      "text": "sent anonymously for supervisor: https://github.com/frsorrentino/supervisor/issues/42",
       "at": 1789214706
     }
   ]

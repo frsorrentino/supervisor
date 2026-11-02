@@ -226,7 +226,10 @@
     "seguiti",
     "seguiti_azione",
     "conti",
-    "conti_azione"
+    "conti_azione",
+    "feedback_consent",
+    "feedback_send",
+    "feedback_text"
   ],
   "slash": [
     "compact",
@@ -378,7 +381,7 @@
         "who": "person",
         "on": "ledger-api"
       },
-      "expected": "the four migrations applied on staging, tests green",
+      "expected": "migrations applied on staging, tests green",
       "outcome_kind": "deploy",
       "check": {
         "outcome": "red",
@@ -411,7 +414,7 @@
         "who": "person",
         "on": "atlas-shop"
       },
-      "expected": "the SEO pages on shop.example.com",
+      "expected": "SEO pages online",
       "outcome_kind": "deploy",
       "check": null,
       "paused": null,
@@ -478,7 +481,7 @@
       "id": "e-9a0b1c2d3e4f",
       "session": "atlas-shop",
       "server": "figma",
-      "message": "Sign in to Figma to read the checkout frames",
+      "message": "Sign in to Figma",
       "mode": "url",
       "asked_at": 1789214350,
       "expires_at": 1789214470,

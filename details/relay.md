@@ -644,6 +644,15 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.105 (02/11/2026, asked by the maintainer on 28/10: a section of the app for the notes of claude-observe). Additive, `v` stays 1. Nothing is ever sent without the consent or a touch: the three ops refuse a command without `device`.
+
+- **`state.feedback`**: `{at, plugins, notice}`, absent when no installed plugin carries a copy of claude-observe. One row per plugin (by name; of two accounts the newer version), read with that plugin's own copy of `observe.py`, at most every 5 minutes or right after a `feedback_*` op. `plugins[]`: `{plugin, version, new, pending, security, anonymous, consent{on, since}, last_sent{at, url} | null, top[{call, error, count}]}`. `new`: records not yet sorted; `pending`: what a send would carry; `security`: counted apart, never sent from the phone (they have a private path). `anonymous`: the anonymous service is available for this plugin. `consent.since`: when the yes was given (ISO), null when off. `last_sent`: the last send from the app, otherwise the URL of the last reported record with `at` null. `top`: the three most frequent errors among `pending`, cleaned as observe sends them (call ≤ 60, error ≤ 100 characters). fit_state never cuts `feedback`: it is small, and a real state with its live sessions stays over the cap anyway. `notice`: the line the app shows above a written suggestion.
+- **op `feedback_consent`**, only a touch: `arg` the plugin, `on` true or false. The touch is the user's yes to «Always anonymous»: observe saves it (`tools.<plugin>.always_anonymous`), and from then on new errors leave anonymously, never the notes. Turning it on sends nothing by itself. Refused when the anonymous service is not available.
+- **op `feedback_send`**, only a touch: `arg` the plugin. Without `hash`: the preview `{plugin, n, title, body, hash}` (n 0 and the rest null when nothing waits), nothing sent. With the preview's `hash`: the anonymous send of exactly that text; a different hash is refused.
+- **op `feedback_text`**, only a touch: `arg` the plugin, `text` up to 4000 characters. A written suggestion, cleaned like the notes, to the anonymous service: it becomes a public issue. The answer gives its URL.
+
+Fixture: `state-3-stale.json` (one plugin), `cmd-result-sample.json`.
+
 Contract 1.104 (02/11/2026, reported by the maintainer: a card saying only «aspetta l'ok» does not say what was proposed). Additive, `v` stays 1.
 
 - **op `decisioni`, every `items[]`**: `title`, the task's whole title, `plan_start`, the start of its plan (at most 300 characters, cut at a word), both through the preview mask and null with no task; `asks`: `ok`, `choice`, `pc` (an action at the PC), `other`, so the app picks the right button. For a card it comes from the request, otherwise from the words of the pause.
