@@ -644,6 +644,16 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.101 (02/11/2026, reported by the maintainer: a card saying only «Do you want to proceed?»). Additive, `v` stays 1.
+
+- **`sessions[].question`, `kind: "permission"`**: `what`, one line (at most 200 characters) saying what is approved, the
+  command's description first and then the command, for any tool, Agent and Workflow too; `body`, the dialog's text (at
+  most 600 characters), the first thing `fit_state` drops. Both pass through the preview mask. Absent when nothing is known:
+  the app keeps `text`.
+- **Notification and `attention[]`**: the `question` event's `body` and the entry's `title` are `what` when present.
+
+Fixture: `question-permission.json`, from the text of a real dialog (Claude Code 2.1.316).
+
 Contract 1.100 (02/11/2026, the start at full speed, function 10 of the approved program). Additive, `v` stays 1.
 
 - **`state.prima_raccolta`**: `{status, done, total, ask, first_round_at}`. `status`: `running`, `ask` (only the

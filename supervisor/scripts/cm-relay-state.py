@@ -31,6 +31,7 @@ import re
 V = 1
 ORDER = {"waiting": 0, "busy": 1, "awaiting": 1, "idle": 2, "gone": 3}
 SHORT_MAX = 200   # 1.6: la riga «Watch:»/«Esito:» intera (a 60 il polso mostrava mezza frase; chiesto dall'app il 14/09)
+WHAT_MAX, BODY_MAX = 200, 600   # 1.101: la riga e il corpo di un dialogo di permesso
 KEEP_GONE = 3     # fit_state: le sessioni finite piu' recenti che restano quando lo stato non entra
 PUBLISHED_MAX = 30   # 1.75: le pubblicazioni di oggi in /state; fit_state le scende a PUBLISHED_FIT, poi a 5
 PUBLISHED_FIT = 10
@@ -480,6 +481,9 @@ def build_session(row, src):
         pv = redact_preview(question["text"])
         if pv != question["text"]:
             question["preview"] = pv   # 1.56: solo quando c'era qualcosa da nascondere
+        if kind == "permission" and q.get("what"):   # 1.101: cosa si approva, sempre dalla maschera
+            question["what"] = redact_preview(one_line(q["what"]))[:WHAT_MAX]
+            question["body"] = redact_preview(str(q.get("body") or ""))[:BODY_MAX]
     rt = (src.get("runtime") or {}).get(tmux) or {}
     out = {
         "id": row.get("session_id") or tmux,
@@ -787,7 +791,7 @@ def build_state(src, now, fit=True):
     # 1.80 (23/10): ogni voce dice come si chiude (`closes`: answer, prompt, check, expires) e, se scade, quando
     # (`expires_at`); «Fatto» dall'app (op attention_done) chiude needs_you, turn_blocking, turn_failed, quota_limit, task_red
     att = [{"kind": "question", "session": s["name"], "ref": s["question"]["id"],
-            "title": s["question"].get("preview") or s["question"]["text"][:200], "since": s["question"]["asked_at"], "closes": "answer"}
+            "title": s["question"].get("what") or s["question"].get("preview") or s["question"]["text"][:200], "since": s["question"]["asked_at"], "closes": "answer"}
            for s in sessions if s.get("question")]
     att += [dict({"kind": "needs_you", "session": s["name"], "ref": s["name"], "title": redact_preview(s["needs_you"]["reason"]), "since": s["needs_you"]["at"],
                   "closes": "check" if s["needs_you"].get("until") else "prompt"},
@@ -898,6 +902,9 @@ def fit_state(state, max_kb=8):
     # 24/10 (supervisor-app: state-1 a 8203 B col suo conto): published_at lo aggiunge _push dopo il taglio, il suo
     # posto si tiene qui
     cap = max_kb * 1024 - PUBLISHED_AT_BYTES
+    if size_of(state) > cap:   # 1.101: il corpo del dialogo e' il primo a cadere; `what` resta, come la domanda
+        for s in state.get("sessions") or []:
+            (s.get("question") or {}).pop("body", None)
 
     def fits():
         return size_of(state) <= cap
@@ -1032,7 +1039,7 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
             add("launched", s, f"▶ {name}", s.get("project") or "")
         pq, q = (p or {}).get("question"), s.get("question")
         if q and (not pq or pq.get("id") != q["id"]):
-            add("question", s, name, q["text"], q["id"])
+            add("question", s, name, q.get("what") or q["text"], q["id"])
         if pq and not q:
             add("answered", s, name, "", pq.get("id"))
         po, o = (p or {}).get("outcome"), s.get("outcome")

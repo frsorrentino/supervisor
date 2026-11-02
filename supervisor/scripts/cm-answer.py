@@ -168,11 +168,58 @@ def parse(text):
         qlines = []
         for x in reversed(lines[:first]):
             xs = x.strip().lstrip("│").strip()
-            if not xs or xs.startswith("─"):
+            if not xs or xs[0] in "─╌":   # 02/11, dal vivo: anche il tratteggio del riquadro del comando chiude la domanda
                 break
             qlines.insert(0, xs)
         question = " ".join(qlines)
     return header, question, options, True
+
+
+DIALOG_TITLE = re.compile(r"^(Bash command|Tool use|(Edit|Create|Read|Write) file|Fetch|Web ?[Ff]etch|Workflow|Agent)$")
+BODY_LINES = 15
+
+
+def dialog_body(text):
+    """02/11/2026 (il maintainer: «questa notifica non da alcuna informazione»): cosa si approva, dallo schermo di un dialogo di
+    permesso. {command, description, lines}, o None con un dialogo «☐» o senza corpo. Sopra la domanda, dal vero con Claude
+    Code 2.1.316: una riga ─, il titolo, un eventuale «Tip:», la descrizione, il comando in un riquadro ╌ con «│» davanti.
+    Dialoghi senza riquadro (Agent): prima il comando, poi la descrizione con «│»; le righe di un hook restano solo nel corpo."""
+    d = parse(text)
+    if not d or d[0]:
+        return None
+    lines = text.splitlines()
+    first = next((i for i, l in enumerate(lines) if OPTION.match(l)), 0)
+    i = first - 1
+    while i >= 0 and lines[i].strip() and lines[i].strip()[0] not in "─╌":   # la domanda
+        i -= 1
+    raw = []
+    while i >= 0 and len(raw) < BODY_LINES:
+        s = lines[i].strip()
+        if s.startswith("─") or DIALOG_TITLE.match(s):
+            break
+        raw.insert(0, s)
+        i -= 1
+    boxed = [x.lstrip("│").strip() for x in raw if x.startswith("│")]
+    has_box = any(x.startswith("╌") for x in raw)
+    plain = [x for x in raw if x and not x.startswith(("╌", "│", "Tip:"))]
+    if has_box:
+        command, description = "".join(boxed), plain[0] if plain else ""
+        body = [description, command]
+    else:
+        keep = [x for x in raw if x and not x.startswith(("╌", "Tip:"))]
+        para = []
+        for x in raw:
+            if not x:
+                if para:
+                    break
+                continue
+            para.append(x.lstrip("│").strip())
+        command, description = (para[0] if para else ""), (para[1] if len(para) > 1 else "")
+        body = [x.lstrip("│").strip() for x in keep]
+    body = [x for x in body if x]
+    if not command and not description:
+        return None
+    return {"command": command, "description": description, "lines": body}
 
 
 def show(name):
@@ -404,6 +451,9 @@ def main(argv):
         return 1
     if isinstance(t, Remote):
         TERMS[name] = t
+    if argv[1] == "--body":   # 02/11: il corpo di un dialogo di permesso, per il relay
+        print(json.dumps(dialog_body(screen(name)) or {}, ensure_ascii=False))
+        return 0
     if argv[1] == "--show":
         return show(name)
     text = ""

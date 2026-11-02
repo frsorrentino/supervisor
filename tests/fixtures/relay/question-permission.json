@@ -1,0 +1,31 @@
+{
+  "session_question": {
+    "id": "q-1789214400-1",
+    "kind": "permission",
+    "text": "Do you want to proceed?",
+    "options": [
+      {
+        "n": 1,
+        "label": "Yes"
+      },
+      {
+        "n": 2,
+        "label": "No"
+      }
+    ],
+    "tier": "low",
+    "asked_at": 1789214400,
+    "what": "Publish the docs: git push origin main",
+    "body": "Publish the docs\ngit push origin main"
+  },
+  "event": {
+    "key": "1789214400_001",
+    "kind": "question",
+    "session": "atlas-shop",
+    "account": "personal",
+    "ts": 1789214400,
+    "title": "atlas-shop",
+    "body": "Publish the docs: git push origin main",
+    "ref": "q-1789214400-1"
+  }
+}

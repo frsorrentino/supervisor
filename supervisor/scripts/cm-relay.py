@@ -634,6 +634,24 @@ def question_of(name, tool):
     return ("" if q == "-" else q), opts
 
 
+def permission_body(name, tool, inp):
+    """02/11: {what, body} di un dialogo di permesso. La riga dice cosa si approva, prima la descrizione e poi il comando:
+    dal payload dell'hook, che ha il comando intero, altrimenti dallo schermo. Il corpo viene dallo schermo."""
+    if tool == "AskUserQuestion" or tool == "ExitPlanMode":
+        return {}
+    try:
+        rc, out = run_cm("answer", name, "--body") if name else (1, "")
+        scr = json.loads(out) if rc == 0 and out.strip().startswith("{") else {}
+    except (subprocess.TimeoutExpired, ValueError):
+        scr = {}
+    desc = str(inp.get("description") or scr.get("description") or "").strip()
+    cmd = next((str(inp[k]).strip() for k in ("command", "file_path", "path", "url", "pattern", "prompt", "script") if isinstance(inp.get(k), str) and inp[k].strip()), "")
+    cmd = cmd or str(scr.get("command") or "").strip()
+    what = ": ".join(x for x in (desc, cmd) if x)
+    lines = [str(x) for x in scr.get("lines") or []] or [x for x in (desc, cmd) if x]
+    return {"what": what, "body": "\n".join(lines)} if what else {}
+
+
 def followed():
     return set(read_json(rdir() / "follow.json", []))
 
@@ -1236,7 +1254,8 @@ def collect_sources(now=None):
                                  "options": opts, "asked_at": asked[-1] if asked else int(first_seen or now),
                                  "detail": json.dumps(detail, ensure_ascii=False) if detail else "",
                                  # 1.53: etichetta → spiegazione, dal payload dell'hook (AskUserQuestion)
-                                 "descriptions": {str(lb): str(ds) for lb, ds in zip(inp.get("options") or [], inp.get("descriptions") or []) if ds}}
+                                 "descriptions": {str(lb): str(ds) for lb, ds in zip(inp.get("options") or [], inp.get("descriptions") or []) if ds},
+                                 **permission_body(tm, tool, inp)}
         if S.state_of(r) != "waiting" and (r.get("status") == "busy" or tm in aw):
             # anche le «awaiting» (prompt dal polso in corso): senza questo la card restava senza attivita'
             t, note = tool_of(r)
