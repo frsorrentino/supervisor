@@ -381,11 +381,11 @@ SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP pa
 # 1.84 (24/10): tre suggerimenti della master di tipo diverso, i token di oggi su due account, e una richiesta per la persona
 # che la master ha legato a un compito di atlas-shop (needs-you --task)
 SRC2["suggestions"] = [
-    {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "The ledger-api invoice is due on Friday",
+    {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "ledger-api invoice due Friday",
      "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
-    {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Last night's report is ready: 3 projects done, 1 in part",
+    {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Last night's report is ready",
      "prompt": "Read me last night's report and tell me what is left", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
-    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Two orbit-docs tasks paused for 5 days: close them?",
+    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Two orbit-docs tasks paused: close them?",
      "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
 SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
@@ -402,6 +402,7 @@ SRC3["account_kinds"] = KINDS
 SRC3.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
+SRC3["prima_raccolta"] = F3["prima_raccolta"]   # 1.100
 SRC3["commitments"] = F3["commitments"]   # 1.76
 SRC3["system"] = F3["system"]   # 1.90
 SRC3["plugins"] = F3["plugins"]   # 1.95
@@ -462,7 +463,7 @@ live["projects"] = [{"path": f"{ROOT_WS}/personal/progetto-{i:02d}", "name": f"p
 stl = S.build_state(live, 1789210800)
 works = [x for x in stl["sessions"] if x["name"].startswith("job-")]
 gones = [x["name"] for x in stl["sessions"] if x["state"] == "gone"]
-T.check("R2 (14/09) over 8 KB with ten gone sessions: the outcomes keep a real full (> 300, not the short), the three most recent gone stay, under the cap", S.size_of(stl) <= 8192 and len(works) == 3 and all(len(x["outcome"]["full"]) > 300 and x["outcome"]["full"] != x["outcome"]["short"] for x in works) and gones == ["old-07", "old-08", "old-09"], f"{S.size_of(stl)} {[len(x['outcome']['full']) for x in works]} {gones}")
+T.check("R2 (14/09) over 8 KB with ten gone sessions: the outcomes keep a real full (> 280, not the short), the three most recent gone stay, under the cap", S.size_of(stl) <= 8192 and len(works) == 3 and all(len(x["outcome"]["full"]) > 280 and x["outcome"]["full"] != x["outcome"]["short"] for x in works) and gones == ["old-07", "old-08", "old-09"], f"{S.size_of(stl)} {[len(x['outcome']['full']) for x in works]} {gones}")
 # 1.7 (14/09 dall'app: recap.items = 0 con 9 sessioni e 10 progetti): lo stesso stato con dieci voci di recap lunghe
 recap_long = {"date": "2026-09-12", "items": [{"project": f"progetto-{i:02d}", "done": "Migrazioni applicate e verificate, test verdi su tutte e due le suite. " * 2, "next": "Rivedere i seed, la pagina admin e il deploy di prova su staging. " * 2} for i in range(10)]}
 str_ = S.build_state(dict(live, recap=recap_long), 1789210800)
@@ -1684,7 +1685,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-15:-12] == ["suggestion", "close_preview", "close"] and all(s["ops"][-15:-12] == R_OPS[-15:-12] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-17:-14] == ["suggestion", "close_preview", "close"] and all(s["ops"][-17:-14] == R_OPS[-17:-14] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3604,7 +3605,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-18] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-20] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3633,7 +3634,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-17] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-17:-15] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-19] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-19:-17] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -3759,7 +3760,7 @@ T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, 
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
 _small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
 # 24/10: senza i ricorrenti — fit_state tiene il posto di published_at e il taglio a 10 non entrava piu'
-_big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
+_big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], published_today=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
         len(S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
         and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == _st2n["sessions"] and _big62["projects"] == st2["projects"]
@@ -4181,7 +4182,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-6] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-8] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

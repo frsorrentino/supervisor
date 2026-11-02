@@ -644,6 +644,26 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.100 (02/11/2026, the start at full speed, function 10 of the approved program). Additive, `v` stays 1.
+
+- **`state.prima_raccolta`**: `{status, done, total, ask, first_round_at}`. `status`: `running`, `ask` (only the
+  consent is missing), `interrupted`, `done`. Absent if it never ran, and once done with the first round made.
+- **op `prima_raccolta`** (a passive read): `{at, status, done, total, consent, ask_text, cost, sections,
+  first_round}`. `status` can also be `none`. `consent`: null, true, false; `ask_text` is the question while null.
+  `cost` is 0: the collection calls no model. `sections[]`: `{key, dove, n, text, why, when}`, keys `machine`,
+  `hosts`, `quota`, `plugins`, `projects`, `live`, `sessions`, `suggestions`, `night`, `recap`. With `n` 0, `text`
+  is null and `why` and `when` say why it is empty and when it fills. `dove` is a screen with «Portami lì».
+  `first_round`: `{at, cost}`, the sentence to show before the touch.
+- **op `prima_raccolta_azione`**, only a touch (`device`, as `prova`): `action` `start`, `consent` with `value` `si`
+  or `no`, `first_round` (once; a second touch answers ok and sends nothing).
+- The collection starts by itself at the first pairing, if it never ran. An app that knows nothing of this still
+  gets a fuller home.
+- Follow-ups from past sessions are `suggestions[]` of kind `followup`, source `script`, keys `raccolta:<id>`;
+  they expire in 72 hours.
+
+Fixture: `state-3-stale.json`, `cmd-result-sample.json`. The relay sends `at` on every result (`run_cmd`): the six
+samples of 1.99 lacked it, the fixture was wrong.
+
 Contract 1.99 (01/11/2026, phase A of the program the maintainer approved at 20:35: decide less
 and better). Additive, `v` stays 1; an older app sees two more `/state` keys, four more ops and
 more fields on `approvals[]`, and ignores them.

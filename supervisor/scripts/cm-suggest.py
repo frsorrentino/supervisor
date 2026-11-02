@@ -459,7 +459,8 @@ def fill(now=None, state=None, commitments=None):
     want = sorted(want, key=lambda w: (RANK_OF[w[0]], -w[4], w[1]))[:smax]
     keys = {w[1] for w in want}
     untouched = set() if commitments is not None else {"waiting"}
-    for x in [x for x in d["items"] if source_of(x) == "script" and x.get("key") not in keys and x.get("kind") not in untouched]:
+    for x in [x for x in d["items"] if source_of(x) == "script" and x.get("key") not in keys and x.get("kind") not in untouched
+              and not str(x.get("key") or "").startswith("raccolta:")]:   # 02/11: i seguiti della prima raccolta scadono da soli
         d["items"].remove(x)
         close(d, x, "resolved", now, rows)
         stats["resolved"] += 1

@@ -775,6 +775,9 @@ def build_state(src, now, fit=True):
     for k in ("decisions", "prove"):
         if src.get(k) and any(src[k].values()):
             state[k] = dict(src[k])
+    # 1.100: la prima raccolta; l'elenco delle sezioni sta nell'op prima_raccolta
+    if src.get("prima_raccolta"):
+        state["prima_raccolta"] = dict(src["prima_raccolta"])
     # 1.33: le azioni ricorrenti della master (box «Ricorrenti»); senza lista il campo manca e l'app non mostra il box
     if src.get("recurring"):
         state["recurring"] = [dict(x) for x in src["recurring"]][:8]

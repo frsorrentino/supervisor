@@ -1530,6 +1530,33 @@ def _tasks_read(fn):
         con.close()
 
 
+def raccolta_azione(cmd):
+    """1.100: start, consent {value: si|no}, first_round. Il consenso e il primo giro, che consuma quota, solo da un tocco."""
+    why = _touch_refused(cmd, "prima_raccolta_azione")
+    if why:
+        return False, why
+    rc = _load("cm-raccolta")
+    action = str(cmd.get("action") or "")
+    if action == "first_round":
+        if not rc.mark_first_round():
+            return True, M("raccolta.first_round_already")
+        master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+        code, out = relay_talk(master, M("raccolta.first_round_prompt"), "--no-wait")
+        return code == 0, M("raccolta.first_round_sent") if code == 0 else str(out)[:200]
+    if action == "consent":
+        if cmd.get("value") not in ("si", "no"):
+            return False, M("raccolta.action_bad")
+        rc.set_consent(cmd["value"] == "si")
+    elif action != "start":
+        return False, M("raccolta.action_bad")
+    try:
+        subprocess.Popen([CM_BIN, "prima-raccolta", "--json"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
+        return False, str(e)[:200]
+    return True, M("raccolta.started")
+
+
 def prove_op():
     """1.99: op prove, una lettura: le prove da fare per build, quelle che non vanno, i compiti col controllo rosso."""
     p = _tasks_read(lambda tk, con: tk.prove_list(con))
@@ -2066,6 +2093,10 @@ def execute(cmd):
             return decisioni_op()
         if op == "decisione":   # 1.99
             return decisione_op(cmd, arg)
+        if op == "prima_raccolta":   # 1.100
+            return True, json.dumps(_load("cm-raccolta").view(), ensure_ascii=False)
+        if op == "prima_raccolta_azione":   # 1.100
+            return raccolta_azione(cmd)
         if op == "attention_done":   # 1.80
             return attention_done(cmd, arg)
         if op == "decision":

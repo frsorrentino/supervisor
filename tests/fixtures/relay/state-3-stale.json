@@ -163,7 +163,9 @@
     "prove",
     "prova",
     "decisioni",
-    "decisione"
+    "decisione",
+    "prima_raccolta",
+    "prima_raccolta_azione"
   ],
   "slash": [
     "compact",
@@ -471,5 +473,12 @@
         "updates": []
       }
     ]
+  },
+  "prima_raccolta": {
+    "status": "ask",
+    "done": 7,
+    "total": 8,
+    "ask": true,
+    "first_round_at": null
   }
 }

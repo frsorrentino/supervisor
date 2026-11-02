@@ -1020,6 +1020,35 @@
       "by": "phone-pixel7",
       "action": "drop",
       "reason": "Done by voice"
+    },
+    {
+      "id": "6f1c2d3e-0906-4000-8000-0000000000906",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "prima_raccolta"
+    },
+    {
+      "id": "6f1c2d3e-0907-4000-8000-0000000000907",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "prima_raccolta_azione",
+      "action": "consent",
+      "value": "si",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0908-4000-8000-0000000000908",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "prima_raccolta_azione",
+      "action": "first_round",
+      "device": "phone"
     }
   ],
   "result": [
@@ -1655,32 +1684,56 @@
     {
       "id": "6f1c2d3e-0900-4000-8000-000000000900",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}]}"
+      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}]}",
+      "at": 1789214706
     },
     {
       "id": "6f1c2d3e-0901-4000-8000-000000000901",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"n\": 2, \"here\": 1, \"tasks\": 3, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}]}"
+      "text": "{\"at\": 1789214700, \"n\": 2, \"here\": 1, \"tasks\": 3, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}]}",
+      "at": 1789214706
     },
     {
       "id": "6f1c2d3e-0902-4000-8000-000000000902",
       "ok": true,
-      "text": "prove ok: 2; compiti che passano al controllo: 2"
+      "text": "prove ok: 2; compiti che passano al controllo: 2",
+      "at": 1789214706
     },
     {
       "id": "6f1c2d3e-0903-4000-8000-000000000903",
       "ok": true,
-      "text": "prova 38: segnalata alla master"
+      "text": "prova 38: segnalata alla master",
+      "at": 1789214706
     },
     {
       "id": "6f1c2d3e-0904-4000-8000-000000000904",
       "ok": true,
-      "text": "non ora: torna tra 24 ore"
+      "text": "non ora: torna tra 24 ore",
+      "at": 1789214706
     },
     {
       "id": "6f1c2d3e-0905-4000-8000-000000000905",
       "ok": true,
-      "text": "lasciato perdere: 1 voci"
+      "text": "lasciato perdere: 1 voci",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0906-4000-8000-0000000000906",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"status\": \"ask\", \"done\": 7, \"total\": 8, \"consent\": null, \"ask_text\": \"May I read your past sessions of the last 14 days, to count them and pick up what they left open? The data stays on this machine; it reaches the phone encrypted.\", \"cost\": 0, \"sections\": [{\"key\": \"plugins\", \"dove\": \"settings\", \"n\": 12, \"text\": \"12 plugins, 2 to update, 30 skills\", \"why\": null, \"when\": null}, {\"key\": \"sessions\", \"dove\": \"search\", \"n\": 0, \"text\": null, \"why\": \"Past sessions are read only with your yes.\", \"when\": \"It fills as soon as you answer.\"}], \"first_round\": {\"at\": null, \"cost\": \"The master's first round uses your plan's quota: usually a small part of the 5 hours. It starts only if you touch it.\"}}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0907-4000-8000-0000000000907",
+      "ok": true,
+      "text": "collection started",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0908-4000-8000-0000000000908",
+      "ok": true,
+      "text": "first round sent to the master",
+      "at": 1789214706
     }
   ]
 }

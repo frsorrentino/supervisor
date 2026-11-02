@@ -39,6 +39,7 @@ unported() {  # <cmd> <fase> <equivalente legacy>
 case "$cmd" in
   init)     exec python3 "$S/cm-config.py" init "$@" ;;
   doctor)   exec python3 "$S/cm-config.py" doctor "$@" ;;
+  prima-raccolta|first-collection) exec python3 "$S/cm-raccolta.py" "$@" ;;   # 02/11 (1.100): una volta sola, quello che aspetta il cron
   config)   # config [--sh|--get KEY|--path|--dump-defaults]
             [ $# -gt 0 ] || set -- --path
             exec python3 "$S/cm-config.py" "$@" ;;

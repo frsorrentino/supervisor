@@ -25,6 +25,7 @@ CM_FAKE_MACHINE (descrizione JSON della macchina al posto di /proc, PATH e
 ambiente — solo test).
 """
 import glob
+import importlib.util
 import json
 import os
 import re
@@ -1295,7 +1296,8 @@ def cmd_init(args):
         cron_setup(live, yes)
     if "--tmux" in args:
         tmux_setup(live, yes)
-    if ("--cron" in args or "--tmux" in args) and not dry:
+    # 02/11: `init --yes --shim --shell --cron --tmux` e' la riga unica dell'installazione: senza config la scrive
+    if ("--cron" in args or "--tmux" in args) and not dry and not (yes and not target.exists()):
         return 0
     if ("--shim" in args or "--shell" in args) and not yes and not dry:
         return 0
@@ -1323,6 +1325,11 @@ def cmd_init(args):
     to_write = json.loads(json.dumps(cfg))
     target.write_text(json.dumps(to_write, ensure_ascii=False, indent=2) + "\n")
     print(msg(cfg, "init.written", path=target))
+    root = contract(expand(cfg["workspace"]["root"]))
+    print(msg(cfg, "init.propose_master", root=root))
+    if sys.stdin.isatty() and "--json" not in args:   # 02/11 (avvio del 17/10): la master si apre solo con un si'
+        if input(msg(cfg, "init.propose_master_ask") + " [y/N] ").strip().lower() in ("y", "yes", "s", "si", "sì"):
+            subprocess.run([str(HERE / "supervisor"), "launch", expand(cfg["workspace"]["root"])], check=False)
     return 0
 
 
@@ -1474,6 +1481,11 @@ def main(argv):
     if a == "init":
         return cmd_init(argv[1:])
     if a == "doctor":
+        if "--onboarding" in argv:   # 02/11: i cinque livelli dell'avvio
+            spec = importlib.util.spec_from_file_location("cm_onboarding", HERE / "cm-onboarding.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.main([x for x in argv[1:] if x != "--onboarding"])
         return cmd_doctor()
     cfg = load()
     if a == "--sh":

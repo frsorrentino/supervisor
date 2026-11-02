@@ -220,7 +220,9 @@
     "prove",
     "prova",
     "decisioni",
-    "decisione"
+    "decisione",
+    "prima_raccolta",
+    "prima_raccolta_azione"
   ],
   "slash": [
     "compact",
@@ -495,7 +497,7 @@
       "id": "s-8b3f6a1d47",
       "kind": "deadline",
       "key": "deadline:ledger-invoice-2026-09",
-      "text": "The ledger-api invoice is due on Friday",
+      "text": "ledger-api invoice due Friday",
       "at": 1789207180,
       "expires_at": 1789250380,
       "rank": 2,
@@ -505,7 +507,7 @@
       "id": "s-5d0e2f9c13",
       "kind": "cleanup",
       "key": "cleanup:paused:orbit-docs-*",
-      "text": "Two orbit-docs tasks paused for 5 days: close them?",
+      "text": "Two orbit-docs tasks paused: close them?",
       "at": 1789207190,
       "expires_at": 1789250390,
       "rank": 5,
@@ -515,7 +517,7 @@
       "id": "s-a41c7e2b90",
       "kind": "recurring",
       "key": "recurring:night-report",
-      "text": "Last night's report is ready: 3 projects done, 1 in part",
+      "text": "Last night's report is ready",
       "at": 1789207200,
       "expires_at": 1789250400,
       "rank": 6,

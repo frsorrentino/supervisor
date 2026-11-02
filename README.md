@@ -154,10 +154,29 @@ claude plugin marketplace add frsorrentino/supervisor
 claude plugin install supervisor@supervisor-dev --scope user
 S=~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor
 $S init --dry-run              # every value it would write, with its source, and what is missing
-$S init --yes --shim --shell   # writes the config; `supervisor` in ~/.local/bin; `claude` opens a named tab
+$S init --yes --shim --shell --cron --tmux   # the config; `supervisor` in ~/.local/bin; `claude` opens a named tab
 supervisor doctor              # PASS, INFO, WARN or FAIL, with the fix on each line
-supervisor launch ~/projects/x --create   # your first session, in its own tab
+supervisor launch ~/projects   # the master: one session on your main folder, left open
+supervisor prima-raccolta      # fills every section now, with real data; no model call, no cost
 ```
+
+**The master** receives the phone's messages, the sessions' questions, the night's
+work and the recap, so leave it open. `supervisor prima-raccolta` gathers once what
+the cron would take days to gather; it runs by itself at the first pairing. It reads
+your past sessions only if you say yes, once, and the data stays on your machine. A
+section left empty says why and when it fills. The master's first round uses your
+quota: the phone says so first, and it starts with a touch.
+
+The master takes you through five levels, one at a time. Stop at any of them;
+`supervisor doctor --onboarding` shows where you are, from the real state.
+
+| Level | You get | About |
+|---|---|---|
+| 1. From the computer | The master opens and instructs a session | 5 min |
+| 2. From the phone, at home | The web app on your Wi-Fi, no Firebase | 5 min |
+| 3. From the phone, anywhere | Your own Firebase project, notifications, the app | 30 min |
+| 4. From the wrist | The Wear OS app, tile and complications | 10 min |
+| 5. While you sleep | The night queue, the morning report | 5 min |
 
 Claude Code 2.1.275 or newer can also do the install from inside a session:
 `/plugin install supervisor --marketplace frsorrentino/supervisor`. To undo

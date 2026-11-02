@@ -74,7 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1283,6 +1283,7 @@ def collect_sources(now=None):
         "plugins": plugins_summary(),   # 1.95
         "home_order": home_order_read(),   # 1.97
         **decisions_summary(), "heads_up": heads_up_seen(rows, now),   # 1.99
+        "prima_raccolta": raccolta_summary(),   # 1.100
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},
@@ -2808,6 +2809,7 @@ def pair(timeout=None, text=False, add=False):
                                 pass
                     shown = ", ".join(f"{d['name']} (uid {u})" for u, d in devices.items())
                     print(M("relay.pair_ok", devices=shown, path=str(C.key_path(rdir()))))
+                    raccolta_after_pair()
                     log(f"pair: ok su /pair/{'<code>' if node == code else '<id>'}: {shown}")
                     paired = True
                     return 0
@@ -2901,7 +2903,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 def in_order(cmds):
@@ -3022,6 +3024,25 @@ def handle_cmd(cid, doc, done, arrived=None):
 
 
 EXEC_LOCK = threading.Lock()   # 1.35: i comandi dal bus e quelli dell'API locale, uno alla volta come prima
+
+
+def raccolta_summary():
+    """1.100: il blocco piccolo della prima raccolta. Un extra: mai bloccare la push."""
+    try:
+        return _load("cm-raccolta").summary()
+    except Exception:   # noqa: BLE001
+        return None
+
+
+def raccolta_after_pair():
+    """1.100: al primo abbinamento parte la raccolta, se non e' mai partita: la home e' piena quando il telefono si apre."""
+    if (Path(cm.expand(CFG["state_dir"])) / "prima-raccolta.json").exists():
+        return
+    try:
+        subprocess.Popen([CM_BIN, "prima-raccolta", "--json"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
+        log(f"prima-raccolta dopo il pairing FAILED: {e}")
 
 
 def run_cmd(cmd, arrived=None):

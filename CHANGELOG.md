@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.93 — 2026-11-02: the start at full speed (contract 1.100).**
+  - `supervisor prima-raccolta` gathers once what the cron would take days to gather: machine, other machines, quota, plugins and skills, projects, sessions, suggestions. No model call, low priority, resumes after an interruption; it runs by itself at the first pairing. Past sessions only with a yes, asked once. An empty section says why and when it fills.
+  - The master's first round says its cost first and starts only from a touch, once (ops `prima_raccolta`, `prima_raccolta_azione`).
+  - `doctor --onboarding` shows the five setup levels from the real state; the master gets the setup script only while a level is open; `init` proposes the master, and the single install line with `--cron --tmux` now also writes the config.
+  - `task prova` lists the screens the app can open. The six result samples of 1.99 now carry `at`, as the relay always sent it.
 - **0.8.92 — 2026-11-01: decide less and better: tests by version, decisions by cause, oks that say what they leave open (contract 1.99).**
   - `task prova` writes a test for a build; a touch on a paired device confirms it (op `prova`), and when all are ok the task closes with its check. A red check leaves it open, says so and spends no attempt. No command confirms a test.
   - `task decisioni` groups what waits for the person by `--cause` or by the words of the pause, with how many tasks each group unblocks and whether it can be done from here; op `decisione` adds «not now» and «drop it» with the reason.

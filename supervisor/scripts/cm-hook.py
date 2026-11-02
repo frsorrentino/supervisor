@@ -172,6 +172,18 @@ def recent_recap(p):
     return f"{head} ({rel}):\n" + "\n".join(rows[-n:])
 
 
+def onboarding_block(p):
+    if p.get("source", "startup") not in ("startup", "clear", "") or my_tmux_name() != str((CFG.get("workspace") or {}).get("root_session_name") or "master"):
+        return ""
+    try:
+        spec = importlib.util.spec_from_file_location("cm_onboarding", HERE / "cm-onboarding.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.block()
+    except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
+        return ""
+
+
 def kernel_text(p):
     if not CFG["hooks"]["session_kernel"]["enabled"]:
         return ""
@@ -439,6 +451,9 @@ def main(argv):
         r = recent_recap(p)
         if r:
             sys.stdout.write(r + "\n")
+        o = onboarding_block(p)   # 02/11: il copione dell'avvio, solo alla master e solo se serve
+        if o:
+            sys.stdout.write(o + "\n")
         c = commitments_block()   # P2: a ogni giro di regia, dal registro
         if c:
             sys.stdout.write(c + "\n")

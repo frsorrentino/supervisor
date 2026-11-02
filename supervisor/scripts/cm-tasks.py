@@ -67,6 +67,9 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
 
 Fase A del programma del 01/11 (contratto 1.99):
   supervisor task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]
+                                SCHERMATA con «Portami lì» nell'app: queue, box-aspetta, box-lavoro, box-esiti, lavori, launch, night, search, settings, homeorder, usage, home;
+                                le altre si scrivono ma non portano li'. Dal web si puo' dare ok anche a una build Android
+                                (il device resta nel registro): una prova che vale solo sul telefono lo dice in --fai
                                                 una prova per la persona, scritta da chi fa la release: mai credenziali ne' URL
                                                 privati. Una build nuova ritira le prove di prima del compito; stessa build,
                                                 dove e fai sostituisce. L'esito nasce solo da un tocco sul dispositivo (op prova)
@@ -1353,7 +1356,8 @@ def main(argv):
     if verb == "prova":
         build, dove, fai, atteso, by = _opt(args, "--build"), _opt(args, "--dove"), _opt(args, "--fai"), _opt(args, "--atteso"), _opt(args, "--by")
         if len(args) != 1 or not (build and dove and fai and atteso):
-            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]")
+            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]\n"
+                     "SCHERMATA con «Portami lì» nell'app: queue, box-aspetta, box-lavoro, box-esiti, lavori, launch, night, search, settings, homeorder, usage, home; una prova che vale solo sul telefono lo dice in --fai")
         print(prova_add(con, args[0], build, dove, fai, atteso, by))
         return 0
     if verb == "prove":
