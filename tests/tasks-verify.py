@@ -239,8 +239,11 @@ rc, out, err = cm("done", "o2")
 T.check("T11 done refuses a check that does not touch the outcome: exit 3, state unchanged, no result, no attempt",
         rc == 3 and "does not touch the outcome" in err and show("o2")["state"] == "running" and show("o2")["results"] == [], err)
 # auto_close_salta (02/11/2026, chiusi alle 03:38 tre compiti approvati a lavoro non fatto): verde il controllo, nessun lavoro
-for _t in ("as_never", "as_paused", "as_ok", "as_worked", "as_resumed"):
+for _t in ("as_never", "as_paused", "as_ok", "as_worked", "as_resumed", "as_ext", "as_extnone"):
     add(contract(_t))
+cm("start", "as_ext")
+cm("pause", "as_ext", "--reason", "Google deve approvare", "--waits", "external")
+cm("pause", "as_extnone", "--reason", "Google deve approvare", "--waits", "external")
 cm("start", "as_paused")
 cm("pause", "as_paused", "--reason", "in coda nel programma")
 cm("wait-ok", "as_ok", "--what", "x", "--where", "y")
@@ -266,6 +269,8 @@ T.check("auto_close_salta a paused task stays paused, with a green check", show(
 T.check("auto_close_salta an ok of the person with no work recorded does not close", show("as_ok")["state"] == "approved" and "as_ok" not in _as, out + err)
 T.check("auto_close_salta a step of work still closes", show("as_worked")["state"] == "done" and _as.get("as_worked") is True, out + err)
 T.check("auto_close_salta started, then an ok: the start stays written, it closes", show("as_startok")["state"] == "done", out + err)
+T.check("auto_close_salta auto_close_esterne a pause on an external event, with work: closes when the check says it arrived", show("as_ext")["state"] == "done" and _as.get("as_ext") is True, out + err)
+T.check("auto_close_salta auto_close_esterne a pause on an external event with no work stays open", show("as_extnone")["state"] != "done" and "as_extnone" not in _as, out + err)
 T.check("auto_close_salta a started task resumed from a pause still closes", show("as_resumed")["state"] == "done" and _as.get("as_resumed") is True, out + err)
 rc, out, err = cm("done", "as_never")
 T.check("auto_close_salta `task done` by hand is unchanged: the session's own closure still works", show("as_never")["state"] == "done", out + err)

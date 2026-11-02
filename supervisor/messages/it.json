@@ -1187,5 +1187,21 @@
   "onboarding.all_done": "nessuno",
   "onboarding.differs": "Impostazione diversa da quella iniziale: {key} = {value} (iniziale {default}). Non si cambia da sola.",
   "onboarding.never_master": "INFO Nessuna master aperta finora: supervisor launch {root}",
-  "onboarding.block_status": "Stato dell'avvio ({mode}): {rows}. Prossimo livello: {next}."
+  "onboarding.block_status": "Stato dell'avvio ({mode}): {rows}. Prossimo livello: {next}.",
+  "seguiti.no_item": "non c'è: {item}",
+  "seguiti.rimasto_ok": "{item}: segnata allineata a questa versione",
+  "seguiti.allinea_title": "{product}: allinea {title}",
+  "seguiti.allinea_expected": "{where} allineato al codice di adesso",
+  "seguiti.allinea_plan": "Il codice è cambiato ({paths}) e {where} è rimasto indietro. Allinealo, poi supervisor rimasto ok. Nato da un tocco su «Allinea».",
+  "seguiti.allinea_talk": "Compito {task}: allinea {key}, è rimasto indietro. Leggilo con supervisor task show.",
+  "seguiti.altrove_none": "nessun positivo: niente da correggere",
+  "seguiti.altrove_title": "{text}: correzione su {n} cartelle",
+  "seguiti.altrove_expected": "Il rivelatore non trova più: {text}",
+  "seguiti.altrove_plan": "Stesso difetto altrove: {text}. Correzione proposta: {fix}. Dove: {targets}.",
+  "seguiti.altrove_untested": "la correzione stessa: il rivelatore ha solo letto",
+  "seguiti.altrove_control": "il rivelatore su una cartella vuota dà «{outcome}»: serve negativo, altrimenti non dimostra niente",
+  "seguiti.altrove_result": "{n} positivi su {total}, {errors} errori (non contano come negativi). Giro {id}.",
+  "seguiti.remind_prompt": "Promemoria scattato: {text}. Di' alla persona cosa c'è da fare.",
+  "seguiti.remind_removed": "promemoria tolto",
+  "seguiti.action_bad": "seguiti_azione: action ok, allinea o remind_remove"
 }

@@ -628,7 +628,8 @@ def auto_close(con, hours=AUTO_CLOSE_H):
             continue
         # 02/11 (chiusi alle 03:38 tre compiti approvati a lavoro non fatto): un controllo verde non dice che il lavoro c'e'.
         # Una pausa ferma il compito; un ok della persona non e' lavoro. `task done` a mano resta com'era.
-        if con.execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL", (r["id"],)).fetchone() or not ever_worked(con, r["id"]):
+        # Una pausa --waits external resta chiudibile: e' il controllo a dire che l'evento e' arrivato.
+        if con.execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL AND COALESCE(waits, '') != 'external'", (r["id"],)).fetchone() or not ever_worked(con, r["id"]):
             continue
         rc, _ = run_check(task)
         if rc == 0:

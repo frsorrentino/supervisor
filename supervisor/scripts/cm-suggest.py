@@ -46,9 +46,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-KINDS = ("recurring", "cleanup", "deadline", "quota", "choice", "followup", "unsaved", "waiting", "idea", "proposal", "observe")
+KINDS = ("recurring", "cleanup", "deadline", "quota", "choice", "followup", "unsaved", "waiting", "idea", "proposal", "observe", "reminder")
 SCRIPT_KINDS = ("followup", "unsaved", "waiting", "observe")   # 1.88: i tipi che scrive `fill`; 1.94: observe
-RANK_OF = {"deadline": 2, "choice": 2, "followup": 4, "unsaved": 4, "quota": 5, "waiting": 5, "observe": 5,
+RANK_OF = {"reminder": 1, "deadline": 2, "choice": 2, "followup": 4, "unsaved": 4, "quota": 5, "waiting": 5, "observe": 5,
            "proposal": 6, "idea": 6, "recurring": 6, "cleanup": 6}
 RANK_NONE = 5   # una voce senza rank (scritta prima della 1.88)
 SOURCES = ("script", "master")
@@ -436,6 +436,12 @@ def fill(now=None, state=None, commitments=None):
     """Un passaggio dello script orario: {added, updated, kept, resolved, expired}, o None senza lo stato del relay
     (niente cambia: una voce non si toglie per mancanza di dati). Il file si riscrive solo se cambia qualcosa."""
     now = int(now or time.time())
+    try:   # 1.102: promemoria e cose rimaste indietro, ogni ora, anche senza lo stato del relay
+        seg = _load("cm-seguiti")
+        seg.remind_tick(now)
+        seg.rimasto_rows()
+    except Exception:   # noqa: BLE001 — un extra: mai fermare il giro dei suggerimenti
+        pass
     state = read_state() if state is None else state
     if state is None:
         return None
@@ -460,7 +466,7 @@ def fill(now=None, state=None, commitments=None):
     keys = {w[1] for w in want}
     untouched = set() if commitments is not None else {"waiting"}
     for x in [x for x in d["items"] if source_of(x) == "script" and x.get("key") not in keys and x.get("kind") not in untouched
-              and not str(x.get("key") or "").startswith("raccolta:")]:   # 02/11: i seguiti della prima raccolta scadono da soli
+              and not str(x.get("key") or "").startswith(("raccolta:", "remind:"))]:   # 02/11: i seguiti della prima raccolta scadono da soli
         d["items"].remove(x)
         close(d, x, "resolved", now, rows)
         stats["resolved"] += 1

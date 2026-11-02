@@ -644,6 +644,16 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.102 (02/11/2026, phase B of the approved program: what stays outside). Additive, `v` stays 1.
+
+- **`state.seguiti`**: `{rimasto, altrove, promemoria}`, three counts: items behind, positives with no task yet, reminders waiting. Absent when all zero. The count of items behind comes from the hourly `suggest fill`.
+- **op `seguiti`** (a passive read): `{at, rimasto, altrove, promemoria, promemoria_scattati}`. `rimasto[]`: `{product, key, title, where, stale, why, session, aligned_version, aligned_at, task}`; `stale` true, false, or null when it cannot be known (`why`: `no_git`, `no_project`, `check_timeout`); `why` `paths:N` or `check`. `altrove[]`: `{id, text, complete, at, total, done, positive, errors, running, task}`: an error is never a negative, and a partial run does not replace a complete one (`running` says one is under way). `promemoria[]`: `{id, text, created_at, expires_at, at_time}`. `promemoria_scattati[]`: `{id, text, outcome, at}`, `outcome` `fired` or `expired`.
+- **op `seguiti_azione`**, only a touch (`device`): `action` `allinea` with `product` and `key` (opens a task for the item's session, whose id is the result's text), `ok` with `product` and `key` («Va bene così»: aligned with this version), `remind_remove` with `key`.
+- **Reminders.** A fired one is a `suggestions[]` entry of the new kind `reminder`, key `remind:<id>`, accepted as any other: its prompt reaches the master only on Accept. Event `reminder` once: `title` the text, `ref` the suggestion's id.
+- The dictated reminder goes to the master, which runs `supervisor remind add`. A fix found by `altrove` goes through `altrove card`, one task awaiting the ok.
+
+Fixture: `state-3-stale.json`, `cmd-result-sample.json`.
+
 Contract 1.101 (02/11/2026, reported by the maintainer: a card saying only «Do you want to proceed?»). Additive, `v` stays 1.
 
 - **`sessions[].question`, `kind: "permission"`**: `what`, one line (at most 200 characters) saying what is approved, the

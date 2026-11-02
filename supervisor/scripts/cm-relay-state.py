@@ -782,6 +782,9 @@ def build_state(src, now, fit=True):
     # 1.100: la prima raccolta; l'elenco delle sezioni sta nell'op prima_raccolta
     if src.get("prima_raccolta"):
         state["prima_raccolta"] = dict(src["prima_raccolta"])
+    # 1.102: i tre numeri della fase B; le liste stanno nell'op seguiti
+    if src.get("seguiti"):
+        state["seguiti"] = dict(src["seguiti"])
     # 1.33: le azioni ricorrenti della master (box «Ricorrenti»); senza lista il campo manca e l'app non mostra il box
     if src.get("recurring"):
         state["recurring"] = [dict(x) for x in src["recurring"]][:8]
@@ -1026,6 +1029,7 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
     out = []
     pv, cv = _by_name(prev), _by_name(cur)
     ts = int(now)
+    seen_sug = {x.get("id") for x in prev.get("suggestions") or []} if prev else None
 
     def add(kind, s, title, body, ref=None):
         nonlocal seq
@@ -1033,6 +1037,11 @@ def events_between(prev, cur, now, seq=1, warn_pct=95):
                     "account": s["account"] if s else None, "ts": ts, "title": title, "body": body, "ref": ref,
                     **preview_of(title, body), **({"quiet": True} if s and s.get("at_pc") else {})})   # 1.62
         seq += 1
+    # 1.102: un promemoria scattato si notifica una volta; al primo stato niente, non si sa cosa c'era prima
+    if seen_sug is not None:
+        for x in cur.get("suggestions") or []:
+            if x.get("kind") == "reminder" and x.get("id") not in seen_sug:
+                add("reminder", None, x.get("text") or "", "", x.get("id"))
     for name, s in cv.items():
         p = pv.get(name)
         if p is None and s["state"] != "gone":

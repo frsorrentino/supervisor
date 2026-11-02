@@ -1530,6 +1530,27 @@ def _tasks_read(fn):
         con.close()
 
 
+def seguiti_azione(cmd):
+    """1.102: «Allinea» e «Va bene così» su una voce rimasta indietro, «Togli» su un promemoria. Solo da un tocco."""
+    why = _touch_refused(cmd, "seguiti_azione")
+    if why:
+        return False, why
+    sg = _load("cm-seguiti")
+    action, product, key = str(cmd.get("action") or ""), str(cmd.get("product") or ""), str(cmd.get("key") or "")
+    if action == "ok":
+        return sg.rimasto_ok(product, key)
+    if action == "allinea":
+        ok, got = sg.rimasto_allinea(product, key)
+        if not ok:
+            return False, got
+        session = next((r.get("session") for r in sg.rimasto_rows(save=False) if (r["product"], r["key"]) == (product, key)), None)
+        relay_talk(session or str((CFG.get("workspace") or {}).get("root_session_name") or "master"), M("seguiti.allinea_talk", task=got, key=key), "--no-wait")
+        return True, got
+    if action == "remind_remove":
+        return (True, M("seguiti.remind_removed")) if sg.remind_remove(key) else (False, M("seguiti.no_item", item=key))
+    return False, M("seguiti.action_bad")
+
+
 def raccolta_azione(cmd):
     """1.100: start, consent {value: si|no}, first_round. Il consenso e il primo giro, che consuma quota, solo da un tocco."""
     why = _touch_refused(cmd, "prima_raccolta_azione")
@@ -2093,6 +2114,10 @@ def execute(cmd):
             return decisioni_op()
         if op == "decisione":   # 1.99
             return decisione_op(cmd, arg)
+        if op == "seguiti":   # 1.102
+            return True, json.dumps(_load("cm-seguiti").view(), ensure_ascii=False)
+        if op == "seguiti_azione":   # 1.102
+            return seguiti_azione(cmd)
         if op == "prima_raccolta":   # 1.100
             return True, json.dumps(_load("cm-raccolta").view(), ensure_ascii=False)
         if op == "prima_raccolta_azione":   # 1.100

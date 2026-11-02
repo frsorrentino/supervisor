@@ -286,9 +286,9 @@ DEV_SRC = {"devices": {"phoneUid00000000000000000000": {"name": "Pixel 9", "pair
            "seen": {"phoneUid00000000000000000000": 1789210790.0, "watchUid0000000000000000000": 1789210500.4,
                     "tabletUid0000000000000000000": 1789209000.0, "crbookUid0000000000000000000": 1789190000.0}}
 # 1.33: le azioni ricorrenti della master, gia' in ordine (l'ultima usata in cima), una con param
-DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on X", "prompt": "Review this week's posts on X and suggest replies", "param": False},
+DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on X", "prompt": "Review this week's posts on X", "param": False},
                         {"id": "release-changelog", "label": "Changelog of a release", "prompt": "Write the changelog of release", "param": True},
-                        {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Sum up what competing plugins shipped", "param": False}]
+                        {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Competing plugins", "param": False}]
 SRC1.update(DEV_SRC)
 SRC1["suggestions"] = []   # 1.84: nessun suggerimento; orbit-docs chiusa dal PC porta closed {at, session_id}
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
@@ -403,6 +403,7 @@ SRC3.update(DEV_SRC)
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
 SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
 SRC3["prima_raccolta"] = F3["prima_raccolta"]   # 1.100
+SRC3["seguiti"] = F3["seguiti"]   # 1.102
 SRC3["commitments"] = F3["commitments"]   # 1.76
 SRC3["system"] = F3["system"]   # 1.90
 SRC3["plugins"] = F3["plugins"]   # 1.95
@@ -1685,7 +1686,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-17:-14] == ["suggestion", "close_preview", "close"] and all(s["ops"][-17:-14] == R_OPS[-17:-14] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-19:-16] == ["suggestion", "close_preview", "close"] and all(s["ops"][-19:-16] == R_OPS[-19:-16] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3605,7 +3606,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-20] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-22] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3634,7 +3635,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-19] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-19:-17] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-21] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-21:-19] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4182,7 +4183,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-8] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-10] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

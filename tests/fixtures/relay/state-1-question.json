@@ -381,7 +381,9 @@
     "decisioni",
     "decisione",
     "prima_raccolta",
-    "prima_raccolta_azione"
+    "prima_raccolta_azione",
+    "seguiti",
+    "seguiti_azione"
   ],
   "slash": [
     "compact",
@@ -442,7 +444,7 @@
     {
       "id": "x-posts",
       "label": "Review this week's posts on X",
-      "prompt": "Review this week's posts on X and suggest replies",
+      "prompt": "Review this week's posts on X",
       "param": false
     },
     {
@@ -454,7 +456,7 @@
     {
       "id": "plugin-rivals",
       "label": "What competing plugins shipped",
-      "prompt": "Sum up what competing plugins shipped",
+      "prompt": "Competing plugins",
       "param": false
     }
   ],

@@ -39,6 +39,9 @@ unported() {  # <cmd> <fase> <equivalente legacy>
 case "$cmd" in
   init)     exec python3 "$S/cm-config.py" init "$@" ;;
   doctor)   exec python3 "$S/cm-config.py" doctor "$@" ;;
+  rimasto|behind)         exec python3 "$S/cm-seguiti.py" rimasto "$@" ;;   # 02/11 (1.102): quello che il codice ha lasciato indietro
+  altrove|elsewhere)      exec python3 "$S/cm-seguiti.py" altrove "$@" ;;   # 02/11 (1.102): lo stesso difetto altrove, in sola lettura
+  remind|ricorda)         exec python3 "$S/cm-seguiti.py" remind "$@" ;;    # 02/11 (1.102): un promemoria scatta una volta
   prima-raccolta|first-collection) exec python3 "$S/cm-raccolta.py" "$@" ;;   # 02/11 (1.100): una volta sola, quello che aspetta il cron
   config)   # config [--sh|--get KEY|--path|--dump-defaults]
             [ $# -gt 0 ] || set -- --path

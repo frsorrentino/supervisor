@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.96 — 2026-11-02: what stays outside the code (contract 1.102).**
+  - `supervisor rimasto`: for each product, what depends on the code (demo, store page, site, README); after a release you see what went stale, with «Allinea» and «Va bene così».
+  - `supervisor altrove`: the same defect elsewhere, read-only, resumable, in batches. A detector positive on an empty folder is refused, an error never counts as negative, and a partial run does not replace a complete one. A fix goes through one card with the ok.
+  - `task auto-close` closes again a started task paused with `--waits external` when its check is green: the check is what says the event arrived.
+  - `supervisor remind`: a reminder fires once and goes, checked hourly by `suggest fill`; its prompt runs only on Accept.
 - **0.8.95 — 2026-11-02: auto-close no longer closes work that was not done.**
   - `task auto-close` skips a paused task and one with no trace of work (no `task start`, step, test or result): a green check does not prove the work exists, and an ok of the person is not work. `task start` now leaves a trace. `task done` by hand is unchanged.
 - **0.8.94 — 2026-11-02: a permission card says what you approve (contract 1.101).**

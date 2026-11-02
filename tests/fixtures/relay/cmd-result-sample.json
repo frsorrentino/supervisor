@@ -1049,6 +1049,49 @@
       "op": "prima_raccolta_azione",
       "action": "first_round",
       "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0909-4000-8000-0000000000909",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti"
+    },
+    {
+      "id": "6f1c2d3e-0910-4000-8000-0000000000910",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "allinea",
+      "product": "atlas-shop",
+      "key": "demo",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0911-4000-8000-0000000000911",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "ok",
+      "product": "atlas-shop",
+      "key": "demo",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0912-4000-8000-0000000000912",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "remind_remove",
+      "key": "7f3e1a20",
+      "device": "phone"
     }
   ],
   "result": [
@@ -1733,6 +1776,30 @@
       "id": "6f1c2d3e-0908-4000-8000-0000000000908",
       "ok": true,
       "text": "first round sent to the master",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0909-4000-8000-0000000000909",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"rimasto\": [{\"product\": \"atlas-shop\", \"key\": \"demo\", \"title\": \"Site demo\", \"where\": \"the demo on the site\", \"stale\": true, \"why\": \"paths:3\", \"session\": \"atlas-shop\", \"aligned_version\": \"v2.3.0\", \"aligned_at\": 1789100000, \"task\": null}], \"altrove\": [{\"id\": \"a81c55e20b\", \"text\": \"Public dumps in the web root\", \"complete\": true, \"at\": 1789214000, \"total\": 12, \"done\": 12, \"positive\": [\"personal/atlas-shop\"], \"errors\": [], \"running\": false, \"task\": null}], \"promemoria\": [{\"id\": \"7f3e1a20\", \"text\": \"When the store approves, the amber icon\", \"created_at\": 1789200000, \"expires_at\": null, \"at_time\": null}], \"promemoria_scattati\": [{\"id\": \"1b2c3d4e\", \"text\": \"Renew the certificate\", \"outcome\": \"fired\", \"at\": 1789210000}]}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0910-4000-8000-0000000000910",
+      "ok": true,
+      "text": "allinea-atlas-shop-demo-02-11",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0911-4000-8000-0000000000911",
+      "ok": true,
+      "text": "demo: marked aligned with this version",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0912-4000-8000-0000000000912",
+      "ok": true,
+      "text": "reminder removed",
       "at": 1789214706
     }
   ]

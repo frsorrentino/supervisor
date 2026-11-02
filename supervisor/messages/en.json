@@ -1187,5 +1187,21 @@
   "onboarding.all_done": "none",
   "onboarding.differs": "Setting different from the initial one: {key} = {value} (initial {default}). It does not change by itself.",
   "onboarding.never_master": "INFO No master opened so far: supervisor launch {root}",
-  "onboarding.block_status": "Setup state ({mode}): {rows}. Next level: {next}."
+  "onboarding.block_status": "Setup state ({mode}): {rows}. Next level: {next}.",
+  "seguiti.no_item": "not found: {item}",
+  "seguiti.rimasto_ok": "{item}: marked aligned with this version",
+  "seguiti.allinea_title": "{product}: align {title}",
+  "seguiti.allinea_expected": "{where} aligned with the code of now",
+  "seguiti.allinea_plan": "The code changed ({paths}) and {where} stayed behind. Align it, then supervisor rimasto ok. Born from a touch on «Align».",
+  "seguiti.allinea_talk": "Task {task}: align {key}, it stayed behind. Read it with supervisor task show.",
+  "seguiti.altrove_none": "no positive: nothing to fix",
+  "seguiti.altrove_title": "{text}: fix on {n} folders",
+  "seguiti.altrove_expected": "The detector no longer finds: {text}",
+  "seguiti.altrove_plan": "Same defect elsewhere: {text}. Proposed fix: {fix}. Where: {targets}.",
+  "seguiti.altrove_untested": "the fix itself: the detector only read",
+  "seguiti.altrove_control": "the detector on an empty folder gives «{outcome}»: it must be negative, or it proves nothing",
+  "seguiti.altrove_result": "{n} positive of {total}, {errors} errors (not counted as negative). Run {id}.",
+  "seguiti.remind_prompt": "Reminder fired: {text}. Tell the person what there is to do.",
+  "seguiti.remind_removed": "reminder removed",
+  "seguiti.action_bad": "seguiti_azione: action ok, allinea or remind_remove"
 }
