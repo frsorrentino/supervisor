@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.104 (02/11/2026, reported by the maintainer: a card saying only «aspetta l'ok» does not say what was proposed). Additive, `v` stays 1.
+
+- **op `decisioni`, every `items[]`**: `title`, the task's whole title, `plan_start`, the start of its plan (at most 300 characters, cut at a word), both through the preview mask and null with no task; `asks`: `ok`, `choice`, `pc` (an action at the PC), `other`, so the app picks the right button. For a card it comes from the request, otherwise from the words of the pause.
+
+Fixture: `cmd-result-sample.json`.
+
 Contract 1.103 (02/11/2026, phase C of the approved program: the accounts). Additive, `v` stays 1; nothing new in `/state`.
 
 - **op `conti`** (a passive read): `arg` the month `YYYY-MM` (none: this month), `project` optional, the client whose detail is wanted. `{at, mese, mesi, clienti, dettaglio, pagella}`. `clienti[]`: `{project, name, n, draft_at}`, one per folder with closed tasks in the month. `dettaglio`, null without `project`: `{project, name, mese, measured{tasks, commits, releases}, tasks[{task, title, at, outcome_kind}], commits[{hash, at, subject}], commits_more, releases[{tag, at}], git}`. No hours: only what is measured. `pagella`: `{since, min, rows[{model, kind, n, enough, defects, rate, efforts}], advice[{kind, better, worse, rate_better, rate_worse}], unknown_model}`. With `enough` false, `defects` and `rate` are null: no numbers under `min` (10) cases. `advice` only with a real difference on the same kind of work. It starts from the release; closures with no known model only count in `unknown_model`.

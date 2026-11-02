@@ -43,6 +43,7 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
   supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
   supervisor task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]
                        [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui]
+                                                con --waits person il motivo dice in parole cosa si chiede alla persona, mai solo «aspetta l'ok»: la card lo mostra
                                                 1.99: --cause la stessa causa per piu' compiti (senza, vale il testo della
                                                 pausa); --al-pc / --da-qui dove si puo' fare (senza, dalle parole del motivo)
                                                 «salvo altre priorita'», visibile, mai in allarme; --waits person = la pausa
@@ -997,6 +998,28 @@ def _needs_you_open(now_):
     return out
 
 
+PLAN_START = 300
+ASK_OK = re.compile(r"(?i)\b(ok|okay|approv\w+|conferm\w+|via libera)\b")
+ASK_CHOICE = re.compile(r"(?i)\b(scelt\w+|scegli\w*|choice|choose|quale|which)\b")
+
+
+def explain(con_task, raw_title, mask):
+    """1.104 (la persona, 02/11 08:04: «non ricordo cosa era stato proposto»): {title, plan_start} dalla maschera, senza modello."""
+    plan = " ".join(str(con_task.get("plan") or "").split())
+    if len(plan) > PLAN_START:
+        cut = plan[:PLAN_START]
+        plan = cut[:cut.rfind(" ")] if " " in cut else cut
+    return {"title": mask(raw_title or ""), "plan_start": mask(plan) or None}
+
+
+def asks_of(where, text):
+    """Cosa aspetta la voce: pc (un'azione al PC), choice, ok, altrimenti other. Dalle sue parole, come «al PC»."""
+    if where == "pc":
+        return "pc"
+    t = str(text or "")
+    return "choice" if ASK_CHOICE.search(t) else "ok" if ASK_OK.search(t) else "other"
+
+
 def decisions(con, now_=None, snoozed=False):
     """Cinque minuti: cio' che aspetta la persona, per causa. Una voce per pausa con waits person, per ok da dare, per
     needs-you. La chiave del gruppo e' --cause, altrimenti il testo; un ok fa gruppo da solo. Peso = i compiti che sblocca:
@@ -1004,6 +1027,10 @@ def decisions(con, now_=None, snoozed=False):
     now_ = int(now_ or now())
     rows = {r["id"]: r for r in con.execute("SELECT * FROM tasks WHERE state IN (%s)" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall()}
     contracts = {k: _contract_task(r) for k, r in rows.items()}
+    try:
+        mask = _load("cm-relay-state").redact_preview
+    except Exception:   # noqa: BLE001 — senza maschera il piano non esce
+        mask = lambda _x: ""  # noqa: E731
     deps = {}
     for k, t in contracts.items():
         for d in t.get("depends_on") or []:
@@ -1011,10 +1038,10 @@ def decisions(con, now_=None, snoozed=False):
     items = []
     for tid, r in rows.items():
         t = contracts[tid]
-        base = {"task": tid, "short": short_of(t), "title": r["title"], "session": r["session"] or (t.get("where") or {}).get("session"), "project": r["project"]}
+        base = {"task": tid, "short": short_of(t), **explain(t, r["title"], mask), "session": r["session"] or (t.get("where") or {}).get("session"), "project": r["project"]}
         if r["state"] == "awaiting_ok":
             a = con.execute("SELECT * FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
-            items.append((("o", tid), None, dict(base, kind="ok", what=a["what"] if a else None, where_to=a["where_"] if a else None,
+            items.append((("o", tid), None, dict(base, kind="ok", asks="choice" if a and a["options"] else "ok", what=a["what"] if a else None, where_to=a["where_"] if a else None,
                                                  options=json.loads(a["options"]) if a and a["options"] else None, since=int(a["at"]) if a else int(r["updated_at"]),
                                                  where="here", untested=a["untested"] if a else None, undo=a["undo"] if a else None, undo_how=a["undo_how"] if a else None,
                                                  precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None)))
@@ -1022,7 +1049,7 @@ def decisions(con, now_=None, snoozed=False):
         pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         if pz and pz["waits"] == "person" and not prove_pending(con, tid):
             key = ("c", pz["cause"]) if pz["cause"] else ("t", pz["reason"])
-            items.append((key, pz["cause"], dict(base, kind="pause", reason=pz["reason"], since=int(pz["since"] or pz["at"]), where=_at_pc(pz["at_pc"], pz["reason"]),
+            items.append((key, pz["cause"], dict(base, kind="pause", asks=asks_of(_at_pc(pz["at_pc"], pz["reason"]), pz["reason"]), reason=pz["reason"], since=int(pz["since"] or pz["at"]), where=_at_pc(pz["at_pc"], pz["reason"]),
                                                  undo=pz["undo"], undo_how=pz["undo_how"], needs_you=None)))
     by_task = {it[2]["task"]: it[2] for it in items}
     for rec in _needs_you_open(now_):
@@ -1030,7 +1057,9 @@ def decisions(con, now_=None, snoozed=False):
         if tid in by_task:
             by_task[tid]["needs_you"] = reason
             continue
-        items.append((("n", f"{rec.get('name')} {reason}"), None, {"kind": "needs_you", "task": tid if tid in rows else None, "session": rec.get("name"), "reason": reason,
+        known = rows.get(tid)
+        items.append((("n", f"{rec.get('name')} {reason}"), None, {"kind": "needs_you", **(explain(contracts[tid], known["title"], mask) if known else {"title": None, "plan_start": None}),
+                                                                  "asks": asks_of(_at_pc(None, reason), reason), "task": tid if tid in rows else None, "session": rec.get("name"), "reason": reason,
                                                                   "since": int(rec.get("at") or now_), "where": _at_pc(None, reason)}))
     groups = {}
     for key, cause, it in items:

@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.98 — 2026-11-02: a decision says what is proposed (contract 1.104).**
+  - Every item of `task decisioni` carries the task's whole title and the start of its plan, masked, and what it waits for: an ok, a choice or an action at the PC. Rule 12 and `task pause`: a pause for the person says in words what is asked.
 - **0.8.97 — 2026-11-02: the accounts (contract 1.103).**
   - `supervisor rendiconto` gathers closed tasks, commits and releases by client and month. The master writes the draft on request from a touch; nothing sends it, and there are no invented billable hours.
   - `task pagella`: per model and kind of work, how many «done» later had a defect, from a true `defect_of` link. Model and effort are recorded at closure. No numbers under 10 cases; advice only with a real difference.

@@ -49,8 +49,8 @@ def cm(*args, stdin=None, env=None):
     return T.cli_or_device(CLI, args, dict(ENV, **(env or {})), stdin)
 
 
-def add(tid, check="true", deps=(), session="sess", extra=()):
-    c = {"schema_version": 1, "task": {"id": tid, "title": f"unit {tid}", "plan": None,
+def add(tid, check="true", deps=(), session="sess", extra=(), plan=None, title=None):
+    c = {"schema_version": 1, "task": {"id": tid, "title": title or f"unit {tid}", "plan": plan,
                                        "where": {"project": str(proj), "session": session, "host": "local", "account": None},
                                        "check": {"cmd": check, "cwd": None, "timeout_s": 30}, "perimeter": ["src/**"], "lane": "open",
                                        "depends_on": [{"task": d, "passes": "x"} for d in deps], "route": "session", "hold": False,
@@ -528,4 +528,28 @@ RL.key = _kk
 T.check("foto_ruotata a photo with EXIF orientation comes out upright when recompressed", Image.open(BytesIO(_fit)).size == (20, 40), str(Image.open(BytesIO(_fit)).size))
 T.check("foto_ruotata a photo without EXIF keeps its shape", Image.open(BytesIO(_fit0)).size == (40, 20), "")
 
+# decisione_spiegata (02/11/2026, segnalazione): la card dice cosa si propone
+add("spieg", title="Feedback dalla app: raccoglierlo in un posto solo", plan="Proposta: spostare il feedback in un posto solo. TOKEN=abc123segreto " + "e poi molto altro " * 40)
+cm("pause", "spieg", "--reason", "Proposta del 28/10 22:22: aspetta l'ok del maintainer", "--waits", "person")
+add("spieg-s"); cm("pause", "spieg-s", "--reason", "Quale layout scegli per il checkout?", "--waits", "person")
+add("spieg-pc"); cm("pause", "spieg-pc", "--reason", "Serve il login sul pannello SiteGround", "--waits", "person")
+add("spieg-w"); cm("pause", "spieg-w", "--reason", "Manca la foto del prodotto", "--waits", "person")
+add("spieg-o", plan="Pubblica."); cm("wait-ok", "spieg-o", "--what", "pubblica", "--where", "qui")
+add("spieg-c"); cm("wait-ok", "spieg-c", "--what", "layout", "--where", "qui", "--options", "A|B")
+_dec = {i["task"]: i for g in json.loads(cm("decisioni", "--json")[1])["groups"] for i in g["items"] if i.get("task")}
+_sp = _dec["spieg"]
+T.check("decisione_spiegata the whole title and the start of the plan, beside the reason", _sp["title"] == "Feedback dalla app: raccoglierlo in un posto solo" and _sp["plan_start"].startswith("Proposta: spostare il feedback") and _sp["reason"].startswith("Proposta del 28/10"), str(_sp))
+T.check("decisione_spiegata through the mask", "abc123segreto" not in json.dumps(_dec, ensure_ascii=False), _sp["plan_start"])
+T.check("decisione_spiegata the plan cut at a word, within its limit", len(_sp["plan_start"]) <= 300 and _sp["plan_start"].endswith(("molto", "altro", "e", "poi")), _sp["plan_start"][-30:])
+T.check("decisione_spiegata no plan: null, nothing invented", _dec["spieg-s"]["plan_start"] is None, str(_dec["spieg-s"]))
+T.check("decisione_spiegata asks ok, choice, pc, other from a pause's words", (_sp["asks"], _dec["spieg-s"]["asks"], _dec["spieg-pc"]["asks"], _dec["spieg-w"]["asks"]) == ("ok", "choice", "pc", "other"), str([_dec[k]["asks"] for k in ("spieg", "spieg-s", "spieg-pc", "spieg-w")]))
+T.check("decisione_spiegata a card: ok, or choice with options", (_dec["spieg-o"]["asks"], _dec["spieg-c"]["asks"]) == ("ok", "choice") and _dec["spieg-o"]["plan_start"] == "Pubblica.", str(_dec["spieg-o"]))
+_ndc = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())
+_nr = {r["id"]: r for r in _ndc["result"]}
+_nd = next(json.loads(_nr[c["id"]]["text"]) for c in _ndc["cmd"] if c["op"] == "decisioni")
+T.check("decisione_spiegata the contract's sample carries the fields", all({"title", "plan_start", "asks"} <= set(i) for g in _nd["groups"] for i in g["items"]), "")
+for _lang in ("it", "en"):
+    _k = (T.ROOT / f"supervisor/kernel_{_lang}.md").read_text()
+    T.check(f"decisione_spiegata kernel ({_lang}) rule 12 asks a pause to say what it asks, under the cap", ("cosa chiedi" in _k or "what you ask" in _k) and len(_k) <= 3700, str(len(_k)))
+T.check("decisione_spiegata task pause's help says so", "mai solo «aspetta l'ok»" in cm("--help")[1], "")
 T.finish()
