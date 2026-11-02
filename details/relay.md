@@ -644,6 +644,13 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.103 (02/11/2026, phase C of the approved program: the accounts). Additive, `v` stays 1; nothing new in `/state`.
+
+- **op `conti`** (a passive read): `arg` the month `YYYY-MM` (none: this month), `project` optional, the client whose detail is wanted. `{at, mese, mesi, clienti, dettaglio, pagella}`. `clienti[]`: `{project, name, n, draft_at}`, one per folder with closed tasks in the month. `dettaglio`, null without `project`: `{project, name, mese, measured{tasks, commits, releases}, tasks[{task, title, at, outcome_kind}], commits[{hash, at, subject}], commits_more, releases[{tag, at}], git}`. No hours: only what is measured. `pagella`: `{since, min, rows[{model, kind, n, enough, defects, rate, efforts}], advice[{kind, better, worse, rate_better, rate_worse}], unknown_model}`. With `enough` false, `defects` and `rate` are null: no numbers under `min` (10) cases. `advice` only with a real difference on the same kind of work. It starts from the release; closures with no known model only count in `unknown_model`.
+- **op `conti_azione`**, only a touch: `arg` the month, `project` the client. The master gets the request and writes the draft in its answer. No code sends it to anyone.
+
+Fixture: `cmd-result-sample.json`.
+
 Contract 1.102 (02/11/2026, phase B of the approved program: what stays outside). Additive, `v` stays 1.
 
 - **`state.seguiti`**: `{rimasto, altrove, promemoria}`, three counts: items behind, positives with no task yet, reminders waiting. Absent when all zero. The count of items behind comes from the hourly `suggest fill`.

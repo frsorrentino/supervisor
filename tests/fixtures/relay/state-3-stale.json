@@ -167,7 +167,9 @@
     "prima_raccolta",
     "prima_raccolta_azione",
     "seguiti",
-    "seguiti_azione"
+    "seguiti_azione",
+    "conti",
+    "conti_azione"
   ],
   "slash": [
     "compact",

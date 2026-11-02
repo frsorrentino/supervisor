@@ -1092,6 +1092,25 @@
       "action": "remind_remove",
       "key": "7f3e1a20",
       "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0913-4000-8000-0000000000913",
+      "session": null,
+      "arg": "2026-09",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "conti",
+      "project": "work/acme-site"
+    },
+    {
+      "id": "6f1c2d3e-0914-4000-8000-0000000000914",
+      "session": null,
+      "arg": "2026-09",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "conti_azione",
+      "project": "work/acme-site",
+      "device": "phone"
     }
   ],
   "result": [
@@ -1800,6 +1819,18 @@
       "id": "6f1c2d3e-0912-4000-8000-0000000000912",
       "ok": true,
       "text": "reminder removed",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0913-4000-8000-0000000000913",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"mese\": \"2026-09\", \"mesi\": [\"2026-09\", \"2026-08\"], \"clienti\": [{\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"n\": 7, \"draft_at\": null}], \"dettaglio\": {\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"mese\": \"2026-09\", \"measured\": {\"tasks\": 7, \"commits\": 41, \"releases\": 2}, \"tasks\": [{\"task\": \"acme-checkout-fix\", \"title\": \"Checkout fix\", \"at\": 1789120000, \"outcome_kind\": \"release\"}], \"commits\": [{\"hash\": \"a81c55e\", \"at\": 1789119000, \"subject\": \"fix checkout on mobile\"}], \"commits_more\": false, \"releases\": [{\"tag\": \"v2.3.1\", \"at\": 1789120500}], \"git\": true}, \"pagella\": {\"since\": 1789000000, \"min\": 10, \"rows\": [{\"model\": \"claude-opus-5-5\", \"kind\": \"fix\", \"n\": 14, \"enough\": true, \"defects\": 2, \"rate\": 0.143, \"efforts\": {\"high\": 14}}, {\"model\": \"claude-sonnet-5-5\", \"kind\": \"fix\", \"n\": 6, \"enough\": false, \"defects\": null, \"rate\": null, \"efforts\": {}}], \"advice\": [], \"unknown_model\": 3}}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0914-4000-8000-0000000000914",
+      "ok": true,
+      "text": "draft asked of the master",
       "at": 1789214706
     }
   ]

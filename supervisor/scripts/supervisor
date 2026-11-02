@@ -39,6 +39,7 @@ unported() {  # <cmd> <fase> <equivalente legacy>
 case "$cmd" in
   init)     exec python3 "$S/cm-config.py" init "$@" ;;
   doctor)   exec python3 "$S/cm-config.py" doctor "$@" ;;
+  rendiconto|statement)   exec python3 "$S/cm-conti.py" "$@" ;;   # 02/11 (1.103): cosa si e' fatto per un cliente in un mese
   rimasto|behind)         exec python3 "$S/cm-seguiti.py" rimasto "$@" ;;   # 02/11 (1.102): quello che il codice ha lasciato indietro
   altrove|elsewhere)      exec python3 "$S/cm-seguiti.py" altrove "$@" ;;   # 02/11 (1.102): lo stesso difetto altrove, in sola lettura
   remind|ricorda)         exec python3 "$S/cm-seguiti.py" remind "$@" ;;    # 02/11 (1.102): un promemoria scatta una volta

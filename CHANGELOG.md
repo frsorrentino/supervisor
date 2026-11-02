@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.97 — 2026-11-02: the accounts (contract 1.103).**
+  - `supervisor rendiconto` gathers closed tasks, commits and releases by client and month. The master writes the draft on request from a touch; nothing sends it, and there are no invented billable hours.
+  - `task pagella`: per model and kind of work, how many «done» later had a defect, from a true `defect_of` link. Model and effort are recorded at closure. No numbers under 10 cases; advice only with a real difference.
 - **0.8.96 — 2026-11-02: what stays outside the code (contract 1.102).**
   - `supervisor rimasto`: for each product, what depends on the code (demo, store page, site, README); after a release you see what went stale, with «Allinea» and «Va bene così».
   - `supervisor altrove`: the same defect elsewhere, read-only, resumable, in batches. A detector positive on an empty folder is refused, an error never counts as negative, and a partial run does not replace a complete one. A fix goes through one card with the ok.

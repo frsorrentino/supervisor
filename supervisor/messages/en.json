@@ -1203,5 +1203,9 @@
   "seguiti.altrove_result": "{n} positive of {total}, {errors} errors (not counted as negative). Run {id}.",
   "seguiti.remind_prompt": "Reminder fired: {text}. Tell the person what there is to do.",
   "seguiti.remind_removed": "reminder removed",
-  "seguiti.action_bad": "seguiti_azione: action ok, allinea or remind_remove"
+  "seguiti.action_bad": "seguiti_azione: action ok, allinea or remind_remove",
+  "conti.draft_sent": "draft asked of the master",
+  "conti.no_client": "folder not found: {project}",
+  "conti.bad_month": "month as YYYY-MM",
+  "conti.draft_prompt": "Draft of the statement of {project} for {month}, asked with a touch on the phone. Read supervisor rendiconto {project} --mese {month} --json and write it in human language, for the client. Only what is there: no billable hours, no estimates. If you cite times or counts, say they are measured and how. Do not send it to anyone: the person sends the draft; answer here with the text."
 }

@@ -1530,6 +1530,34 @@ def _tasks_read(fn):
         con.close()
 
 
+def conti_op(cmd, arg):
+    """1.103: `arg` il mese AAAA-MM (senza: questo); `project` il cliente di cui si vuole il dettaglio. Rendiconti e pagella."""
+    co = _load("cm-conti")
+    root = cm.expand(CFG["workspace"]["root"])
+    out = co.view(str(arg) if arg else None, str(cmd.get("project") or "") or None)
+    pg = _tasks_read(lambda tk, con: tk.pagella(con))
+    out["pagella"] = pg or {"since": None, "min": 10, "rows": [], "advice": [], "unknown_model": 0}
+    for x in out["clienti"]:
+        x["project"] = S.project_of(x["project"], root)
+    if out["dettaglio"]:
+        out["dettaglio"]["project"] = S.project_of(out["dettaglio"]["project"], root)
+    return out
+
+
+def conti_azione(cmd, arg):
+    """1.103: la bozza del rendiconto la scrive la master, solo da un tocco. `arg` il mese, `project` il cliente. Non si invia mai."""
+    why = _touch_refused(cmd, "conti_azione")
+    if why:
+        return False, why
+    co = _load("cm-conti")
+    ok, res = co.request_draft(str(cmd.get("project") or ""), str(arg or ""))
+    if not ok:
+        return False, res
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    code, out = relay_talk(master, res, "--no-wait")
+    return code == 0, M("conti.draft_sent") if code == 0 else str(out)[:200]
+
+
 def seguiti_azione(cmd):
     """1.102: «Allinea» e «Va bene così» su una voce rimasta indietro, «Togli» su un promemoria. Solo da un tocco."""
     why = _touch_refused(cmd, "seguiti_azione")
@@ -2114,6 +2142,10 @@ def execute(cmd):
             return decisioni_op()
         if op == "decisione":   # 1.99
             return decisione_op(cmd, arg)
+        if op == "conti":   # 1.103
+            return True, json.dumps(conti_op(cmd, arg), ensure_ascii=False)
+        if op == "conti_azione":   # 1.103
+            return conti_azione(cmd, arg)
         if op == "seguiti":   # 1.102
             return True, json.dumps(_load("cm-seguiti").view(), ensure_ascii=False)
         if op == "seguiti_azione":   # 1.102

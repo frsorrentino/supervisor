@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """supervisor task — il registro dei compiti (fase 1, 03/10/2026).
 
+  supervisor task defect-of ID ID_CORRETTO   defect_of: ID corregge un difetto di ID_CORRETTO (come task add --defect-of)
+  supervisor task pagella                    per modello e tipo di lavoro, quanti «fatto» hanno poi avuto un difetto; JSON
   supervisor task add FILE|- [--topic T]     un contratto {schema_version, task}: validato, con i vincoli
                                                 pertinenti allegati (stesso progetto, stesso argomento)
   supervisor task list [--state S] [--plan P] [--json]
@@ -243,6 +245,7 @@ CREATE TABLE IF NOT EXISTS standing (n INTEGER PRIMARY KEY, project TEXT, kind T
 CREATE TABLE IF NOT EXISTS prove (n INTEGER PRIMARY KEY, task TEXT, build TEXT, dove TEXT, fai TEXT, atteso TEXT, at INTEGER, by_ TEXT,
     result TEXT, result_at INTEGER, result_by TEXT, result_text TEXT, superseded_at INTEGER);
 CREATE TABLE IF NOT EXISTS defects (task TEXT PRIMARY KEY, defect_of TEXT, at INTEGER);
+CREATE TABLE IF NOT EXISTS closures (task TEXT PRIMARY KEY, at INTEGER, model TEXT, effort TEXT, kind TEXT);
 CREATE TABLE IF NOT EXISTS decision_snooze (key TEXT PRIMARY KEY, at INTEGER, by_ TEXT, until INTEGER, refs TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS cause_notes (key TEXT PRIMARY KEY, note TEXT, at INTEGER, by_ TEXT);
 """
@@ -347,6 +350,62 @@ def run_check(task):
         return 127, str(e)
 
 
+def plain_runtime(rt):
+    """Dal vivo, 02/11: `model` e' {id, label}, `effort` una stringa o a sua volta un oggetto; nel registro vanno gli id."""
+    def one(v):
+        v = v.get("id") if isinstance(v, dict) else v
+        return str(v) if v else None
+    return one(rt.get("model")), one(rt.get("effort"))
+
+
+def closing_runtime(session):
+    """(modello, effort) della sessione del compito, dalla sua trascrizione; (None, None) se non si sa: mai dedotto."""
+    if not session:
+        return None, None
+    try:
+        out = subprocess.run([str(Path(__file__).resolve().parent / "supervisor"), "sessions", "--json"], capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL).stdout
+        row = next((r for r in json.loads(out) if r.get("name") == session or r.get("tmux") == session), None)
+        if not row:
+            return None, None
+        rt = _load("cm-core").session_runtime(row) or {}
+        return plain_runtime(rt)
+    except Exception:   # noqa: BLE001 — un extra: mai far fallire la chiusura
+        return None, None
+
+
+PAGELLA_MIN = 10   # sotto i 10 casi niente numeri
+
+
+def pagella(con):
+    """1.103: per modello e tipo di lavoro, quanti «fatto» hanno poi avuto un difetto (un legame defect_of vero). Sotto i 10
+    casi `defects` e `rate` sono null. `advice`: solo con una differenza vera sullo stesso tipo, due proporzioni a z >= 1.96."""
+    cells = {}
+    for r in con.execute("SELECT c.task, c.model, c.kind, c.effort FROM closures c JOIN tasks t ON t.id=c.task WHERE t.state='done' AND c.model IS NOT NULL"):
+        x = cells.setdefault((r["model"], r["kind"] or "?"), {"n": 0, "defects": 0, "efforts": {}})
+        x["n"] += 1
+        x["defects"] += 1 if con.execute("SELECT 1 FROM defects WHERE defect_of=?", (r["task"],)).fetchone() else 0
+        if r["effort"]:
+            x["efforts"][r["effort"]] = x["efforts"].get(r["effort"], 0) + 1
+    rows = []
+    for (model, kind), x in sorted(cells.items(), key=lambda kv: (-kv[1]["n"], kv[0])):
+        ok = x["n"] >= PAGELLA_MIN
+        rows.append({"model": model, "kind": kind, "n": x["n"], "enough": ok, "defects": x["defects"] if ok else None,
+                     "rate": round(x["defects"] / x["n"], 3) if ok else None, "efforts": x["efforts"]})
+    advice = []
+    enough = [r for r in rows if r["enough"]]
+    for a in enough:
+        for b in enough:
+            if a["kind"] != b["kind"] or a["rate"] >= b["rate"]:
+                continue
+            p = (a["defects"] + b["defects"]) / (a["n"] + b["n"])
+            se = (p * (1 - p) * (1 / a["n"] + 1 / b["n"])) ** 0.5
+            if se and (b["rate"] - a["rate"]) / se >= 1.96:
+                advice.append({"kind": a["kind"], "better": a["model"], "worse": b["model"], "rate_better": a["rate"], "rate_worse": b["rate"]})
+    first = con.execute("SELECT MIN(at) a FROM closures").fetchone()["a"]
+    unknown = con.execute("SELECT COUNT(*) c FROM closures WHERE model IS NULL").fetchone()["c"]
+    return {"since": first, "min": PAGELLA_MIN, "rows": rows, "advice": advice, "unknown_model": unknown}
+
+
 def done(con, tid, constraint=None, checked=None):
     """Accettazione dal codice: riesegue il controllo (`checked` = il suo esito appena preso, per non rifarlo). (verde, result)."""
     row = get_task(con, tid)
@@ -368,6 +427,8 @@ def done(con, tid, constraint=None, checked=None):
                 (tid, res["attempt"], res["outcome"], res["reason"], json.dumps(res["proof"], ensure_ascii=False), None, res["at"]))
     if green:
         set_state(con, tid, "done")
+        model, effort = closing_runtime(row["session"])   # 1.103: la pagella parte da qui, all'indietro solo dove il legame e' certo
+        con.execute("INSERT OR REPLACE INTO closures (task, at, model, effort, kind) VALUES (?,?,?,?,?)", (tid, res["at"], model, effort, task.get("type")))
     elif n >= task["attempts_max"]:
         set_state(con, tid, "failed")
     if constraint or (not green and n >= task["attempts_max"]):
@@ -1305,6 +1366,17 @@ def main(argv):
         print("no task registry", file=sys.stderr)
         return 3
     con = connect()
+    if verb == "pagella":
+        print(json.dumps(pagella(con), ensure_ascii=False))
+        return 0
+    if verb == "defect-of":   # 1.103: il legame a posteriori, solo se certo
+        if len(args) != 2:
+            sys.exit("usage: task defect-of ID ID_CORRETTO")
+        get_task(con, args[0])
+        get_task(con, args[1])
+        con.execute("INSERT OR REPLACE INTO defects (task, defect_of, at) VALUES (?,?,?)", (args[0], args[1], now()))
+        con.commit()
+        return 0
     if verb == "add":
         topic, defect_of = _opt(args, "--topic"), _opt(args, "--defect-of")
         if len(args) != 1:
