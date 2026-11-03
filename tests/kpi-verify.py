@@ -93,9 +93,18 @@ K.record_latency(rd, NOW - 50, 9999)
 st = {"hosts_status": [{"name": "win", "up": True, "cpu": 0.04, "ram_used": 8_000, "ram_total": 16_000, "disk_free": 25, "disk_total": 100}]}
 rows = [{"status": "busy"}, {"status": "idle", "host": "local"}, {"status": "idle", "host": "win"}, {"status": "dead"}]
 kh = K.kpi_health(st, rows, NOW, rd)
-T.check("K4 kpi_health: latency of the last hour (median 2, max 3, 3 samples; the one of 2 hours ago and one out of range left out), 2 sessions here of 5, win at 50% RAM and 75% disk",
-        kh == {"latency": {"p50_s": 2.0, "max_s": 3.0, "n": 3}, "sessions_here": 2, "sessions_max": 5,
+T.check("K4 kpi_health: latency of the last hour (median 2, p95 3, max 3, 3 samples; the one of 2 hours ago and one out of range left out), 2 sessions here of 5, win at 50% RAM and 75% disk",
+        kh == {"latency": {"p50_s": 2.0, "p95_s": 3.0, "max_s": 3.0, "n": 3}, "sessions_here": 2, "sessions_max": 5,
                "hosts": [{"name": "win", "up": True, "cpu": 0.04, "ram_pct": 50, "disk_pct": 75}]}, json.dumps(kh))
+
+rd95 = tmp / "relay95"
+rd95.mkdir()
+for i in range(1, 41):   # 1..40 s: il 95% dei 40 campioni sta sotto o a 38 s
+    K.record_latency(rd95, NOW - 3000 + i, float(i))
+kh95 = K.kpi_health({}, [], NOW, rd95)["latency"]
+kh0 = K.kpi_health({}, [], NOW, tmp / "relay-vuota")["latency"]
+T.check("K4 (1.108) p95_s at the nearest rank: 40 samples of 1..40 s give 38, between the median and the max; no samples: null",
+        kh95 == {"p50_s": 20.5, "p95_s": 38.0, "max_s": 40.0, "n": 40} and kh0 == {"p50_s": None, "p95_s": None, "max_s": None, "n": 0}, json.dumps([kh95, kh0]))
 
 # ------------------------------------------------------------------ K5
 hist = [{"action": a, "at": NOW - age} for a, age in (("accepted", 100), ("chosen", 200), ("discussed", 300), ("hidden", 400), ("never", 500), ("expired", 600), ("accepted", 8 * D))]

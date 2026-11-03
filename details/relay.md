@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.108 (03/11/2026, asked by the app for the KPI bar). Additive, `v` stays 1.
+
+- **op `kpi`, `kpi_health.latency`**: `p95_s`, beside `p50_s` and `max_s`, over the same samples (the last hour, from the push to a device's read): the value at the nearest rank, never interpolated; null with no samples.
+
+Fixture: `cmd-result-sample.json` (`kpi`).
+
 Contract 1.107 (03/11/2026, asked by the app for «Da provare» merged into the newest pre-release; `v` stays 1). The tests a pause waits for become fields, and «Da decidere» can close them.
 
 - **op `decisioni`, every `items[]` of `kind` `pause`**: `prova`, `{project, release, web}` or null. Not null when the pause waits for the person to try something: `project` as the item's (as `sessions[].project`), `release` the pre-release tag or null, `web` the web version or null. A session writes it with `task pause ID --reason R --waits person --prova [--release TAG] [--web VERSION]`. A pause written before carries it only if its words say «prova» and name a pre-release (`pre-release <tag>`) or a web version (`web <x.y.z>`, `PWA <x.y.z>`); otherwise null.
@@ -871,7 +877,7 @@ maintainer at 21:47 for after the quota reset of 29/10). Additive, `v` stays 1.
   error in the turn), question (the last turn of a session waiting) or running (the
   last, session working); `tokens` = input + cache writes + output, once per message,
   `cache_read` apart. At most 30 turns per session.
-- **`kpi_health`** (12): `{latency: {p50_s, max_s, n}, sessions_here, sessions_max,
+- **`kpi_health`** (12): `{latency: {p50_s, p95_s, max_s, n}, sessions_here, sessions_max,
   hosts: [{name, up, cpu, ram_pct, disk_pct}]}` — latency from the push to a device's
   read over the last hour (a sample at each new `/seen`), the live sessions of this
   computer against `sessions.max_sessions`, the other hosts from `hosts_status`.

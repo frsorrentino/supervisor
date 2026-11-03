@@ -22,6 +22,7 @@ Uso: cm-kpi.py [--json]
 """
 import importlib.util
 import json
+import math
 import os
 import statistics
 import sys
@@ -289,7 +290,7 @@ def record_latency(rdir, at, seconds):
 
 
 def kpi_health(state, rows, now, rdir):
-    """{latency: {p50_s, max_s, n}, sessions_here, sessions_max, hosts: [{name, up, cpu, ram_pct, disk_pct}]}"""
+    """{latency: {p50_s, p95_s, max_s, n}, sessions_here, sessions_max, hosts: [{name, up, cpu, ram_pct, disk_pct}]}"""
     lat = [float(r["s"]) for r in _jsonl(latency_path(rdir)) if float(r.get("at") or 0) >= now - 3600 and "s" in r]
     here = sum(1 for r in rows or [] if (not r.get("host") or r.get("host") == "local") and r.get("status") in ("busy", "idle", "waiting"))
     hosts = []
@@ -298,7 +299,10 @@ def kpi_health(state, rows, now, rdir):
         free, dtot = h.get("disk_free"), h.get("disk_total")
         hosts.append({"name": h.get("name"), "up": bool(h.get("up")), "cpu": h.get("cpu"), "ram_pct": pct(h.get("ram_used"), h.get("ram_total")),
                       "disk_pct": pct(dtot - free, dtot) if free is not None and dtot else None})
-    return {"latency": {"p50_s": round(statistics.median(lat), 2) if lat else None, "max_s": round(max(lat), 2) if lat else None, "n": len(lat)},
+    # 1.108 (03/11): p95_s, al rango piu' vicino (il valore sotto cui sta il 95% dei campioni, mai interpolato)
+    p95 = sorted(lat)[max(0, math.ceil(0.95 * len(lat)) - 1)] if lat else None
+    return {"latency": {"p50_s": round(statistics.median(lat), 2) if lat else None, "p95_s": round(p95, 2) if lat else None,
+                        "max_s": round(max(lat), 2) if lat else None, "n": len(lat)},
             "sessions_here": here, "sessions_max": int((CFG.get("sessions") or {}).get("max_sessions", 5)), "hosts": hosts}
 
 

@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.107 — 2026-11-03: the p95 of the push-to-phone time in the KPIs (supervisor-kpi-p95-03-11, contract 1.108).**
+  - `kpi_health.latency` carries `p95_s` beside the median and the maximum, over the same last hour: the time within which 95% of the reads arrived.
 - **0.8.106 — 2026-11-03: the tests you are waited for, as fields; «Tutto va» and «Non va» from «Da decidere» (supervisor-prove-strutturate-03-11, contract 1.107).**
   - A pause that waits for you to try something carries what to try: the project, the pre-release tag and the web version, written with `task pause … --waits person --prova [--release TAG] [--web VERSION]`. Pauses written before get it from their words when they name a pre-release or a web version. The app can then gather the tests under the newest pre-release.
   - From «Da decidere», «Tutto va» records your confirmation on the paused tasks of the group, as a touch on Approve, and runs their checks: green closes them. «Non va» with a reason sends them back to their session with your words.
