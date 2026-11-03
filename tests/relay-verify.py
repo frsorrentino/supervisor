@@ -4499,4 +4499,68 @@ T.check("R99 (31/10) a command that crashes gives the phone the exception, not t
 T.check("R99 no failure path of the relay's commands still picks the first line by hand",
         not re.search(r'splitlines\(\)\[0\] if out else "|splitlines\(\) or \[[^\]]*\]\)\[0\]', (T.SCRIPTS / "cm-relay-cmds.py").read_text()), "")
 
+
+# R100 (03/11/2026, supervisor-relay-ingresso-web-03-11): Da decidere fermo su «in arrivo dal PC» nella PWA. Lo stream
+# di /cmd eseguiva tutto nel suo thread e run_cmd teneva EXEC_LOCK anche per le letture: una timeline da 31 s alle 12:57
+# ha fatto arrivare i comandi dietro con issued 25-40 s, con la fila a 0,0 s
+_sv100 = dict(ex=RL.execute, pa=RL.push_async, last=RL.last_sessions, rtdb=RL.rtdb)
+_ran100, _t100 = [], {}
+
+
+def _ex100(cmd):
+    _ran100.append((cmd["op"], cmd["id"], round(time.time() - _t100["0"], 2)))
+    if cmd["op"] == "timeline":
+        time.sleep(2.0)   # la lettura lenta
+    if cmd["op"] == "projects":
+        time.sleep(0.6)
+    return (True, "ok")
+
+
+try:
+    RL.execute, RL.push_async, RL.last_sessions = _ex100, (lambda *a, **k: None), (lambda: {})
+    RL.rtdb = lambda *a, **k: None   # rdir resta: la chiave sta li'
+    # 1. run_cmd: un comando dell'utente non aspetta una lettura lenta; due letture restano una alla volta
+    _t100["0"] = time.time()
+    _done100 = {}
+
+    def _go100(c):
+        RL.run_cmd(c)
+        _done100[c["id"]] = round(time.time() - _t100["0"], 2)
+    _th100 = [threading.Thread(target=_go100, args=({"id": "t1", "op": "timeline", "session": ""},))]
+    _th100[0].start(); time.sleep(0.2)
+    for c in ({"id": "p1", "op": "prompt", "session": "x", "arg": "ciao"}, {"id": "r1", "op": "projects", "session": ""}):
+        _th100.append(threading.Thread(target=_go100, args=(c,))); _th100[-1].start()
+    [t.join() for t in _th100]
+    # 2. lo stream smista e non esegue: la risposta passa davanti alla timeline lenta; delle letture accumulate
+    #    uguali della stessa sessione resta l'ultima
+    _ran100.clear(); _served100 = []
+    _done_list100 = []
+    _lanes100 = RL.CmdLanes(_done_list100, _served100.append)
+    _t100["0"] = time.time()
+    _lanes100.put({"s1": {"op": "timeline", "session": "", "issued": time.time()}}, time.time())
+    time.sleep(0.1)
+    _tput = time.time()
+    _lanes100.put({"s2": {"op": "results", "session": "", "issued": time.time()}}, time.time())
+    _lanes100.put({"s3": {"op": "results", "session": "", "issued": time.time() + 0.01}}, time.time())
+    _lanes100.put({"s4": {"op": "answer", "session": "x", "arg": "1", "issued": time.time()}}, time.time())
+    _put_s100 = time.time() - _tput
+    _deadline = time.time() + 6
+    while len(_served100) < 3 and time.time() < _deadline:
+        time.sleep(0.05)
+    _at100 = {cid: at for _, cid, at in _ran100}
+    _lanes100.put({"s4": {"op": "answer", "session": "x", "arg": "1"}}, time.time())   # la riconnessione lo rimanda
+    time.sleep(0.3)
+    _lanes100.close()
+finally:
+    RL.execute, RL.push_async, RL.last_sessions, RL.rtdb = _sv100["ex"], _sv100["pa"], _sv100["last"], _sv100["rtdb"]
+T.check("R100 (03/11) run_cmd: a user command does not wait for a slow read (2 s timeline); two reads still run one at a time",
+        _done100.get("p1", 9) < 0.6 and _done100.get("r1", 0) >= 2.0 + 0.6 - 0.1, str(_done100))
+T.check("R100 the /cmd stream only dispatches: put returns at once, the answer runs while the slow timeline is still going, of two queued «results» only the last runs, a command sent again after it ran does not run twice",
+        _put_s100 < 0.1 and _at100.get("s4", 9) < 0.5 and "s2" not in _at100 and _at100.get("s3", 0) >= 2.0
+        and sorted(_served100) == ["s1", "s3", "s4"] and [c for _, c, _ in _ran100].count("s4") == 1
+        and sorted(_done_list100) == ["s1", "s3", "s4"], str((_put_s100, _ran100, _served100, _done_list100)))
+T.check("R100 the stream loop hands commands to the lanes and no longer runs handle_cmd itself",
+        "lanes.put(commands_from(ev, payload), arrived)" in (T.SCRIPTS / "cm-relay.py").read_text()
+        and "if handle_cmd(cid, doc, done, arrived):" not in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+
 T.finish()

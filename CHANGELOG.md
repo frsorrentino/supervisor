@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.103 — 2026-11-03: commands from the app no longer wait behind a slow read (supervisor-relay-ingresso-web-03-11).**
+  - The relay ran the commands of the phone and of the web app one after another, in the thread that reads them: one slow read (a 31 s timeline) held every command behind it, which then arrived 25-40 s late while the log showed a 0,0 s queue. «Da decidere» in the web app stayed on «coming from the PC».
+  - Now the reader only sorts: your commands (prompts, answers, ok) run in one lane, the reads in another, each in order and one at a time, so a slow read no longer delays an answer. Reads of the same kind for the same session that piled up run once, the last one. The queue time in the log now counts from the arrival.
 - **0.8.102 — 2026-11-03: a restarted session recaps and resumes by itself (supervisor-riavvio-recap-03-11).**
   - After `supervisor restart`, with `--clean` and without, the session starts with a first prompt: a short recap in the chat of the state of the work (done, open, next step), from the handoff and the context, then it continues from where it was. Before, it stayed idle until someone wrote to it. `supervisor launch --prompt TEXT` starts any session with a first prompt.
   - The handoff has an eighth section, «Resume»: done, open and the exact next step, the part the restart prompt recaps.

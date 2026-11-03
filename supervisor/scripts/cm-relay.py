@@ -3000,9 +3000,18 @@ def mark_done_now():
     cid, done = _PENDING["cid"], _PENDING["done"]
     if not cid or done is None or cid in done:
         return
-    done.append(cid)
-    del done[:-500]
-    write_json(rdir() / "done-cmds.json", done)
+    done_add(done, cid)
+
+
+_DONE_LOCK = threading.Lock()   # 03/11: le due corsie dei comandi scrivono la stessa lista e lo stesso file
+
+
+def done_add(done, cid):
+    with _DONE_LOCK:
+        if cid not in done:
+            done.append(cid)
+        del done[:-500]
+        write_json(rdir() / "done-cmds.json", done)
 
 
 def handle_cmd(cid, doc, done, arrived=None):
@@ -3030,14 +3039,17 @@ def handle_cmd(cid, doc, done, arrived=None):
             rtdb("DELETE", f"cmd/{cid}")
         except (urllib.error.URLError, OSError, ValueError):
             pass
-        done.append(cid); return True
+        done_add(done, cid); return True
     cmd.pop("_local", None)   # solo l'API locale lo mette
     cmd.setdefault("id", cid)
-    _PENDING.update(cid=cid, done=done)
+    active = str(cmd.get("op") or "") not in PASSIVE_OPS
+    if active:   # solo la corsia dei comandi: mark_done_now serve al report, e le letture girano accanto
+        _PENDING.update(cid=cid, done=done)
     try:
         result = run_cmd(cmd, arrived)
     finally:
-        _PENDING.update(cid=None, done=None)
+        if active:
+            _PENDING.update(cid=None, done=None)
     t_put = time.time()
     try:
         rtdb("PUT", f"result/{cid}", C.encrypt(result, k), {"print": "silent"})
@@ -3051,14 +3063,73 @@ def handle_cmd(cid, doc, done, arrived=None):
         if arrived and str(cmd.get("op") or "") not in PASSIVE_OPS:
             # fase 0 (07/10): l'attesa vera di un prompt o di una risposta, dall'arrivo sullo stream all'esito sul bus
             log(f"cmd {cid}: esito scritto · {cmd.get('op')} · dall'arrivo {_s(time.time() - arrived)} s · put {_s(time.time() - t_put)} s")
-    if cid not in done:
-        done.append(cid)
-    del done[:-500]
-    write_json(rdir() / "done-cmds.json", done)
+    done_add(done, cid)
     return True
 
 
+class CmdLanes:
+    """03/11/2026 (supervisor-relay-ingresso-web-03-11, Da decidere fermo su «in arrivo dal PC» nella PWA): lo stream di
+    /cmd eseguiva i comandi nel suo thread, uno dopo l'altro, con la scrittura dell'esito su Firebase. Una timeline da
+    31 s alle 12:57 ha tenuto fermi i sei comandi dietro, arrivati con issued 25-40 s; la fila segnava 0,0 s perche'
+    `arrived` si prendeva solo quando l'evento veniva letto. Ora lo stream legge e smista: due corsie, ognuna in ordine e
+    un comando alla volta, i comandi dell'utente da una parte e le letture (PASSIVE_OPS) dall'altra, cosi' una lettura
+    lenta non ferma una risposta. Quello che si accumula in una corsia si prende tutto insieme e passa da in_order:
+    delle letture uguali della stessa sessione resta l'ultima."""
+
+    def __init__(self, done, on_done=None):
+        self.done, self.on_done = done, on_done
+        self.cv = threading.Condition()
+        self.queues = {"cmd": {}, "read": {}}
+        self.stop = False
+        self.threads = [threading.Thread(target=self._run, args=(lane,), name=f"relay-{lane}", daemon=True) for lane in self.queues]
+        for t in self.threads:
+            t.start()
+
+    @staticmethod
+    def lane(doc):
+        try:
+            c = C.decrypt(doc, key()) if isinstance(doc, dict) and "enc" in doc else doc
+        except (ValueError, TypeError, AttributeError, RelayError):
+            c = None
+        return "read" if isinstance(c, dict) and str(c.get("op") or "") in PASSIVE_OPS else "cmd"
+
+    def put(self, cmds, arrived):
+        """{cid: doc} dallo stream: in coda alla sua corsia, senza aspettare l'esecuzione. Un id gia' in coda (il put
+        iniziale di una riconnessione) non si raddoppia."""
+        with self.cv:
+            for cid, doc in cmds.items():
+                if doc is None:
+                    continue
+                q = self.queues[self.lane(doc)]
+                if cid not in q:
+                    q[cid] = (doc, arrived)
+            self.cv.notify_all()
+
+    def _run(self, lane):
+        q = self.queues[lane]
+        while True:
+            with self.cv:
+                while not q and not self.stop:
+                    self.cv.wait()
+                if self.stop:
+                    return
+                batch = dict(q)
+                q.clear()
+            for cid, doc in in_order({c: d for c, (d, _) in batch.items()}):
+                try:
+                    if handle_cmd(cid, doc, self.done, batch[cid][1]) and self.on_done:
+                        self.on_done(cid)
+                except Exception as e:   # noqa: BLE001 — /cmd resta e torna alla riconnessione, come prima
+                    log(f"cmd {cid}: corsia {lane} fallita ({str(e)[:120]})")
+
+    def close(self):
+        with self.cv:
+            self.stop = True
+            self.cv.notify_all()
+
+
 EXEC_LOCK = threading.Lock()   # 1.35: i comandi dal bus e quelli dell'API locale, uno alla volta come prima
+READ_LOCK = threading.Lock()   # 03/11: le letture (PASSIVE_OPS) in una corsia loro, una alla volta, accanto ai comandi
 
 
 def raccolta_summary():
@@ -3165,9 +3236,11 @@ def run_cmd(cmd, arrived=None):
     stream (fase 0, 07/10: la fila prima dell'esecuzione)."""
     cid = str(cmd.get("id") or "")
     t_in = time.time()
-    with EXEC_LOCK:
+    active = str(cmd.get("op") or "") not in PASSIVE_OPS
+    # 03/11: una lettura lenta (timeline 31 s) non tiene piu' fermo un comando dell'utente: due lock, due corsie. Le
+    # letture giravano gia' accanto alla push (PushWorker), che legge le stesse cose
+    with (EXEC_LOCK if active else READ_LOCK):
         t_run = time.time()
-        active = str(cmd.get("op") or "") not in PASSIVE_OPS
         if active:
             _MEMO.clear()   # 29/10: un comando che cambia qualcosa decide sul fresco (approve legge le attese di ok)
         res = execute(cmd)
@@ -3384,6 +3457,7 @@ def serve():
     worker.start()
     web_srv = web_start()   # 1.35: la web app e l'API locale, se relay.web.enabled
     done = list(read_json(rdir() / "done-cmds.json", []))
+    lanes = None
     st_ = {"pid": os.getpid(), "started": started, "last_cmd_ts": None, "last_cmd": "", "served": 0, "reconnects": 0,
            "code": code_print()}   # 08/10: l'impronta del codice con cui gira, per `ensure`
     # subito su file: finche' lo stream regge il ciclo non torna qui, e `relay status` mostrerebbe i numeri del
@@ -3393,6 +3467,13 @@ def serve():
     except OSError:
         pass
     tries = 0
+
+    def _served(cid):
+        st_["last_cmd_ts"] = time.time(); st_["last_cmd"] = cid; st_["served"] += 1
+        try:
+            serve_status_path().write_text(json.dumps(st_))
+        except OSError:
+            pass
     try:
         while local_only():   # 13/10: solo la web app locale; i comandi arrivano dall'API su 127.0.0.1
             time.sleep(30)
@@ -3405,17 +3486,13 @@ def serve():
                     if tries:
                         log("serve: riconnesso")
                     tries = 0
+                    if lanes is None:
+                        lanes = CmdLanes(done, _served)
                     for ev, payload in sse_lines(resp):
                         arrived = time.time()
                         if ev == "auth_revoked":
                             log("serve: auth_revoked, nuovo token"); (rdir() / "token.json").unlink(missing_ok=True); break
-                        for cid, doc in in_order(commands_from(ev, payload)):
-                            if handle_cmd(cid, doc, done, arrived):
-                                st_["last_cmd_ts"] = time.time(); st_["last_cmd"] = cid; st_["served"] += 1
-                                try:
-                                    serve_status_path().write_text(json.dumps(st_))
-                                except OSError:
-                                    pass
+                        lanes.put(commands_from(ev, payload), arrived)   # 03/11: lo stream legge e smista, non esegue
             except urllib.error.HTTPError as e:
                 if e.code == 401:
                     (rdir() / "token.json").unlink(missing_ok=True)
@@ -3430,6 +3507,8 @@ def serve():
                 pass
     finally:
         log("serve: stop")
+        if lanes:
+            lanes.close()
         worker.stop.set()
         if web_srv:
             web_srv.stop()
