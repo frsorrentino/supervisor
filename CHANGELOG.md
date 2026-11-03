@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.104 — 2026-11-03: slow reads in a lane of their own (supervisor-relay-letture-lente-03-11, follows supervisor-relay-ingresso-web-03-11).**
+  - After 0.8.103 your commands no longer waited, but reads still queued behind one another: a 37 s timeline kept «Da decidere» waiting 33 s. Slow reads (timeline, done, file, plugins, kpi and the like, measured p95 7-39 s) now run in a third lane, so the quick ones (decisions, agenda, chat, results) answer while a slow one is still going.
 - **0.8.103 — 2026-11-03: commands from the app no longer wait behind a slow read (supervisor-relay-ingresso-web-03-11).**
   - The relay ran the commands of the phone and of the web app one after another, in the thread that reads them: one slow read (a 31 s timeline) held every command behind it, which then arrived 25-40 s late while the log showed a 0,0 s queue. «Da decidere» in the web app stayed on «coming from the PC».
   - Now the reader only sorts: your commands (prompts, answers, ok) run in one lane, the reads in another, each in order and one at a time, so a slow read no longer delays an answer. Reads of the same kind for the same session that piled up run once, the last one. The queue time in the log now counts from the arrival.

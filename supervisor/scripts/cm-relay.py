@@ -2928,6 +2928,12 @@ def commands_from(ev, payload):
 PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
+# 03/11/2026, misura del relay dal 02/11 (p95 dell'esecuzione): done 39 s, timeline 34 s, file 13 s, plugins 9 s, kpi
+# 7 s; decisioni, agenda, transcript e results sotto i 2 s. Con una corsia sola per le letture, dopo la 0.8.103 una
+# timeline da 37 s ha tenuto «decisioni» 33 s in fila: le lente vanno in una corsia loro
+SLOW_READ_OPS = ("timeline", "done", "file", "plugins", "kpi", "search", "diff", "studio", "nights", "night", "changes", "conti", "prima_raccolta", "projects")
+
+
 def in_order(cmds):
     """I comandi nell'ordine in cui il telefono o l'orologio li ha dati (`issued`, poi l'id): le chiavi di /cmd sono
     uuid casuali, e dopo una riconnessione (una all'ora per il token) il `put` iniziale li porta tutti insieme in
@@ -3071,15 +3077,15 @@ class CmdLanes:
     """03/11/2026 (supervisor-relay-ingresso-web-03-11, Da decidere fermo su «in arrivo dal PC» nella PWA): lo stream di
     /cmd eseguiva i comandi nel suo thread, uno dopo l'altro, con la scrittura dell'esito su Firebase. Una timeline da
     31 s alle 12:57 ha tenuto fermi i sei comandi dietro, arrivati con issued 25-40 s; la fila segnava 0,0 s perche'
-    `arrived` si prendeva solo quando l'evento veniva letto. Ora lo stream legge e smista: due corsie, ognuna in ordine e
-    un comando alla volta, i comandi dell'utente da una parte e le letture (PASSIVE_OPS) dall'altra, cosi' una lettura
-    lenta non ferma una risposta. Quello che si accumula in una corsia si prende tutto insieme e passa da in_order:
+    `arrived` si prendeva solo quando l'evento veniva letto. Ora lo stream legge e smista: tre corsie, ognuna in ordine e
+    un comando alla volta, i comandi dell'utente, le letture (PASSIVE_OPS) e le letture lente (SLOW_READ_OPS), cosi' una
+    lettura lenta non ferma una risposta ne' «Da decidere». Quello che si accumula in una corsia si prende tutto insieme e passa da in_order:
     delle letture uguali della stessa sessione resta l'ultima."""
 
     def __init__(self, done, on_done=None):
         self.done, self.on_done = done, on_done
         self.cv = threading.Condition()
-        self.queues = {"cmd": {}, "read": {}}
+        self.queues = {"cmd": {}, "read": {}, "slow": {}}
         self.stop = False
         self.threads = [threading.Thread(target=self._run, args=(lane,), name=f"relay-{lane}", daemon=True) for lane in self.queues]
         for t in self.threads:
@@ -3091,7 +3097,8 @@ class CmdLanes:
             c = C.decrypt(doc, key()) if isinstance(doc, dict) and "enc" in doc else doc
         except (ValueError, TypeError, AttributeError, RelayError):
             c = None
-        return "read" if isinstance(c, dict) and str(c.get("op") or "") in PASSIVE_OPS else "cmd"
+        op = str(c.get("op") or "") if isinstance(c, dict) else ""
+        return "cmd" if op not in PASSIVE_OPS else "slow" if op in SLOW_READ_OPS else "read"
 
     def put(self, cmds, arrived):
         """{cid: doc} dallo stream: in coda alla sua corsia, senza aspettare l'esecuzione. Un id gia' in coda (il put
@@ -3130,6 +3137,7 @@ class CmdLanes:
 
 EXEC_LOCK = threading.Lock()   # 1.35: i comandi dal bus e quelli dell'API locale, uno alla volta come prima
 READ_LOCK = threading.Lock()   # 03/11: le letture (PASSIVE_OPS) in una corsia loro, una alla volta, accanto ai comandi
+SLOW_LOCK = threading.Lock()   # 03/11: e le letture lente (SLOW_READ_OPS) in una terza
 
 
 def raccolta_summary():
@@ -3239,7 +3247,7 @@ def run_cmd(cmd, arrived=None):
     active = str(cmd.get("op") or "") not in PASSIVE_OPS
     # 03/11: una lettura lenta (timeline 31 s) non tiene piu' fermo un comando dell'utente: due lock, due corsie. Le
     # letture giravano gia' accanto alla push (PushWorker), che legge le stesse cose
-    with (EXEC_LOCK if active else READ_LOCK):
+    with (EXEC_LOCK if active else SLOW_LOCK if str(cmd.get("op") or "") in SLOW_READ_OPS else READ_LOCK):
         t_run = time.time()
         if active:
             _MEMO.clear()   # 29/10: un comando che cambia qualcosa decide sul fresco (approve legge le attese di ok)

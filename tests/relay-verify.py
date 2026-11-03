@@ -4528,7 +4528,8 @@ try:
         _done100[c["id"]] = round(time.time() - _t100["0"], 2)
     _th100 = [threading.Thread(target=_go100, args=({"id": "t1", "op": "timeline", "session": ""},))]
     _th100[0].start(); time.sleep(0.2)
-    for c in ({"id": "p1", "op": "prompt", "session": "x", "arg": "ciao"}, {"id": "r1", "op": "projects", "session": ""}):
+    for c in ({"id": "p1", "op": "prompt", "session": "x", "arg": "ciao"}, {"id": "r1", "op": "projects", "session": ""},
+              {"id": "d1", "op": "decisioni", "session": ""}):
         _th100.append(threading.Thread(target=_go100, args=(c,))); _th100[-1].start()
     [t.join() for t in _th100]
     # 2. lo stream smista e non esegue: la risposta passa davanti alla timeline lenta; delle letture accumulate
@@ -4540,12 +4541,13 @@ try:
     _lanes100.put({"s1": {"op": "timeline", "session": "", "issued": time.time()}}, time.time())
     time.sleep(0.1)
     _tput = time.time()
-    _lanes100.put({"s2": {"op": "results", "session": "", "issued": time.time()}}, time.time())
-    _lanes100.put({"s3": {"op": "results", "session": "", "issued": time.time() + 0.01}}, time.time())
+    _lanes100.put({"s2": {"op": "kpi", "session": "", "issued": time.time()}}, time.time())
+    _lanes100.put({"s3": {"op": "kpi", "session": "", "issued": time.time() + 0.01}}, time.time())
     _lanes100.put({"s4": {"op": "answer", "session": "x", "arg": "1", "issued": time.time()}}, time.time())
+    _lanes100.put({"s5": {"op": "decisioni", "session": "", "issued": time.time()}}, time.time())
     _put_s100 = time.time() - _tput
     _deadline = time.time() + 6
-    while len(_served100) < 3 and time.time() < _deadline:
+    while len(_served100) < 4 and time.time() < _deadline:
         time.sleep(0.05)
     _at100 = {cid: at for _, cid, at in _ran100}
     _lanes100.put({"s4": {"op": "answer", "session": "x", "arg": "1"}}, time.time())   # la riconnessione lo rimanda
@@ -4553,12 +4555,12 @@ try:
     _lanes100.close()
 finally:
     RL.execute, RL.push_async, RL.last_sessions, RL.rtdb = _sv100["ex"], _sv100["pa"], _sv100["last"], _sv100["rtdb"]
-T.check("R100 (03/11) run_cmd: a user command does not wait for a slow read (2 s timeline); two reads still run one at a time",
-        _done100.get("p1", 9) < 0.6 and _done100.get("r1", 0) >= 2.0 + 0.6 - 0.1, str(_done100))
-T.check("R100 the /cmd stream only dispatches: put returns at once, the answer runs while the slow timeline is still going, of two queued «results» only the last runs, a command sent again after it ran does not run twice",
-        _put_s100 < 0.1 and _at100.get("s4", 9) < 0.5 and "s2" not in _at100 and _at100.get("s3", 0) >= 2.0
-        and sorted(_served100) == ["s1", "s3", "s4"] and [c for _, c, _ in _ran100].count("s4") == 1
-        and sorted(_done_list100) == ["s1", "s3", "s4"], str((_put_s100, _ran100, _served100, _done_list100)))
+T.check("R100 (03/11) run_cmd: a user command and a quick read (decisioni) do not wait for a slow read (2 s timeline); two slow reads still run one at a time",
+        _done100.get("p1", 9) < 0.6 and _done100.get("d1", 9) < 0.6 and _done100.get("r1", 0) >= 2.0 + 0.6 - 0.1, str(_done100))
+T.check("R100 the /cmd stream only dispatches: put returns at once, the answer and «decisioni» run while the slow timeline is still going, two queued «kpi» behind it (same slow lane): only the last runs, a command sent again after it ran does not run twice",
+        _put_s100 < 0.1 and _at100.get("s4", 9) < 0.5 and _at100.get("s5", 9) < 0.5 and "s2" not in _at100 and _at100.get("s3", 0) >= 2.0
+        and sorted(_served100) == ["s1", "s3", "s4", "s5"] and [c for _, c, _ in _ran100].count("s4") == 1
+        and sorted(_done_list100) == ["s1", "s3", "s4", "s5"], str((_put_s100, _ran100, _served100, _done_list100)))
 T.check("R100 the stream loop hands commands to the lanes and no longer runs handle_cmd itself",
         "lanes.put(commands_from(ev, payload), arrived)" in (T.SCRIPTS / "cm-relay.py").read_text()
         and "if handle_cmd(cid, doc, done, arrived):" not in (T.SCRIPTS / "cm-relay.py").read_text(), "")
