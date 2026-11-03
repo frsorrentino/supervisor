@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.101 — 2026-11-03: three fixes from a night check (supervisor-bug-notte-03-11).**
+  - `task add` stores a session written with its short name (as `sessions` shows it, without the account prefix) under its tmux name when exactly one live session matches: `talk`, the inbox and the ok found no session by the short name.
+  - Task checks run with `~/.local/bin` and `/usr/local/bin` in the PATH, also from cron, the relay daemon and hooks, where the PATH is `/usr/bin:/bin` and `supervisor`, `claude` and `gh` were not found.
+  - The relay no longer loses a command's result when the network drops while writing it: the result is written when the command comes back after the reconnection (or on Retry), and the command is removed only after that.
 - **0.8.100 — 2026-11-02: what the sessions delivered, for «Da guardare» (contract 1.106).**
   - The relay keeps an index of the files the sessions sent you (videos, mockups, images, documents), with their versions grouped by work, and publishes the ones not yet seen. It outlives the session.
   - From the app: the whole list with past versions and notes, «Visto», and a note on a result (at a second of the video) that reaches the session as a prompt from the phone, or waits in its inbox if it is closed. The file opens from the app even after the session closed.

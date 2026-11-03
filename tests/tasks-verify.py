@@ -667,4 +667,33 @@ rc, out, err = add(contract("tshb", cmd="bash -c 'cmp -s <(true) <(true)'"))
 T.check("TSH the same check wrapped in bash -c enters and runs green", rc == 0 and cm("check", "tshb")[0] == 0, out + err)
 rc, out, err = cm("amend", "tshb", "--check", "cmp -s <(true) <(true)")
 T.check("TSH task amend refuses it too and keeps the old check", rc != 0 and "/bin/sh" in (out + err) and "bash -c" in show("tshb")["contract"]["task"]["check"]["cmd"], out + err)
+# TSN (03/11/2026, supervisor-bug-notte-03-11): il nome breve di `sessions` copiato nel contratto diventa il nome tmux
+cfgsn = tmp / "config-sn.json"
+cfgsn.write_text(json.dumps({"language": "en", "state_dir": str(state9), "workspace": {"root_session_name": "master"},
+                             "accounts": {"main": {"config_dir": str(tmp / "c1"), "tmux_prefix": ""},
+                                          "pixel": {"config_dir": str(tmp / "c2"), "tmux_prefix": "pix-"}}}))
+with T.PrivateTmux() as tm:
+    for n in ("pix-cliente-x", "cliente-y", "pix-cliente-y"):
+        tm("new-session", "-d", "-s", n, "sleep 300")
+    SN = {"CC_SUPERVISOR_CONFIG": str(cfgsn), "CM_TMUX_ARGS": tm.env["CM_TMUX_ARGS"]}
+    def where(sess):
+        return {"project": str(proj), "session": sess, "host": "local", "account": None}
+    cm("add", "-", stdin=json.dumps(contract("sn1", where=where("cliente-x"))), env=SN)
+    cm("add", "-", stdin=json.dumps(contract("sn2", where=where("cliente-y"))), env=SN)
+    cm("add", "-", stdin=json.dumps(contract("sn3", where=where("chiusa"))), env=SN)
+    s1, s2, s3 = show("sn1"), show("sn2"), show("sn3")
+    T.check("TSN the short name of a live pix- session (cliente-x) is stored as its tmux name, in the row and in the contract",
+            s1["session"] == "pix-cliente-x" and s1["contract"]["task"]["where"]["session"] == "pix-cliente-x", json.dumps(s1)[:300])
+    T.check("TSN a name that is itself a live session stays, even when prefix+name lives too; a name with no live match stays",
+            s2["session"] == "cliente-y" and s3["session"] == "chiusa", json.dumps([s2["session"], s3["session"]]))
+# TPATH (03/11/2026, supervisor-bug-notte-03-11): dal cron il PATH e' /usr/bin:/bin; il controllo trova lo stesso ~/.local/bin
+home = tmp / "home"
+(home / ".local" / "bin").mkdir(parents=True)
+fake = home / ".local" / "bin" / "cm-fake-tool"
+fake.write_text("#!/bin/sh\nexit 0\n")
+fake.chmod(0o755)
+add(contract("tpath", cmd="cm-fake-tool"))
+rc, out, err = cm("check", "tpath", env={"PATH": "/usr/bin:/bin", "HOME": str(home)})
+T.check("TPATH a check that calls a tool in ~/.local/bin runs green from a caller whose PATH is /usr/bin:/bin (cron, relay)",
+        rc == 0, out + err)
 T.finish()

@@ -3498,6 +3498,42 @@ finally:
 T.check("R58 a restart during the report's cleanup: the command is already in done-cmds.json, and when /cmd comes back it is not run again",
         done58 == ["c58"] and again58 is False and _ran58 == ["c58"] and RL._PENDING["cid"] is None, str((done58, again58, _ran58)))
 
+# R58b (03/11, supervisor-bug-notte-03-11): la rete cade mentre si scrive l'esito → il comando e' gia' in done-cmds;
+# quando /cmd torna (riconnessione o Riprova, stesso id) l'esito si scrive allora, e /cmd si cancella solo dopo
+_save58b = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
+_calls58b, _ran58b, _net58b = [], [], {"up": False}
+
+
+def _run58b(cmd, arrived=None):
+    _ran58b.append(cmd["id"])
+    return {"ok": True, "text": "fatto"}
+
+
+def _rtdb58b(method, path, *a, **kw):
+    if not _net58b["up"]:
+        raise OSError(101, "Network is unreachable")
+    _calls58b.append((method, path, a[0] if a else None))
+
+
+try:
+    RL.run_cmd, RL.rtdb = _run58b, _rtdb58b
+    RL._UNWRITTEN.clear()
+    done58b = []
+    first58b = RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)
+    down58b = RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)   # torna ma la rete e' ancora giu'
+    _net58b["up"] = True
+    back58b = RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)
+    put58b = [c for c in _calls58b if c[0] == "PUT"]
+    res58b = RL.C.decrypt(put58b[0][2], RL.key()) if put58b else None
+    later58b = len(_calls58b)
+    RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)
+finally:
+    for n, v in _save58b.items():
+        setattr(RL, n, v)
+T.check("R58b the result not written (network down) is written when /cmd comes back with the network up, then /cmd deleted; the command runs once; with the network still down nothing is lost; a later return only deletes",
+        _ran58b == ["c58b"] and done58b == ["c58b"] and first58b is True and down58b is False and back58b is False
+        and [c[:2] for c in _calls58b[:2]] == [("PUT", "result/c58b"), ("DELETE", "cmd/c58b")] and res58b == {"ok": True, "text": "fatto"}
+        and [c[:2] for c in _calls58b[later58b:]] == [("DELETE", "cmd/c58b")] and "c58b" not in RL._UNWRITTEN, str((_ran58b, done58b, _calls58b, res58b)))
 
 # R59 (contratto 1.73, 18/10, pagina Studio dell'app): op studio a richiesta, mai in /state — le pratiche di
 # calendar.cases (valore stringa o {dir, name}), le scadenze dei prossimi 60 giorni con due, gli ultimi 3 esiti per

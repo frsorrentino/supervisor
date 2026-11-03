@@ -2985,6 +2985,11 @@ def ledger_write(event, **fields):
         pass
 
 
+# 03/11/2026 (supervisor-bug-notte-03-11, «result non scritto» ×11 nel log del 02/11): con la rete caduta alla
+# scrittura dell'esito il comando era gia' in done-cmds, e alla riconnessione /cmd tornava e si cancellava senza
+# esito: il telefono non lo riceveva mai, e Riprova (stesso id) finiva uguale. L'esito resta qui finche' non e' scritto.
+_UNWRITTEN = {}
+UNWRITTEN_MAX = 50
 _PENDING = {"cid": None, "done": None}   # il comando del bus in esecuzione, per mark_done_now
 
 
@@ -3004,8 +3009,13 @@ def handle_cmd(cid, doc, done, arrived=None):
     if doc is None:
         return False
     if cid in done:
-        # gia' eseguito (Riprova dal polso, o la riconnessione che rimanda tutto /cmd): via senza rieseguire
+        # gia' eseguito (Riprova dal polso, o la riconnessione che rimanda tutto /cmd): via senza rieseguire; un esito
+        # rimasto da scrivere (la rete caduta alla scrittura) si scrive adesso, e /cmd resta finche' non e' scritto
         try:
+            if cid in _UNWRITTEN:
+                rtdb("PUT", f"result/{cid}", C.encrypt(_UNWRITTEN[cid], key()), {"print": "silent"})
+                _UNWRITTEN.pop(cid, None)
+                log(f"cmd {cid}: result scritto al ritorno di /cmd")
             rtdb("DELETE", f"cmd/{cid}")
         except (urllib.error.URLError, OSError, ValueError):
             pass
@@ -3034,6 +3044,9 @@ def handle_cmd(cid, doc, done, arrived=None):
         rtdb("DELETE", f"cmd/{cid}")
     except (urllib.error.URLError, OSError, ValueError) as e:
         log(f"cmd {cid}: result non scritto ({e})")
+        _UNWRITTEN[cid] = result
+        while len(_UNWRITTEN) > UNWRITTEN_MAX:
+            _UNWRITTEN.pop(next(iter(_UNWRITTEN)))
     else:
         if arrived and str(cmd.get("op") or "") not in PASSIVE_OPS:
             # fase 0 (07/10): l'attesa vera di un prompt o di una risposta, dall'arrivo sullo stream all'esito sul bus

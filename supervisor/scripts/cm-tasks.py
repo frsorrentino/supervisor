@@ -309,6 +309,30 @@ def constraints_for(con, project, topic):
     return [r["text"] for r in rows]
 
 
+def _live_tmux():
+    try:
+        r = subprocess.run(["tmux"] + os.environ.get("CM_TMUX_ARGS", "").split() + ["list-sessions", "-F", "#{session_name}"],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return set(r.stdout.split()) if r.returncode == 0 else set()
+
+
+def tmux_session(name):
+    """Il nome tmux di una sessione scritta col nome breve. `supervisor sessions` mostra il nome senza il prefisso
+    dell'account («internationalyoungclub-com» per «pix-internationalyoungclub-com»): il 02/11 una sessione l'ha
+    copiato nel contratto, e talk, casella e ok la cercavano con un nome che non c'e' (talk: «is not running»). Si
+    corregge solo se il nome non e' una sessione viva e una sola viva e' prefisso+nome; altrimenti resta com'e'."""
+    if not name:
+        return name
+    live = _live_tmux()
+    if name in live:
+        return name
+    pfx = [a.get("tmux_prefix") for a in ((_cfg()[1] or {}).get("accounts") or {}).values() if a.get("tmux_prefix")]
+    hits = [p + name for p in pfx if not name.startswith(p) and p + name in live]
+    return hits[0] if len(hits) == 1 else name
+
+
 def add(con, contract, topic=None):
     """(id, errori). Il contratto entra solo se valido; i vincoli pertinenti si aggiungono a task.constraints."""
     errs = validate(contract)
@@ -319,6 +343,7 @@ def add(con, contract, topic=None):
     if errs:
         return None, errs
     t = contract["task"]
+    t["where"]["session"] = tmux_session(t["where"]["session"])
     if con.execute("SELECT 1 FROM tasks WHERE id=?", (t["id"],)).fetchone():
         return None, [f"$.task.id: {t['id']} already in the registry"]
     have = list(t.get("constraints") or [])
@@ -337,12 +362,23 @@ def attempts(con, tid):
     return con.execute("SELECT COUNT(*) FROM results WHERE task=? AND accepted IS NOT NULL", (tid,)).fetchone()[0]
 
 
+def check_env():
+    """L'ambiente del controllo: quello di chi lo lancia, con ~/.local/bin e /usr/local/bin nel PATH. Dal cron, dal
+    demone del relay e dagli hook il PATH e' /usr/bin:/bin e `supervisor`, `claude`, `gh` non si trovano: un controllo
+    giusto usciva 127 e il compito restava rosso (02/11, aggirato col percorso intero; stessa regola di cm-lib.sh, T81)."""
+    env = dict(os.environ)
+    have = env.get("PATH", "").split(":")
+    add = [d for d in (os.path.expanduser("~/.local/bin"), "/usr/local/bin") if d not in have]
+    env["PATH"] = ":".join(add + [d for d in have if d])
+    return env
+
+
 def run_check(task):
     """(rc, coda dell'uscita): il controllo del contratto, nella sua cartella e col suo timeout."""
     chk = task["check"]
     cwd = chk.get("cwd") or task["where"]["project"]
     try:
-        p = subprocess.run(chk["cmd"], shell=True, cwd=cwd, capture_output=True, text=True, timeout=chk["timeout_s"])
+        p = subprocess.run(chk["cmd"], shell=True, cwd=cwd, capture_output=True, text=True, timeout=chk["timeout_s"], env=check_env())
         out = (p.stdout + p.stderr).rstrip().splitlines()
         return p.returncode, "\n".join(out[-PROOF_TAIL:])
     except subprocess.TimeoutExpired:
