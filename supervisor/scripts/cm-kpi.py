@@ -24,6 +24,7 @@ import importlib.util
 import json
 import math
 import os
+import shutil
 import statistics
 import sys
 import time
@@ -324,16 +325,49 @@ def _midnight(now):
     return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
+HOST_BUSY_CPU = 0.25   # 1.110: sopra questa CPU (frazione, come hosts_status.cpu) l'host lavora
+
+
+def _leased_hosts():
+    """1.110: gli host con un lavoro pesante in corso (prenotazioni non in coda di <state_dir>/heavy/leases.json)."""
+    try:
+        p = Path(cm.expand(CFG["state_dir"])) / "heavy" / "leases.json"
+        return {x.get("host") for x in (json.loads(p.read_text()).get("leases") or []) if not x.get("queued")}
+    except (OSError, ValueError, KeyError, AttributeError):
+        return set()
+
+
+def local_disk():
+    """1.110: il disco di questo computer (quello della radice delle sessioni), in byte; None se non si legge."""
+    try:
+        u = shutil.disk_usage(cm.expand((CFG.get("workspace") or {}).get("root") or "~"))
+        return {"free": int(u.free), "total": int(u.total)}
+    except OSError:
+        return None
+
+
 def kpi_health(state, rows, now, rdir):
     """{latency: {p50_s, p95_s, max_s, n}, commands: {p50_s, p95_s, n} | None, sessions_here, sessions_max, hosts: [...]}"""
     lat = [float(r["s"]) for r in _jsonl(latency_path(rdir)) if float(r.get("at") or 0) >= now - 3600 and "s" in r]
     here = sum(1 for r in rows or [] if (not r.get("host") or r.get("host") == "local") and r.get("status") in ("busy", "idle", "waiting"))
     hosts = []
+    leased = _leased_hosts()
+    busy_cpu = float((CFG.get("system") or {}).get("host_busy_cpu") or HOST_BUSY_CPU)
     for h in (state or {}).get("hosts_status") or []:
         pct = lambda used, tot: round(100 * float(used) / float(tot)) if used is not None and tot else None  # noqa: E731
         free, dtot = h.get("disk_free"), h.get("disk_total")
+        # 1.110 (03/11, «perche' mostrare win se non e' in uso?»): l'host lavora se ha un lavoro pesante in corso, una
+        # sessione al lavoro o la CPU sopra soglia; giu' non lavora. working_why dice quali, nell'ordine
+        why = []
+        if h.get("up"):
+            if h.get("name") in leased:
+                why.append("job")
+            if any(r.get("host") == h.get("name") and r.get("status") == "busy" for r in rows or []):
+                why.append("session")
+            if isinstance(h.get("cpu"), (int, float)) and h["cpu"] >= busy_cpu:
+                why.append("cpu")
         hosts.append({"name": h.get("name"), "up": bool(h.get("up")), "cpu": h.get("cpu"), "ram_pct": pct(h.get("ram_used"), h.get("ram_total")),
-                      "disk_pct": pct(dtot - free, dtot) if free is not None and dtot else None})
+                      "disk_pct": pct(dtot - free, dtot) if free is not None and dtot else None, "working": bool(why), "working_why": why})
     # 1.108 (03/11): p95_s, al rango piu' vicino (il valore sotto cui sta il 95% dei campioni, mai interpolato)
     p95 = _p95(lat) if lat else None
     day = _midnight(now)
@@ -342,6 +376,7 @@ def kpi_health(state, rows, now, rdir):
                         "max_s": round(max(lat), 2) if lat else None, "n": len(lat)},
             # 1.109: i comandi di oggi (giornata locale), da issued all'esito scritto; null senza comandi
             "commands": {"p50_s": round(statistics.median(cmds), 2), "p95_s": round(_p95(cmds), 2), "n": len(cmds)} if cmds else None,
+            "local_disk": local_disk(),   # 1.110: il disco del Chromebook, libero e totale in byte
             "sessions_here": here, "sessions_max": int((CFG.get("sessions") or {}).get("max_sessions", 5)), "hosts": hosts}
 
 

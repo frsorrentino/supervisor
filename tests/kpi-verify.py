@@ -93,9 +93,27 @@ K.record_latency(rd, NOW - 50, 9999)
 st = {"hosts_status": [{"name": "win", "up": True, "cpu": 0.04, "ram_used": 8_000, "ram_total": 16_000, "disk_free": 25, "disk_total": 100}]}
 rows = [{"status": "busy"}, {"status": "idle", "host": "local"}, {"status": "idle", "host": "win"}, {"status": "dead"}]
 kh = K.kpi_health(st, rows, NOW, rd)
+_ld4 = kh.pop("local_disk")
 T.check("K4 kpi_health: latency of the last hour (median 2, p95 3, max 3, 3 samples; the one of 2 hours ago and one out of range left out), 2 sessions here of 5, win at 50% RAM and 75% disk",
         kh == {"latency": {"p50_s": 2.0, "p95_s": 3.0, "max_s": 3.0, "n": 3}, "commands": None, "sessions_here": 2, "sessions_max": 5,
-               "hosts": [{"name": "win", "up": True, "cpu": 0.04, "ram_pct": 50, "disk_pct": 75}]}, json.dumps(kh))
+               "hosts": [{"name": "win", "up": True, "cpu": 0.04, "ram_pct": 50, "disk_pct": 75, "working": False, "working_why": []}]}, json.dumps(kh))
+T.check("K4c (1.110) local_disk: this computer's disk, free and total in bytes", isinstance(_ld4, dict) and set(_ld4) == {"free", "total"} and 0 < _ld4["free"] <= _ld4["total"], str(_ld4))
+_sv4c = K._leased_hosts
+_h4c = lambda **kw: dict({"name": "win", "up": True, "cpu": 0.04, "ram_used": 1, "ram_total": 2, "disk_free": 1, "disk_total": 2}, **kw)  # noqa: E731
+K._leased_hosts = lambda: {"win"}
+_wj = K.kpi_health({"hosts_status": [_h4c()]}, [], NOW, rd)["hosts"][0]
+_wd = K.kpi_health({"hosts_status": [_h4c(up=False, cpu=None)]}, [{"host": "win", "status": "busy"}], NOW, rd)["hosts"][0]
+K._leased_hosts = lambda: set()
+_ws = K.kpi_health({"hosts_status": [_h4c(cpu=0.31)]}, [{"host": "win", "status": "busy"}, {"host": "local", "status": "busy"}], NOW, rd)["hosts"][0]
+_wi = K.kpi_health({"hosts_status": [_h4c(cpu=0.2)]}, [{"host": "win", "status": "idle"}], NOW, rd)["hosts"][0]
+K._leased_hosts = _sv4c
+T.check("K4c (1.110) working: a heavy job on win, a busy session on win, CPU over 25% each say so in working_why; idle under the threshold or down: not working",
+        (_wj["working"], _wj["working_why"]) == (True, ["job"]) and (_ws["working"], _ws["working_why"]) == (True, ["session", "cpu"])
+        and (_wi["working"], _wi["working_why"]) == (False, []) and (_wd["working"], _wd["working_why"]) == (False, []), json.dumps([_wj, _ws, _wi, _wd]))
+_lp = Path(K.cm.expand(K.CFG["state_dir"])) / "heavy" / "leases.json"
+_lp.parent.mkdir(parents=True, exist_ok=True)
+_lp.write_text(json.dumps({"leases": [{"job": "j1", "host": "win", "cls": "heavy", "since": 1, "queued": False}, {"job": "j2", "host": "mac", "cls": "heavy", "since": 1, "queued": True}]}))
+T.check("K4c (1.110) the heavy jobs come from heavy/leases.json, the queued ones do not count", K._leased_hosts() == {"win"}, str(K._leased_hosts()))
 
 rd95 = tmp / "relay95"
 rd95.mkdir()

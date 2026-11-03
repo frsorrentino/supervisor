@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.110 — 2026-11-03: whether win is working, and the Chromebook's disk, in the KPIs (supervisor-disco-locale-03-11, contract 1.110).**
+  - `kpi_health.local_disk`: free and total space of this computer's disk.
+  - Each host in `kpi_health.hosts` says whether it is working and why: a heavy job running there, a busy session, or its CPU over 25%. The app shows win only while it works.
 - **0.8.109 — 2026-11-03: the load advice says what weighs; two fixes from the plugin's own notes (supervisor-consigli-carico-03-11, supervisor-observe-difetti-03-11).**
   - When the load is high and no other advice explains it, the phrase now says the circumstance instead of «nessun consiglio lo spiega»: waits with no process using CPU; one session taking a whole core, by name; the sessions at work with their share (the session and what it launched), passing when they finish; the relay working more than usual; a process supervisor does not recognise, with its pid. With as many sessions open as the cap it adds that closing the finished ones helps.
   - `task result` shows the shape of the JSON in its help and with every error, an empty input too: a session had to guess it one field at a time.
