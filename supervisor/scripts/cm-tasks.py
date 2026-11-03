@@ -33,6 +33,12 @@
   supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D] [--choice C]
                                                 facoltativo (23/10 17:14): con il PIN della persona (supervisor pin set)
                                                 l'ok vale anche da una shell; il PIN non si scrive da nessun'altra parte
+  supervisor task tidy [--dry-run] [--json] | --archive | --today   1.113: le voci superate escono da sole da Tocca a te
+                                                («superata», mai «confermata»): 1 prova di una build che una pre-release piu'
+                                                nuova dello stesso progetto contiene; 2 pausa o richiesta di un compito chiuso;
+                                                3 richiesta doppia sullo stesso compito (resta la piu' recente); 4 prova senza
+                                                passi da 7 giorni, compito non in corso: in archivio. Le attese di un'azione
+                                                della persona non scadono mai da sole
   supervisor task auto-close [--hours 6] [--json]   chiude i compiti avviati, non in pausa, aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
@@ -256,6 +262,7 @@ CREATE TABLE IF NOT EXISTS prove (n INTEGER PRIMARY KEY, task TEXT, build TEXT, 
     result TEXT, result_at INTEGER, result_by TEXT, result_text TEXT, superseded_at INTEGER);
 CREATE TABLE IF NOT EXISTS defects (task TEXT PRIMARY KEY, defect_of TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS closures (task TEXT PRIMARY KEY, at INTEGER, model TEXT, effort TEXT, kind TEXT);
+CREATE TABLE IF NOT EXISTS tidy (n INTEGER PRIMARY KEY, at INTEGER, task TEXT, kind TEXT, rule INTEGER, text TEXT);
 CREATE TABLE IF NOT EXISTS decision_snooze (key TEXT PRIMARY KEY, at INTEGER, by_ TEXT, until INTEGER, refs TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS cause_notes (key TEXT PRIMARY KEY, note TEXT, at INTEGER, by_ TEXT);
 """
@@ -721,6 +728,148 @@ def ever_worked(con, tid):
         return True
     return bool(con.execute("SELECT 1 FROM steps WHERE task=? AND kind IN ('start', 'step', 'prova') UNION ALL "
                             "SELECT 1 FROM results WHERE task=? LIMIT 1", (tid, tid)).fetchone())
+
+
+TIDY_STALE_S = 7 * 86400
+TIDY_ARCHIVE_MAX = 30
+
+
+def _git(project, *a):
+    return subprocess.run(["git", "-C", str(project), *a], capture_output=True, text=True, timeout=20)
+
+
+def newer_build(project, tag, cache):
+    """1.113: un tag dello stesso progetto piu' nuovo di `tag` che lo contiene (la pre-release nuova porta il commit della
+    vecchia), o None. Senza repo, senza il tag o con git che non risponde: None, cioe' niente si chiude."""
+    key = (str(project), tag)
+    if key in cache:
+        return cache[key]
+    res = None
+    try:
+        tk = ("tags", str(project))
+        if tk not in cache:
+            out = _git(project, "for-each-ref", "--sort=-creatordate", "--format=%(refname:short)\t%(creatordate:unix)", "refs/tags").stdout
+            cache[tk] = [(t, int(ts)) for t, ts in (x.split("\t") for x in out.splitlines() if "\t" in x)]
+        when = dict(cache[tk])
+        if tag in when:
+            for t, ts in cache[tk]:   # dal piu' nuovo
+                if ts <= when[tag]:
+                    break
+                if _git(project, "merge-base", "--is-ancestor", tag, t).returncode == 0:
+                    res = t
+                    break
+    except (OSError, subprocess.SubprocessError, ValueError):
+        res = None
+    cache[key] = res
+    return res
+
+
+def _last_activity(con, tid, row):
+    vals = [row["created_at"] or 0]
+    for q in ("SELECT MAX(at) FROM steps WHERE task=?", "SELECT MAX(at) FROM prove WHERE task=?", "SELECT MAX(at) FROM pauses WHERE task=?"):
+        v = con.execute(q, (tid,)).fetchone()[0]
+        if v:
+            vals.append(v)
+    return max(vals)
+
+
+def tidy(con, now_=None, dry=False):
+    """1.113 (03/11/2026, «le decisioni superate devono andare da sole: semplificare, non dare compiti in piu'»): le voci di
+    Tocca a te che non chiedono piu' niente escono da sole. La chiusura si chiama «superata»: chiude la pausa o ritira la
+    prova, lascia un passo e una riga in `tidy`; MAI una conferma della persona (pagella e controlli restano veri), mai
+    un compito chiuso. Una pausa che aspetta un'azione della persona senza una prova non scade mai. Torna le chiusure."""
+    now_ = int(now_ or now())
+    out, cache = [], {}
+
+    def log(tid, kind, rule, text):
+        out.append({"task": tid, "kind": kind, "rule": rule, "text": text, "at": now_})
+        if not dry:
+            con.execute("INSERT INTO tidy (at, task, kind, rule, text) VALUES (?,?,?,?,?)", (now_, tid, kind, rule, text[:500]))
+
+    def close_pause(tid, rule, text):
+        log(tid, "pause", rule, text)
+        if not dry:
+            con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now_, tid))
+            con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,'supervisor','step',?,NULL)", (tid, now_, text[:500]))
+
+    rows = {r["id"]: r for r in con.execute("SELECT * FROM tasks").fetchall()}
+    # 2: pause rimaste aperte su compiti chiusi
+    for p in con.execute("SELECT DISTINCT task FROM pauses WHERE resumed_at IS NULL").fetchall():
+        r = rows.get(p["task"])
+        if r is not None and r["state"] not in OPEN_STATES:
+            close_pause(p["task"], 2, M("tasks.tidy_closed", state=r["state"]))
+    # 1 e 4: le pause di prova dei compiti aperti
+    for tid, r in rows.items():
+        if r["state"] not in OPEN_STATES:
+            continue
+        pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+        if not pz or pz["waits"] != "person":
+            continue
+        pv = prova_of(pz, r["project"])
+        if not pv:
+            continue   # un'attesa che non e' una prova (login, casella, una scelta) non scade mai da sola
+        nb = newer_build(r["project"], pv["release"], cache) if pv.get("release") and r["project"] else None
+        if nb:
+            close_pause(tid, 1, M("tasks.tidy_newer", old=pv["release"], new=nb))
+        elif r["state"] != "running" and now_ - _last_activity(con, tid, r) >= TIDY_STALE_S:
+            close_pause(tid, 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400))
+    # 1 e 4: le prove del banco ancora da fare
+    for pr in con.execute("SELECT * FROM prove WHERE superseded_at IS NULL AND result IS NULL").fetchall():
+        r = rows.get(pr["task"])
+        if r is None:
+            continue
+        if r["state"] not in OPEN_STATES:
+            rule, text = 2, M("tasks.tidy_closed", state=r["state"])
+        else:
+            nb = newer_build(r["project"], pr["build"], cache) if r["project"] else None
+            if nb:
+                rule, text = 1, M("tasks.tidy_newer", old=pr["build"], new=nb)
+            elif r["state"] != "running" and now_ - _last_activity(con, pr["task"], r) >= TIDY_STALE_S:
+                rule, text = 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400)
+            else:
+                continue
+        log(pr["task"], "prova", rule, text)
+        if not dry:
+            con.execute("UPDATE prove SET superseded_at=? WHERE n=?", (now_, pr["n"]))
+    # 2 e 3: le richieste di needs-you (file della sessione): di un compito chiuso; doppie sullo stesso compito
+    cm_, cfg = _cfg()
+    d = Path(cm_.expand(cfg["state_dir"])) / "needs-you" if cm_ else None
+    recs = []
+    for f in sorted(d.glob("*.json")) if d is not None and d.is_dir() else []:
+        try:
+            rec = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(rec, dict) and rec.get("task"):
+            recs.append((f, rec))
+    newest = {}
+    for f, rec in recs:
+        r = rows.get(rec["task"])
+        if r is not None and r["state"] not in OPEN_STATES:
+            log(rec["task"], "needs_you", 2, M("tasks.tidy_closed", state=r["state"]))
+            if not dry:
+                f.unlink(missing_ok=True)
+            continue
+        newest.setdefault(rec["task"], []).append((float(rec.get("at") or 0), f, rec))
+    for tid, lst in newest.items():
+        lst.sort(key=lambda x: -x[0])
+        for _, f, rec in lst[1:]:
+            log(tid, "needs_you", 3, M("tasks.tidy_double"))
+            if not dry:
+                f.unlink(missing_ok=True)
+    if not dry:
+        con.commit()
+    return out
+
+
+def tidy_rows(con, since=0, rule=None, limit=None):
+    """Le chiusure di `tidy` da `since`, dalla piu' recente: {task, short, kind, rule, text, at}."""
+    q = "SELECT * FROM tidy WHERE at>=?" + (" AND rule=?" if rule else "") + " ORDER BY at DESC, n DESC" + (f" LIMIT {int(limit)}" if limit else "")
+    out = []
+    for x in con.execute(q, (since, rule) if rule else (since,)).fetchall():
+        r = con.execute("SELECT * FROM tasks WHERE id=?", (x["task"],)).fetchone()
+        out.append({"task": x["task"], "short": short_of(_contract_task(r)) if r else None, "kind": x["kind"], "rule": x["rule"], "text": x["text"], "at": x["at"]})
+    return out
 
 
 def auto_close(con, hours=AUTO_CLOSE_H):
@@ -1807,6 +1956,16 @@ def main(argv):
             confirm(con, args[0], by, text)
             return 0
         approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"), choice, ok_at=ok_at)
+        return 0
+    if verb == "tidy":
+        if _flag(args, "--archive"):
+            res = tidy_rows(con, 0, 4, TIDY_ARCHIVE_MAX)
+        elif _flag(args, "--today"):
+            t = time.localtime()
+            res = tidy_rows(con, int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))))
+        else:
+            res = tidy(con, dry=_flag(args, "--dry-run"))
+        print(json.dumps(res, ensure_ascii=False) if as_json else "\n".join(f"{x['task']}: {x['kind']} — regola {x['rule']}: {x['text']}" for x in res))
         return 0
     if verb == "auto-close":
         hours = float(_opt(args, "--hours", AUTO_CLOSE_H))

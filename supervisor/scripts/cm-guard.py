@@ -325,6 +325,22 @@ def run():
             s["resume_names"] = []
             s["resumed_at"] = t
             changed = True
+    # 1.113 (03/11/2026): ogni 10 minuti le voci superate escono da sole da Tocca a te (`task tidy`)
+    tstamp = state_path().with_name("tidy.stamp")
+    try:
+        tlast = tstamp.stat().st_mtime
+    except OSError:
+        tlast = 0
+    if t - tlast >= 600:
+        try:
+            tstamp.parent.mkdir(parents=True, exist_ok=True)
+            tstamp.touch()
+            os.utime(tstamp, (t, t))
+            r = subprocess.run([CM_BIN, "task", "tidy"], capture_output=True, text=True, timeout=300)
+            if r.stdout.strip():
+                log(f"tidy: {len(r.stdout.strip().splitlines())} voci superate")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     # 16/10/2026: una volta l'ora i compiti aperti da piu' di 6 ore col controllo verde si chiudono (`task auto-close`)
     stamp = state_path().with_name("auto-close.stamp")
     try:

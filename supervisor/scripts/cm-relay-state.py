@@ -759,6 +759,8 @@ def build_state(src, now, fit=True):
                   **({"report": src["night_report"]} if src.get("night_report") else {})},
         "recap": {"date": recap.get("date") or "", "items": [{"project": i.get("project", ""), "done": i.get("done", ""), "next": i.get("next", "")} for i in (recap.get("items") or [])]},
         # 1.12: modelli ed effort che il polso puo' chiedere per una sessione; null se il relay non li conosce
+        # 1.113: il conto unico di Tocca a te e le chiusure automatiche di oggi; assente con un relay che non lo calcola
+        **({"tocca": src["tocca_state"]} if src.get("tocca_state") else {}),
         "choices": src.get("choices") or None,
         # 1.19: il relay sa ricevere «Condividi» (op report con /share); presente = l'app accende il pulsante
         # 1.28: any = ogni formato (non solo immagini): l'app mostra «File» nel menu del «+» solo con questo relay

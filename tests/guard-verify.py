@@ -56,9 +56,11 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 argslog = tmp / "cm-args.log"
 fake_cm = tmp / "supervisor"
 autoclose_log = tmp / "auto-close.log"
+tidy_log = tmp / "tidy.log"   # 1.113: `task tidy` ogni 10 minuti, anche lui a parte
 # 16/10/2026: `task auto-close` (una volta l'ora) in un registro a parte: le altre prove contano le riprese
 stall_file = tmp / "stalled.json"   # 22/10/2026: `task stall-check --json` risponde con questo file, se c'e'
 fake_cm.write_text(f'#!/bin/sh\nif [ "$1 $2" = "task auto-close" ]; then echo "$*" >> "{autoclose_log}"; exit 0; fi\n'
+                   f'if [ "$1 $2" = "task tidy" ]; then echo "$*" >> "{tidy_log}"; exit 0; fi\n'
                    f'if [ "$1 $2" = "task stall-check" ]; then if [ -f "{stall_file}" ]; then cat "{stall_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'printf \'%s\\n\' "$*" >> "{argslog}"\n')
 fake_cm.chmod(0o755)
@@ -192,6 +194,16 @@ guard("run", now=NOW + 7200 + 3601)
 n2 = len(autoclose_log.read_text().splitlines()) if autoclose_log.exists() else 0
 T.check("GU-AC guard run calls `task auto-close` once an hour: the first pass, not 30 minutes later, again after an hour",
         n1 - n0 == 1 and n2 - n1 == 1, f"{n0} {n1} {n2}")
+
+# GU-TD (03/11/2026, 1.113): `task tidy` ogni 10 minuti
+t0 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
+(state / "tidy.stamp").unlink(missing_ok=True)
+guard("run", now=NOW + 7200)
+guard("run", now=NOW + 7200 + 300)
+t1 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
+guard("run", now=NOW + 7200 + 601)
+t2 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
+T.check("GU-TD guard run calls `task tidy` every 10 minutes: the first pass, not 5 minutes later, again after 10", t1 - t0 == 1 and t2 - t1 == 1, f"{t0} {t1} {t2}")
 
 # GU-ST (22/10/2026, P3): un impegno fermo (da `task stall-check`) → talk alla master e Telegram, con prossimo passo e chi lo deve fare
 stall_file.write_text(json.dumps([{"task": "gantt-apk", "idle_s": 9 * 3600, "approved_at": NOW - 9 * 3600, "next": "APK sul telefono",

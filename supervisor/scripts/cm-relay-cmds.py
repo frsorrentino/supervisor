@@ -1686,11 +1686,11 @@ def raccolta_azione(cmd):
 
 def prove_op():
     """1.99: op prove, una lettura: le prove da fare per build, quelle che non vanno, i compiti col controllo rosso."""
-    p = _tasks_read(lambda tk, con: tk.prove_list(con))
+    p = _tasks_read(lambda tk, con: dict(tk.prove_list(con), archived=tk.tidy_rows(con, 0, 4, tk.TIDY_ARCHIVE_MAX)))   # 1.113: l'archivio
     root = cm.expand(CFG["workspace"]["root"])
     for x in (x for g in (p or {}).get("groups", []) for x in g["prove"]):
         x["project"] = S.project_of(x.get("project") or "", root)   # come state.sessions[].project
-    return True, json.dumps(p or {"at": int(time.time()), "n": 0, "builds": 0, "groups": [], "ko": [], "red": []}, ensure_ascii=False)
+    return True, json.dumps(p or {"at": int(time.time()), "n": 0, "builds": 0, "groups": [], "ko": [], "red": [], "archived": []}, ensure_ascii=False)
 
 
 def decisioni_op():
@@ -1847,19 +1847,36 @@ def tocca_tasks():
         def both(tk, con):
             out = {}
             for g in tk.prove_list(con)["groups"]:
-                for x in g["prove"]:
-                    if x.get("session"):
-                        out.setdefault(x["session"], {"prove": 0, "decidi": 0})["prove"] += 1
+                for x in g["prove"]:   # 1.113: anche le voci senza sessione (chiave ""), per il conto unico di state.tocca
+                    out.setdefault(x.get("session") or "", {"prove": 0, "decidi": 0})["prove"] += 1
             for g in tk.decisions(con)["groups"]:
                 for i in g["items"]:
-                    if i.get("session"):
-                        out.setdefault(i["session"], {"prove": 0, "decidi": 0})["prove" if i.get("prova") else "decidi"] += 1
+                    out.setdefault(i.get("session") or "", {"prove": 0, "decidi": 0})["prove" if i.get("prova") else "decidi"] += 1
             return out
         try:
             return _tasks_read(both) or {}
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             return {}
     return _memo("tocca_tasks", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you")])
+
+
+TOCCA_TODAY_MAX = 10
+
+
+def tocca_state():
+    """1.113: state.tocca, il conto unico di Tocca a te per home, menu e registro: le stesse voci di sessions[].tocca
+    (prove: il banco e le pause con una prova; decidi: le altre voci di Da decidere), con quelle senza sessione; e le
+    chiusure automatiche di oggi (task tidy), per la riga dell'app."""
+    c = tocca_tasks()
+    prove, decidi = sum(v["prove"] for v in c.values()), sum(v["decidi"] for v in c.values())
+    t = time.localtime()
+    mid = int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1)))
+    try:
+        today = _tasks_read(lambda tk, con: tk.tidy_rows(con, mid)) or []
+    except Exception:   # noqa: BLE001 — un registro senza la tabella (vecchio): nessuna chiusura
+        today = []
+    return {"n": prove + decidi, "prove": prove, "decidi": decidi,
+            "today": {"n": len(today), "items": [{k: x[k] for k in ("task", "short", "kind", "rule", "at")} for x in today[:TOCCA_TODAY_MAX]]}}
 
 
 def tocca_summary():

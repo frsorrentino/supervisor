@@ -644,6 +644,14 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.113 (03/11/2026, the maintainer: «le decisioni superate devono andare da sole: semplificare, non dare compiti in più»). Additive, `v` stays 1.
+
+- **Tidying, every 10 minutes (`task tidy`).** What no longer asks anything leaves «Tocca a te» by itself: (1) a test whose build a newer tag of the same project contains (`git merge-base --is-ancestor`), both a pause with `prova` and a test of the bench; (2) a pause, a test or a needs-you request of a task already done, closed or cancelled; (3) two needs-you requests on the same task: the newest stays; (4) tests only: no step for 7 days and the task not running, into the archive. A wait for an action of the person without a test never expires by itself. The closing is «superata»: the pause closes or the test is retired, with a step that says why; never a confirmation of the person, never a closed task.
+- **`state.tocca`**: `{n, prove, decidi, today}`, one count for home, menu and registry, from the same items as `sessions[].tocca` (1.111) and the sessionless ones: `prove` the tests of op `prove` plus the items of op `decisioni` with `prova`; `decidi` the other items of op `decisioni`; `n` their sum. `today`: `{n, items[≤10]}`, the closings of the tidying since midnight, newest first, `{task, short, kind ∈ pause|prova|needs_you, rule ∈ 1-4, at}`. Absent with a relay that does not compute it.
+- **op `prove`**: `archived`, at most 30, newest first: `{task, short, kind, rule (4), text, at}`.
+
+Fixture: `cmd-result-sample.json` (`prove` with `archived`).
+
 Contract 1.112 (03/11/2026, reported by the maintainer: «cos'è questo messaggio che appare spesso?»). Additive, `v` stays 1.
 
 - **A read replaced by a newer one** (several reads of the same op and session waiting together: only the newest runs) gets at once a result with `ok: false`, `superseded: true` and the text `relay.cmd_superseded` in the relay's language. `superseded` is present only there: a client closes that request in silence instead of showing an error, without reading the text.

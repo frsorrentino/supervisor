@@ -607,4 +607,80 @@ T.check("prova_strutturata PS8 the contract's sample: a pause with prova and one
         any(isinstance(i.get("prova"), dict) and set(i["prova"]) == {"project", "release", "web"} for g in _fx7["groups"] for i in g["items"])
         and any(i.get("kind") == "pause" and i.get("prova") is None for g in _fx7["groups"] for i in g["items"]) and {"provato", "non_va"} <= set(_acts7), str(_acts7))
 
+
+# tocca_auto (03/11/2026, contratto 1.113, supervisor-tocca-auto-03-11): le voci superate escono da sole, «superata» e mai
+# «confermata»; le attese di un'azione della persona non scadono mai
+_repo = tmp / "app-repo"
+_repo.mkdir()
+_genv = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@x", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@x")
+def _g(*a, when=None):
+    e = dict(_genv, **({"GIT_COMMITTER_DATE": when, "GIT_AUTHOR_DATE": when} if when else {}))
+    return subprocess.run(["git", "-C", str(_repo), *a], capture_output=True, text=True, env=e, check=True).stdout
+_g("init", "-q", "-b", "main")
+_g("commit", "-q", "--allow-empty", "-m", "a", when="2026-11-01T10:00:00"); _g("tag", "a")
+_g("commit", "-q", "--allow-empty", "-m", "b", when="2026-11-02T10:00:00"); _g("tag", "b")
+_g("checkout", "-q", "--orphan", "altro"); _g("commit", "-q", "--allow-empty", "-m", "c", when="2026-11-03T10:00:00"); _g("tag", "c")
+
+
+def add_in(tid, project, **kw):
+    c = {"schema_version": 1, "task": {"id": tid, "title": f"unit {tid}", "plan": None,
+                                       "where": {"project": str(project), "session": kw.get("session", "sess"), "host": "local", "account": None},
+                                       "check": {"cmd": "true", "cwd": None, "timeout_s": 30}, "perimeter": ["src/**"], "lane": "open",
+                                       "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
+    return cm("add", "-", stdin=json.dumps(c))
+
+
+add_in("ta-old", _repo); cm("pause", "ta-old", "--reason", "Prova la home", "--waits", "person", "--prova", "--release", "a")
+add_in("ta-new", _repo); cm("pause", "ta-new", "--reason", "Prova il menu", "--waits", "person", "--prova", "--release", "b")
+add_in("ta-banco-old", _repo); cm("prova", "ta-banco-old", "--build", "a", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
+add_in("ta-banco-new", _repo); cm("prova", "ta-banco-new", "--build", "b", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
+add_in("ta-done", _repo); cm("pause", "ta-done", "--reason", "Prova la pagina", "--waits", "person", "--prova", "--release", "b")
+_c = __import__("sqlite3").connect(tmp / "tasks.db")
+_c.execute("UPDATE tasks SET state='done' WHERE id='ta-done'")
+_c.commit()   # prima della CLI: una scrittura aperta qui bloccherebbe le sue (database is locked)
+_old = int(time.time()) - 8 * 86400
+add_in("ta-stale", _repo); cm("pause", "ta-stale", "--reason", "Prova il filtro", "--waits", "person", "--prova")
+add_in("ta-stale-run", _repo); cm("pause", "ta-stale-run", "--reason", "Prova il filtro", "--waits", "person", "--prova")
+add_in("ta-login", _repo); cm("pause", "ta-login", "--reason", "Serve il login su Aruba", "--waits", "person")
+for _t in ("ta-stale", "ta-stale-run", "ta-login"):
+    _c.execute("UPDATE tasks SET created_at=?, updated_at=? WHERE id=?", (_old, _old, _t))
+    _c.execute("UPDATE pauses SET at=? WHERE task=?", (_old, _t))
+    _c.execute("DELETE FROM steps WHERE task=?", (_t,))
+_c.execute("UPDATE tasks SET state='running' WHERE id='ta-stale-run'")
+_c.commit(); _c.close()
+_nd2 = state_dir / "needs-you"
+_nd2.mkdir(parents=True, exist_ok=True)
+for _f in _nd2.glob("*.json"):
+    _f.unlink()
+_now2 = int(time.time())
+(_nd2 / "ny-done.json").write_text(json.dumps({"reason": "Serve il codice", "at": _now2 - 60, "name": "sess", "task": "ta-done", "expires_at": _now2 + 900}))
+(_nd2 / "ny-a.json").write_text(json.dumps({"reason": "Serve la foto", "at": _now2 - 300, "name": "sess", "task": "ta-login", "expires_at": _now2 + 900}))
+(_nd2 / "ny-b.json").write_text(json.dumps({"reason": "Serve la foto, ancora", "at": _now2 - 30, "name": "sess", "task": "ta-login", "expires_at": _now2 + 900}))
+_before = decisioni()
+_dry = json.loads(cm("tidy", "--dry-run", "--json")[1])
+T.check("TA0 --dry-run says what would go and changes nothing", _dry and decisioni()["groups"] == _before["groups"] and (_nd2 / "ny-a.json").exists() and json.loads(cm("tidy", "--today", "--json")[1]) == [], str(len(_dry)))
+_run = json.loads(cm("tidy", "--json")[1])
+_by = {(x["task"], x["kind"]): x["rule"] for x in _run}
+_open = lambda tid: bool(__import__("sqlite3").connect(tmp / "tasks.db").execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL", (tid,)).fetchone())  # noqa: E731
+T.check("TA1 a test of build a goes when a newer tag of the same project contains a (b); a test of b stays: c is newer but does not contain it",
+        _by.get(("ta-old", "pause")) == 1 and not _open("ta-old") and _open("ta-new") and _by.get(("ta-banco-old", "prova")) == 1
+        and not ids_of("ta-banco-old") and ids_of("ta-banco-new"), str(_run))
+T.check("TA1 «superata» is never a confirmation: no confirmed approval, the task still open, a step that says why",
+        cm("confirmed", "ta-old")[0] != 0 and show("ta-old")["state"] == "assigned" and "b contiene a" in show("ta-old")["steps"][-1]["text"], str(show("ta-old")["steps"][-1:]))
+T.check("TA2 a pause and a request of a task already closed go", _by.get(("ta-done", "pause")) == 2 and not _open("ta-done") and not (_nd2 / "ny-done.json").exists(), str(_run))
+T.check("TA3 two requests on the same task: the newest stays", _by.get(("ta-login", "needs_you")) == 3 and not (_nd2 / "ny-a.json").exists() and (_nd2 / "ny-b.json").exists(), str(_run))
+T.check("TA4 a test with no step for 7 days and the task not running goes to the archive; a running one stays",
+        _by.get(("ta-stale", "pause")) == 4 and not _open("ta-stale") and _open("ta-stale-run"), str(_run))
+T.check("TA5 a wait for an action of the person (a login) never expires by itself, even after 8 days", _open("ta-login") and ("ta-login", "pause") not in _by, str(_run))
+T.check("TA6 a second run closes nothing more", json.loads(cm("tidy", "--json")[1]) == [], "")
+_today = json.loads(cm("tidy", "--today", "--json")[1])
+_arch = json.loads(cm("tidy", "--archive", "--json")[1])
+T.check("TA7 today's closures and the archive (rule 4 only) are listed", len(_today) == len(_run) and [x["task"] for x in _arch] == ["ta-stale"], str((_today, _arch)))
+_ts = RL.tocca_state()
+_pv = json.loads(RL.prove_op()[1])
+_dv = json.loads(RL.decisioni_op()[1])
+T.check("TA8 state.tocca: one count from the same items as the pages (tests of the bench and pauses with a test; the other decisions), today's closures; op prove carries the archive",
+        _ts["prove"] == _pv["n"] + sum(1 for g in _dv["groups"] for i in g["items"] if i.get("prova")) and _ts["decidi"] == sum(1 for g in _dv["groups"] for i in g["items"] if not i.get("prova"))
+        and _ts["n"] == _ts["prove"] + _ts["decidi"] and _ts["today"]["n"] == len(_run) and [x["task"] for x in _pv["archived"]] == ["ta-stale"], json.dumps(_ts)[:400])
+
 T.finish()
