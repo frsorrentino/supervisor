@@ -43,6 +43,10 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
   supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
   supervisor task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]
                        [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui]
+                       [--prova [--release TAG] [--web VERSIONE]]
+                                                1.107: --prova = la persona deve provare qualcosa (con --waits person):
+                                                il tag della pre-release e la versione web, se ci sono; l'app la mostra
+                                                fra le prove e la chiude con «Tutto va» o «Non va»
                                                 con --waits person il motivo dice in parole cosa si chiede alla persona, mai solo «aspetta l'ok»: la card lo mostra
                                                 1.99: --cause la stessa causa per piu' compiti (senza, vale il testo della
                                                 pausa); --al-pc / --da-qui dove si puo' fare (senza, dalle parole del motivo)
@@ -272,6 +276,9 @@ def connect(create=True):
     if "cause" not in cols:   # 1.99 (01/11): la causa comune, se si torna indietro, dove si puo' fare
         for c in ("cause", "undo", "undo_how", "at_pc"):
             con.execute(f"ALTER TABLE pauses ADD COLUMN {c} TEXT")
+        con.commit()
+    if "prova" not in cols:   # 1.107 (03/11): la pausa aspetta una prova della persona: {release, web} in JSON
+        con.execute("ALTER TABLE pauses ADD COLUMN prova TEXT")
         con.commit()
     cols = {r[1] for r in con.execute("PRAGMA table_info(approvals)")}   # 1.81 (23/10): le opzioni di una scelta e quella presa
     if "options" not in cols:
@@ -951,7 +958,9 @@ def settle(con, tid):
     live = _live_prove(con, tid)
     if row["state"] not in OPEN_STATES:
         return 3, f"task settle {tid}: already {row['state']}"
-    if not live or any(r["result"] != "ok" for r in live):
+    # 1.107: una pausa di prova chiusa con «Tutto va» (decisione provato) non ha righe di prova: vale la conferma della persona
+    confirmed = con.execute("SELECT 1 FROM approvals WHERE task=? AND what='confirmed' AND by_ IS NOT NULL LIMIT 1", (tid,)).fetchone()
+    if (live and any(r["result"] != "ok" for r in live)) or (not live and not confirmed):
         return 3, f"task settle {tid}: not every test is ok"
     task = _contract_task(row)
     oe = outcome_errors(task)
@@ -1085,7 +1094,7 @@ def decisions(con, now_=None, snoozed=False):
         pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         if pz and pz["waits"] == "person" and not prove_pending(con, tid):
             key = ("c", pz["cause"]) if pz["cause"] else ("t", pz["reason"])
-            items.append((key, pz["cause"], dict(base, kind="pause", asks=asks_of(_at_pc(pz["at_pc"], pz["reason"]), pz["reason"]), reason=pz["reason"], since=int(pz["since"] or pz["at"]), where=_at_pc(pz["at_pc"], pz["reason"]),
+            items.append((key, pz["cause"], dict(base, kind="pause", prova=prova_of(pz, r["project"]), asks=asks_of(_at_pc(pz["at_pc"], pz["reason"]), pz["reason"]), reason=pz["reason"], since=int(pz["since"] or pz["at"]), where=_at_pc(pz["at_pc"], pz["reason"]),
                                                  undo=pz["undo"], undo_how=pz["undo_how"], needs_you=None)))
     by_task = {it[2]["task"]: it[2] for it in items}
     for rec in _needs_you_open(now_):
@@ -1126,6 +1135,46 @@ def decisions(con, now_=None, snoozed=False):
         out.append(g)
     out.sort(key=lambda g: (g["where"] != "here", -g["weight"], g["since"], g["key"]))
     return {"at": now_, "n": len(out), "here": sum(1 for g in out if g["where"] == "here"), "tasks": len({t for g in out for t in g["unblocks"]}), "snoozed": hidden, "groups": out}
+
+
+PROVA_VAL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
+# le pause scritte prima della 1.107 dicono la prova a parole: «… la prova dell'utente sul telefono, pre-release
+# slot-subito-2026-11-01; web 0.2.1663 …». Se ne ricava il campo solo con la parola «prova» e un tag o una versione
+_PROVA_WORD_RE = re.compile(r"\bprov[aeio]", re.I)
+_PROVA_REL_RE = re.compile(r"\bpre-?release\s+((?=[A-Za-z0-9._-]*\d)[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9])", re.I)   # un tag ha una cifra: «la pre-release che le contiene» no
+_PROVA_WEB_RE = re.compile(r"\b(?:web|PWA)\s+v?(\d+\.\d+\.\d+)\b", re.I)
+
+
+def prova_of(pz, project):
+    """1.107: {project, release, web} della prova che la pausa aspetta, o None. Prima il campo scritto con --prova, poi,
+    per le pause scritte prima, le parole del motivo."""
+    raw = pz["prova"] if "prova" in pz.keys() else None
+    if raw:
+        try:
+            d = json.loads(raw)
+            return {"project": project, "release": d.get("release"), "web": d.get("web")}
+        except ValueError:
+            pass
+    reason = pz["reason"] or ""
+    if not _PROVA_WORD_RE.search(reason):
+        return None
+    rel, web = _PROVA_REL_RE.search(reason), _PROVA_WEB_RE.search(reason)
+    if not rel and not web:
+        return None
+    return {"project": project, "release": rel.group(1) if rel else None, "web": web.group(1) if web else None}
+
+
+def decision_tested(con, tid, by, text, works):
+    """1.107, dal relay: «Tutto va» (works) registra la conferma della persona (quella che `task confirmed` legge) e chiude la
+    pausa; «Non va» chiude la pausa e lascia il motivo nei passi: il compito torna alla sua sessione."""
+    t = now()
+    if works:
+        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,'confirmed',NULL)",
+                    (tid, get_task(con, tid)["plan"], by, t, text))
+    con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (t, tid))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'step',?,NULL)", (tid, t, by, text[:500]))
+    con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (t, tid))
+    con.commit()
 
 
 def decision_snooze(con, key, refs, by, hours, reason=None):
@@ -1549,8 +1598,17 @@ def main(argv):
         recheck, cause = _opt(args, "--recheck"), _opt(args, "--cause")
         undo, undo_how = parse_undo(args, "pause")
         at_pc = "pc" if _flag(args, "--al-pc") else ("here" if _flag(args, "--da-qui") else None)
+        is_prova, release, web = _flag(args, "--prova"), _opt(args, "--release"), _opt(args, "--web")
         if not args or not reason:
-            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO] [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui]")
+            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO] [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui] [--prova [--release TAG] [--web VERSION]]")
+        if (release or web) and not is_prova:
+            sys.exit("task pause: --release and --web go with --prova")
+        if is_prova and waits not in ("person", "user"):
+            sys.exit("task pause: --prova goes with --waits person (the person tests)")
+        for v, what in ((release, "--release"), (web, "--web")):
+            if v is not None and not PROVA_VAL_RE.fullmatch(v):
+                sys.exit(f"task pause: {what} is one word (letters, digits, . _ -), at most 80 characters")
+        prova_json = json.dumps({"release": release, "web": web}) if is_prova else None
         cause = " ".join(cause.split()) if cause else None
         if cause and len(cause) > CAUSE_MAX:
             sys.exit(f"task pause: --cause over {CAUSE_MAX} characters")
@@ -1575,8 +1633,8 @@ def main(argv):
         if row["state"] not in OPEN_STATES:
             sys.exit(f"task {args[0]}: already {row['state']}")
         con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
-        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since, recheck, cause, undo, undo_how, at_pc) VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?)",
-                    (args[0], now(), by, reason[:300], waits if waits == "external" else ("person" if waits else None), since_at, recheck_at, cause, undo, undo_how, at_pc))
+        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since, recheck, cause, undo, undo_how, at_pc, prova) VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?)",
+                    (args[0], now(), by, reason[:300], waits if waits == "external" else ("person" if waits else None), since_at, recheck_at, cause, undo, undo_how, at_pc, prova_json))
         con.commit()
         return 0
     if verb == "closed":

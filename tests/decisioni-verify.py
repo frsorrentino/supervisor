@@ -552,4 +552,59 @@ for _lang in ("it", "en"):
     _k = (T.ROOT / f"supervisor/kernel_{_lang}.md").read_text()
     T.check(f"decisione_spiegata kernel ({_lang}) rule 12 asks a pause to say what it asks, under the cap", ("cosa chiedi" in _k or "what you ask" in _k) and len(_k) <= 3700, str(len(_k)))
 T.check("decisione_spiegata task pause's help says so", "mai solo «aspetta l'ok»" in cm("--help")[1], "")
+
+# prova_strutturata (03/11/2026, contratto 1.107, supervisor-prove-strutturate-03-11): la prova che una pausa aspetta,
+# in campi e non nel testo; «Tutto va» e «Non va» su un gruppo di Da decidere
+add("ps-a", title="Home nuova"); _rc_ps = cm("pause", "ps-a", "--reason", "Prova la home nuova sul telefono", "--waits", "person", "--prova", "--release", "home-2026-11-03", "--web", "0.2.1800")
+add("ps-b"); cm("pause", "ps-b", "--reason", "L'utente prova sul telefono la pre-release slot-subito-2026-11-01; web 0.2.1663 già online", "--waits", "person")
+add("ps-c"); cm("pause", "ps-c", "--reason", "L'utente prova la pre-release tabellone-4-2026-11-02 e la PWA 0.2.1729", "--waits", "person")
+add("ps-d"); cm("pause", "ps-d", "--reason", "Serve la casella Aruba, release 2026-11-01 fatta", "--waits", "person")
+add("ps-f"); cm("pause", "ps-f", "--reason", "Aspetta la prova dell'utente: si prova sulla pre-release che le contiene", "--waits", "person")
+add("ps-e"); cm("pause", "ps-e", "--reason", "Prova solo il web", "--waits", "person", "--prova", "--web", "0.2.1801")
+_dps = {i["task"]: i for g in json.loads(RL.decisioni_op()[1])["groups"] for i in g["items"] if i.get("task")}
+T.check("prova_strutturata PS1 task pause --prova --release --web: the pause item carries prova {project, release, web}, project as the item's",
+        _rc_ps[0] == 0 and _dps["ps-a"]["prova"] == {"project": _dps["ps-a"]["project"], "release": "home-2026-11-03", "web": "0.2.1800"}
+        and not _dps["ps-a"]["project"].startswith("/"), str(_dps.get("ps-a")))
+T.check("prova_strutturata PS1 only the web: release null", _dps["ps-e"]["prova"]["release"] is None and _dps["ps-e"]["prova"]["web"] == "0.2.1801", str(_dps["ps-e"]))
+T.check("prova_strutturata PS2 a pause written before 1.107 gets prova from its words (pre-release, web or PWA)",
+        (_dps["ps-b"]["prova"]["release"], _dps["ps-b"]["prova"]["web"], _dps["ps-c"]["prova"]["release"], _dps["ps-c"]["prova"]["web"])
+        == ("slot-subito-2026-11-01", "0.2.1663", "tabellone-4-2026-11-02", "0.2.1729"), str((_dps["ps-b"]["prova"], _dps["ps-c"]["prova"])))
+T.check("prova_strutturata PS2 no word «prova», or «pre-release» followed by a word with no digit: no prova; every pause item has the key",
+        _dps["ps-d"]["prova"] is None and _dps["ps-f"]["prova"] is None and all("prova" in i for i in _dps.values() if i["kind"] == "pause"), str(_dps["ps-d"]))
+T.check("prova_strutturata PS3 refused: --release without --prova, --prova without --waits person, a value that is not one word",
+        cm("pause", "ps-d", "--reason", "x", "--waits", "person", "--release", "r1")[0] != 0
+        and cm("pause", "ps-d", "--reason", "x", "--prova")[0] != 0
+        and cm("pause", "ps-d", "--reason", "x", "--waits", "person", "--prova", "--web", "0.2 1")[0] != 0, "")
+_kps = group_of("ps-a")["key"]
+T.check("prova_strutturata PS4 provato and non_va refused without a device, non_va without a reason",
+        RL.decisione_op({"by": "x", "action": "provato"}, _kps)[0] is False and RL.decisione_op(dict(PHONE, action="non_va"), _kps)[0] is False
+        and show("ps-a")["state"] == "assigned", "")
+WAKES.clear(); SPAWNS.clear()
+_ok_ps, _txt_ps = RL.decisione_op(dict(PHONE, action="provato"), _kps)
+_sa = show("ps-a")
+T.check("prova_strutturata PS5 «Tutto va»: the person's confirmation recorded from the device (task confirmed exits 0), the pause closed, the check started, the session told",
+        _ok_ps and cm("confirmed", "ps-a")[0] == 0 and group_of("ps-a") is None and ("task", "settle", "ps-a") in SPAWNS
+        and any(w[0] == "sess" and "va" in w[1] for w in WAKES) and "telefono" in _sa["steps"][-1]["text"], _txt_ps + str(SPAWNS) + str(WAKES))
+T.check("prova_strutturata PS5 the confirmation counts as the person's: by the device's sender, never the session",
+        any(a.get("what") == "confirmed" and a.get("by_") == "maintainer" for a in _sa["approvals"]), str(_sa["approvals"]))
+_r = cm("settle", "ps-a")
+T.check("prova_strutturata PS5 its check (true here) then closes the task", show("ps-a")["state"] == "done", str(_r) + show("ps-a")["state"])
+_kb = group_of("ps-b")["key"]
+WAKES.clear(); SPAWNS.clear()
+_ok_nv, _txt_nv = RL.decisione_op(dict(PHONE, action="non_va", reason="Le categorie non restano chiuse"), _kb)
+_sb = show("ps-b")
+T.check("prova_strutturata PS6 «Non va»: no confirmation, the pause closed, the task back to its session with the text, no check started",
+        _ok_nv and cm("confirmed", "ps-b")[0] != 0 and group_of("ps-b") is None and _sb["state"] == "assigned" and not SPAWNS
+        and any(w[0] == "sess" and "Le categorie non restano chiuse" in w[1] for w in WAKES) and "Le categorie non restano chiuse" in _sb["steps"][-1]["text"], _txt_nv + str(WAKES))
+add("ps-ok"); cm("wait-ok", "ps-ok", "--what", "pubblica", "--where", "qui")
+T.check("prova_strutturata PS7 provato on a group with no pause (an ok card) is refused: an ok stays approve",
+        RL.decisione_op(dict(PHONE, action="provato"), group_of("ps-ok")["key"])[0] is False and show("ps-ok")["state"] == "awaiting_ok", "")
+_crs7 = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())
+_res7 = {r["id"]: r for r in _crs7["result"]}
+_fx7 = next(json.loads(_res7[c["id"]]["text"]) for c in _crs7["cmd"] if c["op"] == "decisioni")
+_acts7 = [c.get("action") for c in _crs7["cmd"] if c["op"] == "decisione"]
+T.check("prova_strutturata PS8 the contract's sample: a pause with prova and one with prova null, a provato and a non_va",
+        any(isinstance(i.get("prova"), dict) and set(i["prova"]) == {"project", "release", "web"} for g in _fx7["groups"] for i in g["items"])
+        and any(i.get("kind") == "pause" and i.get("prova") is None for g in _fx7["groups"] for i in g["items"]) and {"provato", "non_va"} <= set(_acts7), str(_acts7))
+
 T.finish()

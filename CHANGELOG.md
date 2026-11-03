@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.106 — 2026-11-03: the tests you are waited for, as fields; «Tutto va» and «Non va» from «Da decidere» (supervisor-prove-strutturate-03-11, contract 1.107).**
+  - A pause that waits for you to try something carries what to try: the project, the pre-release tag and the web version, written with `task pause … --waits person --prova [--release TAG] [--web VERSION]`. Pauses written before get it from their words when they name a pre-release or a web version. The app can then gather the tests under the newest pre-release.
+  - From «Da decidere», «Tutto va» records your confirmation on the paused tasks of the group, as a touch on Approve, and runs their checks: green closes them. «Non va» with a reason sends them back to their session with your words.
 - **0.8.105 — 2026-11-03: a silent command stream reopens in 45 s, not 90 (supervisor-relay-stream-muto-03-11).**
   - The connection that brings the app's commands to the relay sometimes stays open but silent (18 times since 2026-11-02). The relay noticed only after 90 s without data, and commands sent meanwhile arrived up to 84 s late. Firebase sends a keep-alive every 30 s, so the relay now reopens the connection after 45 s of silence; the commands written meanwhile arrive with the reconnection. The setting is `relay.stream_silence_s` (it replaces `serve_timeout_s`).
 - **0.8.104 — 2026-11-03: slow reads in a lane of their own (supervisor-relay-letture-lente-03-11, follows supervisor-relay-ingresso-web-03-11).**

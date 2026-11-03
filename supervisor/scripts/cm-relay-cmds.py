@@ -1699,6 +1699,8 @@ def decisioni_op():
     root = cm.expand(CFG["workspace"]["root"])
     for x in (x for g in (d or {}).get("groups", []) for x in g["items"] if x.get("project")):
         x["project"] = S.project_of(x["project"], root)   # come state.sessions[].project
+        if isinstance(x.get("prova"), dict):   # 1.107: lo stesso nome, cosi' l'app fonde le prove dello stesso progetto
+            x["prova"]["project"] = x["project"]
     return True, json.dumps(d or {"at": int(time.time()), "n": 0, "here": 0, "tasks": 0, "snoozed": 0, "groups": []}, ensure_ascii=False)
 
 
@@ -1747,16 +1749,19 @@ def prova_op(cmd, arg):
 def decisione_op(cmd, arg):
     """1.99: «Non ora» e «Lascia perdere» su un gruppo di Cinque minuti. arg = la chiave; action not_now (`hours` facoltativo, 24)
     o drop (`reason` obbligatoria: i compiti del gruppo cancellati, le sessioni e la master avvisate, i needs-you tolti). Per
-    ok, scelta e conferma restano approve e attention_done. La chiave si cerca di nuovo qui: si agisce su cio' che c'e' adesso."""
+    ok, scelta e conferma restano approve e attention_done. La chiave si cerca di nuovo qui: si agisce su cio' che c'e' adesso.
+    1.107 (03/11, per le prove della persona): provato = «Tutto va», la conferma della persona (origine relay, come un tocco su
+    Approva) sui compiti in pausa del gruppo, poi il loro controllo in un processo suo; non_va (`reason` obbligatoria) = i
+    compiti in pausa tornano alla loro sessione col testo. Solo le voci di tipo pausa: ok e needs-you restano dove sono."""
     why = _touch_refused(cmd, "decisione")
     if why:
         return False, why
     action, key = cmd.get("action"), str(arg or "").strip()
-    if action not in ("not_now", "drop"):
+    if action not in ("not_now", "drop", "provato", "non_va"):
         return False, M("relay.cmd_decisione_bad_action")
     reason = S.one_line(str(cmd.get("reason") or "").strip())[:300] if isinstance(cmd.get("reason"), str) else ""
-    if action == "drop" and not reason:
-        return False, M("relay.cmd_decisione_needs_reason")
+    if action in ("drop", "non_va") and not reason:
+        return False, M("relay.cmd_decisione_needs_reason" if action == "drop" else "relay.cmd_decisione_non_va_needs_reason")
     tk = _load("cm-tasks")
     con = tk.connect(create=False)
     if con is None:
@@ -1772,6 +1777,23 @@ def decisione_op(cmd, arg):
             h = h if isinstance(h, int) and not isinstance(h, bool) and 1 <= h <= SNOOZE_MAX_H else tk.SNOOZE_DEFAULT_H
             tk.decision_snooze(con, key, g["refs"], by, h, reason or None)
             return True, M("relay.cmd_decisione_snoozed", hours=h)
+        if action in ("provato", "non_va"):
+            paused = [i for i in g["items"] if i["kind"] == "pause" and i.get("task")]
+            if not paused:
+                return False, M("relay.cmd_decisione_no_pause")
+            works = action == "provato"
+            person = M("tasks.person")
+            for i in paused:
+                text = M("relay.decisione_provato" if works else "relay.decisione_non_va", person=person, device=where, title=str(i.get("title") or i["task"])[:120], reason=reason)
+                tk.decision_tested(con, i["task"], by, text, works)
+                if i.get("needs_you"):
+                    clear_needs_you(i["session"])
+                if i.get("session"):
+                    _wake(i["session"], text)
+            if works:
+                for i in paused:
+                    _spawn_cm("task", "settle", i["task"])   # il controllo chiude il compito se e' verde, come «Tutte ok»
+            return True, M("relay.cmd_decisione_provato" if works else "relay.cmd_decisione_non_va", n=len(paused))
         told = set()
         for i in g["items"]:
             sess = i.get("session")

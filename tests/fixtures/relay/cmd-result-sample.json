@@ -1178,6 +1178,27 @@
       "text": "The intro still cuts the title",
       "pos_s": 3.5,
       "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0922-4000-8000-000000000922",
+      "op": "decisione",
+      "session": null,
+      "arg": "5be07a3c9e42",
+      "device": "phone",
+      "issued": 1789214722,
+      "by": "phone-pixel7",
+      "action": "provato"
+    },
+    {
+      "id": "6f1c2d3e-0923-4000-8000-000000000923",
+      "op": "decisione",
+      "session": null,
+      "arg": "5be07a3c9e42",
+      "device": "phone",
+      "issued": 1789214723,
+      "by": "phone-pixel7",
+      "action": "non_va",
+      "reason": "The categories do not stay closed"
     }
   ],
   "result": [
@@ -1819,7 +1840,7 @@
     {
       "id": "6f1c2d3e-0901-4000-8000-000000000901",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"n\": 2, \"here\": 1, \"tasks\": 3, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"Proposal: move the checkout to the new layout, with the old one kept behind a flag.\", \"asks\": \"ok\"}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\", \"title\": null, \"plan_start\": null, \"asks\": \"other\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}]}",
+      "text": "{\"at\": 1789214700, \"n\": 3, \"here\": 2, \"tasks\": 4, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"prova\": null, \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"Proposal: move the checkout to the new layout, with the old one kept behind a flag.\", \"asks\": \"ok\"}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"5be07a3c9e42\", \"title\": \"Try the new home on the phone\", \"cause\": null, \"items\": [{\"task\": \"orbit-home\", \"short\": \"New home\", \"title\": \"New home of orbit-app\", \"session\": \"orbit-app\", \"project\": \"personal/orbit-app\", \"kind\": \"pause\", \"prova\": {\"project\": \"personal/orbit-app\", \"release\": \"home-2026-09-12\", \"web\": \"0.2.1663\"}, \"reason\": \"Try the new home: pre-release home-2026-09-12, web 0.2.1663\", \"since\": 1789210000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"The home with the four categories, open or closed with a tap.\", \"asks\": \"other\"}], \"unblocks\": [\"orbit-home\"], \"weight\": 1, \"where\": \"here\", \"since\": 1789210000, \"note\": null, \"refs\": [\"orbit-home\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\", \"title\": null, \"plan_start\": null, \"asks\": \"other\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}]}",
       "at": 1789214706
     },
     {
@@ -1941,6 +1962,18 @@
       "ok": true,
       "text": "note sent to orbit-docs",
       "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0922-4000-8000-000000000922",
+      "ok": true,
+      "text": "provato: 1 compiti confermati, il controllo li chiude",
+      "at": 1789214724
+    },
+    {
+      "id": "6f1c2d3e-0923-4000-8000-000000000923",
+      "ok": true,
+      "text": "non va: 1 compiti tornano alla sessione",
+      "at": 1789214724
     }
   ]
 }

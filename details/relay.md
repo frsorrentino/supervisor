@@ -644,6 +644,16 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.107 (03/11/2026, asked by the app for «Da provare» merged into the newest pre-release; `v` stays 1). The tests a pause waits for become fields, and «Da decidere» can close them.
+
+- **op `decisioni`, every `items[]` of `kind` `pause`**: `prova`, `{project, release, web}` or null. Not null when the pause waits for the person to try something: `project` as the item's (as `sessions[].project`), `release` the pre-release tag or null, `web` the web version or null. A session writes it with `task pause ID --reason R --waits person --prova [--release TAG] [--web VERSION]`. A pause written before carries it only if its words say «prova» and name a pre-release (`pre-release <tag>`) or a web version (`web <x.y.z>`, `PWA <x.y.z>`); otherwise null.
+- **op `decisione`**, two more actions, only a touch, on the group's items of `kind` `pause` (oks and needs-you stay where they are; a group with none is `ok: false`):
+  - `action: "provato"` («Tutto va»): the person's confirmation on each of those tasks, with origin relay like a touch on Approve (`task confirmed` reads it), the pause closed, the session told; then each task's check runs in a process of its own: green closes it, red leaves it open with the session, as for the test bench. The answer does not wait for the checks.
+  - `action: "non_va"` («Non va»), `reason` required (up to 300 characters): no confirmation, the pause closed, the reason recorded and sent to each task's session; the task goes back to it.
+- To merge several groups (the same project's tests) the app sends one `decisione` per group key.
+
+Fixture: `cmd-result-sample.json` (a pause with `prova` and one with `prova` null in `decisioni`, a `provato` and a `non_va`).
+
 Contract 1.106 (02/11/2026, asked by the app for its «Da guardare» section). Additive, `v` stays 1. A result is a file a session sent with SendUserFile.
 
 - **The index.** `<relay.dir>/results.json`, persistent: results, seen and notes outlive the session and its transcript. A detached scan at low priority, at most every 30 s, reads only the new bytes of the live transcripts and of the closed ones touched since the last scan, and only the lines naming SendUserFile; a send whose tool_result is an error is not a result, nor is a subagent's. A new index looks back 48 hours; what came more than a day before its birth is born seen. Deliveries older than 90 days leave the index. Sessions on another host are read from their local transcript copy.
