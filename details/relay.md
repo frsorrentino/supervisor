@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.112 (03/11/2026, reported by the maintainer: «cos'è questo messaggio che appare spesso?»). Additive, `v` stays 1.
+
+- **A read replaced by a newer one** (several reads of the same op and session waiting together: only the newest runs) gets at once a result with `ok: false`, `superseded: true` and the text `relay.cmd_superseded` in the relay's language. `superseded` is present only there: a client closes that request in silence instead of showing an error, without reading the text.
+
+Fixture: `cmd-result-sample.json` (a superseded read).
+
 Contract 1.111 (03/11/2026, asked by the app for the session's single menu). Additive, `v` stays 1.
 
 - **`state.sessions[].tocca`**: `{prove, decidi, guarda, segui}`, integers, only when at least one is not 0; absent otherwise and with an older relay. Counted as the pages count them, by the session's name (as `sessions[].name`): `prove` the tests to do of op `prove` plus the items of op `decisioni` that carry `prova` (1.107); `decidi` the other items of op `decisioni`; `guarda` the works of that session not yet seen in the results index (all of them, not only the ten of `state.results`); `segui` the items of op `seguiti` left behind (`rimasto`, stale) with that session, as of the hourly round.

@@ -2523,7 +2523,8 @@ got21 = [c for c, _ in RL.in_order(cmds21b)]
 os.environ.clear(); os.environ.update(_env21)
 sup = (STORE.get("result") or {}).get("t-old")
 T.check("R21 several reads of the same session waiting together → only the newest runs; the older one gets «superseded» at once; the prompt goes first",
-        got21 == ["p-1", "t-other", "t-new"] and sup and C.decrypt(sup, k)["ok"] is False and "superseded" in C.decrypt(sup, k)["text"], str(got21) + str(sup)[:80])
+        got21 == ["p-1", "t-other", "t-new"] and sup and C.decrypt(sup, k)["ok"] is False and C.decrypt(sup, k).get("superseded") is True
+        and C.decrypt(sup, k)["text"] == "sostituita da una lettura più recente della stessa sessione", str(got21) + str(C.decrypt(sup, k) if sup else sup)[:160])
 
 
 # R31 (07/10, piano prestazioni, fase 0): le righe di misura nel log dei test vivi e `relay stats` su un log di esempio

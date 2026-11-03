@@ -1199,6 +1199,14 @@
       "by": "phone-pixel7",
       "action": "non_va",
       "reason": "The categories do not stay closed"
+    },
+    {
+      "id": "6f1c2d3e-0924-4000-8000-000000000924",
+      "op": "transcript",
+      "session": "atlas-shop",
+      "arg": "20",
+      "issued": 1789214724,
+      "by": "phone-pixel7"
     }
   ],
   "result": [
@@ -1974,6 +1982,13 @@
       "ok": true,
       "text": "non va: 1 compiti tornano alla sessione",
       "at": 1789214724
+    },
+    {
+      "id": "6f1c2d3e-0924-4000-8000-000000000924",
+      "ok": false,
+      "text": "sostituita da una lettura più recente della stessa sessione",
+      "superseded": true,
+      "at": 1789214725
     }
   ]
 }

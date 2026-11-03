@@ -603,7 +603,7 @@
   "relay.handoff_next": "Prossimo",
   "relay.handoff_prompt": "{name} si è fermata per la quota. Leggi il passaggio di consegne in {path} e continua il suo lavoro da dove si è fermata.",
   "relay.cmd_empty_text": "empty text",
-  "relay.cmd_superseded": "superseded by a newer read of the same session",
+  "relay.cmd_superseded": "sostituita da una lettura più recente della stessa sessione",
   "relay.cmd_transcript_bad_arg": "transcript {arg}: expected n, n:before=<id> or n:after=<id>",
   "relay.cmd_search_bad_query": "bad query: from 1 to 200 characters",
   "relay.cmd_timeline_bad_arg": "timeline {arg}: expected 90m, 6h, 2d (7 days at most) or an epoch",

@@ -2973,7 +2973,9 @@ def superseded(cid, k):
     """Una lettura rimpiazzata da una piu' recente della stessa sessione: risultato breve e /cmd pulito, cosi' nulla
     resta appeso."""
     try:
-        rtdb("PUT", f"result/{cid}", C.encrypt({"id": cid, "ok": False, "text": M("relay.cmd_superseded"), "at": int(time.time())}, k), {"print": "silent"})
+        # 1.112 (03/11, «cos'e' questo messaggio che appare spesso?»): superseded true, cosi' l'app lo chiude in silenzio
+        # invece di mostrarlo come un errore; ok resta false (la lettura non e' stata fatta)
+        rtdb("PUT", f"result/{cid}", C.encrypt({"id": cid, "ok": False, "text": M("relay.cmd_superseded"), "superseded": True, "at": int(time.time())}, k), {"print": "silent"})
         rtdb("DELETE", f"cmd/{cid}")
     except (urllib.error.URLError, OSError, ValueError) as e:
         log(f"cmd {cid}: superseded non scritto ({e})")

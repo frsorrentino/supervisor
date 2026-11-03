@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.112 — 2026-11-03: a replaced read no longer looks like an error (supervisor-superseded-muto-03-11, contract 1.112).**
+  - When several reads of the same session wait together only the newest runs; the older ones get a result marked `superseded: true`, so the app closes them in silence instead of showing a red error. The sentence is now in Italian too.
 - **0.8.111 — 2026-11-03: how much each session has for you, in the state (supervisor-tocca-per-sessione-03-11, contract 1.111).**
   - Every session in the state says how many tests, decisions, results to look at and things to follow up it has, counted as the pages count them, so the app's session menu shows «Prova · 2», «Decidi · 1» without opening four pages.
 - **0.8.110 — 2026-11-03: whether win is working, and the Chromebook's disk, in the KPIs (supervisor-disco-locale-03-11, contract 1.110).**
