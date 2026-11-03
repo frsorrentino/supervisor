@@ -372,6 +372,7 @@ SRC2.update(DEV_SRC)
 SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["published_today"]
 SRC2["commitments"] = F2["commitments"]   # 1.76
 SRC2["home_order"] = F2["home_order"]   # 1.97
+SRC2["tocca"] = {"atlas-shop": {"prove": 2, "decidi": 1, "guarda": 3, "segui": 1}, "orbit-docs": {"prove": 0, "decidi": 0, "guarda": 0, "segui": 0}}   # 1.111
 # 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
 SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
                       "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"],
@@ -384,9 +385,9 @@ SRC2["suggestions"] = [
     {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "ledger-api invoice due Friday",
      "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
     {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Last night's report is ready",
-     "prompt": "Read me last night's report and tell me what is left", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
+     "prompt": "Read me last night's report", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
     {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Two orbit-docs tasks paused: close them?",
-     "prompt": "Close the two paused orbit-docs tasks and tell me what they left undone", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
+     "prompt": "Close the two paused orbit-docs tasks", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
 SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
                        {"session": "master", "account": "personal", "tokens": 1130000, "share": 0.38},
@@ -4607,5 +4608,37 @@ finally:
 _s102 = [json.loads(x)["s"] for x in _kp102.read_text().splitlines()] if _kp102.exists() else []
 T.check("R102 a command with issued leaves one sample (issued → result written, ~3 s); none without issued, none when the result was not written",
         len(_s102) == 1 and 2.9 <= _s102[0] < 5, str(_s102))
+
+
+# R103 (03/11/2026, supervisor-tocca-per-sessione-03-11, contratto 1.111): per sessione quante voci ha in Prova, Decidi,
+# Guarda e Segui, per il menu della sessione senza aprire quattro pagine
+_st103 = {x["name"]: x for x in st2["sessions"]}
+T.check("R103 state.sessions[].tocca with the four counts; a session with all zeros or none has no key",
+        _st103["atlas-shop"].get("tocca") == {"prove": 2, "decidi": 1, "guarda": 3, "segui": 1}
+        and all("tocca" not in x for n, x in _st103.items() if n != "atlas-shop"), json.dumps({n: x.get("tocca") for n, x in _st103.items()}))
+_sv103 = dict(tt=RL.tocca_tasks, rm=RL.results_mod, ld=RL._load)
+
+
+class _RS103:
+    @staticmethod
+    def unseen_by_session():
+        return {"work-ledger-api": 2, "atlas-shop": 1}
+
+
+class _SG103:
+    @staticmethod
+    def by_session():
+        return {"atlas-shop": 4}
+
+
+try:
+    RL.tocca_tasks = lambda: {"atlas-shop": {"prove": 3, "decidi": 0}, "work-ledger-api": {"prove": 0, "decidi": 2}}
+    RL.results_mod = lambda: _RS103
+    RL._load = lambda name: _SG103 if name == "cm-seguiti" else _sv103["ld"](name)
+    _t103 = RL.tocca_summary()
+finally:
+    RL.tocca_tasks, RL.results_mod, RL._load = _sv103["tt"], _sv103["rm"], _sv103["ld"]
+T.check("R103 tocca_summary: the four sources by session, keyed by the short name (account prefix off), zeros where a source has nothing",
+        _t103 == {"atlas-shop": {"prove": 3, "decidi": 0, "guarda": 1, "segui": 4}, "ledger-api": {"prove": 0, "decidi": 2, "guarda": 2, "segui": 0}}, json.dumps(_t103))
 
 T.finish()

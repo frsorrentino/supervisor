@@ -385,6 +385,16 @@ def summary(now=None):
     return {"n_unseen": len(heads), "items": heads[:STATE_MAX]}
 
 
+def unseen_by_session():
+    """1.111: i lavori non visti per sessione (l'ultima versione non vista), tutti, non solo i 10 di /state."""
+    out = {}
+    for v in _groups(_read().get("items") or {}).values():
+        last = v[-1]
+        if last.get("seen_at") is None and last.get("session"):
+            out[last["session"]] = out.get(last["session"], 0) + 1
+    return out
+
+
 def _replaced(x):
     if x.get("host") not in (None, "local"):
         return None

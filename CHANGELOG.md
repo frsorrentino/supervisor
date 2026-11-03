@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.111 — 2026-11-03: how much each session has for you, in the state (supervisor-tocca-per-sessione-03-11, contract 1.111).**
+  - Every session in the state says how many tests, decisions, results to look at and things to follow up it has, counted as the pages count them, so the app's session menu shows «Prova · 2», «Decidi · 1» without opening four pages.
 - **0.8.110 — 2026-11-03: whether win is working, and the Chromebook's disk, in the KPIs (supervisor-disco-locale-03-11, contract 1.110).**
   - `kpi_health.local_disk`: free and total space of this computer's disk.
   - Each host in `kpi_health.hosts` says whether it is working and why: a heavy job running there, a busy session, or its CPU over 25%. The app shows win only while it works.

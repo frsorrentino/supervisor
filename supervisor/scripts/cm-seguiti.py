@@ -162,7 +162,11 @@ def rimasto_rows(save=True):
             rows.append({"product": product, "key": key, "title": it.get("title") or key, "where": it.get("where"), "stale": stale, "why": why,
                          "session": it.get("session"), "aligned_version": it.get("aligned_version"), "aligned_at": it.get("aligned_at"), "task": it.get("task")})
     if save:
-        wj(sdir() / "rimasto-stale.json", {"at": int(time.time()), "n": sum(1 for r in rows if r["stale"])})
+        by = {}   # 1.111: per sessione, per «Segui · N» nel menu della sessione
+        for r in rows:
+            if r["stale"] and r.get("session"):
+                by[r["session"]] = by.get(r["session"], 0) + 1
+        wj(sdir() / "rimasto-stale.json", {"at": int(time.time()), "n": sum(1 for r in rows if r["stale"]), "by_session": by})
     return rows
 
 
@@ -466,6 +470,12 @@ def summary():
                 pos += len(run_view(r)["positive"])
     out = {"rimasto": n, "altrove": pos, "promemoria": len(remind_load()["items"])}
     return out if any(out.values()) else None
+
+
+def by_session():
+    """1.111: le voci rimaste indietro per sessione, dal conto del giro orario (senza git)."""
+    d = rj(sdir() / "rimasto-stale.json", {}).get("by_session")
+    return {str(k): int(v) for k, v in d.items() if isinstance(v, int)} if isinstance(d, dict) else {}
 
 
 def view():

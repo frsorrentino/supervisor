@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.111 (03/11/2026, asked by the app for the session's single menu). Additive, `v` stays 1.
+
+- **`state.sessions[].tocca`**: `{prove, decidi, guarda, segui}`, integers, only when at least one is not 0; absent otherwise and with an older relay. Counted as the pages count them, by the session's name (as `sessions[].name`): `prove` the tests to do of op `prove` plus the items of op `decisioni` that carry `prova` (1.107); `decidi` the other items of op `decisioni`; `guarda` the works of that session not yet seen in the results index (all of them, not only the ten of `state.results`); `segui` the items of op `seguiti` left behind (`rimasto`, stale) with that session, as of the hourly round.
+
+Fixture: `state-2-idle.json` (atlas-shop). To stay under the 8 KB cap the fixture's commitments carry shorter `next` texts.
+
 Contract 1.110 (03/11/2026, asked by the app: the win tile only while win works, the Chromebook's disk otherwise). Additive, `v` stays 1.
 
 - **op `kpi`, `kpi_health.local_disk`**: `{free, total}` in bytes, the disk of this computer (the one holding the sessions' root), or null when it cannot be read.

@@ -1840,6 +1840,51 @@ def decisions_summary():
     return _memo("decisions_summary", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you")])
 
 
+def tocca_tasks():
+    """1.111: dal registro, per sessione, le voci di «Da provare» (il banco delle prove e le pause con una prova, come la
+    pagina dalla 1.107) e quelle di «Da decidere» senza le prove. Chiavi: il nome tmux, come le voci delle op."""
+    def read():
+        def both(tk, con):
+            out = {}
+            for g in tk.prove_list(con)["groups"]:
+                for x in g["prove"]:
+                    if x.get("session"):
+                        out.setdefault(x["session"], {"prove": 0, "decidi": 0})["prove"] += 1
+            for g in tk.decisions(con)["groups"]:
+                for i in g["items"]:
+                    if i.get("session"):
+                        out.setdefault(i["session"], {"prove": 0, "decidi": 0})["prove" if i.get("prova") else "decidi"] += 1
+            return out
+        try:
+            return _tasks_read(both) or {}
+        except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
+            return {}
+    return _memo("tocca_tasks", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you")])
+
+
+def tocca_summary():
+    """1.111: state.sessions[].tocca, per nome di sessione come in state.sessions[].name: {prove, decidi, guarda, segui}."""
+    out = {}
+
+    def bump(sess, k, n):
+        if sess and n:
+            out.setdefault(S.short_name(str(sess), prefixes()), {"prove": 0, "decidi": 0, "guarda": 0, "segui": 0})[k] += int(n)
+    for sess, c in tocca_tasks().items():
+        bump(sess, "prove", c["prove"])
+        bump(sess, "decidi", c["decidi"])
+    try:
+        for sess, n in results_mod().unseen_by_session().items():
+            bump(sess, "guarda", n)
+    except Exception:   # noqa: BLE001
+        pass
+    try:
+        for sess, n in _load("cm-seguiti").by_session().items():
+            bump(sess, "segui", n)
+    except Exception:   # noqa: BLE001
+        pass
+    return out
+
+
 def clear_needs_you(tm):
     """Il file needs-you/<session_id>.json della sessione tmux `tm` (quello che «Ti aspettano» legge), se c'e'."""
     for r in _json_cmd("sessions", "--json", "--no-screen") or []:

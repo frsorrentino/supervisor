@@ -1307,6 +1307,7 @@ def collect_sources(now=None):
         "seguiti": seguiti_summary(),   # 1.102
         "feedback": feedback_summary(),   # 1.105
         "results": results_summary(live),   # 1.106
+        "tocca": tocca_summary(),   # 1.111
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
                     "efforts": list((CFG.get("tune") or {}).get("efforts") or [])},

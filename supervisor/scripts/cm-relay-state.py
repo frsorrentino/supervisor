@@ -734,6 +734,9 @@ def build_state(src, now, fit=True):
         hu = (src.get("heads_up") or {}).get(r.get("tmux") or "")
         if hu:
             x["heads_up"] = {"text": str(hu["text"])[:300], "seen_at": hu["seen_at"]}
+        tc = (src.get("tocca") or {}).get(x["name"])   # 1.111: solo con almeno una voce
+        if tc and any(tc.values()):
+            x["tocca"] = {k: int(tc.get(k) or 0) for k in ("prove", "decidi", "guarda", "segui")}
     sessions = order_sessions(built)
     # 1.13: last_used = l'ultima trascrizione di quella cartella (epoch s) o null; l'ordine resta per nome
     projects = sorted(({"path": p.get("path", ""), "name": p.get("name", ""), "account": p.get("account", ""),

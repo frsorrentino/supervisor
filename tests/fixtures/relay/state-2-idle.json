@@ -47,6 +47,12 @@
         "expires_at": 1789221400,
         "task": "atlas-tv-pairing",
         "from": "master"
+      },
+      "tocca": {
+        "prove": 2,
+        "decidi": 1,
+        "guarda": 3,
+        "segui": 1
       }
     }
   ],
@@ -349,14 +355,14 @@
       "kind": "release",
       "project": "personal/atlas-shop",
       "text": "2.3.1",
-      "url": "https://github.com/example/atlas-shop/releases/tag/v2.3.1"
+      "url": "https://github.com/ex/atlas-shop/releases/tag/v2.3.1"
     },
     {
       "at": 1789207800,
       "kind": "push",
       "project": "personal/atlas-shop",
       "text": "origin/feature/checkout",
-      "url": "https://github.com/example/atlas-shop/tree/checkout"
+      "url": "https://github.com/ex/atlas-shop/tree/checkout"
     }
   ],
   "commitments": [
@@ -379,12 +385,12 @@
         "text": "migrations on staging"
       },
       "idle_s": 13800,
-      "next": "ledger-api works; closes with task done ledger-migrations-011",
+      "next": "ledger-api works",
       "waits": {
         "who": "person",
         "on": "ledger-api"
       },
-      "expected": "migrations applied on staging, tests green",
+      "expected": "migrations on staging",
       "outcome_kind": "deploy",
       "check": {
         "outcome": "red",
