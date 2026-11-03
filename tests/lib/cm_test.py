@@ -362,6 +362,12 @@ def fake_rtdb(project="fake-project"):
                             f = os.environ.get("FAKE_RTDB_FAIL", "")
                             if f and os.path.exists(f):
                                 break   # rete caduta: la connessione si chiude come dal vivo
+                            m = os.environ.get("FAKE_RTDB_MUTE", "")
+                            if m and os.path.exists(m):
+                                # 03/11: lo stream muto visto dal vivo, aperto e senza un byte, nemmeno i keep-alive
+                                while os.path.exists(m):
+                                    _t.sleep(0.1)
+                                break
                             if _t.time() - last > 2:
                                 self.wfile.write(b"event: keep-alive\ndata: null\n\n"); self.wfile.flush(); last = _t.time()
                 except (BrokenPipeError, ConnectionResetError, OSError):

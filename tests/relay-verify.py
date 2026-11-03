@@ -616,6 +616,7 @@ def write_cfg(enabled=True, **extra):
          "accounts": {"personal": {"config_dir": str(home / ".claude")}, "work": {"config_dir": str(home / ".claude-pixel"), "tmux_prefix": "work-"}},
          "relay": {"enabled": enabled, "firebase_url": URL, "service_account": str(SA), "token_url": URL + "/token", "fcm_url": URL,
                    "dir": str(rdir2), "host": "crostini-test", "debounce_s": 1, "fcm_topic": "watch", "duplicate_prompt_s": 0,
+                   "stream_silence_s": 4,   # il RTDB finto manda un keep-alive ogni 2 s
                    "adb": str(Path(__file__).resolve().parent / "lib" / "fake-adb.py"), **extra},   # 1.32: mai l'adb vero
          # i modelli delle fixture del contratto (Opus 5, 1.12): dal 22/09 il default e' Opus 5.5 (2.1.280), e le fixture
          # restano identiche a quelle dell'app (R0), che si aggiornano dal suo lato
@@ -2318,6 +2319,20 @@ os.environ.pop("FAKE_RTDB_FAIL", None)
 T.wait_until(lambda: "riconnesso" in (rdir2 / "relay.log").read_text(), 12)
 res = send_cmd(dict(CMDS[3], id="6f1c2d3e-0004-4000-8000-0000000000cc"), wait=12)
 T.check("R6 after the network is back a command is served again", res and res["ok"], str(res) + (rdir2 / "relay.log").read_text()[-300:])
+# R101 (03/11/2026, supervisor-relay-stream-muto-03-11): lo stream di /cmd resta aperto ma muto, senza nemmeno i
+# keep-alive (18 volte dal 02/11): il daemon se ne accorgeva dopo 90 s e i comandi arrivavano fino a 84 s dopo. Ora lo
+# riapre dopo stream_silence_s (qui 4 s, keep-alive finto ogni 2 s) e il comando scritto nel frattempo arriva
+mute = tmp / "rtdb-mute"; mute.write_text("x")
+os.environ["FAKE_RTDB_MUTE"] = str(mute)
+_n101 = (rdir2 / "relay.log").read_text().count("riconnesso")
+time.sleep(2.5)   # lo stream aperto adesso e' gia' muto
+_t101 = time.time()
+res101 = send_cmd(dict(CMDS[3], id="6f1c2d3e-0004-4000-8000-0000000001a1"), wait=15)
+_s101 = round(time.time() - _t101, 1)
+mute.unlink(); os.environ.pop("FAKE_RTDB_MUTE", None)
+T.check("R101 a /cmd stream left open but silent (no keep-alive): the daemon reopens it after stream_silence_s and the command written meanwhile is served within seconds, not after 90 s",
+        res101 and res101["ok"] and _s101 < 10 and (rdir2 / "relay.log").read_text().count("riconnesso") > _n101 and serve_pid() == pid1,
+        str((res101, _s101)) + (rdir2 / "relay.log").read_text()[-300:])
 r = relay("status")
 T.check("R6 status: enabled, firebase url, key ok, service account ok, serve alive with the pid, last push time", r.returncode == 0 and "abilitato" in r.stdout and URL in r.stdout and f"VIVO pid {pid1}" in r.stdout and "chiave:           ok" in r.stdout and "service account:  ok" in r.stdout, r.stdout + r.stderr)
 r = relay("install")

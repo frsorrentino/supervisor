@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.105 — 2026-11-03: a silent command stream reopens in 45 s, not 90 (supervisor-relay-stream-muto-03-11).**
+  - The connection that brings the app's commands to the relay sometimes stays open but silent (18 times since 2026-11-02). The relay noticed only after 90 s without data, and commands sent meanwhile arrived up to 84 s late. Firebase sends a keep-alive every 30 s, so the relay now reopens the connection after 45 s of silence; the commands written meanwhile arrive with the reconnection. The setting is `relay.stream_silence_s` (it replaces `serve_timeout_s`).
 - **0.8.104 — 2026-11-03: slow reads in a lane of their own (supervisor-relay-letture-lente-03-11, follows supervisor-relay-ingresso-web-03-11).**
   - After 0.8.103 your commands no longer waited, but reads still queued behind one another: a 37 s timeline kept «Da decidere» waiting 33 s. Slow reads (timeline, done, file, plugins, kpi and the like, measured p95 7-39 s) now run in a third lane, so the quick ones (decisions, agenda, chat, results) answer while a slow one is still going.
 - **0.8.103 — 2026-11-03: commands from the app no longer wait behind a slow read (supervisor-relay-ingresso-web-03-11).**

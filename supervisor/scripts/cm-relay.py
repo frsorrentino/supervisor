@@ -74,6 +74,7 @@ M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
+STREAM_SILENCE_S = 45   # keep-alive di Firebase ogni 30 s, piu' 15 di margine
 OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "results", "result_seen", "result_note")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
@@ -3490,7 +3491,11 @@ def serve():
             try:
                 url = f"{base_url()}/cmd.json?{urllib.parse.urlencode({'access_token': token()})}"
                 req = urllib.request.Request(url, headers={"Accept": "text/event-stream", "Cache-Control": "no-cache"})
-                with urllib.request.urlopen(req, timeout=float(R.get("serve_timeout_s") or 50) + 40) as resp:
+                # 03/11/2026 (supervisor-relay-stream-muto-03-11): Firebase manda un keep-alive ogni 30 s (misurato: 30,0 s
+                # esatti). Il limite era serve_timeout_s 50 + 40 = 90 s di silenzio: uno stream rimasto aperto ma muto
+                # (18 volte dal 02/11) teneva i comandi fuori fino a 84 s. Ora si riapre al primo keep-alive mancato
+                # (piu' un margine): i comandi scritti nel frattempo arrivano col `put` iniziale della riconnessione
+                with urllib.request.urlopen(req, timeout=float(R.get("stream_silence_s") or STREAM_SILENCE_S)) as resp:
                     if tries:
                         log("serve: riconnesso")
                     tries = 0
