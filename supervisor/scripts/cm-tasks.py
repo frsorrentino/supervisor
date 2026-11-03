@@ -8,7 +8,9 @@
   supervisor task list [--state S] [--plan P] [--json]
   supervisor task show ID [--json]
   supervisor task start ID [--session NOME]  in corso (la guardia della corsia chiusa lo cerca)
-  supervisor task result ID FILE|-           l'esito che la sessione manda indietro (non e' accettazione)
+  supervisor task result ID FILE|-           l'esito che la sessione manda indietro (non e' accettazione):
+                                                {"task": ID, "attempt": N, "outcome": "green|red", "reason": "…",
+                                                 "proof": {"kind": "check|commit|link", "value": "…"}, "at": EPOCH}
   supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
@@ -169,7 +171,10 @@ def validate(value, node=None, root=None, path="$"):
         errs.append(f"{path}: one of {', '.join(map(str, node['enum']))}")
     if isinstance(value, str):
         if len(value) < node.get("minLength", 0) or len(value) > node.get("maxLength", 10 ** 9):
-            errs.append(f"{path}: length out of range")
+            # 03/11 (observe supervisor-857757be): con i limiti, perche' chi scrive sappia di quanto accorciare
+            mx = node.get("maxLength")
+            errs.append(f"{path}: length out of range ({len(value)}, allowed {node.get('minLength', 0)}-{mx})" if mx is not None
+                        else f"{path}: length out of range ({len(value)}, at least {node.get('minLength', 0)})")
         if "pattern" in node and not re.search(node["pattern"], value):
             errs.append(f"{path}: does not match {node['pattern']}")
     if _is(value, "number"):
@@ -1702,9 +1707,18 @@ def main(argv):
         con.commit()
         return 0
     if verb == "result":
-        errs = record_result(con, args[0], _read(args[1]))
+        # 03/11 (observe supervisor-6753df0c e altre 4): la forma del JSON con ogni errore, anche con stdin vuoto; prima
+        # una sessione l'ha indovinata un campo per volta in cinque tentativi
+        if len(args) != 2:
+            sys.exit("usage: task result ID FILE|-\n" + M("tasks.result_shape"))
+        try:
+            data = _read(args[1])
+        except SystemExit as e:
+            print(f"{e}\n{M('tasks.result_shape')}", file=sys.stderr)
+            return 1
+        errs = record_result(con, args[0], data)
         if errs:
-            print("\n".join(errs), file=sys.stderr)
+            print("\n".join(errs + [M("tasks.result_shape")]), file=sys.stderr)
             return 2
         return 0
     if verb == "check":

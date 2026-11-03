@@ -500,6 +500,7 @@ with T.PrivateTmux() as tm:
 # T20 (22/10/2026, contratto 1.79, titolo-breve): task.short al massimo 28 caratteri; `task short`; il ripiego dal titolo a parole intere
 rc, out, err = add(contract("u1", title="supervisor: titolo breve dei compiti (campo short) nel registro", short="x" * 29))
 T.check("T20 a short of 29 characters is refused by task add (exit 2, the field named)", rc == 2 and "$.task.short: length out of range" in err, err)
+T.check("T20b (03/11, observe supervisor-857757be) the refusal says the length and the limits", "$.task.short: length out of range (29, allowed 1-28)" in err, err)
 rc, out, err = add(contract("u1", title="supervisor: titolo breve dei compiti (campo short) nel registro", short="Titolo breve nel registro"))
 add(contract("u2", title="Albo Chiaro fase 1 (task 1-8): repository e CI, verifiche, database"))
 add(contract("u3", title="Move the docs site to the new host"))
@@ -696,4 +697,15 @@ add(contract("tpath", cmd="cm-fake-tool"))
 rc, out, err = cm("check", "tpath", env={"PATH": "/usr/bin:/bin", "HOME": str(home)})
 T.check("TPATH a check that calls a tool in ~/.local/bin runs green from a caller whose PATH is /usr/bin:/bin (cron, relay)",
         rc == 0, out + err)
+
+# T50 (03/11/2026, observe supervisor-6753df0c e altre 4): task result dice la forma del JSON, nell'aiuto e con ogni errore
+add(contract("r50"))
+_shape = '"proof": {"kind": "check|commit|link", "value": "…"}'
+rc50a, _, err50a = cm("result", "r50", "-", stdin="")
+rc50b, _, err50b = cm("result", "r50", "-", stdin="{}")
+rc50c, _, err50c = cm("result", "r50", "-", stdin=json.dumps({"task": "r50", "attempt": 1, "outcome": "giallo", "reason": "x", "proof": {"kind": "check", "value": "v"}, "at": 1}))
+T.check("T50 task result: an empty stdin, a missing field or a wrong value each print the whole shape with the error",
+        rc50a != 0 and rc50b == 2 and rc50c == 2 and all(_shape in e and '"outcome": "green|red"' in e for e in (err50a, err50b, err50c)) and "$.outcome" in err50c, err50a + err50b + err50c)
+T.check("T50 the help of task result shows the shape", '"proof": {"kind": "check|commit|link"' in cm("--help")[1], "")
+
 T.finish()

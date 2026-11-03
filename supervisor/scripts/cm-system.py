@@ -328,13 +328,48 @@ def advise(m, rows, orphans=(), sessions=(), runtime=None, me=(), prefixes=(), u
         add("stuck", "graphic", "yellow",
             msg("system.advice_stuck_load" if explains else "system.advice_stuck", n=stuck["count"], since=when, mb=stuck["rss_mb"], load=_dec(raw)),
             None, 1000.0 if explains else 0.0)
-    # carico alto che nessun consiglio spiega (nessuno sopra il 25% di un core): si nominano i processi che pesano davvero
+    # carico alto che nessun consiglio spiega (nessuno sopra il 25% di un core). 03/11 (segnalazione, «perche' esce sempre
+    # questa formula?»): la frase diceva solo «nessun consiglio lo spiega» e nominava le righe di comando; quasi sempre erano
+    # le sessioni al lavoro, che non hanno una regola loro. Ora la frase dice la circostanza: attese, una sessione su un
+    # core intero, le sessioni al lavoro coi loro nomi, il relay, un processo sconosciuto; e se le sessioni aperte sono troppe
     if m.get("load_level") in ("yellow", "red") and not any(w >= 25 for w in weight.values()):
-        top = sorted((r for r in rows if r["pid"] not in me and r.get("state") != "D"), key=lambda r: -r["cpu"])[:3]
+        load = _dec(m["load_per_core"])
+        mine = [r for r in rows if r["pid"] not in me and r.get("state") != "D"]
+        top = sorted(mine, key=lambda r: -r["cpu"])[:3]
         busy = sum(r["cpu"] for r in top)
-        add("load", "unexplained", m["load_level"],
-            msg("system.advice_load", load=_dec(m["load_per_core"]), top=", ".join(f"{_short(r['args'])} {round(r['cpu'])}%" for r in top) or "-")
-            + (msg("system.advice_load_waits") if busy < 50 else ""), None, busy)
+        total = sum(r["cpu"] for r in mine)
+        kids = {}
+        for r in mine:
+            kids.setdefault(r["ppid"], []).append(r)
+
+        def tree_cpu(pid):   # la sessione e i comandi che ha lanciato (test, build, script)
+            seen, todo, tot = set(), [pid], 0.0
+            while todo:
+                x = todo.pop()
+                if x in seen:
+                    continue
+                seen.add(x)
+                tot += (by_pid.get(x) or {}).get("cpu", 0.0) if x not in me else 0.0
+                todo += [k["pid"] for k in kids.get(x, ())]
+            return tot
+        per = sorted(((short(s.get("tmux") or s.get("name")), tree_cpu(s["pid"])) for s in sessions
+                      if s.get("pid") and not s.get("host") and s.get("status") in ("busy", "idle", "waiting")), key=lambda x: -x[1])
+        per = [(nm, c) for nm, c in per if c >= 10]
+        relay = sum(r["cpu"] for r in mine if group_of(r["args"]) == "relay")
+        if busy < 50:
+            text = msg("system.advice_load_waits", load=load)
+        elif per and per[0][1] >= 90:
+            text = msg("system.advice_load_session_core", load=load, name=per[0][0], cpu=round(per[0][1]))
+        elif per and sum(c for _, c in per) >= total / 2:
+            text = msg("system.advice_load_sessions", load=load, names=", ".join(f"{nm} {round(c)}%" for nm, c in per[:3]))
+        elif relay >= 25:
+            text = msg("system.advice_load_relay", load=load, cpu=round(relay))
+        else:
+            lead = top[0]
+            text = msg("system.advice_load_unknown", load=load, name=_short(lead["args"]), cpu=round(lead["cpu"]), pid=lead["pid"])
+        if len(live) >= sc.get("max_sessions", 5):
+            text += msg("system.advice_load_many", n=len(live))
+        add("load", "unexplained", m["load_level"], text, None, busy)
     # i rossi prima; a pari livello il ciclo da fermare (e' la causa dei bloccati), poi il peso vero, il piu' grande prima
     out.sort(key=lambda a: (a["level"] != "red", a["kind"] != "stuck_loop", -weight[a["id"]]))
     return out[:ADVICE_MAX]

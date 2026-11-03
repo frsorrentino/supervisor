@@ -269,5 +269,32 @@ T.check("SY9 system_stuck: a high load with nothing using CPU → the advice say
         ld2 is not None and "attese" in ld2["text"], json.dumps(ld2, ensure_ascii=False))
 T.check("SY9 system_stuck: a load explained by an advice above 25% (the --launch at 46%) has no «load» advice",
         not any(a["kind"] == "load" for a in adv9b), json.dumps([a["kind"] for a in adv9b]))
+# SY10 (03/11/2026, supervisor-consigli-carico-03-11): «carico X per core e nessun consiglio lo spiega» usciva quasi sempre,
+# perche' le sessioni al lavoro non hanno una regola loro. Ora la frase dice la circostanza
+def _r10(pid, ppid, args, cpu):
+    return {"pid": pid, "ppid": ppid, "args": args, "cpu": cpu, "rss_mb": 100, "age_s": 600, "start": str(pid), "state": "S"}
+
+
+_m10 = dict(m, load_level="yellow", level="yellow", load_per_core=1.6)
+_cl = "/home/u/.local/bin/claude --resume x"
+_s10 = [{"tmux": "alfa", "pid": 900, "status": "busy"}, {"tmux": "beta", "pid": 910, "status": "busy"}]
+_rows_a = [_r10(900, 50, _cl, 20.0), _r10(901, 900, "python3 tests/x-verify.py", 22.0), _r10(910, 50, _cl, 15.0), _r10(920, 50, "bash", 1.0)]
+_ld = lambda rows, sess=_s10: next((a for a in SY.advise(_m10, rows, sessions=sess, me={1, 50}) if a["kind"] == "load"), None)  # noqa: E731
+_la = _ld(_rows_a)
+T.check("SY10 sessions at work: their names with the CPU of the session and what it launched, «passa da solo», never «nessun consiglio»",
+        _la is not None and "dalle sessioni al lavoro: alfa 42%, beta 15%" in _la["text"] and "passa da solo" in _la["text"] and "nessun consiglio" not in _la["text"], json.dumps(_la, ensure_ascii=False))
+_lb = _ld([_r10(900, 50, _cl, 60.0), _r10(901, 900, "node build.js", 40.0), _r10(920, 50, "bash", 1.0)])
+T.check("SY10 one session on a whole core: named, it drops when its turn ends", _lb is not None and "«alfa» occupa un core intero (100%)" in _lb["text"], json.dumps(_lb, ensure_ascii=False))
+_lc = _ld([_r10(930, 1, "python3 /home/u/supervisor/scripts/cm-relay.py serve", 24.0), _r10(931, 1, "python3 /home/u/supervisor/scripts/cm-relay.py push", 20.0), _r10(920, 50, "bash", 10.0)], [])
+T.check("SY10 the relay working more than usual: said so, with its CPU", _lc is not None and "il relay lavora più del solito (44%)" in _lc["text"], json.dumps(_lc, ensure_ascii=False))
+_ld4 = _ld([_r10(940, 1, "/usr/bin/strano --x", 70.0)], [])
+T.check("SY10 a process supervisor does not recognise: named with its pid", _ld4 is not None and "non riconosce: strano 70% (pid 940)" in _ld4["text"], json.dumps(_ld4, ensure_ascii=False))
+_s10e = _s10 + [{"tmux": f"s{i}", "pid": 950 + i, "status": "idle"} for i in range(3)]
+_le = _ld(_rows_a, _s10e)
+T.check("SY10 with as many sessions open as the cap (5): the phrase adds how many and that closing the finished ones helps", _le is not None and "; 5 sessioni aperte" in _le["text"], json.dumps(_le, ensure_ascii=False))
+for _lang in ("it", "en"):
+    _msgs = json.loads((T.ROOT / f"supervisor/messages/{_lang}.json").read_text())
+    T.check(f"SY10 ({_lang}) no message says that no advice explains the load", not any(("nessun consiglio" in v or "no advice explains" in v) for k, v in _msgs.items() if k.startswith("system.")), "")
+
 T.rm(str(tmp))
 T.finish()

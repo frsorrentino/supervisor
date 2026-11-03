@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.109 — 2026-11-03: the load advice says what weighs; two fixes from the plugin's own notes (supervisor-consigli-carico-03-11, supervisor-observe-difetti-03-11).**
+  - When the load is high and no other advice explains it, the phrase now says the circumstance instead of «nessun consiglio lo spiega»: waits with no process using CPU; one session taking a whole core, by name; the sessions at work with their share (the session and what it launched), passing when they finish; the relay working more than usual; a process supervisor does not recognise, with its pid. With as many sessions open as the cap it adds that closing the finished ones helps.
+  - `task result` shows the shape of the JSON in its help and with every error, an empty input too: a session had to guess it one field at a time.
+  - A refused field that is too long or too short now says its length and the limits.
 - **0.8.108 — 2026-11-03: how fast today's commands were answered, in the KPIs (supervisor-kpi-comandi-03-11, contract 1.109).**
   - `kpi_health.commands`: the median and the p95 of today's response times, from the moment the phone or the web app sent a command to its result, with the count; null with no commands.
 - **0.8.107 — 2026-11-03: the p95 of the push-to-phone time in the KPIs (supervisor-kpi-p95-03-11, contract 1.108).**
