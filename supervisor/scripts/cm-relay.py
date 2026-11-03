@@ -3067,6 +3067,13 @@ def handle_cmd(cid, doc, done, arrived=None):
         while len(_UNWRITTEN) > UNWRITTEN_MAX:
             _UNWRITTEN.pop(next(iter(_UNWRITTEN)))
     else:
+        try:   # 1.109: il tempo di risposta visto dal dispositivo, da issued all'esito scritto, per kpi_health.commands
+            issued = float(cmd.get("issued") or 0)
+            if issued > 1e9:
+                done_at = time.time()
+                _kpi().record_command(rdir(), done_at, done_at - issued)
+        except (TypeError, ValueError, OSError):
+            pass
         if arrived and str(cmd.get("op") or "") not in PASSIVE_OPS:
             # fase 0 (07/10): l'attesa vera di un prompt o di una risposta, dall'arrivo sullo stream all'esito sul bus
             log(f"cmd {cid}: esito scritto · {cmd.get('op')} · dall'arrivo {_s(time.time() - arrived)} s · put {_s(time.time() - t_put)} s")

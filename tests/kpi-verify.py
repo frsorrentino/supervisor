@@ -94,7 +94,7 @@ st = {"hosts_status": [{"name": "win", "up": True, "cpu": 0.04, "ram_used": 8_00
 rows = [{"status": "busy"}, {"status": "idle", "host": "local"}, {"status": "idle", "host": "win"}, {"status": "dead"}]
 kh = K.kpi_health(st, rows, NOW, rd)
 T.check("K4 kpi_health: latency of the last hour (median 2, p95 3, max 3, 3 samples; the one of 2 hours ago and one out of range left out), 2 sessions here of 5, win at 50% RAM and 75% disk",
-        kh == {"latency": {"p50_s": 2.0, "p95_s": 3.0, "max_s": 3.0, "n": 3}, "sessions_here": 2, "sessions_max": 5,
+        kh == {"latency": {"p50_s": 2.0, "p95_s": 3.0, "max_s": 3.0, "n": 3}, "commands": None, "sessions_here": 2, "sessions_max": 5,
                "hosts": [{"name": "win", "up": True, "cpu": 0.04, "ram_pct": 50, "disk_pct": 75}]}, json.dumps(kh))
 
 rd95 = tmp / "relay95"
@@ -105,6 +105,25 @@ kh95 = K.kpi_health({}, [], NOW, rd95)["latency"]
 kh0 = K.kpi_health({}, [], NOW, tmp / "relay-vuota")["latency"]
 T.check("K4 (1.108) p95_s at the nearest rank: 40 samples of 1..40 s give 38, between the median and the max; no samples: null",
         kh95 == {"p50_s": 20.5, "p95_s": 38.0, "max_s": 40.0, "n": 40} and kh0 == {"p50_s": None, "p95_s": None, "max_s": None, "n": 0}, json.dumps([kh95, kh0]))
+
+rdc = tmp / "relay-cmd"
+rdc.mkdir()
+_mid = K._midnight(NOW)
+K.record_command(rdc, _mid - 60, 50.0)   # ieri: fuori
+for i, s in enumerate((1.0, 2.0, 3.0, 4.0, 30.0)):
+    K.record_command(rdc, _mid + 60 + i, s)
+K.record_command(rdc, _mid + 70, -2.0)   # orologio del dispositivo un po' avanti: 0
+K.record_command(rdc, _mid + 71, 5000.0)   # oltre un'ora: fuori
+K.record_command(rdc, _mid + 72, -30.0)   # troppo sotto zero: fuori
+khc = K.kpi_health({}, [], max(NOW, _mid + 100), rdc)["commands"]
+T.check("K4b (1.109) commands of the local day: yesterday's out, a little under zero is 0, over an hour or far under zero out; median, p95 at the nearest rank, n",
+        khc == {"p50_s": 2.5, "p95_s": 30.0, "n": 6}, json.dumps(khc))
+_svmax = K.COMMANDS_FILE_MAX
+K.COMMANDS_FILE_MAX = 10
+K.record_command(rdc, _mid + 3 * 86400, 1.0)   # tre giorni dopo: il file troppo grande si riscrive con gli ultimi due giorni
+K.COMMANDS_FILE_MAX = _svmax
+_rows = [json.loads(x) for x in K.commands_path(rdc).read_text().splitlines()]
+T.check("K4b the samples file past its cap keeps only the last two days", [r["s"] for r in _rows] == [1.0], str(_rows))
 
 # ------------------------------------------------------------------ K5
 hist = [{"action": a, "at": NOW - age} for a, age in (("accepted", 100), ("chosen", 200), ("discussed", 300), ("hidden", 400), ("never", 500), ("expired", 600), ("accepted", 8 * D))]

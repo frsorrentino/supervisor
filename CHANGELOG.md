@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.108 — 2026-11-03: how fast today's commands were answered, in the KPIs (supervisor-kpi-comandi-03-11, contract 1.109).**
+  - `kpi_health.commands`: the median and the p95 of today's response times, from the moment the phone or the web app sent a command to its result, with the count; null with no commands.
 - **0.8.107 — 2026-11-03: the p95 of the push-to-phone time in the KPIs (supervisor-kpi-p95-03-11, contract 1.108).**
   - `kpi_health.latency` carries `p95_s` beside the median and the maximum, over the same last hour: the time within which 95% of the reads arrived.
 - **0.8.106 — 2026-11-03: the tests you are waited for, as fields; «Tutto va» and «Non va» from «Da decidere» (supervisor-prove-strutturate-03-11, contract 1.107).**

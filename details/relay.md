@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.109 (03/11/2026, asked by the app for the KPI bar). Additive, `v` stays 1.
+
+- **op `kpi`, `kpi_health.commands`**: `{p50_s, p95_s, n}` or null: the response time of today's commands (the local day), from the device's `issued` to the result written on the bus, for every command of the bus (reads too); not the local API. `p95_s` at the nearest rank. A sample a little under zero (the device's clock ahead, up to 5 s) counts as 0; over an hour, or further under zero, is left out. Null with no commands today.
+
+Fixture: `cmd-result-sample.json` (`kpi`).
+
 Contract 1.108 (03/11/2026, asked by the app for the KPI bar). Additive, `v` stays 1.
 
 - **op `kpi`, `kpi_health.latency`**: `p95_s`, beside `p50_s` and `max_s`, over the same samples (the last hour, from the push to a device's read): the value at the nearest rank, never interpolated; null with no samples.
@@ -877,7 +883,7 @@ maintainer at 21:47 for after the quota reset of 29/10). Additive, `v` stays 1.
   error in the turn), question (the last turn of a session waiting) or running (the
   last, session working); `tokens` = input + cache writes + output, once per message,
   `cache_read` apart. At most 30 turns per session.
-- **`kpi_health`** (12): `{latency: {p50_s, p95_s, max_s, n}, sessions_here, sessions_max,
+- **`kpi_health`** (12): `{latency: {p50_s, p95_s, max_s, n}, commands, sessions_here, sessions_max,
   hosts: [{name, up, cpu, ram_pct, disk_pct}]}` — latency from the push to a device's
   read over the last hour (a sample at each new `/seen`), the live sessions of this
   computer against `sessions.max_sessions`, the other hosts from `hosts_status`.

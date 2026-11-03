@@ -289,8 +289,43 @@ def record_latency(rdir, at, seconds):
     p.write_text("".join(json.dumps(r) + "\n" for r in rows))
 
 
+COMMANDS_MAX_S = 3600
+COMMANDS_FILE_MAX = 512 * 1024
+
+
+def commands_path(rdir):
+    return Path(rdir) / "kpi-commands.jsonl"
+
+
+def record_command(rdir, at, seconds):
+    """1.109 (03/11): un comando del telefono o della web app, da `issued` (l'orologio del dispositivo) all'esito scritto.
+    Un po' sotto zero e' lo scarto fra gli orologi e vale 0; oltre un'ora no (un comando rimasto in /cmd da ieri). Una riga
+    in coda; oltre 512 KB il file si riscrive con gli ultimi due giorni."""
+    if not (-5 < seconds < COMMANDS_MAX_S):
+        return
+    p = commands_path(rdir)
+    try:
+        if p.stat().st_size > COMMANDS_FILE_MAX:
+            rows = [r for r in _jsonl(p) if float(r.get("at") or 0) >= at - 2 * 86400]
+            p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    except OSError:
+        pass
+    with open(p, "a") as f:
+        f.write(json.dumps({"at": round(at, 1), "s": round(max(0.0, seconds), 2)}) + "\n")
+
+
+def _p95(v):
+    """Il valore sotto cui sta il 95% dei campioni, al rango piu' vicino (mai interpolato)."""
+    return sorted(v)[max(0, math.ceil(0.95 * len(v)) - 1)]
+
+
+def _midnight(now):
+    t = time.localtime(now)
+    return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+
+
 def kpi_health(state, rows, now, rdir):
-    """{latency: {p50_s, p95_s, max_s, n}, sessions_here, sessions_max, hosts: [{name, up, cpu, ram_pct, disk_pct}]}"""
+    """{latency: {p50_s, p95_s, max_s, n}, commands: {p50_s, p95_s, n} | None, sessions_here, sessions_max, hosts: [...]}"""
     lat = [float(r["s"]) for r in _jsonl(latency_path(rdir)) if float(r.get("at") or 0) >= now - 3600 and "s" in r]
     here = sum(1 for r in rows or [] if (not r.get("host") or r.get("host") == "local") and r.get("status") in ("busy", "idle", "waiting"))
     hosts = []
@@ -300,9 +335,13 @@ def kpi_health(state, rows, now, rdir):
         hosts.append({"name": h.get("name"), "up": bool(h.get("up")), "cpu": h.get("cpu"), "ram_pct": pct(h.get("ram_used"), h.get("ram_total")),
                       "disk_pct": pct(dtot - free, dtot) if free is not None and dtot else None})
     # 1.108 (03/11): p95_s, al rango piu' vicino (il valore sotto cui sta il 95% dei campioni, mai interpolato)
-    p95 = sorted(lat)[max(0, math.ceil(0.95 * len(lat)) - 1)] if lat else None
+    p95 = _p95(lat) if lat else None
+    day = _midnight(now)
+    cmds = [float(r["s"]) for r in _jsonl(commands_path(rdir)) if float(r.get("at") or 0) >= day and "s" in r]
     return {"latency": {"p50_s": round(statistics.median(lat), 2) if lat else None, "p95_s": round(p95, 2) if lat else None,
                         "max_s": round(max(lat), 2) if lat else None, "n": len(lat)},
+            # 1.109: i comandi di oggi (giornata locale), da issued all'esito scritto; null senza comandi
+            "commands": {"p50_s": round(statistics.median(cmds), 2), "p95_s": round(_p95(cmds), 2), "n": len(cmds)} if cmds else None,
             "sessions_here": here, "sessions_max": int((CFG.get("sessions") or {}).get("max_sessions", 5)), "hosts": hosts}
 
 

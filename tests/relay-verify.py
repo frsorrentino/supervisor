@@ -4580,4 +4580,32 @@ T.check("R100 the stream loop hands commands to the lanes and no longer runs han
         "lanes.put(commands_from(ev, payload), arrived)" in (T.SCRIPTS / "cm-relay.py").read_text()
         and "if handle_cmd(cid, doc, done, arrived):" not in (T.SCRIPTS / "cm-relay.py").read_text(), "")
 
+
+# R102 (03/11/2026, supervisor-kpi-comandi-03-11, contratto 1.109): ogni comando del bus lascia il suo tempo di risposta,
+# da issued (orologio del dispositivo) all'esito scritto, per kpi_health.commands
+_sv102 = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
+_kp102 = RL.rdir() / "kpi-commands.jsonl"
+_kp102.unlink(missing_ok=True)
+_net102 = {"up": True}
+
+
+def _rtdb102(*a, **k):
+    if not _net102["up"]:
+        raise OSError(101, "Network is unreachable")
+
+
+try:
+    RL.run_cmd, RL.rtdb = (lambda cmd, arrived=None: {"ok": True, "text": "ok"}), _rtdb102
+    RL.handle_cmd("c102a", {"op": "agenda", "session": "", "issued": time.time() - 3}, [])
+    RL.handle_cmd("c102b", {"op": "agenda", "session": ""}, [])   # senza issued: niente campione
+    _net102["up"] = False
+    RL.handle_cmd("c102c", {"op": "agenda", "session": "", "issued": time.time() - 1}, [])   # esito non scritto: niente campione
+finally:
+    for n, v in _sv102.items():
+        setattr(RL, n, v)
+    RL._UNWRITTEN.clear()
+_s102 = [json.loads(x)["s"] for x in _kp102.read_text().splitlines()] if _kp102.exists() else []
+T.check("R102 a command with issued leaves one sample (issued → result written, ~3 s); none without issued, none when the result was not written",
+        len(_s102) == 1 and 2.9 <= _s102[0] < 5, str(_s102))
+
 T.finish()
