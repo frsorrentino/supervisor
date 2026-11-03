@@ -230,6 +230,10 @@ esegui() {
   local out rc
   # --force: un riavvio sostituisce una sessione, non ne aggiunge; il tetto sessions.max_sessions lo fermava (exit 7)
   OPZ+=(--force)
+  # 03/11/2026 (the maintainer: «al riavvio deve partire con un recap dello stato del lavoro e poi riprendere da dove era»):
+  # prima la sessione ripartita restava ferma finche' qualcuno non le scriveva. Ora parte da sola con un primo
+  # prompt, con --clean e senza; il passaggio di consegne lo annuncia il SessionStart (handoff --announce)
+  OPZ+=(--prompt "$(cm_msg restart.first_prompt)")
   out=$("$CM_SCRIPTS/cm-launch.sh" "$cartella" "${OPZ[@]}" 2>&1); rc=$?
   if [ $rc -ne 0 ]; then echo "primo rilancio fallito (rc=$rc):"; echo "$out"; sleep 5
     out=$("$CM_SCRIPTS/cm-launch.sh" "$cartella" "${OPZ[@]}" 2>&1); rc=$?; fi

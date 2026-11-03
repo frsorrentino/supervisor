@@ -249,6 +249,7 @@
   "restart.armed_switch": "  ACCOUNT SWITCH: restarts on “{account}” resuming conversation {sid} — from then on the context goes to the API under the other organization",
   "restart.switch_not_asked": "supervisor restart: --switch-account refused. An account switch sends the conversation to the API under the other organization, and only the user decides it, with a message of their own asking for it (e.g. “switch to the work account”). An answer to a question from the model is not enough. Do not propose the switch: ask the user to write it, if they want it.",
   "restart.armed_clean": "  CONTEXT CLEARED: restarts without -c (memory on disk untouched)",
+  "restart.first_prompt": "supervisor restart, automatic prompt: first write in the chat a short recap of the state of the work (what is done, what is open, the next step), from the handoff if there is one (its «Resume» section) and from the context; then continue from where you were, without waiting for other messages. If the work was finished or waiting for an answer, say so and stop.",
   "restart.armed_when": "  fires at the end of the turn; outcome and link in {log}",
   "restart.in_progress": "restart in progress — the session closes and restarts resuming the conversation; link in {log}",
   "queue.scheduled": "{name}: queued for {t}; it gets it at the first stop after then, or at {t} if it is idle",

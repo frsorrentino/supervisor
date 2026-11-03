@@ -2,7 +2,7 @@
 """Verifica l'handoff di supervisor (13/10/2026, contratto 1.51).
 
 H1 --prepare: senza --here il file va nella cartella di stato (handoffs/<cartella>-<data>-<ora>.md); con --here in
-   <cartella>/docs/handoff-<data>.md, e con -HHMM se quello del giorno c'e' gia'; le sette sezioni; la riga THEN
+   <cartella>/docs/handoff-<data>.md, e con -HHMM se quello del giorno c'e' gia'; le otto sezioni (l'ultima «Ripresa», 03/11); la riga THEN
 H2 --written: file assente → exit 1; presente → puntatore per la cartella, dimensione stampata
 H3 --announce: la riga HANDOFF col percorso una volta sola; un puntatore vecchio (oltre ANNOUNCE_H ore) non dice niente
 H4 il SessionStart con source «clear» porta la riga nel contesto; il secondo avvio non la ripete
@@ -55,7 +55,7 @@ r = ho("--prepare")
 p_state = field(r.stdout, "PATH")
 T.check("H1 --prepare without --here → the state folder, named after the project and dated",
         r.returncode == 0 and p_state.startswith(str(tmp / "state" / "handoffs" / f"alfa-{today}-")) and p_state.endswith(".md"), r.stdout + r.stderr)
-T.check("H1 seven sections and the THEN line", len(field(r.stdout, "SECTIONS").split(" | ")) == 7
+T.check("H1 eight sections, the last «8. Resume» (03/11, supervisor-riavvio-recap-03-11), and the THEN line", len(field(r.stdout, "SECTIONS").split(" | ")) == 8 and field(r.stdout, "SECTIONS").endswith("| 8. Resume")
         and field(r.stdout, "THEN") == f"supervisor handoff --written {p_state}", r.stdout)
 r = ho("--prepare", "--here")
 p_here = field(r.stdout, "PATH")

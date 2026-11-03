@@ -10,11 +10,12 @@ A long session pays its whole context again at every turn. A handoff on disk plu
 supervisor handoff --prepare ${ARGUMENTS}
 ```
 
-2. Write the file at the `PATH:` it printed, with the seven `SECTIONS:` as H2 headings, in that order. Rules:
+2. Write the file at the `PATH:` it printed, with the eight `SECTIONS:` as H2 headings, in that order. Rules:
    - about 2k tokens at most; facts with numbers, commands and paths; no narrative, no restating what the code or the git log already shows;
    - «Decisions» only for choices someone would otherwise argue again; «Open items» lists the proposals the user did not take up and the open questions;
    - «Invoke next» names the skills, commands or files the next session should open first;
    - «Date and staleness» carries today's date and what would make this handoff stale (a release, a file, a decision).
+   - «Resume» (the last section) is what the session does after a restart: three short lines — done, open, the exact next step (command, file, who it waits for). After `supervisor restart` the session starts by itself with a prompt that recaps this section in the chat and then continues from it.
 
 3. Run the `THEN:` command it printed (`supervisor handoff --written PATH`): it records the file, appends the «Impegni dal registro» section from the task registry (never write that section yourself: the registry is the source) and prints its size.
 

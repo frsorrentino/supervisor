@@ -372,6 +372,10 @@ with T.PrivateTmux() as tm:
             and not os.path.exists(f"/proc/{pane_pid}"), log[-600:])
     new_pane = int(tm("list-panes", "-t", "alfa", "-F", "#{pane_pid}").stdout.strip())
     T.check("R3 relaunched with --continue (-c in argv)", new_pane != pane_pid and re.search(r"(^| )-c( |$)", (tmp / "args.log").read_text().splitlines()[-1]), (tmp / "args.log").read_text())
+    # R3b (03/11, supervisor-riavvio-recap-03-11): la sessione riparte da sola, col prompt del recap e della ripresa in coda
+    RESUME = "prima scrivi in chat un recap breve dello stato del lavoro"
+    T.check("R3b relaunched with the recap-and-resume prompt as claude's last argument (after -n), no message needed",
+            (tmp / "args.log").read_text().splitlines()[-1].split(" -n alfa ", 1)[-1].startswith("Riavvio di supervisor, prompt automatico:") and RESUME in (tmp / "args.log").read_text().splitlines()[-1], (tmp / "args.log").read_text())
     # R4: --clean
     inside2 = dict(inside, TMUX_PANE=tm("list-panes", "-t", "alfa", "-F", "#{pane_id}").stdout.strip(), FAKE_CLAUDE_SCENARIO_FILE=str(scen), FAKE_CLAUDE_ARGS_LOG=str(tmp / "args.log"))
     subprocess.run([str(T.SCRIPTS / "cm-restart.sh"), "arm", "--clean"], capture_output=True, text=True, env=inside2, cwd=str(home / "ws" / "personali" / "alfa"))
@@ -380,7 +384,8 @@ with T.PrivateTmux() as tm:
         time.sleep(1)
         if (state / "restart.log").read_text().count("riavvio completato") >= 2:
             break
-    T.check("R4 --clean relaunches without -c", (state / "restart.log").read_text().count("riavvio completato") >= 2 and not re.search(r"(^| )-c( |$)", (tmp / "args.log").read_text().splitlines()[-1]), (tmp / "args.log").read_text())
+    T.check("R4 --clean relaunches without -c, and with the recap-and-resume prompt too", (state / "restart.log").read_text().count("riavvio completato") >= 2 and not re.search(r"(^| )-c( |$)", (tmp / "args.log").read_text().splitlines()[-1])
+            and RESUME in (tmp / "args.log").read_text().splitlines()[-1], (tmp / "args.log").read_text())
     # R5: --switch-account
     import re
     slug = re.sub(r"[^A-Za-z0-9]", "-", str((home / "ws" / "personali" / "alfa").resolve()))

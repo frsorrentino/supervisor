@@ -249,6 +249,7 @@
   "restart.armed_switch": "  CAMBIO ACCOUNT: riparte su «{account}» riprendendo la conversazione {sid} — da lì il contesto va all'API sotto l'altra organizzazione",
   "restart.switch_not_asked": "supervisor restart: --switch-account rifiutato. Il cambio di account manda la conversazione all'API dell'altra organizzazione e lo decide solo l'utente, con un suo messaggio che lo chieda (es. «passa all'account professionale»). Una risposta a una domanda del modello non basta. Non proporre il cambio: chiedi all'utente di scriverlo, se vuole.",
   "restart.armed_clean": "  CONTESTO AZZERATO: riparte senza -c (memoria su disco intatta)",
+  "restart.first_prompt": "Riavvio di supervisor, prompt automatico: prima scrivi in chat un recap breve dello stato del lavoro (cosa è fatto, cosa è aperto, il prossimo passo), dal passaggio di consegne se c'è (la sezione «Ripresa») e dal contesto; poi riprendi da dove eri, senza aspettare altri messaggi. Se il lavoro era finito o aspettava una risposta, dillo e fermati.",
   "restart.armed_when": "  scatta a fine turno; esito e link in {log}",
   "restart.in_progress": "riavvio in corso — la sessione si chiude e riparte riprendendo la conversazione; link in {log}",
   "queue.scheduled": "{name}: in coda per le {t}; lo riceve al primo stop dopo quell'ora, o alle {t} se è ferma",

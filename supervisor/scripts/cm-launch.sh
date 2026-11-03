@@ -3,7 +3,7 @@
 #
 # Uso: supervisor launch <percorso assoluto> [--create] [--continue|--resume <id>]
 #        [--account <nome>|--<nome-account>] [--no-window] [--bg] [--profile <nome>] [--force]
-#        [--model M] [--effort E]
+#        [--model M] [--effort E] [--prompt TESTO]
 #   --create        crea la cartella se non esiste (mkdir -p)          (it: --crea)
 #   --continue      riprende l'ultima conversazione della cartella      (it: --continua)
 #   --resume <id>   riprende UNA conversazione precisa                  (it: --riprendi)
@@ -12,6 +12,7 @@
 #   --window        aprirla anche se il default e' no; recupera il display anche fuori da tmux (it: --finestra)
 #   --bg            sessione in BACKGROUND (claude --bg): niente tmux, finestra, colore
 #   --profile N     profilo di lancio da config `profiles.<N>` (N8): argomenti, modello, effort, env
+#   --prompt T      il primo prompt della sessione (argomento di claude): `restart` lo usa per il recap e la ripresa
 #
 # Senza flag l'account si DEDUCE dal percorso (`folder_map`): e' un default con
 # avviso, mai un divieto (T49) — il caso legittimo esiste (due sessioni sulla
@@ -33,7 +34,7 @@ if [ -n "${CM_TRACE:-}" ]; then PS4='+ $(date +%T) '; set -x; fi   # CM_TRACE=1:
 
 CARTELLA="${1:-}"
 CREA=no; CONTINUA=no; RIPRENDI=""; ACCOUNT=""; FINESTRA="$CM_SESSION_WINDOW_BY_DEFAULT"; BG=no; FORCE=no
-PROFILO=""; MODEL=""; EFFORT=""; TELEPORT=""; AGENT=claude; HOST=""
+PROFILO=""; MODEL=""; EFFORT=""; TELEPORT=""; AGENT=claude; HOST=""; PRIMO=""
 shift || true
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -49,6 +50,7 @@ while [ $# -gt 0 ]; do
     --profile|--profilo) shift; PROFILO="${1:-}" ;;
     --model) shift; MODEL="${1:-}" ;;
     --effort) shift; EFFORT="${1:-}" ;;
+    --prompt) shift; PRIMO="${1:-}" ;;   # 03/11: il primo prompt (restart: recap e ripresa senza aspettare nessuno)
     --agent) shift; AGENT="${1:-}" ;;   # S09: prova, `codex` solo con experimental.codex
     --host) shift; HOST="${1:-}" ;;   # piano multi-PC 4.2: un altro host (cm-rsession.py), `auto` sceglie se la regia e' carica
     --aziendale)  # nome storico: vale il secondo account, con avviso
@@ -266,6 +268,7 @@ fi
 RC="$(cm_get "$ACCOUNT" REMOTE_CONTROL)"; RC="${RC:-$CM_SESSION_REMOTE_CONTROL}"
 [ "$RC" = true ] && ARGS+=(--remote-control "$NOME")
 ARGS+=(-n "$NOME")
+[ -n "$PRIMO" ] && ARGS+=("$PRIMO")   # posizionale, in coda: claude [opzioni] [prompt] parte col turno gia' avviato
 if [ "$AGENT" = codex ]; then   # S09: Codex CLI nudo, senza gli argomenti di Claude Code (-n, remote control, profili)
   cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env CM_LAUNCHED=1 CM_AGENT=codex "$CODEX"
 else

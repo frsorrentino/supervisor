@@ -11,7 +11,8 @@
 Il tasto «Handoff» dell'app manda il comando che lo stato indica per la sessione (sessions[].handoff, contratto
 1.51): «/fable-director:handoff --here» se la sessione ha fable-director, altrimenti «/supervisor:handoff --here»
 (13/10, chiesto dal maintainer: senza fable-director il tasto mandava un comando che non esisteva). Stesso
-distillato, stesse sette sezioni; niente controllo di budget, che e' di fable-director.
+distillato; dal 03/11 otto sezioni, l'ultima «Ripresa» (cosa e' fatto, cosa e' aperto, il prossimo passo esatto) e' quella
+che il primo prompt dopo `restart` fa riassumere in chat prima di riprendere; niente controllo di budget, che e' di fable-director.
 
 --here scrive in <cartella>/docs/handoff-AAAA-MM-GG.md (con -HHMM se c'e' gia'); senza, nella cartella di stato
 (handoffs/<cartella>-AAAA-MM-GG-HHMM.md). Il puntatore all'ultimo sta in handoffs/last-<hash della cartella>.json e
@@ -36,9 +37,9 @@ STATE = Path(cm.expand(CFG["state_dir"]))
 ANNOUNCE_H = 6
 SECTIONS = {
     "en": ["1. Goal and state", "2. Decisions", "3. Verified facts", "4. Open items", "5. Paths and commands",
-           "6. Invoke next", "7. Date and staleness"],
+           "6. Invoke next", "7. Date and staleness", "8. Resume"],
     "it": ["1. Obiettivo e stato", "2. Decisioni", "3. Fatti verificati", "4. Cose aperte", "5. Percorsi e comandi",
-           "6. Da invocare per primi", "7. Data e scadenza"],
+           "6. Da invocare per primi", "7. Data e scadenza", "8. Ripresa"],
 }
 
 

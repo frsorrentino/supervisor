@@ -40,6 +40,7 @@ log = tmp / "claude.log"
 fake = tmp / "claude"
 fake.write_text(f"""#!/bin/sh
 echo "CCD=${{CLAUDE_CONFIG_DIR:-}} $*" >> {log}
+[ -n "${{FAKE_SLOW:-}}" ] && sleep "$FAKE_SLOW"
 pwd >> {log}.cwd
 case "$*" in
   *"plugin update needsconf@"*) echo '{{"ok":false,"needsConfirmation":true,"shownCommand":{{"sha256":"abc"}}}}'; exit 3 ;;
@@ -136,6 +137,27 @@ T.check("P4 plugins_state: check runs `claude plugin marketplace update` once pe
         sorted(lines) == sorted(["CCD= plugin marketplace update", f"CCD={B} plugin marketplace update"]) and r1 is True and r2 is False, str(lines))
 r3 = PL.check(force=True)
 T.check("P4 plugins_state: force checks again at once", r3 is True and len(log.read_text().splitlines()) == 4, log.read_text())
+
+# P4b (03/11, supervisor-riavvio-recap-03-11): alle 10:40 cinque controlli insieme — il cron lo rilanciava ogni minuto
+# finche' il timbro restava vecchio, e il timbro arrivava solo alla fine. Ora uno per volta, e il timbro all'avvio
+import fcntl as _fc
+import threading as _th
+import json as _js
+_old = time.time() - 7 * 3600
+PL.stamp_path().write_text(_js.dumps({"at": _old}))
+log.write_text("")
+os.environ["FAKE_SLOW"] = "2"
+_res = []
+_t = _th.Thread(target=lambda: _res.append(PL.check()))
+_t.start()
+time.sleep(0.8)
+_mid_at = _js.loads(PL.stamp_path().read_text())["at"]
+_second = PL.check()                                  # il cron del minuto dopo: timbro gia' fresco
+_forced = PL.check(force=True)                        # anche forzato: il lock e' preso
+_t.join()
+os.environ.pop("FAKE_SLOW")
+T.check("P4b a check in progress: the stamp is fresh from its start, a second check (even forced) runs nothing and returns False; the first ends True",
+        _mid_at > _old + 3600 and _second is False and _forced is False and _res == [True] and len(log.read_text().splitlines()) == 2, str((_mid_at, _second, _forced, _res, log.read_text())))
 
 log.write_text("")
 u1 = PL.update("personal", "alpha@tools")

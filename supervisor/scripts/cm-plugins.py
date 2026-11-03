@@ -25,6 +25,7 @@ d'altri; quando Claude Code lo chiede, l'esito dice di confermare al PC. Vale da
 Uso: cm-plugins.py [--json] | check [--force] | update ACCOUNT ID | update-all ACCOUNT
 """
 import importlib.util
+import fcntl
 import json
 import os
 import re
@@ -184,15 +185,26 @@ def check(force=False):
     st = _json(stamp_path(), {})
     if not force and time.time() - float(st.get("at") or 0) < hours * 3600:
         return False
+    # 03/11/2026 (supervisor-riavvio-recap-03-11): il relay lo lancia dal cron ogni minuto finche' il timbro e' vecchio,
+    # e il timbro arrivava solo alla fine; con la macchina carica un `marketplace update` dura minuti e alle 10:40 ne
+    # giravano cinque insieme. Uno solo per volta (lock), e il timbro all'avvio: chi arriva dopo trova il controllo fatto
+    p = stamp_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lock = open(p.with_suffix(".lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock.close()
+        return False
+    p.write_text(json.dumps({"at": time.time()}))
     for _, conf in accounts():
         try:
             subprocess.run(["nice", "-n", "19", _claude(), "plugin", "marketplace", "update"], env=_env(conf),
                            capture_output=True, text=True, timeout=300)
         except (OSError, subprocess.SubprocessError):
             pass
-    p = stamp_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"at": time.time()}))
+    lock.close()
     return True
 
 

@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.102 — 2026-11-03: a restarted session recaps and resumes by itself (supervisor-riavvio-recap-03-11).**
+  - After `supervisor restart`, with `--clean` and without, the session starts with a first prompt: a short recap in the chat of the state of the work (done, open, next step), from the handoff and the context, then it continues from where it was. Before, it stayed idle until someone wrote to it. `supervisor launch --prompt TEXT` starts any session with a first prompt.
+  - The handoff has an eighth section, «Resume»: done, open and the exact next step, the part the restart prompt recaps.
+  - Fix: the marketplace check of the plugins runs one at a time and stamps itself at the start. The relay's cron started a new one every minute while a slow check was still running (five at once on a loaded machine).
 - **0.8.101 — 2026-11-03: three fixes from a night check (supervisor-bug-notte-03-11).**
   - `task add` stores a session written with its short name (as `sessions` shows it, without the account prefix) under its tmux name when exactly one live session matches: `talk`, the inbox and the ok found no session by the short name.
   - Task checks run with `~/.local/bin` and `/usr/local/bin` in the PATH, also from cron, the relay daemon and hooks, where the PATH is `/usr/bin:/bin` and `supervisor`, `claude` and `gh` were not found.
