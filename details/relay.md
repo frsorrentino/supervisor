@@ -650,7 +650,7 @@ Contract 1.113 (03/11/2026, the maintainer: «le decisioni superate devono andar
 - **`state.tocca`**: `{n, prove, decidi, today}`, one count for home, menu and registry, from the same items as `sessions[].tocca` (1.111) and the sessionless ones: `prove` the tests of op `prove` plus the items of op `decisioni` with `prova`; `decidi` the other items of op `decisioni`; `n` their sum. `today`: `{n, items[≤10]}`, the closings of the tidying since midnight, newest first, `{task, short, kind ∈ pause|prova|needs_you, rule ∈ 1-4, at}`. Absent with a relay that does not compute it.
 - **op `prove`**: `archived`, at most 30, newest first: `{task, short, kind, rule (4), text, at}`.
 
-Fixture: `cmd-result-sample.json` (`prove` with `archived`).
+Fixture: `cmd-result-sample.json` (`prove` with `archived`); `state-2-idle.json` (`tocca` with two closings of today, a pause of rule 1 and a test of rule 2, since 0.8.114; other texts of that fixture were shortened to stay under the 8 KB cap).
 
 Contract 1.112 (03/11/2026, reported by the maintainer: «cos'è questo messaggio che appare spesso?»). Additive, `v` stays 1.
 

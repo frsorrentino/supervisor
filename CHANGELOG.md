@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.114 — 2026-11-03: the contract's sample state carries `state.tocca` (supervisor-tocca-fixture-03-11).**
+  - `state-2-idle.json` now has the single count of «Tocca a te» with two automatic closings of today, so the app can test against it.
 - **0.8.113 — 2026-11-03: what is superseded leaves «Tocca a te» by itself (supervisor-tocca-auto-03-11, contract 1.113).**
   - Every 10 minutes `task tidy` closes as «superata» what no longer asks anything of you: a test of a build that a newer pre-release of the same project contains; a pause or request of a task already closed; a request repeated on the same task (the newest stays); a test with no step for 7 days whose task is not running, into an archive you can still read. Waits for an action of yours (a login, a mailbox, a choice) never expire by themselves. «Superata» is never your confirmation: the task stays open and its check stays the judge.
   - One count for home, session menu and registry (`state.tocca`), with today's automatic closings for the app's line.

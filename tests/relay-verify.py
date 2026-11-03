@@ -373,10 +373,11 @@ SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["publishe
 SRC2["commitments"] = F2["commitments"]   # 1.76
 SRC2["home_order"] = F2["home_order"]   # 1.97
 SRC2["tocca"] = {"atlas-shop": {"prove": 2, "decidi": 1, "guarda": 3, "segui": 1}, "orbit-docs": {"prove": 0, "decidi": 0, "guarda": 0, "segui": 0}}   # 1.111
+SRC2["tocca_state"] = F2["tocca"]   # 1.113: il conto unico e le chiusure di oggi passano a /state cosi' come sono
 # 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
 SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
                       "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"],
-                      "untested": "a real phone", "undo": "in-parte", "undo_how": "pull the build", "also": [{"task": "atlas-seo-pages", "short": "SEO pages"}]}]   # 1.99
+                      "untested": "phone", "undo": "in-parte", "undo_how": "revert", "also": [{"task": "atlas-seo-pages", "short": "SEO pages"}]}]   # 1.99
 SRC2["decisions"], SRC2["prove"] = F2["decisions"], F2["prove"]   # 1.99
 SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP passano a /state cosi' come sono
 # 1.84 (24/10): tre suggerimenti della master di tipo diverso, i token di oggi su due account, e una richiesta per la persona
@@ -392,7 +393,7 @@ SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 96
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
                        {"session": "master", "account": "personal", "tokens": 1130000, "share": 0.38},
                        {"session": "orbit-docs", "account": "work", "tokens": 30000, "share": 0.03}]
-SRC2["needs_you"] = {"atlas-shop": {"reason": "Type the pairing code shown on the TV", "at": 1789214200, "expires_at": 1789221400,
+SRC2["needs_you"] = {"atlas-shop": {"reason": "Type the TV code", "at": 1789214200, "expires_at": 1789221400,
                                     "name": "atlas-shop", "task": "atlas-tv-pairing", "from": "master"}}
 st2 = S.build_state(SRC2, 1789214400)
 T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
@@ -4641,5 +4642,14 @@ finally:
     RL.tocca_tasks, RL.results_mod, RL._load = _sv103["tt"], _sv103["rm"], _sv103["ld"]
 T.check("R103 tocca_summary: the four sources by session, keyed by the short name (account prefix off), zeros where a source has nothing",
         _t103 == {"atlas-shop": {"prove": 3, "decidi": 0, "guarda": 1, "segui": 4}, "ledger-api": {"prove": 0, "decidi": 2, "guarda": 2, "segui": 0}}, json.dumps(_t103))
+
+
+# R104 (03/11/2026, supervisor-tocca-fixture-03-11): la fixture di state.tocca (1.113) per l'app
+_tc = F2.get("tocca") or {}
+T.check("R104 state-2-idle carries state.tocca {n, prove, decidi, today{n, items}}: n the sum, today with a pause of rule 1 and a test of rule 2; build_state publishes it under «tocca»",
+        set(_tc) == {"n", "prove", "decidi", "today"} and _tc["n"] == _tc["prove"] + _tc["decidi"] and _tc["today"]["n"] == len(_tc["today"]["items"]) == 2
+        and {(x["kind"], x["rule"]) for x in _tc["today"]["items"]} == {("pause", 1), ("prova", 2)}
+        and all(set(x) == {"task", "short", "kind", "rule", "at"} for x in _tc["today"]["items"]) and st2.get("tocca") == _tc
+        and "tocca" not in S.build_state(dict(SRC2, tocca_state=None), 1789214400), json.dumps(_tc))
 
 T.finish()

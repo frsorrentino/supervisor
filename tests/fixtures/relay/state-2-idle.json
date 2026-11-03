@@ -42,7 +42,7 @@
       "finished": true,
       "changes": null,
       "needs_you": {
-        "reason": "Type the pairing code shown on the TV",
+        "reason": "Type the TV code",
         "at": 1789214200,
         "expires_at": 1789221400,
         "task": "atlas-tv-pairing",
@@ -130,6 +130,30 @@
   "recap": {
     "date": "2026-09-12",
     "items": []
+  },
+  "tocca": {
+    "n": 3,
+    "prove": 1,
+    "decidi": 2,
+    "today": {
+      "n": 2,
+      "items": [
+        {
+          "task": "atlas-home",
+          "short": "Home",
+          "kind": "pause",
+          "rule": 1,
+          "at": 1789214000
+        },
+        {
+          "task": "orbit-filter",
+          "short": "Filter",
+          "kind": "prova",
+          "rule": 2,
+          "at": 1789213000
+        }
+      ]
+    }
   },
   "choices": {
     "models": [
@@ -297,9 +321,9 @@
         "Strada A",
         "Strada B"
       ],
-      "untested": "a real phone",
+      "untested": "phone",
       "undo": "in-parte",
-      "undo_how": "pull the build",
+      "undo_how": "revert",
       "also": [
         {
           "task": "atlas-seo-pages",
@@ -347,7 +371,7 @@
       "at": 1789210500,
       "kind": "deploy",
       "project": "work/own/orbit-docs",
-      "text": "hosting orbit-docs",
+      "text": "orbit-docs",
       "url": "https://orbit-docs.web.app"
     },
     {
@@ -355,21 +379,21 @@
       "kind": "release",
       "project": "personal/atlas-shop",
       "text": "2.3.1",
-      "url": "https://github.com/ex/atlas-shop/releases/tag/v2.3.1"
+      "url": "https://gh.io/a/releases/tag/v2.3.1"
     },
     {
       "at": 1789207800,
       "kind": "push",
       "project": "personal/atlas-shop",
-      "text": "origin/feature/checkout",
-      "url": "https://github.com/ex/atlas-shop/tree/checkout"
+      "text": "origin/checkout",
+      "url": "https://gh.io/a/tree/checkout"
     }
   ],
   "commitments": [
     {
       "task": "ledger-migrations-011",
-      "title": "Migrations 008-011 on staging",
-      "short": "Migrations 008-011",
+      "title": "Migrations on staging",
+      "short": "Migrations",
       "project": "work/clients/ledger-api",
       "session": "ledger-api",
       "state": "running",
@@ -382,7 +406,7 @@
       "last_step": {
         "at": 1789200600,
         "kind": "approval",
-        "text": "migrations on staging"
+        "text": "staging"
       },
       "idle_s": 13800,
       "next": "ledger-api works",
@@ -390,7 +414,7 @@
         "who": "person",
         "on": "ledger-api"
       },
-      "expected": "migrations on staging",
+      "expected": "on staging",
       "outcome_kind": "deploy",
       "check": {
         "outcome": "red",
@@ -401,8 +425,8 @@
     },
     {
       "task": "atlas-seo-pages",
-      "title": "SEO pages of atlas-shop online",
-      "short": "SEO pages of atlas-shop",
+      "title": "SEO pages",
+      "short": "SEO pages",
       "project": "personal/atlas-shop",
       "session": "atlas-shop",
       "state": "approved",
@@ -415,15 +439,15 @@
       "last_step": {
         "at": 1789213800,
         "kind": "approval",
-        "text": "push and deploy"
+        "text": "push"
       },
       "idle_s": 600,
-      "next": "atlas-shop closes atlas-seo-pages",
+      "next": "atlas-shop",
       "waits": {
         "who": "person",
         "on": "atlas-shop"
       },
-      "expected": "SEO pages online",
+      "expected": "online",
       "outcome_kind": "deploy",
       "check": null,
       "paused": null,
@@ -502,7 +526,7 @@
       "kind": "needs_you",
       "session": "atlas-shop",
       "ref": "atlas-shop",
-      "title": "Type the pairing code shown on the TV",
+      "title": "Type the TV code",
       "since": 1789214200,
       "closes": "prompt",
       "expires_at": 1789221400
