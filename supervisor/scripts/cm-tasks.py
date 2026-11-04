@@ -121,6 +121,9 @@ SCHEMA_PATH = HERE.parent / "schemas" / "task-contract.v1.json"
 # «fatto»: pagella, statistiche e conferme contano solo done
 STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved", "done", "failed", "cancelled", "superseded")
 OPEN_STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved")
+# 1.116 (04/11/2026, la master): una dipendenza e' soddisfatta da done e da superseded (il lavoro e' uscito in una pre-release
+# provata e chiusa); pagella e statistiche restano solo su done
+DEPS_MET = ("done", "superseded")
 PROOF_TAIL = 12
 # 22/10/2026 (P1, dalla giornata persa sull'APK del Gantt): per ogni kind di esito, i segni che il controllo deve
 # contenere per toccare l'ultimo passo e non uno intermedio; custom non ne ha e vuole `proof`

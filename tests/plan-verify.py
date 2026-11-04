@@ -135,4 +135,20 @@ st2 = {r["id"]: r["state"] for r in json.loads(cm(env, "plan", "status", "p1", "
 T.check("P9 with fable-director enabled: the brief asks to open its budget with the node's check as --verify and the perimeter as --paths; the run ends the same",
         ta and '--verify "test -f done.txt" --paths "a.txt" --data-class internal' in ta[0] and st2 == {"a": "done", "b": "failed", "c": "done", "d": "cancelled", "s": "done"}, (ta[0] if ta else "") + str(st2))
 
+# superate_dipendenze (04/11/2026, supervisor-superate-dipendenze-04-11): una dipendenza superseded vale come done
+tmp, env, P, fake = setup(False)
+plan3 = {"schema_version": 1, "id": "p3", "title": "superseded plan", "nodes": [
+    node("x", P["a"], "test -f never.txt", plan="p3"),
+    node("y", P["s"], "test -f y.txt", deps=["x"], route="script", run="touch y.txt", plan="p3")]}
+pf3 = tmp / "plan3.json"
+pf3.write_text(json.dumps(plan3))
+cm(env, "plan", "approve", str(pf3), "--by", "maintainer", "--text", "ok")
+_c = __import__("sqlite3").connect(tmp / "tasks.db")
+_c.execute("UPDATE tasks SET state='superseded' WHERE id='x'")
+_c.commit(); _c.close()
+rc3, out3 = cm(env, "plan", "run", "p3", "--turn-timeout", "30")
+st3 = {r["id"]: r["state"] for r in json.loads(cm(env, "plan", "status", "p3", "--json")[1])}
+T.check("P10 a dependency closed as superseded lets its dependent start (y done), x is not launched, the plan ends ok (exit 0)",
+        st3 == {"x": "superseded", "y": "done"} and rc3 == 0 and not any(c["args"][0] == "launch" for c in calls(fake)), str(st3) + out3[-400:])
+
 T.finish()

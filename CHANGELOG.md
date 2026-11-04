@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.118 — 2026-11-04: a superseded task no longer blocks what depends on it (supervisor-superate-dipendenze-04-11, contract 1.116).**
+  - In a plan, a task closed as superseded counts as done for its dependents: they start, and the plan ends ok. It still never counts as done in the report card or the statistics.
 - **0.8.117 — 2026-11-04: tasks superseded by a newer pre-release close by themselves (supervisor-superate-chiuse-04-11, contract 1.115).**
   - When the tidying retires a test because a newer pre-release contains it, the task no longer stays open with nothing to test: as soon as the task of that pre-release is closed green, it closes as «superseded», a state of its own. It never counts as done or confirmed, and it shows among today's automatic closings.
 - **0.8.116 — 2026-11-04: «stalled» means the same everywhere (supervisor-impegni-fermi-sessione-04-11, contract 1.114).**

@@ -644,6 +644,10 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.116 (04/11/2026, from the master: a dependency closed as superseded). No new key, `v` stays 1.
+
+- **A dependency is met by `done` and by `superseded`**: the work came out in a pre-release tested and closed, so the plan engine starts what waits on it, and a plan whose nodes are all done or superseded ends ok. Report card and KPIs still count only `done`.
+
 Contract 1.115 (04/11/2026, from the master: some forty tasks of supervisor-app left running with no pause and no test after rule 1 of the tidying). Additive, `v` stays 1.
 
 - **A new task state, `superseded`.** A task whose test rule 1 closed (a newer pre-release of the same project contains its build) and that nothing took up again since (no open or new pause, no test to do, no step of its session) closes as `superseded` when the task that carries that pre-release is closed green; at once if it already is. If that task is itself superseded, the newer pre-release that closed it is followed. An owner still open, failed or cancelled closes nothing. `superseded` is never `done`: no confirmation, no row in the report card, not in the closed-task counts of the KPIs; it is not an open state.

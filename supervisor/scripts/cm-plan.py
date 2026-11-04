@@ -279,7 +279,7 @@ def run_plan(plan, parallel=2, turn_timeout=3600, dry_run=False, log=print):
                 log(f"{tid}: cancelled (a dependency failed)")
                 states[tid] = "cancelled"
         ready = [tid for tid, st in states.items() if st in TK.OPEN_STATES and tid not in running
-                 and all(states[d["task"]] == "done" for d in nodes[tid]["depends_on"])]
+                 and all(states[d["task"]] in TK.DEPS_MET for d in nodes[tid]["depends_on"])]
         for tid in ready[:max(0, parallel - len(running))]:
             th = threading.Thread(target=run_node, args=(nodes[tid], turn_timeout, log), daemon=True)
             running[tid] = th
@@ -289,7 +289,7 @@ def run_plan(plan, parallel=2, turn_timeout=3600, dry_run=False, log=print):
         time.sleep(float(os.environ.get("CM_PLAN_POLL", "2")))
     final = {tid: TK.get_task(con, tid)["state"] for tid in nodes}
     log("plan " + plan["id"] + ": " + ", ".join(f"{k} {v}" for k, v in final.items()))
-    return all(v == "done" for v in final.values())
+    return all(v in TK.DEPS_MET for v in final.values())   # 1.116: un nodo superato e' uscito, non manca
 
 
 def waves(nodes):
