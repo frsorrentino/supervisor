@@ -644,13 +644,22 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.115 (04/11/2026, from the master: some forty tasks of supervisor-app left running with no pause and no test after rule 1 of the tidying). Additive, `v` stays 1.
+
+- **A new task state, `superseded`.** A task whose test rule 1 closed (a newer pre-release of the same project contains its build) and that nothing took up again since (no open or new pause, no test to do, no step of its session) closes as `superseded` when the task that carries that pre-release is closed green; at once if it already is. If that task is itself superseded, the newer pre-release that closed it is followed. An owner still open, failed or cancelled closes nothing. `superseded` is never `done`: no confirmation, no row in the report card, not in the closed-task counts of the KPIs; it is not an open state.
+- **op `done`** (`task closed`): a row of a superseded task has `outcome: "superseded"`, its `at` the time of the closing.
+- **`state.tocca.today.items[].kind`** gains `task` (rule 1): the task closed as superseded, among today's closings by themselves.
+- Board counts (`task board`) gain the key `superseded`.
+
+Fixture: `cmd-result-sample.json` (`done` …0760 with a row `outcome: "superseded"`).
+
 Contract 1.114 (04/11/2026, from the master: four tasks «stalled» behind supervisor-app at work). No new key, `v` stays 1.
 
 - **`state.commitments[].stalled`** (and `task impegni`, the master's hook, the night report) is measured on the session, as `task stall-check` since 0.8.115: a task of a session that made a step or a result on any task, or a commit in the folders of its tasks, within `tasks.stall_hours` is not stalled; it waits in the queue behind a session at work. `idle_s` and `last_step` stay those of the task.
 
 Contract 1.113 (03/11/2026, the maintainer: «le decisioni superate devono andare da sole: semplificare, non dare compiti in più»). Additive, `v` stays 1.
 
-- **Tidying, every 10 minutes (`task tidy`).** What no longer asks anything leaves «Tocca a te» by itself: (1) a test whose build a newer tag of the same project contains (`git merge-base --is-ancestor`), both a pause with `prova` and a test of the bench; (2) a pause, a test or a needs-you request of a task already done, closed or cancelled; (3) two needs-you requests on the same task: the newest stays; (4) tests only: no step for 7 days and the task not running, into the archive. A wait for an action of the person without a test never expires by itself. The closing is «superata»: the pause closes or the test is retired, with a step that says why; never a confirmation of the person, never a closed task.
+- **Tidying, every 10 minutes (`task tidy`).** What no longer asks anything leaves «Tocca a te» by itself: (1) a test whose build a newer tag of the same project contains (`git merge-base --is-ancestor`), both a pause with `prova` and a test of the bench; (2) a pause, a test or a needs-you request of a task already done, closed or cancelled; (3) two needs-you requests on the same task: the newest stays; (4) tests only: no step for 7 days and the task not running, into the archive. A wait for an action of the person without a test never expires by itself. The closing is «superata»: the pause closes or the test is retired, with a step that says why; never a confirmation of the person, never a closed task (since 1.115 a task closes, as `superseded`, when the pre-release of rule 1 is closed green).
 - **`state.tocca`**: `{n, prove, decidi, today}`, one count for home, menu and registry, from the same items as `sessions[].tocca` (1.111) and the sessionless ones: `prove` the tests of op `prove` plus the items of op `decisioni` with `prova`; `decidi` the other items of op `decisioni`; `n` their sum. `today`: `{n, items[≤10]}`, the closings of the tidying since midnight, newest first, `{task, short, kind ∈ pause|prova|needs_you, rule ∈ 1-4, at}`. Absent with a relay that does not compute it.
 - **op `prove`**: `archived`, at most 30, newest first: `{task, short, kind, rule (4), text, at}`.
 

@@ -117,7 +117,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SCHEMA_PATH = HERE.parent / "schemas" / "task-contract.v1.json"
-STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved", "done", "failed", "cancelled")
+# 1.115 (04/11/2026): superseded = chiuso perche' una pre-release piu' nuova, provata e chiusa, porta il suo lavoro; mai
+# «fatto»: pagella, statistiche e conferme contano solo done
+STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved", "done", "failed", "cancelled", "superseded")
 OPEN_STATES = ("proposed", "assigned", "running", "awaiting_ok", "approved")
 PROOF_TAIL = 12
 # 22/10/2026 (P1, dalla giornata persa sull'APK del Gantt): per ogni kind di esito, i segni che il controllo deve
@@ -262,7 +264,7 @@ CREATE TABLE IF NOT EXISTS prove (n INTEGER PRIMARY KEY, task TEXT, build TEXT, 
     result TEXT, result_at INTEGER, result_by TEXT, result_text TEXT, superseded_at INTEGER);
 CREATE TABLE IF NOT EXISTS defects (task TEXT PRIMARY KEY, defect_of TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS closures (task TEXT PRIMARY KEY, at INTEGER, model TEXT, effort TEXT, kind TEXT);
-CREATE TABLE IF NOT EXISTS tidy (n INTEGER PRIMARY KEY, at INTEGER, task TEXT, kind TEXT, rule INTEGER, text TEXT);
+CREATE TABLE IF NOT EXISTS tidy (n INTEGER PRIMARY KEY, at INTEGER, task TEXT, kind TEXT, rule INTEGER, text TEXT, build TEXT);
 CREATE TABLE IF NOT EXISTS decision_snooze (key TEXT PRIMARY KEY, at INTEGER, by_ TEXT, until INTEGER, refs TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS cause_notes (key TEXT PRIMARY KEY, note TEXT, at INTEGER, by_ TEXT);
 """
@@ -303,6 +305,13 @@ def connect(create=True):
         con.commit()
     if "also" not in cols:   # 1.99 (01/11, compito dal piano)
         con.execute("ALTER TABLE approvals ADD COLUMN also TEXT")
+        con.commit()
+    if "build" not in {r[1] for r in con.execute("PRAGMA table_info(tidy)")}:   # 1.115 (04/11): la pre-release della regola 1
+        con.execute("ALTER TABLE tidy ADD COLUMN build TEXT")
+        for r in con.execute("SELECT n, text FROM tidy WHERE rule=1").fetchall():   # le righe di prima: dal testo, it o en
+            m = _TIDY_NEWER_RE.search(r["text"] or "")
+            if m:
+                con.execute("UPDATE tidy SET build=? WHERE n=?", (m.group(1), r["n"]))
         con.commit()
     return con
 
@@ -731,6 +740,8 @@ def ever_worked(con, tid):
 
 
 TIDY_STALE_S = 7 * 86400
+TIDY_CHAIN_MAX = 10
+_TIDY_NEWER_RE = re.compile(r"pre-release (\S+) (?:contiene|contains) ")
 TIDY_ARCHIVE_MAX = 30
 
 
@@ -776,18 +787,18 @@ def _last_activity(con, tid, row):
 def tidy(con, now_=None, dry=False):
     """1.113 (03/11/2026, «le decisioni superate devono andare da sole: semplificare, non dare compiti in piu'»): le voci di
     Tocca a te che non chiedono piu' niente escono da sole. La chiusura si chiama «superata»: chiude la pausa o ritira la
-    prova, lascia un passo e una riga in `tidy`; MAI una conferma della persona (pagella e controlli restano veri), mai
-    un compito chiuso. Una pausa che aspetta un'azione della persona senza una prova non scade mai. Torna le chiusure."""
+    prova, lascia un passo e una riga in `tidy`; MAI una conferma della persona (pagella e controlli restano veri). Un
+    compito si chiude solo come superato (1.115), quando la pre-release che porta il suo lavoro e' chiusa verde. Una pausa che aspetta un'azione della persona senza una prova non scade mai. Torna le chiusure."""
     now_ = int(now_ or now())
     out, cache = [], {}
 
-    def log(tid, kind, rule, text):
+    def log(tid, kind, rule, text, build=None):
         out.append({"task": tid, "kind": kind, "rule": rule, "text": text, "at": now_})
         if not dry:
-            con.execute("INSERT INTO tidy (at, task, kind, rule, text) VALUES (?,?,?,?,?)", (now_, tid, kind, rule, text[:500]))
+            con.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,?,?,?,?)", (now_, tid, kind, rule, text[:500], build))
 
-    def close_pause(tid, rule, text):
-        log(tid, "pause", rule, text)
+    def close_pause(tid, rule, text, build=None):
+        log(tid, "pause", rule, text, build)
         if not dry:
             con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now_, tid))
             con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,'supervisor','step',?,NULL)", (tid, now_, text[:500]))
@@ -810,7 +821,7 @@ def tidy(con, now_=None, dry=False):
             continue   # un'attesa che non e' una prova (login, casella, una scelta) non scade mai da sola
         nb = newer_build(r["project"], pv["release"], cache) if pv.get("release") and r["project"] else None
         if nb:
-            close_pause(tid, 1, M("tasks.tidy_newer", old=pv["release"], new=nb))
+            close_pause(tid, 1, M("tasks.tidy_newer", old=pv["release"], new=nb), nb)
         elif r["state"] != "running" and now_ - _last_activity(con, tid, r) >= TIDY_STALE_S:
             close_pause(tid, 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400))
     # 1 e 4: le prove del banco ancora da fare
@@ -818,19 +829,32 @@ def tidy(con, now_=None, dry=False):
         r = rows.get(pr["task"])
         if r is None:
             continue
+        nb_ = None
         if r["state"] not in OPEN_STATES:
             rule, text = 2, M("tasks.tidy_closed", state=r["state"])
         else:
             nb = newer_build(r["project"], pr["build"], cache) if r["project"] else None
+            nb_ = nb
             if nb:
                 rule, text = 1, M("tasks.tidy_newer", old=pr["build"], new=nb)
             elif r["state"] != "running" and now_ - _last_activity(con, pr["task"], r) >= TIDY_STALE_S:
                 rule, text = 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400)
             else:
                 continue
-        log(pr["task"], "prova", rule, text)
+        log(pr["task"], "prova", rule, text, nb_)
         if not dry:
             con.execute("UPDATE prove SET superseded_at=? WHERE n=?", (now_, pr["n"]))
+    # 1, il seguito (1.115, 04/11): un compito la cui prova e' stata superata resta senza pausa e senza prova; quando il
+    # compito della pre-release che lo supera e' chiuso verde si chiude anche lui, come superato (mai done)
+    if not dry:
+        con.commit()
+    for tid, tag, owner in superseded_ready(con, cache):
+        text = M("tasks.tidy_task", new=tag, owner=owner)
+        log(tid, "task", 1, text, tag)
+        if not dry:
+            con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,'supervisor','step',?,NULL)", (tid, now_, text[:500]))
+            set_state(con, tid, "superseded")
+            rows[tid] = con.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
     # 2 e 3: le richieste di needs-you (file della sessione): di un compito chiuso; doppie sullo stesso compito
     cm_, cfg = _cfg()
     d = Path(cm_.expand(cfg["state_dir"])) / "needs-you" if cm_ else None
@@ -859,6 +883,59 @@ def tidy(con, now_=None, dry=False):
                 f.unlink(missing_ok=True)
     if not dry:
         con.commit()
+    return out
+
+
+def _tag_owners(con, project, cache):
+    """1.115: {tag: compiti} dello stesso progetto che portano quel tag in prova (una pausa con la prova, una riga del banco)."""
+    k = ("owners", str(project))
+    if k not in cache:
+        m = {}
+        for r in con.execute("SELECT z.task, z.reason, z.prova FROM pauses z JOIN tasks t ON t.id=z.task WHERE t.project=?", (project,)).fetchall():
+            pv = prova_of(r, project)
+            if pv and pv.get("release"):
+                m.setdefault(pv["release"], set()).add(r["task"])
+        for r in con.execute("SELECT p.task, p.build FROM prove p JOIN tasks t ON t.id=p.task WHERE t.project=?", (project,)).fetchall():
+            m.setdefault(r["build"], set()).add(r["task"])
+        cache[k] = m
+    return cache[k]
+
+
+def _superseding(con, tid):
+    """L'ultima riga della regola 1 di un compito: (at, tag che lo supera), o None."""
+    r = con.execute("SELECT at, build FROM tidy WHERE task=? AND rule=1 AND build IS NOT NULL ORDER BY at DESC, n DESC LIMIT 1", (tid,)).fetchone()
+    return (r["at"], r["build"]) if r else None
+
+
+def superseded_ready(con, cache=None):
+    """1.115: [(compito, tag, compito del tag)] dei compiti aperti da chiudere come superati. Un compito entra se la sua prova
+    e' stata chiusa dalla regola 1 e da allora niente l'ha ripreso: nessuna pausa aperta, nessuna prova da fare, nessun passo
+    della sessione, nessuna pausa o prova nuova. Il tag e' di un altro compito dello stesso progetto: chiuso verde, chiude;
+    superato a sua volta, si segue la sua pre-release (fino a TIDY_CHAIN_MAX); aperto, fallito, cancellato o assente, si aspetta."""
+    cache = {} if cache is None else cache
+    out = []
+    for r in con.execute("SELECT * FROM tasks WHERE state IN (%s)" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall():
+        tid, sup = r["id"], _superseding(con, r["id"])
+        if not sup or not r["project"]:
+            continue
+        at, tag = sup
+        if con.execute("SELECT 1 FROM pauses WHERE task=? AND (resumed_at IS NULL OR at>?) UNION ALL "
+                       "SELECT 1 FROM prove WHERE task=? AND at>? UNION ALL "
+                       "SELECT 1 FROM steps WHERE task=? AND at>? AND by_!='supervisor' LIMIT 1", (tid, at, tid, at, tid, at)).fetchone() or prove_pending(con, tid):
+            continue
+        seen = {tid}
+        for _ in range(TIDY_CHAIN_MAX):
+            owners = sorted(_tag_owners(con, r["project"], cache).get(tag, set()) - seen)
+            st = {o: con.execute("SELECT state FROM tasks WHERE id=?", (o,)).fetchone()["state"] for o in owners}
+            closer = next((o for o in owners if st[o] == "done"), None)
+            if closer:
+                out.append((tid, tag, closer))
+                break
+            nxt = next((_superseding(con, o) for o in owners if st[o] == "superseded" and _superseding(con, o)), None)
+            if not nxt:
+                break
+            seen.update(owners)
+            tag = nxt[1]
     return out
 
 
@@ -1453,15 +1530,15 @@ def proof_of(task, result):
 
 
 def closed(con, day=None, now_=None):
-    """{date, rows, days, more}: i compiti chiusi nel giorno `day` (ISO, oggi se None) — done verde, cancellati, falliti —
+    """{date, rows, days, more}: i compiti chiusi nel giorno `day` (ISO, oggi se None) — done verde, cancellati, falliti, superati (1.115, outcome superseded) —
     dal piu' recente, con la prova; `days` = fino a sei giorni prima con almeno un chiuso, con il conteggio."""
     import datetime as dt
     now_ = int(now_ or now())
     d0 = dt.date.fromisoformat(day) if day else dt.date.fromtimestamp(now_)
     by_day = {}
-    for r in con.execute("SELECT * FROM tasks WHERE state IN ('done','failed','cancelled')").fetchall():
+    for r in con.execute("SELECT * FROM tasks WHERE state IN ('done','failed','cancelled','superseded')").fetchall():
         res = con.execute("SELECT outcome, reason, proof, at FROM results WHERE task=? AND accepted=1 ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
-        at = int(res["at"]) if res and r["state"] != "cancelled" else int(r["updated_at"] or r["created_at"] or 0)
+        at = int(res["at"]) if res and r["state"] not in ("cancelled", "superseded") else int(r["updated_at"] or r["created_at"] or 0)
         task = json.loads(r["contract"])["task"]
         result = {"reason": res["reason"], "proof": json.loads(res["proof"])} if res else None
         day_ = dt.date.fromtimestamp(at)

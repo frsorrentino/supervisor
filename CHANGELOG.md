@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.117 — 2026-11-04: tasks superseded by a newer pre-release close by themselves (supervisor-superate-chiuse-04-11, contract 1.115).**
+  - When the tidying retires a test because a newer pre-release contains it, the task no longer stays open with nothing to test: as soon as the task of that pre-release is closed green, it closes as «superseded», a state of its own. It never counts as done or confirmed, and it shows among today's automatic closings.
 - **0.8.116 — 2026-11-04: «stalled» means the same everywhere (supervisor-impegni-fermi-sessione-04-11, contract 1.114).**
   - The app's home, the master's hook and `task impegni` count stalled tasks as the alerts do since 0.8.115: a task queued behind a session that is working is not stalled.
 - **0.8.115 — 2026-11-04: a task is stalled only if its session is (supervisor-fermi-per-sessione-04-11).**

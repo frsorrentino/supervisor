@@ -634,7 +634,7 @@ add_in("ta-old", _repo); cm("pause", "ta-old", "--reason", "Prova la home", "--w
 add_in("ta-new", _repo); cm("pause", "ta-new", "--reason", "Prova il menu", "--waits", "person", "--prova", "--release", "b")
 add_in("ta-banco-old", _repo); cm("prova", "ta-banco-old", "--build", "a", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
 add_in("ta-banco-new", _repo); cm("prova", "ta-banco-new", "--build", "b", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
-add_in("ta-done", _repo); cm("pause", "ta-done", "--reason", "Prova la pagina", "--waits", "person", "--prova", "--release", "b")
+add_in("ta-done", _repo); cm("pause", "ta-done", "--reason", "Prova la pagina", "--waits", "person", "--prova", "--release", "c")
 _c = __import__("sqlite3").connect(tmp / "tasks.db")
 _c.execute("UPDATE tasks SET state='done' WHERE id='ta-done'")
 _c.commit()   # prima della CLI: una scrittura aperta qui bloccherebbe le sue (database is locked)
@@ -682,5 +682,67 @@ _dv = json.loads(RL.decisioni_op()[1])
 T.check("TA8 state.tocca: one count from the same items as the pages (tests of the bench and pauses with a test; the other decisions), today's closures; op prove carries the archive",
         _ts["prove"] == _pv["n"] + sum(1 for g in _dv["groups"] for i in g["items"] if i.get("prova")) and _ts["decidi"] == sum(1 for g in _dv["groups"] for i in g["items"] if not i.get("prova"))
         and _ts["n"] == _ts["prove"] + _ts["decidi"] and _ts["today"]["n"] == len(_run) and [x["task"] for x in _pv["archived"]] == ["ta-stale"], json.dumps(_ts)[:400])
+
+
+# superate_chiuse (04/11/2026, contratto 1.115, supervisor-superate-chiuse-04-11): un compito la cui prova e' stata superata
+# si chiude come superato quando il compito della pre-release che lo supera e' chiuso verde; mai done, mai confermato
+_sq = lambda: __import__("sqlite3").connect(tmp / "tasks.db")  # noqa: E731
+T.check("SU1 the owner of b still open (ta-new): ta-old and ta-banco-old stay open, without a pause and without a test",
+        show("ta-old")["state"] == "assigned" and show("ta-banco-old")["state"] == "assigned" and not _open("ta-old")
+        and json.loads(cm("tidy", "--json")[1]) == [], show("ta-old")["state"])
+cm("done", "ta-new")
+_run_su = json.loads(cm("tidy", "--json")[1])
+_bysu = {(x["task"], x["kind"]): x["rule"] for x in _run_su}
+_cl = json.loads(cm("closed", "--json")[1])
+_clr = {x["task"]: x["outcome"] for x in _cl["rows"]}
+T.check("SU2 the owner of b closed green: ta-old (a pause) and ta-banco-old (a test of the bench) close as superseded, one row each",
+        show("ta-old")["state"] == "superseded" and show("ta-banco-old")["state"] == "superseded"
+        and {k: v for k, v in _bysu.items() if k[1] == "task"} == {("ta-old", "task"): 1, ("ta-banco-old", "task"): 1} and "b" in show("ta-old")["steps"][-1]["text"] and "ta-new" in show("ta-old")["steps"][-1]["text"], str(_run_su))
+T.check("SU3 superseded is not done: no confirmation, no row in the report card, closed lists it with outcome superseded",
+        cm("confirmed", "ta-old")[0] != 0 and not _sq().execute("SELECT 1 FROM closures WHERE task IN ('ta-old','ta-banco-old')").fetchone()
+        and _clr.get("ta-old") == "superseded" and _clr.get("ta-new") == "green", str(_clr))
+_ts2 = RL.tocca_state()
+T.check("SU4 among today's closures by themselves (task tidy --today, state.tocca.today) with kind task",
+        {("ta-old", "task"), ("ta-banco-old", "task")} <= {(x["task"], x["kind"]) for x in json.loads(cm("tidy", "--today", "--json")[1])}
+        and ("ta-old", "task") in {(x["task"], x["kind"]) for x in _ts2["today"]["items"]}, json.dumps(_ts2["today"])[:300])
+T.check("SU5 a second run closes nothing more; a superseded task is not taken again by done", json.loads(cm("tidy", "--json")[1]) == [] and cm("done", "ta-old")[0] != 0, "")
+# la catena e le attese, scritte nel registro: su-d superato da e1, il cui compito su-e e' superato da f1, chiuso verde da su-f
+for _t in ("su-d", "su-e", "su-f", "su-step", "su-prova", "su-canc", "su-pausa"):
+    add_in(_t, _repo)
+cm("pause", "su-e", "--reason", "Prova", "--waits", "person", "--prova", "--release", "e1")
+cm("pause", "su-f", "--reason", "Prova", "--waits", "person", "--prova", "--release", "f1")
+cm("pause", "su-canc", "--reason", "Prova", "--waits", "person", "--prova", "--release", "g1")
+cm("prova", "su-prova", "--build", "h1", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
+_c = _sq()
+_T0 = int(time.time()) + 100
+_c.execute("UPDATE pauses SET resumed_at=? WHERE task IN ('su-e','su-f','su-canc')", (_T0 - 50,))
+_c.execute("UPDATE tasks SET state='superseded' WHERE id='su-e'")
+_c.execute("UPDATE tasks SET state='done' WHERE id='su-f'")
+_c.execute("UPDATE tasks SET state='cancelled' WHERE id='su-canc'")
+for _t, _b in (("su-d", "e1"), ("su-e", "f1"), ("su-step", "f1"), ("su-prova", "f1"), ("su-canc-of", "g1"), ("su-pausa", "f1")):
+    _c.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,'pause',1,'superata',?)", (_T0, _t, _b))
+_c.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES ('su-step',?,'sess','step','riprendo',NULL)", (_T0 + 1,))
+_c.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits) VALUES ('su-pausa',?,'sess','Serve il login',NULL,'person')", (_T0 + 1,))
+_c.commit(); _c.close()
+add_in("su-canc-of", _repo)
+_run_ch = json.loads(cm("tidy", "--json")[1])
+_st = lambda t: show(t)["state"]  # noqa: E731
+T.check("SU6 a chain: su-d superseded by e1, whose task is superseded by f1, closed green: su-d closes with f1 and su-f",
+        _st("su-d") == "superseded" and "f1" in show("su-d")["steps"][-1]["text"] and "su-f" in show("su-d")["steps"][-1]["text"], str(_run_ch))
+T.check("SU7 taken up again after the closure (a step of the session, a test to do, a new pause) or the owner cancelled: it stays open",
+        all(_st(t) == "assigned" for t in ("su-step", "su-prova", "su-pausa", "su-canc-of")) and {x["task"] for x in _run_ch} == {"su-d"}, str(_run_ch))
+_old_db = tmp / "old-tidy.db"
+_oc = __import__("sqlite3").connect(_old_db)
+_oc.execute("CREATE TABLE tidy (n INTEGER PRIMARY KEY, at INTEGER, task TEXT, kind TEXT, rule INTEGER, text TEXT)")
+_oc.executemany("INSERT INTO tidy (at, task, kind, rule, text) VALUES (1,?,?,?,?)", [("o1", "pause", 1, "superata: la pre-release z-2026 contiene y, si prova quella"),
+                ("o2", "prova", 1, "superseded: pre-release w-2026 contains v, test that one"), ("o3", "pause", 4, "in archivio: nessun passo")])
+_oc.commit(); _oc.close()
+cm("list", env=dict(ENV, CM_TASKS_DB=str(_old_db)))
+T.check("SU8 a registry from before: the column build filled from the text of rule 1 (it and en), nothing for the other rules",
+        __import__("sqlite3").connect(_old_db).execute("SELECT task, build FROM tidy ORDER BY task").fetchall() == [("o1", "z-2026"), ("o2", "w-2026"), ("o3", None)], "")
+_crs8 = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())
+_r8 = {r["id"]: r for r in _crs8["result"]}
+_dn8 = [json.loads(_r8[c["id"]]["text"]) for c in _crs8["cmd"] if c["op"] == "done" and c["id"] in _r8 and _r8[c["id"]]["ok"]]
+T.check("SU9 the contract's sample: a closed row with outcome superseded", any(r.get("outcome") == "superseded" for d in _dn8 for r in d.get("rows", [])), str(len(_dn8)))
 
 T.finish()

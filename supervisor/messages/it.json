@@ -182,6 +182,7 @@
   "tasks.result_shape": "forma: {\"task\": \"<id>\", \"attempt\": <n>, \"outcome\": \"green|red\", \"reason\": \"…\", \"proof\": {\"kind\": \"check|commit|link\", \"value\": \"…\"}, \"at\": <epoch s>} (con outcome red anche \"perimeter\": [i file da sistemare])",
   "tasks.tidy_closed": "superata: il compito è già {state}",
   "tasks.tidy_newer": "superata: la pre-release {new} contiene {old}, si prova quella",
+  "tasks.tidy_task": "superata: chiuso con la pre-release {new} del compito {owner}, già chiuso",
   "tasks.tidy_stale": "in archivio: nessun passo da {days} giorni e il compito non è in corso",
   "tasks.tidy_double": "superata: c'è una richiesta più recente sullo stesso compito",
   "tasks.turn_session": "tocca a {session}",

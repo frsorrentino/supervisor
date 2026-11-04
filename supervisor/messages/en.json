@@ -182,6 +182,7 @@
   "tasks.result_shape": "shape: {\"task\": \"<id>\", \"attempt\": <n>, \"outcome\": \"green|red\", \"reason\": \"…\", \"proof\": {\"kind\": \"check|commit|link\", \"value\": \"…\"}, \"at\": <epoch s>} (with outcome red also \"perimeter\": [the files to fix])",
   "tasks.tidy_closed": "superseded: the task is already {state}",
   "tasks.tidy_newer": "superseded: pre-release {new} contains {old}, test that one",
+  "tasks.tidy_task": "superseded: closed with pre-release {new} of task {owner}, already closed",
   "tasks.tidy_stale": "archived: no step for {days} days and the task is not running",
   "tasks.tidy_double": "superseded: a newer request on the same task",
   "tasks.turn_session": "{session}'s turn",
