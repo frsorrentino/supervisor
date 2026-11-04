@@ -359,6 +359,36 @@ T.check("T16 stall-check: the stalled task once (alerts file), nothing the secon
         [x["task"] for x in a1] == ["ok9"] and a2 == [] and a3 == [] and [x["task"] for x in a4] == ["ok9"] and json.loads((tmp / "alerts.json").read_text()) == {"ok9": a4[0]["last_step"]["at"]},
         str((a1, a2, a3, a4))[:400])
 
+# T16b (04/11/2026, supervisor-fermi-per-sessione-04-11): il fermo si misura sulla sessione; un avviso per sessione
+A16b = dict(IT, CM_TASKS_ALERTS=str(tmp / "alerts16b.json"))
+repo16b = tmp / "repo16b"
+repo16b.mkdir()
+_g16b = lambda *a, when=None: subprocess.run(["git", "-C", str(repo16b), *a], capture_output=True, text=True, check=True,  # noqa: E731
+                                           env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@x", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@x",
+                                                    **({"GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when} if when else {})))
+_old16b = int(time.time()) - 3 * 3600
+_g16b("init", "-q"); _g16b("commit", "-q", "--allow-empty", "-m", "vecchio", when=f"@{_old16b} +0000")
+for _t, _sess in (("sf1", "s18"), ("sf2", "s18"), ("sg1", "s19"), ("sg2", "s19")):
+    add(contract(_t, where={"project": str(repo16b), "session": _sess, "host": "local", "account": None}))
+con16b = sqlite3.connect(str(tmp / "tasks.db"))
+for _t in ("sf1", "sf2", "sg1"):
+    con16b.execute("UPDATE tasks SET state='approved', created_at=?, updated_at=? WHERE id=?", (_old16b, _old16b, _t))
+    con16b.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,?,?)", (_t, None, "maintainer", _old16b, "ok", "x", "y"))
+con16b.execute("UPDATE tasks SET created_at=?, updated_at=? WHERE id='sg2'", (_old16b, _old16b))
+con16b.commit(); con16b.close()
+cm("step", "sg2", "lavoro su un altro compito", env=A16b)   # s19 lavora su g2: g1, in coda dietro, non scatta
+b1 = json.loads(cm("stall-check", "--json", env=A16b)[1])
+b2 = json.loads(cm("stall-check", "--json", env=A16b)[1])
+T.check("T16b two stalled tasks of an idle session → ONE item for the session with both tasks; a session that made a step on another task → nothing; the second run → nothing",
+        [(x["session"], sorted(x["tasks"])) for x in b1 if x["session"] in ("s18", "s19")] == [("s18", ["sf1", "sf2"])]
+        and next(x for x in b1 if x["session"] == "s18")["idle_s"] >= 3 * 3600 - 60 and b2 == [], json.dumps(b1)[:400])
+_g16b("commit", "-q", "--allow-empty", "-m", "nuovo")
+_alerts16b = json.loads((tmp / "alerts16b.json").read_text())
+b3 = json.loads(cm("stall-check", "--json", env=A16b)[1])
+T.check("T16b a fresh commit in the session's folder counts as work: nothing, and the session leaves the alerts file (it alerts again when idle again)",
+        "session:s18" in _alerts16b and not [x for x in b3 if x["session"] == "s18"]
+        and "session:s18" not in json.loads((tmp / "alerts16b.json").read_text()), json.dumps((_alerts16b, b3)))
+
 # T17 (22/10/2026, contratto 1.77): una pausa che aspetta la persona (--waits person) e l'inizio vero (--since)
 cm("pause", "ok9", "--reason", "aspetta la casella Aruba", "--waits", "person", "--since", "2026-10-18T09:00", "--by", "master", env=IT)
 r17 = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}

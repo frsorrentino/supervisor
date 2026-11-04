@@ -225,6 +225,15 @@ stall_file.unlink()
 guard("run", now=NOW + 7200 + 3800)
 T.check("GU-ST nothing new from stall-check → no talk", len(re.findall(r"^talk master ", argslog.read_text() if argslog.exists() else "", re.M)) == 2, "")
 
+# GU-ST2 (04/11/2026, supervisor-fermi-per-sessione-04-11): una voce per sessione → una riga con i compiti in coda, il titolo
+# conta i compiti
+stall_file.write_text(json.dumps([{"task": "app-tablet", "session": "supervisor-app", "tasks": ["app-tablet", "app-player", "app-play"], "idle_s": 3 * 3600,
+                                   "next": "parte quando finisce", "waits": {"who": "person", "on": "supervisor-app"}}]))
+guard("run", now=NOW + 7200 + 4000 + 8 * 3600)
+tk3 = re.findall(r"^talk master .*?--no-wait$", argslog.read_text() if argslog.exists() else "", re.M | re.S)
+T.check("GU-ST2 a session item: «3 impegni fermi», one line «supervisor-app (3 h) ferma con 3 compiti: app-tablet, app-player, app-play»",
+        len(tk3) == 3 and "3 impegni fermi" in tk3[-1] and "- supervisor-app (3 h) ferma con 3 compiti: app-tablet, app-player, app-play; prossimo: parte quando finisce" in tk3[-1], tk3[-1][:400] if tk3 else "")
+
 srv.shutdown()
 T.rm(tmp)
 T.finish()

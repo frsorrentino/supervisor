@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.115 — 2026-11-04: a task is stalled only if its session is (supervisor-fermi-per-sessione-04-11).**
+  - `task stall-check` measures the session: tasks queued behind a session that made a step or a result on any task, or a commit in its folders, in the last 2 hours no longer fire. When a session is really idle the master gets one line for it, with its stalled tasks listed, instead of one alert per task.
 - **0.8.114 — 2026-11-03: the contract's sample state carries `state.tocca` (supervisor-tocca-fixture-03-11).**
   - `state-2-idle.json` now has the single count of «Tocca a te» with two automatic closings of today, so the app can test against it.
 - **0.8.113 — 2026-11-03: what is superseded leaves «Tocca a te» by itself (supervisor-tocca-auto-03-11, contract 1.113).**

@@ -1504,19 +1504,60 @@ def signature(items):
     return [[x["task"], x["state"], x["stalled"], (x["paused"] or {}).get("reason"), x["next"], (x["last_step"] or {}).get("at")] for x in items]
 
 
-def stall_check(con):
-    """P3: gli impegni fermi non ancora avvisati per questo ultimo passo (task-alerts.json: {task: last_step.at}); un
-    passo nuovo riarma l'avviso, un impegno uscito dai fermi esce dal file."""
-    items = [x for x in commitments(con) if x["stalled"]]
+def session_activity(con, session, projects, cache=None):
+    """04/11/2026 (supervisor-fermi-per-sessione-04-11): l'ultima volta che la sessione ha lavorato, su qualunque compito:
+    un passo o un esito nel registro, o un commit in una delle cartelle dei suoi compiti (tutti i rami). 0 se mai."""
+    cache = {} if cache is None else cache
+    at = 0
+    for q in ("SELECT MAX(s.at) FROM steps s JOIN tasks t ON t.id=s.task WHERE t.session=?",
+              "SELECT MAX(r.at) FROM results r JOIN tasks t ON t.id=r.task WHERE t.session=?"):
+        at = max(at, con.execute(q, (session,)).fetchone()[0] or 0)
+    for p in sorted({str(p) for p in projects if p}):
+        if p not in cache:
+            try:
+                out = subprocess.run(["git", "-C", p, "log", "-1", "--all", "--format=%ct"], capture_output=True, text=True, timeout=20).stdout.strip()
+                cache[p] = int(out) if out.isdigit() else 0
+            except (OSError, subprocess.SubprocessError):
+                cache[p] = 0
+        at = max(at, cache[p])
+    return int(at)
+
+
+def stall_check(con, now_=None):
+    """P3: gli impegni fermi non ancora avvisati (task-alerts.json). 04/11/2026: il fermo si misura sulla sessione. Una
+    sessione che da meno di stall_hours ha fatto un passo o un esito su un compito qualsiasi, o un commit nelle cartelle
+    dei suoi compiti, lavora: i suoi compiti in coda non scattano (00:30: cinque avvisi per compiti in coda dietro
+    supervisor-app, che intanto faceva commit). Altrimenti UNA voce per sessione: il compito fermo da piu' tempo, con
+    `tasks` (tutti i fermi della sessione) e `idle_s` della sessione. Senza sessione: una voce per compito. L'avviso
+    torna quando la sessione (o il compito) fa un passo nuovo e poi si ferma di nuovo."""
+    now_ = int(now_ or now())
+    stall_s = stall_seconds()
+    items = [x for x in commitments(con, now_=now_) if x["stalled"]]
+    groups, cache = {}, {}
+    for x in items:
+        groups.setdefault(("s", x["session"]) if x["session"] else ("t", x["task"]), []).append(x)
+    out, keys = [], {}
+    for (kind, name), xs in groups.items():
+        last = max(int(x["last_step"]["at"]) for x in xs)
+        if kind == "s":
+            projects = [r["project"] for r in con.execute("SELECT project FROM tasks WHERE session=? AND state IN (%s)"
+                                                          % ",".join("?" * len(OPEN_STATES)), (name, *OPEN_STATES)).fetchall()]
+            last = max(last, session_activity(con, name, projects, cache))
+            if now_ - last < stall_s:
+                continue   # la sessione lavora: la coda dietro di lei non e' ferma
+        head = dict(xs[0], tasks=[x["task"] for x in xs], idle_s=max(0, now_ - last))
+        key = f"session:{name}" if kind == "s" else name
+        keys[key] = last
+        out.append((key, last, head))
     p = alerts_path()
     try:
         sent = json.loads(p.read_text())
     except (OSError, ValueError):
         sent = {}
-    new = [x for x in items if sent.get(x["task"]) != x["last_step"]["at"]]
+    new = [h for key, last, h in out if sent.get(key) != last]
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps({x["task"]: x["last_step"]["at"] for x in items}))
+        p.write_text(json.dumps(keys))
     except OSError:
         pass
     return new

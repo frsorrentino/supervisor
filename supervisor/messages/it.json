@@ -748,6 +748,7 @@
   "guard.status_account": "{account}: {pct} ({window}), reset {reset}, avvisato {warned}, ripresa prevista {resume}",
   "guard.stalled_one": "1 impegno fermo da più di {h} h senza passi",
   "guard.stalled_many": "{n} impegni fermi da più di {h} h senza passi",
+  "guard.stalled_session": "- {session} ({idle}) ferma con {n} compiti: {tasks}; prossimo: {next}",
   "guard.stalled_item": "- {task} ({idle}): tocca a {who}; prossimo: {next}",
   "guard.event_back_title": "quota {account} tornata",
   "screen.usage": "uso: supervisor screen <nome> [--lines N] [--join]",

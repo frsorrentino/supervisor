@@ -396,8 +396,13 @@ def stalled_alerts(t):
         waits = x.get("waits") or {}
         who = person if waits.get("on") == "person" else str(waits.get("on") or "master")
         idle_h = int(x.get("idle_s") or 0) // 3600
-        lines.append(M("guard.stalled_item", task=x.get("task"), idle=f"{idle_h} h", who=who, next=x.get("next") or ""))
-    title = M("guard.stalled_one", h=hours) if len(items) == 1 else M("guard.stalled_many", n=len(items), h=hours)
+        tasks = x.get("tasks") or [x.get("task")]
+        if len(tasks) > 1 and x.get("session"):   # 04/11: una riga per sessione, i compiti in coda elencati
+            lines.append(M("guard.stalled_session", session=x["session"], n=len(tasks), tasks=", ".join(tasks), idle=f"{idle_h} h", next=x.get("next") or ""))
+        else:
+            lines.append(M("guard.stalled_item", task=x.get("task"), idle=f"{idle_h} h", who=who, next=x.get("next") or ""))
+    n = sum(len(x.get("tasks") or [x.get("task")]) for x in items)   # i compiti fermi, non le righe
+    title = M("guard.stalled_one", h=hours) if n == 1 else M("guard.stalled_many", n=n, h=hours)
     body = "\n".join(lines)
     try:
         subprocess.run([CM_BIN, "talk", master, f"{title}\n{body}", "--no-wait"], capture_output=True, text=True, timeout=60)

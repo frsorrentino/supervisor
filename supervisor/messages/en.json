@@ -748,6 +748,7 @@
   "guard.status_account": "{account}: {pct} ({window}), reset {reset}, warned {warned}, resume planned {resume}",
   "guard.stalled_one": "1 commitment stalled for more than {h} h with no step",
   "guard.stalled_many": "{n} commitments stalled for more than {h} h with no step",
+  "guard.stalled_session": "- {session} ({idle}) idle with {n} tasks: {tasks}; next: {next}",
   "guard.stalled_item": "- {task} ({idle}): {who}'s turn; next: {next}",
   "guard.event_back_title": "quota {account} back",
   "screen.usage": "usage: supervisor screen <name> [--lines N] [--join]",
