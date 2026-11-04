@@ -390,7 +390,7 @@ for _lang in ("it", "en"):
     _r12 = next(x for x in _k.splitlines() if x.startswith("12."))
     T.check(f"ok_informato OI5 rule 12 ({_lang}) asks for --untested, --undo and --undo-how at wait-ok", all(x in _r12 for x in ("wait-ok", "--untested", "--undo", "--undo-how")), _r12)
     T.check(f"ok_informato OI5 rule 12 ({_lang}) is whole: approve --inbox, try again, never send-keys, never an ok written by the session",
-            all(x in _r12 for x in ("task approve ID --by <", "--inbox <id>", "supervisor inbox <", "«try again»", "tmux send-keys", "paste-buffer")), _r12)
+            all(x in _r12 for x in ("task ok ID --by <", "--prove 72-80", "--choice", "--ko", "--inbox <id>", "supervisor inbox <", "«try again»", "tmux send-keys", "paste-buffer")), _r12)
     T.check(f"ok_informato OI5 kernel ({_lang}) under its cap", len(_k) <= 3700, str(len(_k)))
 
 # ------------------------------------------------------------------ compito_dal_piano

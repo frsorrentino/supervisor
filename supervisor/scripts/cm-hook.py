@@ -289,7 +289,7 @@ def record_person_prompt(p):
                 continue
             other = " ".join(str(r.get("text") or "").split())
             if other == mine or (len(mine) >= 20 and other.endswith(mine)):
-                return
+                return r.get("id") if r.get("origin") == "relay" else None   # 04/11: un messaggio del telefono, gia' in casella
         # 23/10 16:22 (regressione della 0.8.46): Claude Code 2.1.308 scrive la riga `user` della trascrizione DOPO gli
         # hook, quindi qui l'origine non si sa: il record nasce «unverified» con la via della trascrizione e lo risolve
         # ib.resolve (al prompt seguente, allo Stop, nell'elenco e dentro task approve --inbox)
@@ -297,6 +297,7 @@ def record_person_prompt(p):
         ib.mark(rec["id"], "delivered", "terminal")
         for r in stale:
             ib.resolve(r)
+        rec_id = rec["id"]
         stamp = d / ".pruned"
         try:
             fresh = now - stamp.stat().st_mtime < PRUNE_EVERY_S
@@ -305,8 +306,39 @@ def record_person_prompt(p):
         if not fresh:
             ib.prune(name, {o: PROMPT_KEEP_S for o in PROMPT_OWN_ORIGINS})   # il resto 7 giorni (ib.KEEP_S)
             stamp.touch()
+        return rec_id
     except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
-        pass
+        return None
+
+
+ANSWERS_MAX = 6
+
+
+def answers_pending_block(rec_id):
+    """04/11/2026 (supervisor-ok-ovunque-04-11): a un messaggio della persona, se ci sono voci che aspettano una sua risposta
+    (della sessione; alla master tutte), una riga con le voci e il comando unico che la registra una volta per tutti i
+    punti (app, orologio, master): `task ok … --inbox <questo messaggio>`. Niente se non ce ne sono o senza registro."""
+    if not rec_id:
+        return ""
+    name = my_tmux_name()
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    try:
+        spec = importlib.util.spec_from_file_location("cm_tasks", HERE / "cm-tasks.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        con = mod.connect(create=False)
+        if con is None:
+            return ""
+        try:
+            items = mod.awaiting_person(con, None if name == master else name)
+        finally:
+            con.close()
+    except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
+        return ""
+    if not items:
+        return ""
+    shown = "; ".join(f"{t} ({w})" for t, w in items[:ANSWERS_MAX]) + (f"; +{len(items) - ANSWERS_MAX}" if len(items) > ANSWERS_MAX else "")
+    return M("hook.answers_pending", items=shown, id=rec_id)
 
 
 def commitments_block():
@@ -484,7 +516,7 @@ def main(argv):
             (STATE / "waiting" / sid).unlink(missing_ok=True)
             (STATE / "needs-you" / f"{sid}.json").unlink(missing_ok=True)   # 1.68: il prompt dopo chiude «ferma per te»
         ledger("prompt", p)   # l'inizio del turno (turn_started per il polso)
-        record_person_prompt(p)   # 22/10: l'ok scritto qui vale (casella della sessione, origine terminal)
+        rec_id = record_person_prompt(p)   # 22/10: l'ok scritto qui vale (casella della sessione, origine terminal)
         relay_push()   # 08/10 (fase 1): un prompt dalla tastiera arrivava alle app solo al giro del cron
         if CFG["hooks"]["local_time"]["enabled"]:
             sys.stdout.write(local_time() + "\n")
@@ -494,6 +526,9 @@ def main(argv):
         c = commitments_block()   # P2 (22/10): gli impegni dal registro, non dai messaggi delle sessioni
         if c:
             sys.stdout.write(c + "\n")
+        a = answers_pending_block(rec_id)   # 04/11: le voci che aspettano la persona, col comando unico
+        if a:
+            sys.stdout.write(a + "\n")
     elif ev == "PermissionRequest":
         if sid:
             (STATE / "waiting").mkdir(parents=True, exist_ok=True)

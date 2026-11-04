@@ -22,6 +22,14 @@
                                                 approvato); --options (1.81, 23/10): il compito chiede una scelta, da
                                                 2 a 4 etichette di 1-24 caratteri: l'app mostra un tasto per opzione e
                                                 l'ok arriva con --choice; una regola permanente non sceglie mai
+  supervisor task ok [ID…] --by B (--inbox MSG | --pin P) [--choice C] [--prove 72-80,85] [--ko MOTIVO] [--text NOTA]
+                                                04/11: la risposta della persona scritta in chat, una volta sola per tutti i
+                                                punti (Approva, scelte, Prova, Tutto va / Non va, Tocca a te, orologio): approva
+                                                la carta (con --choice se la chiede), segna ok le prove in vigore scritte prima
+                                                del messaggio (o quelle di --prove), chiude la pausa per la persona; con tutto
+                                                ok il controllo gira (task settle). --ko: la prova o la pausa non va. Lo stesso
+                                                controllo della casella di approve; la sessione del compito e la master lo
+                                                sanno. Esce senza scrivere se il messaggio puo' valere per voci diverse
   supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D] [--choice C]
                                                 da una sessione Claude l'ok a nome di una persona passa cosi': la
                                                 sessione che ha ricevuto l'ok (casella sua: supervisor inbox NOME --all)
@@ -73,7 +81,7 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 corregge il contratto di un compito aperto (validato di nuovo)
   supervisor task short ID "testo" [--by B]     il titolo breve (task.short, 1-28 caratteri, una riga nell'app: contratto
                                                 1.79); senza, impegni e closed ne ricavano uno dal titolo (parole intere)
-  supervisor task confirm ID --by B (--inbox MSG | --pin P)   la conferma della persona (come approve); `task
+  supervisor task confirm ID --by B (--inbox MSG | --pin P)   la conferma della persona (come task ok); `task
   supervisor task confirmed ID                  confirmed ID` esce 0 se c'e': un controllo valido per un esito install
   supervisor task standing add --by B --inbox MSG --project DIR --kind K
                                                 (23/10 20:00, «Quando ci sono aggiornamenti di supervisor, effettuali
@@ -1225,9 +1233,9 @@ def prova_info(con, n):
     return r if r and r["task_state"] in OPEN_STATES else None
 
 
-def prove_mark(con, ids, result, by, where, text=None):
-    """L'esito di una o piu' prove. La chiama SOLO il relay, per un tocco su un dispositivo (op prova): la CLI non ha una
-    strada per arrivarci, come non ne ha una sessione per dire ok. Tutto o niente. Quando tutte le prove in vigore di un compito
+def prove_mark(con, ids, result, by, where, text=None, origin="relay"):
+    """L'esito di una o piu' prove. La chiamano il relay, per un tocco su un dispositivo (op prova), e dal 04/11 `task ok
+    --inbox|--pin` (answer), con lo stesso controllo dell'ok di una carta: nessun'altra strada dalla CLI. Tutto o niente. Quando tutte le prove in vigore di un compito
     sono ok, registra la conferma della persona: e' quella che `task confirmed` legge. Torna {error} o {complete: [compiti]}."""
     rows = []
     for n in ids:
@@ -1244,7 +1252,7 @@ def prove_mark(con, ids, result, by, where, text=None):
             if not prove_pending(con, tid):
                 nums = ", ".join(str(x["n"]) for x in _live_prove(con, tid))
                 con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,'confirmed',NULL)",
-                            (tid, get_task(con, tid)["plan"], by, t, f"{by}, {time.strftime('%d/%m %H:%M', time.localtime(t))}: prove {nums} ok ({where}) (origin relay)"))
+                            (tid, get_task(con, tid)["plan"], by, t, f"{by}, {time.strftime('%d/%m %H:%M', time.localtime(t))}: prove {nums} ok ({where}) (origin {origin})"))
                 complete.append(tid)
     con.commit()
     return {"complete": complete}
@@ -1254,10 +1262,23 @@ def root_session():
     return str((_cfg()[1].get("workspace") or {}).get("root_session_name") or "master")
 
 
+def _cm_bin():
+    """Il supervisor per gli avvisi staccati, o None. 04/11/2026 17:38: una suite con un registro temporaneo (CM_TASKS_DB) e
+    senza CM_TASK_TALK_BIN mandava «card approved … go on» alla master vera (socket e caselle reali): con un registro di
+    prova nessun avviso esce senza un supervisor finto dichiarato."""
+    fake = os.environ.get("CM_TASK_TALK_BIN")
+    if fake:
+        return fake
+    return None if os.environ.get("CM_TASKS_DB") else str(HERE / "supervisor")
+
+
 def _talk(name, text):
     """Un avviso staccato: chi chiude o non chiude un compito non aspetta nessuno. Sessione chiusa: resta in casella."""
+    exe = _cm_bin()
+    if exe is None:
+        return
     try:
-        subprocess.Popen([os.environ.get("CM_TASK_TALK_BIN") or str(HERE / "supervisor"), "talk", name, text, "--no-wait"],
+        subprocess.Popen([exe, "talk", name, text, "--no-wait"],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError:
         pass
@@ -1297,6 +1318,176 @@ def settle(con, tid):
     con.commit()
     _tell(row, M("tasks.prove_red", task=tid, why=why))
     return 1, f"{tid}: red — every test ok, check exit {rc}: {why}; the task stays open"
+
+
+PROVE_RANGE_RE = re.compile(r"#?(\d{1,12})(?:-#?(\d{1,12}))?")
+PROVE_RANGE_MAX = 200
+
+
+def parse_prove(s):
+    """«72-80,85» o «#72,#73» → [72, …, 80, 85]; esce con il motivo su un valore sbagliato."""
+    out = []
+    for part in str(s or "").replace(" ", "").split(","):
+        m = PROVE_RANGE_RE.fullmatch(part)
+        if not m:
+            sys.exit(f"task ok: --prove takes numbers and ranges, as 72-80,85 (not {part!r})")
+        a, b = int(m.group(1)), int(m.group(2) or m.group(1))
+        if b < a or b - a >= PROVE_RANGE_MAX:
+            sys.exit(f"task ok: --prove range {part} is backwards or over {PROVE_RANGE_MAX}")
+        out += range(a, b + 1)
+    return list(dict.fromkeys(out))
+
+
+def _person_pause(con, tid):
+    pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    return pz if pz and pz["waits"] == "person" else None
+
+
+def answer_plan(con, tids, ok_at=None, choice=None, prove_ids=None, ko=None):
+    """04/11/2026 17:23 (the maintainer from the phone: «se approvo da sessione o da sezioni come prova decidi etc deve essere
+    equivalente, non posso approvare in un punto e doverlo rifare altrove»): cosa vale una risposta della persona scritta in
+    chat, per ogni voce che aspetta lei, prima di scrivere niente. Le voci sono quelle che l'app mostra: la carta di un ok
+    (Approva, o una scelta), le prove in vigore (Prova), la pausa per la persona (Decidi, Tutto va / Non va). Un ok non
+    allarga: valgono i compiti nominati, le prove nominate o, senza --prove, solo quelle scritte prima del messaggio (una
+    prova nata dopo non e' stata vista). Esce con il motivo quando la risposta puo' valere per voci con effetti diversi:
+    la sessione lo chiede alla persona. Torna [{task, row, card, prove, newer, pause, prova_pause}]."""
+    prove_ids = list(prove_ids or [])
+    by_task = {}
+    for n in prove_ids:
+        r = prova_info(con, n)
+        if r is None:
+            sys.exit(f"task ok: test {n} is not open (retired by a new build, or its task is closed)")
+        by_task.setdefault(r["task"], []).append(r)
+    tids = list(dict.fromkeys(list(tids) + sorted(by_task)))
+    if not tids:
+        sys.exit("task ok: name the task (ID) or the tests (--prove 72-80)")
+    plan = []
+    for tid in tids:
+        row = get_task(con, tid)
+        if row["state"] not in OPEN_STATES:
+            sys.exit(f"task ok {tid}: already {row['state']}: nothing waits for an answer")
+        card = row["state"] == "awaiting_ok"
+        pending = prove_pending(con, tid)
+        if tid in by_task:
+            prove = [r for r in by_task[tid] if r["result"] != "ok"]
+            newer = []
+        else:
+            prove = [r for r in pending if ok_at is None or r["at"] <= ok_at]
+            newer = [r for r in pending if ok_at is not None and r["at"] > ok_at]
+        pz = _person_pause(con, tid)
+        if ko is not None and card:
+            sys.exit(f"task ok {tid}: --ko is the answer to a test or a pause, not to a card: a «no» to the card is the session's to act on (it tells the person and changes or cancels the task)")
+        opts = request_options(con, tid) if card else []
+        if opts and choice is None:
+            sys.exit(f"task ok {tid}: the card asks for a choice ({', '.join(opts)}): --choice, or ask the person which one")
+        if opts and choice not in opts:
+            sys.exit(f"task ok {tid}: choice {choice} not among {', '.join(opts)}")
+        plan.append({"task": tid, "row": row, "card": card, "options": opts, "prove": prove, "newer": newer, "pause": pz,
+                     "prova_pause": bool(pz and prova_of(pz, row["project"]))})
+    if choice is not None and not any(x["options"] for x in plan):
+        sys.exit("task ok: --choice given, but no card among these tasks asks for a choice")
+    if choice is not None and sum(1 for x in plan if x["options"]) > 1:
+        sys.exit("task ok: --choice for more than one card: one choice answers one question; answer them one at a time")
+    if ko is not None:
+        if not any(x["prove"] or x["pause"] for x in plan):
+            sys.exit("task ok --ko: no test and no pause waits for the person on these tasks")
+        if sum(len(x["prove"]) for x in plan) > 1 and not prove_ids:
+            sys.exit("task ok --ko: more than one test is open; name the one that does not work (--prove N): the others are not «no»")
+    return plan
+
+
+def awaiting_person(con, session=None):
+    """Le voci che aspettano una risposta della persona, per l'hook del prompt: [(task, che cosa)]. `session` None = tutte
+    (la master), altrimenti quelle della sessione. La stessa lettura dell'app: carta, prove in vigore, pausa per la persona."""
+    out = []
+    for row in con.execute("SELECT * FROM tasks WHERE state IN (%s) ORDER BY updated_at DESC" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall():
+        sess = row["session"] or (_contract_task(row).get("where") or {}).get("session")
+        if session is not None and sess != session:
+            continue
+        tid = row["id"]
+        if row["state"] == "awaiting_ok":
+            opts = request_options(con, tid)
+            out.append((tid, ("choice " + "|".join(opts)) if opts else "ok"))
+            continue
+        pend = prove_pending(con, tid)
+        if pend:
+            out.append((tid, "prove " + ",".join(str(r["n"]) for r in pend)))
+            continue
+        pz = _person_pause(con, tid)
+        if pz:
+            out.append((tid, "pause: " + " ".join(str(pz["reason"]).split())[:60]))
+    return out
+
+
+def _answer_spawn(*args):
+    """`supervisor task settle` staccato, come il relay: il controllo dura fino a minuti."""
+    exe = _cm_bin()
+    if exe is None:
+        return
+    try:
+        subprocess.Popen([exe, "task", *args],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def clear_needs_you_of(tid):
+    """Le richieste di `needs-you --task tid`: la risposta c'e', «Tocca a te» non la mostra piu'."""
+    cm_, cfg = _cfg()
+    if not cm_:
+        return
+    d = Path(cm_.expand(cfg["state_dir"])) / "needs-you"
+    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+        try:
+            if json.loads(f.read_text()).get("task") == tid:
+                f.unlink()
+        except (OSError, ValueError, AttributeError):
+            continue
+
+
+def answer(con, tids, by, text, ok_at=None, choice=None, prove_ids=None, ko=None, origin="chat", caller=None):
+    """La risposta della persona scritta in chat, registrata una volta sola dove la leggono tutti (il registro): la carta
+    approvata (con la scelta), le prove segnate ok o non va, la pausa chiusa (Tutto va / Non va), «Tocca a te» spento. Con
+    tutte le prove ok o una pausa di prova chiusa ok, il controllo gira in un processo suo (task settle), come dall'app. La
+    sessione del compito e la master, se non sono chi registra, lo sanno con un messaggio: non lo richiedono. Torna le righe
+    da stampare."""
+    plan = answer_plan(con, tids, ok_at, choice, prove_ids, ko)
+    where = M("tasks.answer_where", origin=origin)
+    lines = []
+    for x in plan:
+        tid, row, did = x["task"], x["row"], []
+        settle_it = False
+        if x["card"]:
+            approve(con, tid, by, text, choice=choice if x["options"] else None, ok_at=ok_at)
+            did.append(M("tasks.answer_did_choice", choice=choice) if x["options"] else M("tasks.answer_did_ok"))
+        if x["prove"]:
+            nums = [r["n"] for r in x["prove"]]
+            res = prove_mark(con, nums, "ko" if ko is not None else "ok", by, where, (ko if ko is not None else text)[:2000], origin=origin)
+            if res.get("error") is not None:
+                sys.exit(f"task ok {tid}: test {res['error']} changed under the answer: nothing recorded for it")
+            did.append(M("tasks.answer_did_ko" if ko is not None else "tasks.answer_did_prove", nums=", ".join(map(str, nums)), text=ko or ""))
+            settle_it = settle_it or tid in res.get("complete", [])
+        if x["pause"] and not (ko is not None and x["prove"]):
+            works = ko is None
+            decision_tested(con, tid, by, (text if works else f"{text} — {M('tasks.answer_not_working')}: {ko}")[:500], works)
+            did.append(M("tasks.answer_did_pause" if works else "tasks.answer_did_pause_ko", text=ko or ""))
+            settle_it = settle_it or (works and x["prova_pause"] and not prove_pending(con, tid))
+        if not did:   # nessuna voce aperta: la conferma della persona (task confirm), quella che `task confirmed` legge
+            confirm(con, tid, by, text)
+            did.append(M("tasks.answer_did_confirm"))
+        if x["newer"]:
+            did.append(M("tasks.answer_newer", nums=", ".join(str(r["n"]) for r in x["newer"])))
+        clear_needs_you_of(tid)
+        if settle_it:
+            _answer_spawn("settle", tid)
+            did.append(M("tasks.answer_settle"))
+        summary = "; ".join(did)
+        sess = row["session"] or (_contract_task(row).get("where") or {}).get("session")
+        quote = " ".join(text.split())[:200]
+        for name in dict.fromkeys(n for n in (sess, root_session()) if n and n != caller):
+            _talk(name, M("tasks.answer_told", person=M("tasks.person"), task=tid, did=summary, quote=quote, where=where))
+        lines.append(f"{tid}: {summary}")
+    return lines
 
 
 def prove_list(con, now_=None):
@@ -2161,10 +2352,29 @@ def main(argv):
                 print(f"n{r['n']}  {r['kind']:<8} {r['project']}  {r['text']}")
             return 0
         sys.exit("usage: task standing add --by B --inbox MSG --project DIR --kind K | list [--json] | remove N")
-    if verb in ("approve", "confirm"):
+    if verb in ("approve", "confirm", "ok"):
         by, text, rec_id, pin, choice = _opt(args, "--by"), _opt(args, "--text"), _opt(args, "--inbox"), _opt(args, "--pin"), _opt(args, "--choice")
+        prove_arg, ko = _opt(args, "--prove"), _opt(args, "--ko")
+        if verb == "ok" and (by or pin) and (args or prove_arg):
+            prove_ids = parse_prove(prove_arg) if prove_arg is not None else None
+            if ko is not None and not " ".join(ko.split()):
+                sys.exit("task ok: --ko takes what does not work, in words")
+            answer_plan(con, args, None, choice, prove_ids, ko)   # prima di leggere la casella: un errore di forma non aspetta 15 s
+            ok_at = None
+            if pin:
+                by, text = pin_approval_text(by, pin, text)
+            elif rec_id:
+                text = inbox_approval_text(by, rec_id, text)
+                ok_at = float(_load("cm-inbox").load(rec_id)["created"])
+            else:
+                sys.exit("task ok: an answer of the person needs --inbox MSG (their message from the last hour in this session's inbox) or --pin P; a device's answer arrives through the relay")
+            for line in answer(con, args, by, text, ok_at, choice, prove_ids, " ".join(ko.split()) if ko is not None else None,
+                               origin="pin" if pin else "chat", caller=_caller_session() or None):
+                print(line)
+            return 0
         if not (by or pin) or not args:
-            sys.exit(f"usage: task {verb} ID --by B (--inbox MSG [--text NOTE] | --pin P [--text NOTE])" + (" [--what W] [--where D] [--choice C]" if verb == "approve" else ""))
+            sys.exit(f"usage: task {verb} ID --by B (--inbox MSG [--text NOTE] | --pin P [--text NOTE])" + (" [--what W] [--where D] [--choice C]" if verb == "approve" else "")
+                     + (" [--choice C] [--prove 72-80] [--ko TEXT]   (or: task ok --prove 72-80 --by B --inbox MSG)" if verb == "ok" else ""))
         ok_at = None
         row = get_task(con, args[0])
         if pin:
@@ -2177,10 +2387,16 @@ def main(argv):
             # scriveva un ok a nome della persona. Da riga di comando ora non c'e' un --text che basti, da nessuna shell. Il tocco su un
             # dispositivo passa dal processo del relay, senza questa CLI
             sys.exit(f"task {verb}: an ok needs --inbox MSG (a message of the person from the last hour in this session's inbox) or --pin P; a device's ok arrives through the relay")
-        if verb == "confirm":
-            confirm(con, args[0], by, text)
+        if verb == "confirm":   # 04/11: come `task ok`: con prove in vigore la conferma le segna, altrimenti restava rossa
+            for line in answer(con, [args[0]], by, text, ok_at, origin="pin" if pin else "chat", caller=_caller_session() or None):
+                print(line)
             return 0
         approve(con, args[0], by, text, _opt(args, "--what"), _opt(args, "--where"), choice, ok_at=ok_at)
+        caller = _caller_session() or None   # 04/11: come Approva nell'app, la sessione del compito e la master lo sanno
+        sess = row["session"] or (_contract_task(row).get("where") or {}).get("session")
+        did = M("tasks.answer_did_choice", choice=choice) if choice else M("tasks.answer_did_ok")
+        for name in dict.fromkeys(n for n in (sess, root_session()) if n and n != caller):
+            _talk(name, M("tasks.answer_told", person=M("tasks.person"), task=args[0], did=did, quote=" ".join(text.split())[:200], where=M("tasks.answer_where", origin="pin" if pin else "chat")))
         return 0
     if verb == "tidy":
         if _flag(args, "--archive"):

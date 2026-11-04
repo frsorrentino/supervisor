@@ -1257,5 +1257,20 @@
   "feedback.too_long": "feedback_text: over {n} characters",
   "conti.no_client": "folder not found: {project}",
   "conti.bad_month": "month as YYYY-MM",
-  "conti.draft_prompt": "Draft of the statement of {project} for {month}, asked with a touch on the phone. Read supervisor rendiconto {project} --mese {month} --json and write it in human language, for the client. Only what is there: no billable hours, no estimates. If you cite times or counts, say they are measured and how. Do not send it to anyone: the person sends the draft; answer here with the text."
+  "conti.draft_prompt": "Draft of the statement of {project} for {month}, asked with a touch on the phone. Read supervisor rendiconto {project} --mese {month} --json and write it in human language, for the client. Only what is there: no billable hours, no estimates. If you cite times or counts, say they are measured and how. Do not send it to anyone: the person sends the draft; answer here with the text.",
+  "tasks.answer_where": "in chat ({origin})",
+  "tasks.answer_did_ok": "card approved",
+  "tasks.answer_did_choice": "card approved with the choice {choice}",
+  "tasks.answer_did_prove": "tests {nums} ok",
+  "tasks.answer_did_ko": "tests {nums} do not work: {text}",
+  "tasks.answer_not_working": "does not work",
+  "tasks.answer_did_pause": "pause closed (it works)",
+  "tasks.answer_did_pause_ko": "pause closed (does not work: {text})",
+  "tasks.answer_did_confirm": "confirmation recorded",
+  "tasks.answer_newer": "tests {nums} stay open, written after the message: not seen",
+  "tasks.answer_settle": "the check runs (task settle)",
+  "tasks.answer_told": "{person} answered {task} {where}: {did}. Text: «{quote}». It holds everywhere: do not ask again, go on.",
+  "hook.answers_pending": "Waiting for an answer of the person: {items}. If this message answers one of them, record it once: `supervisor task ok ID… --by <name> --inbox {id}` (tests: --prove 72-80, choice: --choice C, «does not work»: --ko \"why\"); it holds everywhere (app, watch, master). If the message could answer different items with different effects, ask which.",
+  "relay.prova_told_ok": "{person} marked tests {nums} of {task} ok {device}; {left} left. It holds everywhere: do not ask for them again in chat.",
+  "relay.prova_told_ko": "{person} {device}: test {nums} of {task} does not work: «{text}». Start again from here; the master knows."
 }

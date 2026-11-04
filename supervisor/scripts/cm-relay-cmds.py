@@ -1751,16 +1751,36 @@ def prova_op(cmd, arg):
                                  M("relay.prova_ko_to_master", device=where, task=r["task"], build=r["build"], dove=r["dove"], fai=r["fai"], atteso=r["atteso"], text=text), "--no-wait")
             if rc != 0:
                 return False, fail_line(out, "talk failed")
+        owner = {}
+        for n in ids:
+            r = tk.prova_info(con, n)
+            if r is not None:
+                row = tk.get_task(con, r["task"])
+                owner.setdefault(r["task"], [row["session"] or (tk._contract_task(row).get("where") or {}).get("session"), []])[1].append(n)
         res = tk.prove_mark(con, ids, result, by, where, text or None)
         if res.get("error") is not None:
             return False, M("relay.cmd_prova_gone", n=res["error"])
+        touched = {tid: (sess, nums, len(tk.prove_pending(con, tid))) for tid, (sess, nums) in owner.items()}
     finally:
         con.close()
+    prova_tell(touched, result, where, text)
     if result == "ko":
         return True, M("relay.cmd_prova_ko", n=ids[0])
     for tid in res["complete"]:
         _spawn_cm("task", "settle", tid)
     return True, M("relay.cmd_prova_ok", n=len(ids), closing=len(res["complete"]))
+
+
+def prova_tell(touched, result, where, text):
+    """04/11/2026 (supervisor-ok-ovunque-04-11): la risposta data in Prova arriva alla sessione che possiede la voce, come
+    Approva e Decidi: la sessione non la richiede in chat. {task: (sessione, [n], restano)}; il «non va» va anche alla master
+    (prima, solo alla master)."""
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    for tid, (sess, nums, left) in touched.items():
+        if not sess or sess == master and result == "ko":
+            continue
+        _wake(sess, M("relay.prova_told_ko" if result == "ko" else "relay.prova_told_ok", person=M("tasks.person"), device=where, task=tid,
+                      nums=", ".join(map(str, nums)), left=left, text=text))
 
 
 def decisione_op(cmd, arg):

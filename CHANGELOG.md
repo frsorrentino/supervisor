@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.122 — 2026-11-04: an answer you give counts once, wherever you give it (supervisor-ok-ovunque-04-11).**
+  - An ok, a choice, «tutto ok» on the tests or «non va» written in chat to a session or to the master now closes the same items as the buttons in the app: the card is approved, the tests in «Prova» are marked, the pause in «Decidi» closes, «Tocca a te» clears, and with every test ok the check runs and closes the task. The session records it with one command, `supervisor task ok`; you no longer have to tap the same thing again in the app.
+  - An ok counts only for what you had seen: tests written after your message stay open, and when one message could answer different things the session asks which.
+  - The other way round too: a tap in «Prova» (ok or «non va») now reaches the session that owns the test, as «Approva» and «Decidi» already did, so it does not ask you again in chat.
+  - At each of your messages, a session with items waiting for you is reminded of them and of the command that records your answer.
 - **0.8.121 — 2026-11-04: the chat no longer comes back empty after a reload, «Approva» shows up for sessions on win, «Chiudi» always has an outcome, and a session launched on win starts from the code here (supervisor-chat-vuota-04-11, supervisor-approva-sessione-win-04-11, supervisor-chiudi-esito-04-11, supervisor-launch-win-base-04-11, contracts 1.119 and 1.120).**
   - When the relay cannot find a session's conversation it now says so, instead of answering with an empty page that the app took for the whole chat: after a reload only the messages typed from the app were left. A session of the second account asked for by its short name finds its conversation, and the copy of a conversation on win is made by one reading at a time (three readings at once tripled it). The relay log says which page was asked for.
   - A task waiting for an ok whose session now runs as «win:…» or «pix-…» shows its «Approva» on that session's card, and its count in «Tocca a te» goes there too.
