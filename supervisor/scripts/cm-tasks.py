@@ -33,6 +33,9 @@
   supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D] [--choice C]
                                                 facoltativo (23/10 17:14): con il PIN della persona (supervisor pin set)
                                                 l'ok vale anche da una shell; il PIN non si scrive da nessun'altra parte
+  supervisor task login-check [--json]        1.117: rilegge `claude auth status` di ogni account (loginExpiresAt); gli
+                                                account che scadono entro 7 giorni vanno in Tocca a te (voce login, sulla
+                                                master); la guardia lo lancia ogni ora, ogni 10 minuti con una voce aperta
   supervisor task tidy [--dry-run] [--json] | --archive | --today   1.113: le voci superate escono da sole da Tocca a te
                                                 («superata», mai «confermata»): 1 prova di una build che una pre-release piu'
                                                 nuova dello stesso progetto contiene; 2 pausa o richiesta di un compito chiuso;
@@ -1352,6 +1355,14 @@ def decisions(con, now_=None, snoozed=False):
         items.append((("n", f"{rec.get('name')} {reason}"), None, {"kind": "needs_you", **(explain(contracts[tid], known["title"], mask) if known else {"title": None, "plan_start": None}),
                                                                   "asks": asks_of(_at_pc(None, reason), reason), "task": tid if tid in rows else None, "session": rec.get("name"), "reason": reason,
                                                                   "since": int(rec.get("at") or now_), "where": _at_pc(None, reason)}))
+    # 1.117: un login che scade entro 7 giorni; lo rifa' la master (la persona detta il codice), sparisce alla lettura dopo
+    master = str((_cfg()[1].get("workspace") or {}).get("root_session_name") or "master")
+    LG = _load("cm-login")
+    for x in LG.due(now_):
+        reason = LG.text(x)
+        items.append((("l", f"login {x['account']}"), None, {"kind": "login", "title": None, "plan_start": None, "asks": "other", "task": None, "session": master,
+                                                            "reason": reason, "account": x["account"], "label": x["label"], "expires_at": x["expires_at"],
+                                                            "since": max(0, (x["expires_at"] or now_) - LG.WARN_S) if not x["expired"] else (x["expires_at"] or now_), "where": "here"}))
     groups = {}
     for key, cause, it in items:
         k = _decision_key(*key)
@@ -1372,7 +1383,7 @@ def decisions(con, now_=None, snoozed=False):
         g["where"] = "pc" if any(i["where"] == "pc" for i in g["items"]) else "here"
         g["since"] = min(i["since"] for i in g["items"])
         g["note"] = notes.get(k)
-        g["refs"] = sorted(i.get("task") or f"needs:{i['session']}" for i in g["items"])
+        g["refs"] = sorted(i.get("task") or (f"login:{i['account']}" if i["kind"] == "login" else f"needs:{i['session']}") for i in g["items"])
         m = marks.get(k)
         if m and set(g["refs"]) <= set(json.loads(m["refs"])):   # un compito nuovo nel gruppo lo riporta su
             hidden += 1
@@ -1769,6 +1780,12 @@ def main(argv):
     con = connect()
     if verb == "pagella":
         print(json.dumps(pagella(con), ensure_ascii=False))
+        return 0
+    if verb == "login-check":
+        LG = _load("cm-login")
+        LG.refresh()
+        due = LG.due()
+        print(json.dumps(due, ensure_ascii=False) if as_json else "\n".join(LG.text(x) for x in due))
         return 0
     if verb == "defect-of":   # 1.103: il legame a posteriori, solo se certo
         if len(args) != 2:

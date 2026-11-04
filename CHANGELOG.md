@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.119 — 2026-11-04: a login about to expire shows up in «Tocca a te» (supervisor-scadenza-login-04-11, contract 1.117).**
+  - Every hour supervisor reads when the Claude login of each account expires (`claude auth status`, Claude Code 2.1.318). From 7 days before, «Tocca a te» has an item with the date and time: write to the master «rifai il login di …» and keep ready the 6-digit code that arrives by email. It goes by itself after the new login. `supervisor task login-check` reads it now.
 - **0.8.118 — 2026-11-04: a superseded task no longer blocks what depends on it (supervisor-superate-dipendenze-04-11, contract 1.116).**
   - In a plan, a task closed as superseded counts as done for its dependents: they start, and the plan ends ok. It still never counts as done in the report card or the statistics.
 - **0.8.117 — 2026-11-04: tasks superseded by a newer pre-release close by themselves (supervisor-superate-chiuse-04-11, contract 1.115).**

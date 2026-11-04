@@ -745,4 +745,55 @@ _r8 = {r["id"]: r for r in _crs8["result"]}
 _dn8 = [json.loads(_r8[c["id"]]["text"]) for c in _crs8["cmd"] if c["op"] == "done" and c["id"] in _r8 and _r8[c["id"]]["ok"]]
 T.check("SU9 the contract's sample: a closed row with outcome superseded", any(r.get("outcome") == "superseded" for d in _dn8 for r in d.get("rows", [])), str(len(_dn8)))
 
+
+# scadenza_login (04/11/2026, contratto 1.117, supervisor-scadenza-login-04-11): `claude auth status` dice loginExpiresAt; da 7
+# giorni prima una voce in Tocca a te, sulla master, senza comandi per la persona; sparisce alla lettura dopo il nuovo login
+_lg = tmp / "lg"
+_lg_state = _lg / "state"
+_acc = {n: _lg / n for n in ("pers", "pro")}
+for _d in _acc.values():
+    _d.mkdir(parents=True)
+_cfg_lg = _lg / "config.json"
+_cfg_lg.write_text(json.dumps({"language": "it", "state_dir": str(_lg_state), "default_account": "pers", "workspace": {"root": str(tmp), "root_session_name": "master"},
+                               "accounts": {"pers": {"config_dir": str(_acc["pers"]), "label": "personale"}, "pro": {"config_dir": str(_acc["pro"]), "label": "Studio"}}}))
+_fake_claude = _lg / "claude"
+_fake_claude.write_text('#!/bin/sh\n[ "$1 $2" = "auth status" ] && [ -f "$CLAUDE_CONFIG_DIR/status.json" ] && cat "$CLAUDE_CONFIG_DIR/status.json" && exit 0\nexit 1\n')
+_fake_claude.chmod(0o755)
+_LGENV = {"CC_SUPERVISOR_CONFIG": str(_cfg_lg), "CM_CLAUDE_BIN": str(_fake_claude), "CM_TASKS_DB": str(_lg / "tasks.db")}
+_iso = lambda t: __import__("datetime").datetime.fromtimestamp(t, __import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # noqa: E731
+def _status(acc, days=None, logged=True):
+    (_acc[acc] / "status.json").write_text(json.dumps({"loggedIn": logged, "authMethod": "claude.ai", **({"loginExpiresAt": _iso(int(time.time() + days * 86400))} if days is not None else {})}))
+def _lgcheck():
+    rc, out = cm("login-check", "--json", env=_LGENV)[:2]
+    return rc, json.loads(out) if rc == 0 else out
+def _lgitems():
+    return [i for g in json.loads(cm("decisioni", "--json", env=_LGENV)[1])["groups"] for i in g["items"] if i["kind"] == "login"], json.loads(cm("decisioni", "--json", env=_LGENV)[1])["groups"]
+_status("pers", 30); _status("pro", 5)
+_rc1, _due1 = _lgcheck()
+_saved = json.loads((_lg_state / "login-expiry.json").read_text())
+T.check("LG1 login-check reads both accounts (CLAUDE_CONFIG_DIR of each) into login-expiry.json; only the one within 7 days is due",
+        _rc1 == 0 and [x["account"] for x in _due1] == ["pro"] and set(_saved["accounts"]) == {"pers", "pro"} and _saved["accounts"]["pers"]["expires_at"] > time.time() + 29 * 86400, str(_due1))
+_its, _grs = _lgitems()
+_w = __import__("datetime").datetime.fromtimestamp(_due1[0]["expires_at"]) if _due1 else None
+T.check("LG2 Tocca a te has one login item on the master: the date and time, what to write to the master, the 6-digit code by email, no command for the person",
+        len(_its) == 1 and _its[0]["session"] == "master" and _its[0]["account"] == "pro" and _its[0]["task"] is None and _its[0]["expires_at"] == _due1[0]["expires_at"]
+        and _its[0]["reason"] == f"Il login di Studio scade il {_w:%d/%m} alle {_w:%H:%M}: scrivi alla master «rifai il login di Studio» e tieni pronto il codice di 6 cifre che arriva per email"
+        and any(g["refs"] == ["login:pro"] for g in _grs), str(_its))
+(_acc["pro"] / "status.json").unlink()
+_rc3, _due3 = _lgcheck()
+T.check("LG3 an account whose claude does not answer keeps the reading before: no item lost or invented by an error", _rc3 == 0 and [x["account"] for x in _due3] == ["pro"], str(_due3))
+_status("pro", 300)
+_rc4, _due4 = _lgcheck()
+T.check("LG4 after the new login (expiry far away) the item goes at the next reading", _rc4 == 0 and _due4 == [] and _lgitems()[0] == [], str(_due4))
+_status("pro", -1); _status("pers", logged=False)
+_rc5, _due5 = _lgcheck()
+_txt5 = {x["account"]: x for x in _lgitems()[0]}
+T.check("LG5 an expired login says «è scaduto»; an account logged out says it has no login; both items",
+        set(_txt5) == {"pro", "pers"} and _txt5["pro"]["reason"].startswith("Il login di Studio è scaduto il ") and _txt5["pers"]["reason"].startswith("personale non ha un login: scrivi alla master"), str(_txt5))
+_fx6 = json.loads({r["id"]: r for r in json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())["result"]}["6f1c2d3e-0901-4000-8000-000000000901"]["text"])
+_fl6 = [i for g in _fx6["groups"] for i in g["items"] if i["kind"] == "login"]
+T.check("LG6 the contract's sample: a login item with the keys the code sends, refs login:<account>",
+        len(_fl6) == 1 and _its and set(_fl6[0]) == set(_its[0]) and any(g["refs"] == ["login:" + _fl6[0]["account"]] for g in _fx6["groups"]), str(_fl6))
+
+
 T.finish()

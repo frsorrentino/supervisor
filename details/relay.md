@@ -644,6 +644,13 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.117 (04/11/2026, from the master: Claude Code 2.1.318 `claude auth status` reports `loginExpiresAt`). Additive, `v` stays 1.
+
+- **A new item kind in op `decisioni`, `login`**: an account whose login expires within 7 days, has expired, or is logged out. `{kind: "login", task: null, session: <the master's name>, account, label, expires_at (epoch, null when logged out), reason, since (the start of the 7 days, or the expiry once past), where: "here", asks: "other", title: null, plan_start: null}`; its group's `refs` is `["login:<account>"]`. `reason` says the date and time and what to do: write to the master «rifai il login di <label>» and keep ready the 6-digit code that arrives by email. No command for the person: the master does the login. The item counts in `state.tocca.decidi` and in the master's `sessions[].tocca`.
+- The guard reads `claude auth status` of each account once an hour (every 10 minutes while an item is open) into `<state_dir>/login-expiry.json`; after the new login the item goes at the next reading. An account that does not answer keeps the reading before. «Non ora» works as on any group; «Lascia perdere» only tells the master.
+
+Fixture: `cmd-result-sample.json` (`decisioni` …0901 with a login group).
+
 Contract 1.116 (04/11/2026, from the master: a dependency closed as superseded). No new key, `v` stays 1.
 
 - **A dependency is met by `done` and by `superseded`**: the work came out in a pre-release tested and closed, so the plan engine starts what waits on it, and a plan whose nodes are all done or superseded ends ok. Report card and KPIs still count only `done`.

@@ -1837,7 +1837,7 @@ def decisions_summary():
             return _tasks_read(both) or {}
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             return {}
-    return _memo("decisions_summary", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you")])
+    return _memo("decisions_summary", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you"), str(Path(cm.expand(CFG["state_dir"])) / "login-expiry.json")])
 
 
 def tocca_tasks():
@@ -1857,7 +1857,7 @@ def tocca_tasks():
             return _tasks_read(both) or {}
         except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
             return {}
-    return _memo("tocca_tasks", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you")])
+    return _memo("tocca_tasks", read, deps=[tasks_version, str(Path(cm.expand(CFG["state_dir"])) / "needs-you"), str(Path(cm.expand(CFG["state_dir"])) / "login-expiry.json")])
 
 
 TOCCA_TODAY_MAX = 10

@@ -325,6 +325,26 @@ def run():
             s["resume_names"] = []
             s["resumed_at"] = t
             changed = True
+    # 1.117 (04/11/2026): la scadenza del login degli account, ogni ora; ogni 10 minuti finche' una voce e' aperta, cosi'
+    # dopo il nuovo login sparisce presto
+    lstamp = state_path().with_name("login-check.stamp")
+    try:
+        llast, lopen = lstamp.stat().st_mtime, lstamp.read_text().strip() == "due"
+    except OSError:
+        llast, lopen = 0, False
+    if t - llast >= (600 if lopen else 3600):
+        due = lopen   # un giro fallito tiene il passo di prima e non si ripete a ogni minuto
+        try:
+            r = subprocess.run([CM_BIN, "task", "login-check", "--json"], capture_output=True, text=True, timeout=180)
+            due = bool(json.loads(r.stdout)) if r.returncode == 0 else lopen
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            log(f"login-check: {e}")
+        try:
+            lstamp.parent.mkdir(parents=True, exist_ok=True)
+            lstamp.write_text("due" if due else "")
+            os.utime(lstamp, (t, t))
+        except OSError:
+            pass
     # 1.113 (03/11/2026): ogni 10 minuti le voci superate escono da sole da Tocca a te (`task tidy`)
     tstamp = state_path().with_name("tidy.stamp")
     try:

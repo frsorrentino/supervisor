@@ -56,11 +56,13 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 argslog = tmp / "cm-args.log"
 fake_cm = tmp / "supervisor"
 autoclose_log = tmp / "auto-close.log"
-tidy_log = tmp / "tidy.log"   # 1.113: `task tidy` ogni 10 minuti, anche lui a parte
+tidy_log = tmp / "tidy.log"
+login_log, login_file = tmp / "login.log", tmp / "login-due.json"   # 1.117: `task login-check` ogni ora, ogni 10 minuti con una voce   # 1.113: `task tidy` ogni 10 minuti, anche lui a parte
 # 16/10/2026: `task auto-close` (una volta l'ora) in un registro a parte: le altre prove contano le riprese
 stall_file = tmp / "stalled.json"   # 22/10/2026: `task stall-check --json` risponde con questo file, se c'e'
 fake_cm.write_text(f'#!/bin/sh\nif [ "$1 $2" = "task auto-close" ]; then echo "$*" >> "{autoclose_log}"; exit 0; fi\n'
                    f'if [ "$1 $2" = "task tidy" ]; then echo "$*" >> "{tidy_log}"; exit 0; fi\n'
+                   f'if [ "$1 $2" = "task login-check" ]; then echo "$*" >> "{login_log}"; if [ -f "{login_file}" ]; then cat "{login_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'if [ "$1 $2" = "task stall-check" ]; then if [ -f "{stall_file}" ]; then cat "{stall_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'printf \'%s\\n\' "$*" >> "{argslog}"\n')
 fake_cm.chmod(0o755)
@@ -204,6 +206,26 @@ t1 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
 guard("run", now=NOW + 7200 + 601)
 t2 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
 T.check("GU-TD guard run calls `task tidy` every 10 minutes: the first pass, not 5 minutes later, again after 10", t1 - t0 == 1 and t2 - t1 == 1, f"{t0} {t1} {t2}")
+
+# GU-LC (04/11/2026, 1.117): `task login-check` ogni ora; con un login in scadenza ogni 10 minuti
+_ln = lambda: len(login_log.read_text().splitlines()) if login_log.exists() else 0  # noqa: E731
+l0 = _ln()
+(state / "login-check.stamp").unlink(missing_ok=True)
+login_file.unlink(missing_ok=True)
+guard("run", now=NOW + 7200)
+guard("run", now=NOW + 7200 + 601)
+l1 = _ln()
+guard("run", now=NOW + 7200 + 3601)
+l2 = _ln()
+login_file.write_text(json.dumps([{"account": "pro", "label": "Studio", "expires_at": NOW + 86400, "expired": False}]))
+guard("run", now=NOW + 7200 + 7202)          # il giro dell'ora trova il login in scadenza
+guard("run", now=NOW + 7200 + 7202 + 601)    # da qui ogni 10 minuti
+l3 = _ln()
+guard("run", now=NOW + 7200 + 7202 + 901)    # non dopo 5
+l4 = _ln()
+login_file.unlink()
+T.check("GU-LC guard run calls `task login-check` once an hour with nothing due (not 10 minutes later), every 10 minutes while a login is due (not 5 minutes later)",
+        l1 - l0 == 1 and l2 - l1 == 1 and l3 - l2 == 2 and l4 == l3, f"{l0} {l1} {l2} {l3} {l4}")
 
 # GU-ST (22/10/2026, P3): un impegno fermo (da `task stall-check`) → talk alla master e Telegram, con prossimo passo e chi lo deve fare
 stall_file.write_text(json.dumps([{"task": "gantt-apk", "idle_s": 9 * 3600, "approved_at": NOW - 9 * 3600, "next": "APK sul telefono",
