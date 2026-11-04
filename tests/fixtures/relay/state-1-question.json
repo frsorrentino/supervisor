@@ -282,12 +282,12 @@
       {
         "project": "atlas-shop",
         "done": "Migrations 008-011 applied, tests green",
-        "next": "Review the seeds and the admin page"
+        "next": "Review the seeds"
       },
       {
         "project": "ledger-api",
         "done": "Deploy ready",
-        "next": "Wait for the go"
+        "next": "Wait"
       }
     ]
   },
@@ -389,6 +389,7 @@
     "feedback_consent",
     "feedback_send",
     "feedback_text",
+    "feedback_app",
     "results",
     "result_seen",
     "result_note"

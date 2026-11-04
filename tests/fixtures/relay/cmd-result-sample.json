@@ -1227,6 +1227,70 @@
       "arg": "20",
       "issued": 1789214724,
       "by": "phone-pixel7"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1210-4000-8000-000000001210",
+      "op": "feedback_app",
+      "kind": "bug",
+      "text": "The session list stays empty after the login.\nIt happens with a file report.pdf open",
+      "tech": {
+        "app_version": "2.4.1",
+        "os": "Android 15",
+        "device": "Pixel 7",
+        "screen": "Sessions"
+      },
+      "share": "k3f9a1",
+      "screenshot_ok": true
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1211-4000-8000-000000001211",
+      "op": "feedback_app",
+      "hash": "7c41e09a2b",
+      "choice": "anonymous"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1212-4000-8000-000000001212",
+      "op": "feedback_app",
+      "hash": "7c41e09a2b",
+      "choice": "github"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1213-4000-8000-000000001213",
+      "op": "feedback_app",
+      "hash": "5d20b7f413",
+      "choice": "later"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1214-4000-8000-000000001214",
+      "op": "feedback_app",
+      "kind": "bug",
+      "text": "Screen attached",
+      "share": "k3f9a2"
     }
   ],
   "result": [
@@ -2021,6 +2085,36 @@
       "text": "sostituita da una lettura più recente della stessa sessione",
       "superseded": true,
       "at": 1789214725
+    },
+    {
+      "id": "6f1c2d3e-1210-4000-8000-000000001210",
+      "ok": true,
+      "text": "{\"hash\": \"7c41e09a2b\", \"kind\": \"bug\", \"label\": \"bug\", \"title\": \"[supervisor-app] field observations: bug from the app, The session list stays empty after the login.\", \"body\": \"Collected on 2026-11-04 by claude-observe (https://github.com/frsorrentino/claude-observe): a bug written in the Supervisor app; parameter values are never stored.\\n\\n- bug: The session list stays empty after the login.\\n  - note: It happens with a file <file>.pdf open\\n  - note: app_version 2.4.1 · os Android 15 · device Pixel 7 · screen Sessions\", \"screenshot\": true, \"options\": [{\"id\": \"github\", \"label\": \"Send from my GitHub\", \"description\": \"Opens the issue already written on frsorrentino/supervisor with your GitHub account: you check it, attach the screenshot if you want and send it\"}, {\"id\": \"anonymous\", \"label\": \"Send anonymously\", \"description\": \"A public issue opened by the observe service, without your name; the screenshot does not go: the service takes text only\"}, {\"id\": \"later\", \"label\": \"Not now\", \"description\": \"It stays among the observations of this computer, nothing is sent\"}]}",
+      "at": 1789214801
+    },
+    {
+      "id": "6f1c2d3e-1211-4000-8000-000000001211",
+      "ok": true,
+      "text": "{\"choice\": \"anonymous\", \"url\": \"https://github.com/frsorrentino/supervisor/issues/901\", \"text\": \"Sent anonymously, without the screenshot: https://github.com/frsorrentino/supervisor/issues/901\"}",
+      "at": 1789214806
+    },
+    {
+      "id": "6f1c2d3e-1212-4000-8000-000000001212",
+      "ok": true,
+      "text": "{\"choice\": \"github\", \"url\": \"https://github.com/frsorrentino/supervisor/issues/new?title=%5Bsupervisor-app%5D+field+observations%3A+bug+from+the+app%2C+The+session+list+stays+empty+after+the+login.&body=Collected+on+2026-11-04+by+claude-observe+%28https%3A%2F%2Fgithub.com%2Ffrsorrentino%2Fclaude-observe%29%3A+a+bug+written+in+the+Supervisor+app%3B+parameter+values+are+never+stored.%0A%0A-+bug%3A+The+session+list+stays+empty+after+the+login.%0A++-+note%3A+It+happens+with+a+file+%3Cfile%3E.pdf+open%0A++-+note%3A+app_version+2.4.1+%C2%B7+os+Android+15+%C2%B7+device+Pixel+7+%C2%B7+screen+Sessions&labels=app%2Cbug\", \"text\": \"Open the link: the issue is already written; attach the screenshot there and send it from your GitHub\"}",
+      "at": 1789214806
+    },
+    {
+      "id": "6f1c2d3e-1213-4000-8000-000000001213",
+      "ok": true,
+      "text": "{\"choice\": \"later\", \"url\": null, \"text\": \"Not now: the feedback stays among the observations of this computer, nothing was sent\"}",
+      "at": 1789214806
+    },
+    {
+      "id": "6f1c2d3e-1214-4000-8000-000000001214",
+      "ok": false,
+      "text": "feedback_app: the screenshot goes only with the person's yes (screenshot_ok: true); not taken",
+      "at": 1789214807
     }
   ]
 }

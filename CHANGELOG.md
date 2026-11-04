@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.123 — 2026-11-04: the app's Feedback reaches the relay and becomes an observation, sent with the anonymous draft and the choice between GitHub and anonymous (supervisor-feedback-app-04-11, contract 1.121).**
+  - A «Suggerimento» or «Segnala un bug» written in the app arrives with the technical data the app adds and, only if you said yes, a screenshot; it is kept as an observation of supervisor-app on the relay's computer.
+  - The app gets back the draft already anonymized and three buttons: «Invia dal mio GitHub» opens the issue already written on frsorrentino/supervisor, labelled app and bug or suggerimento, where you can attach the screenshot; «Invia anonimo» sends it through observe's service without your name and never with the screenshot; «Non ora» keeps it here.
+  - The draft is in the form the anonymous service accepts, and the test checks it against the same rules as the service.
 - **0.8.122 — 2026-11-04: an answer you give counts once, wherever you give it (supervisor-ok-ovunque-04-11).**
   - An ok, a choice, «tutto ok» on the tests or «non va» written in chat to a session or to the master now closes the same items as the buttons in the app: the card is approved, the tests in «Prova» are marked, the pause in «Decidi» closes, «Tocca a te» clears, and with every test ok the check runs and closes the task. The session records it with one command, `supervisor task ok`; you no longer have to tap the same thing again in the app.
   - An ok counts only for what you had seen: tests written after your message stay open, and when one message could answer different things the session asks which.

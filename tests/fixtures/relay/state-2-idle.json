@@ -260,6 +260,7 @@
     "feedback_consent",
     "feedback_send",
     "feedback_text",
+    "feedback_app",
     "results",
     "result_seen",
     "result_note"

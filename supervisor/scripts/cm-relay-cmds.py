@@ -85,18 +85,23 @@ def share_report(cmd, tm, session):
         except OSError:
             pass
         for sid in sids:
-            if sid and cmd.get("_local"):
-                if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", sid):
-                    for ext in (".bin", ".json"):
-                        (local_dir("share") / f"{sid}{ext}").unlink(missing_ok=True)
-            elif sid and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", sid):
-                try:
-                    rtdb("DELETE", f"share/{sid}")
-                except (urllib.error.URLError, OSError, ValueError):
-                    pass
-                seen = read_json(rdir() / "share-seen.json", {})
-                if seen.pop(sid, None) is not None:
-                    write_json(rdir() / "share-seen.json", seen)
+            share_drop(cmd, sid)
+
+
+def share_drop(cmd, sid):
+    """/share/<sid> (o l'allegato della web locale) si cancella dopo l'uso, riuscito o no."""
+    if sid and cmd.get("_local"):
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", sid):
+            for ext in (".bin", ".json"):
+                (local_dir("share") / f"{sid}{ext}").unlink(missing_ok=True)
+    elif sid and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", sid):
+        try:
+            rtdb("DELETE", f"share/{sid}")
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+        seen = read_json(rdir() / "share-seen.json", {})
+        if seen.pop(sid, None) is not None:
+            write_json(rdir() / "share-seen.json", seen)
 
 
 def share_fetch(cmd, sid):
@@ -1653,6 +1658,34 @@ def feedback_op(cmd, op):
     return ok, out
 
 
+def feedback_app(cmd):
+    """1.121: il Feedback dell'app, solo da un tocco. Primo passo: `kind` (suggerimento|bug), `text`, `tech` (i dati
+    tecnici, {chiave: valore}), `share` (l'id di /share con la schermata) solo con `screenshot_ok: true`, il si' della
+    persona. Risponde la bozza anonimizzata e le tre scelte (JSON). Secondo passo: `hash` della bozza e `choice`
+    (github|anonymous|later)."""
+    why = _touch_refused(cmd, "feedback_app")
+    if why:
+        return False, why
+    fb = _load("cm-feedback")
+    if "hash" in cmd or "choice" in cmd:
+        return fb.app_send(str(cmd.get("hash") or ""), str(cmd.get("choice") or ""))
+    sid = str(cmd.get("share") or "").strip()
+    try:
+        shot = None
+        if sid:
+            if cmd.get("screenshot_ok") is not True:
+                return False, M("feedback.app_shot_no_yes")
+            ok_f, got = share_fetch(cmd, sid)
+            if not ok_f:
+                return False, got
+            if not got[1]:
+                return False, M("relay.cmd_report_no_image")
+            shot = (got[1], got[2])
+        return fb.app_draft(str(cmd.get("kind") or ""), cmd.get("text"), cmd.get("tech"), shot)
+    finally:
+        share_drop(cmd, sid)
+
+
 def seguiti_azione(cmd):
     """1.102: «Allinea» e «Va bene così» su una voce rimasta indietro, «Togli» su un promemoria. Solo da un tocco."""
     why = _touch_refused(cmd, "seguiti_azione")
@@ -2348,6 +2381,8 @@ def execute(cmd):
             return conti_azione(cmd, arg)
         if op in ("feedback_consent", "feedback_send", "feedback_text"):   # 1.105
             return feedback_op(cmd, op)
+        if op == "feedback_app":   # 1.121
+            return feedback_app(cmd)
         if op == "results":   # 1.106
             return True, json.dumps(results_mod().view(TRANSCRIPT_MAX_BYTES), ensure_ascii=False)
         if op == "result_seen":   # 1.106
