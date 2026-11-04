@@ -3114,13 +3114,17 @@ def in_order(cmds):
     # prima i comandi dell'utente, poi le letture; dentro ciascun gruppo nell'ordine in cui sono stati dati
     items.sort(key=lambda x: (str(x[2].get("op") or "") in PASSIVE_OPS, float(x[2].get("issued") or 0), x[0]))
     # di piu' letture uguali della stessa sessione vale l'ultima: il telefono si e' gia' scordato le altre
+    # 04/11 (supervisor-relay-pagina-before-04-11): una pagina vecchia della chat (`before=`) non e' la stessa lettura delle
+    # `after=` che la chat aperta chiede di continuo: ha la sua chiave, se no «Carica i messaggi precedenti» non arriva mai
+    def same(c):
+        return (c.get("op"), c.get("session"), "before" if "before=" in str(c.get("arg") or "") else "")
     newest = {}
     for cid, _, c in items:
         if str(c.get("op") or "") in PASSIVE_OPS:
-            newest[(c.get("op"), c.get("session"))] = cid
+            newest[same(c)] = cid
     out = []
     for cid, doc, c in items:
-        if str(c.get("op") or "") in PASSIVE_OPS and newest.get((c.get("op"), c.get("session"))) != cid:
+        if str(c.get("op") or "") in PASSIVE_OPS and newest.get(same(c)) != cid:
             superseded(cid, k)
             continue
         out.append((cid, doc))

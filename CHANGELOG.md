@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.124 — 2026-11-04: «Carica i messaggi precedenti» loads the older messages again (supervisor-relay-pagina-before-04-11).**
+  - With a chat open, asking for the older messages often brought back only your own prompts: the request for the older page was dropped in favour of the chat's own updates. Now both are answered.
 - **0.8.123 — 2026-11-04: the app's Feedback reaches the relay and becomes an observation, sent with the anonymous draft and the choice between GitHub and anonymous (supervisor-feedback-app-04-11, contract 1.121).**
   - A «Suggerimento» or «Segnala un bug» written in the app arrives with the technical data the app adds and, only if you said yes, a screenshot; it is kept as an observation of supervisor-app on the relay's computer.
   - The app gets back the draft already anonymized and three buttons: «Invia dal mio GitHub» opens the issue already written on frsorrentino/supervisor, labelled app and bug or suggerimento, where you can attach the screenshot; «Invia anonimo» sends it through observe's service without your name and never with the screenshot; «Non ora» keeps it here.

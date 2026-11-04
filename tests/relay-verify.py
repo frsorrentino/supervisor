@@ -2535,6 +2535,18 @@ T.check("R21 several reads of the same session waiting together → only the new
         got21 == ["p-1", "t-other", "t-new"] and sup and C.decrypt(sup, k)["ok"] is False and C.decrypt(sup, k).get("superseded") is True
         and C.decrypt(sup, k)["text"] == "sostituita da una lettura più recente della stessa sessione", str(got21) + str(C.decrypt(sup, k) if sup else sup)[:160])
 
+# 04/11 (supervisor-relay-pagina-before-04-11): «Carica i messaggi precedenti» superata dalle after= della chat aperta
+cmds21c = {"t-before": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "50:before=e-120", "issued": 1789210920}, k),
+           "t-after": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "200:after=e-300", "issued": 1789210921}, k),
+           "t-after2": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "200:after=e-301", "issued": 1789210922}, k),
+           "t-before-old": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "50:before=e-170", "issued": 1789210919}, k)}
+_env21 = dict(os.environ); os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home)})
+got21c = [c for c, _ in RL.in_order(cmds21c)]
+os.environ.clear(); os.environ.update(_env21)
+_res21c = STORE.get("result") or {}
+T.check("R21 a page of older messages (before=) and the after= of the open chat, same session, in a row: the newest before= runs and gets its page, the newest after= too; only the older of each is superseded",
+        got21c == ["t-before", "t-after2"] and "t-before" not in _res21c and "t-after" in _res21c and "t-before-old" in _res21c
+        and C.decrypt(_res21c["t-after"], k).get("superseded") is True, str(got21c) + str(sorted(_res21c)))
 
 # R31 (07/10, piano prestazioni, fase 0): le righe di misura nel log dei test vivi e `relay stats` su un log di esempio
 _log31 = (rdir2 / "relay.log").read_text()
