@@ -33,6 +33,8 @@
   supervisor task approve ID --by B --pin P [--text NOTA] [--what W] [--where D] [--choice C]
                                                 facoltativo (23/10 17:14): con il PIN della persona (supervisor pin set)
                                                 l'ok vale anche da una shell; il PIN non si scrive da nessun'altra parte
+  supervisor task unproven [--json]           1.118: i compiti aperti il cui commit e' uscito (pre-release delle ultime 24 ore, web
+                                                di oggi) senza una prova registrata; la guardia avvisa la loro sessione
   supervisor task login-check [--json]        1.117: rilegge `claude auth status` di ogni account (loginExpiresAt); gli
                                                 account che scadono entro 7 giorni vanno in Tocca a te (voce login, sulla
                                                 master); la guardia lo lancia ogni ora, ogni 10 minuti con una voce aperta
@@ -945,6 +947,75 @@ def superseded_ready(con, cache=None):
     return out
 
 
+UNPROVEN_TAG_S = 24 * 3600
+UNPROVEN_LOG_DAYS = 14
+
+
+def _published_deploys(project):
+    """Le uscite web di oggi del progetto: [at] dei `firebase deploy` che il relay ha visto (published-today.json)."""
+    cm_, cfg = _cfg()
+    if not cm_:
+        return []
+    try:
+        d = json.loads((Path(cm_.expand((cfg.get("relay") or {}).get("dir") or "~/.cc-supervisor/relay")) / "published-today.json").read_text())
+        root = cm_.expand((cfg.get("workspace") or {}).get("root") or "~")
+        rel = os.path.relpath(str(project), root)
+    except (OSError, ValueError, TypeError):
+        return []
+    return sorted(int(x["at"]) for x in d.get("items") or [] if isinstance(x, dict) and x.get("kind") == "deploy" and x.get("project") in (rel, str(project)) and x.get("at"))
+
+
+def unproven(con, now_=None):
+    """1.118 (04/11/2026, la mattina con cinque pre-release e «Prova» vuota: la sessione aveva scritto la prova solo nei
+    passi): i compiti aperti con un commit (l'id nel messaggio) uscito per la prima volta in una pre-release delle ultime
+    24 ore (il primo tag che lo contiene; si dice il piu' nuovo) o, senza un tag, in una web di oggi (un deploy visto dal
+    relay, il commit fra il deploy prima e questo, sul ramo di HEAD), ma senza una prova in vigore, senza una pausa aperta (di prova o d'altro: non in corso) e non gia' superati dalla
+    regola 1.
+    [{task, session, project, commit, kind: release|web, build, at}], una voce per compito: l'uscita piu' recente."""
+    now_ = int(now_ or now())
+    rows = con.execute("SELECT * FROM tasks WHERE state IN (%s) AND project IS NOT NULL" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall()
+    by_proj = {}
+    for r in rows:
+        if _live_prove(con, r["id"]) or _superseding(con, r["id"]):
+            continue
+        if con.execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL", (r["id"],)).fetchone():
+            continue   # in pausa (una prova, una scelta, un login): non e' in corso, la pausa dice gia' cosa aspetta
+        by_proj.setdefault(r["project"], []).append(r)
+    out = []
+    for project, rs in by_proj.items():
+        try:
+            log = _git(project, "log", "--all", f"--since={UNPROVEN_LOG_DAYS}.days", "--format=%H%x09%ct%x09%s")
+            if log.returncode != 0:
+                continue
+            commits = [(h, int(ct), subj) for h, ct, subj in (ln.split("\t", 2) for ln in log.stdout.splitlines() if ln.count("\t") >= 2)]
+            tag_at = {t: int(ts) for t, ts in (x.split("\t") for x in _git(project, "for-each-ref", "--format=%(refname:short)\t%(creatordate:unix)", "refs/tags").stdout.splitlines() if "\t" in x)}
+        except (OSError, subprocess.SubprocessError, ValueError):
+            continue
+        deploys = _published_deploys(project)
+        contains = {}
+        for r in rs:
+            mine = [(h, ct) for h, ct, subj in commits if re.search(r"(?<![\w-])" + re.escape(r["id"]) + r"(?![\w-])", subj)]
+            if not mine:
+                continue
+            hit = None
+            for h, ct in mine:   # una pre-release: il primo tag che contiene il commit e' delle ultime 24 ore; si dice il piu' nuovo
+                if h not in contains:
+                    contains[h] = [t for t in _git(project, "tag", "--contains", h).stdout.split() if t in tag_at]
+                ts = [tag_at[t] for t in contains[h]]
+                if ts and now_ - min(ts) <= UNPROVEN_TAG_S:
+                    t = max(contains[h], key=lambda x: tag_at[x])
+                    if not hit or tag_at[t] > hit["at"]:
+                        hit = {"kind": "release", "build": t, "at": tag_at[t], "commit": h[:8]}
+            for i, at in enumerate(deploys if not hit else []):   # una web, senza un tag: un commit nuovo in quel deploy
+                prev = deploys[i - 1] if i else at - UNPROVEN_TAG_S
+                h = next((h for h, ct in mine if prev < ct <= at and _git(project, "merge-base", "--is-ancestor", h, "HEAD").returncode == 0), None)
+                if h:
+                    hit = {"kind": "web", "build": None, "at": at, "commit": h[:8]}
+            if hit:
+                out.append({"task": r["id"], "session": r["session"], "project": project, **hit})
+    return sorted(out, key=lambda x: (-x["at"], x["task"]))
+
+
 def tidy_rows(con, since=0, rule=None, limit=None):
     """Le chiusure di `tidy` da `since`, dalla piu' recente: {task, short, kind, rule, text, at}."""
     q = "SELECT * FROM tidy WHERE at>=?" + (" AND rule=?" if rule else "") + " ORDER BY at DESC, n DESC" + (f" LIMIT {int(limit)}" if limit else "")
@@ -1780,6 +1851,10 @@ def main(argv):
     con = connect()
     if verb == "pagella":
         print(json.dumps(pagella(con), ensure_ascii=False))
+        return 0
+    if verb == "unproven":
+        res = unproven(con)
+        print(json.dumps(res, ensure_ascii=False) if as_json else "\n".join(f"{x['task']}: {x['kind']} {x['build'] or ''} {x['commit']}" for x in res))
         return 0
     if verb == "login-check":
         LG = _load("cm-login")

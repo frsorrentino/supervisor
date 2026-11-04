@@ -796,4 +796,39 @@ T.check("LG6 the contract's sample: a login item with the keys the code sends, r
         len(_fl6) == 1 and _its and set(_fl6[0]) == set(_its[0]) and any(g["refs"] == ["login:" + _fl6[0]["account"]] for g in _fx6["groups"]), str(_fl6))
 
 
+# prerelease_senza_prove (04/11/2026, contratto 1.118, supervisor-prerelease-senza-prove-04-11): una pre-release o una web
+# che contiene il commit di un compito in corso senza prova: `task unproven` lo trova, la guardia avvisa la sessione
+_up = tmp / "up-repo"
+_up.mkdir()
+def _ug(*a, when=None):
+    e = dict(_genv, **({"GIT_COMMITTER_DATE": when, "GIT_AUTHOR_DATE": when} if when else {}))
+    return subprocess.run(["git", "-C", str(_up), *a], capture_output=True, text=True, env=e, check=True).stdout
+_iso_l = lambda t: time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t))  # noqa: E731
+_n = int(time.time())
+_ug("init", "-q", "-b", "main")
+_ug("commit", "-q", "--allow-empty", "-m", "fix: old work (up-old)", when=_iso_l(_n - 3 * 86400)); _ug("tag", "old-tag")
+_ug("commit", "-q", "--allow-empty", "-m", "fix: the menu (up-run, up-paused, up-proved)", when=_iso_l(_n - 7200))
+_ug("commit", "-q", "--allow-empty", "-m", "fix: the menu again (up-run-2)", when=_iso_l(_n - 7100))
+_ug("tag", "menu-pre")
+_ug("commit", "-q", "--allow-empty", "-m", "fix: the web only (up-web)", when=_iso_l(_n - 600))
+_ug("commit", "-q", "--allow-empty", "-m", "fix: after the deploy (up-late)", when=_iso_l(_n - 60))
+for _t in ("up-old", "up-run", "up-paused", "up-proved", "up-web", "up-late", "up-none"):
+    add_in(_t, _up, session="app")
+cm("pause", "up-paused", "--reason", "Serve una scelta", "--waits", "person")
+cm("prova", "up-proved", "--build", "menu-pre", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
+_c = _sq()
+_c.execute("UPDATE tasks SET state='running' WHERE id LIKE 'up-%'")
+_c.commit(); _c.close()
+(tmp / "relay").mkdir(exist_ok=True)
+(tmp / "relay" / "published-today.json").write_text(json.dumps({"day": "x", "items": [{"at": _n - 300, "kind": "deploy", "project": "up-repo", "text": "hosting", "url": None}]}))
+_unp = {x["task"]: x for x in json.loads(cm("unproven", "--json")[1])}
+T.check("UP1 the commit of a running task with no test inside a pre-release of the last 24 hours: task, session, tag, commit",
+        _unp.get("up-run", {}).get("kind") == "release" and _unp["up-run"]["build"] == "menu-pre" and _unp["up-run"]["session"] == "app" and len(_unp["up-run"]["commit"]) == 8, str(_unp))
+T.check("UP2 not listed: a task with a test, a paused task, a task named only in a tag older than 24 hours, a task with no commit, an id that is a prefix of another",
+        not {"up-proved", "up-paused", "up-old", "up-none"} & set(_unp) and "up-run-2" not in _unp, str(sorted(_unp)))
+T.check("UP3 a web published today by the project (a deploy seen by the relay) after the commit: kind web; a commit after the deploy is not in it",
+        _unp.get("up-web", {}).get("kind") == "web" and _unp["up-web"]["build"] is None and "up-late" not in _unp, str(_unp.get("up-web")))
+cm("prova", "up-run", "--build", "menu-pre", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
+T.check("UP4 once the test is registered the task is no longer listed", "up-run" not in {x["task"] for x in json.loads(cm("unproven", "--json")[1])}, "")
+
 T.finish()

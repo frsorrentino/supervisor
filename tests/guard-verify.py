@@ -57,11 +57,13 @@ argslog = tmp / "cm-args.log"
 fake_cm = tmp / "supervisor"
 autoclose_log = tmp / "auto-close.log"
 tidy_log = tmp / "tidy.log"
-login_log, login_file = tmp / "login.log", tmp / "login-due.json"   # 1.117: `task login-check` ogni ora, ogni 10 minuti con una voce   # 1.113: `task tidy` ogni 10 minuti, anche lui a parte
+login_log, login_file = tmp / "login.log", tmp / "login-due.json"
+unproven_file = tmp / "unproven.json"   # 1.118: `task unproven --json` risponde con questo file   # 1.117: `task login-check` ogni ora, ogni 10 minuti con una voce   # 1.113: `task tidy` ogni 10 minuti, anche lui a parte
 # 16/10/2026: `task auto-close` (una volta l'ora) in un registro a parte: le altre prove contano le riprese
 stall_file = tmp / "stalled.json"   # 22/10/2026: `task stall-check --json` risponde con questo file, se c'e'
 fake_cm.write_text(f'#!/bin/sh\nif [ "$1 $2" = "task auto-close" ]; then echo "$*" >> "{autoclose_log}"; exit 0; fi\n'
                    f'if [ "$1 $2" = "task tidy" ]; then echo "$*" >> "{tidy_log}"; exit 0; fi\n'
+                   f'if [ "$1 $2" = "task unproven" ]; then if [ -f "{unproven_file}" ]; then cat "{unproven_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'if [ "$1 $2" = "task login-check" ]; then echo "$*" >> "{login_log}"; if [ -f "{login_file}" ]; then cat "{login_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'if [ "$1 $2" = "task stall-check" ]; then if [ -f "{stall_file}" ]; then cat "{stall_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'printf \'%s\\n\' "$*" >> "{argslog}"\n')
@@ -255,6 +257,22 @@ guard("run", now=NOW + 7200 + 4000 + 8 * 3600)
 tk3 = re.findall(r"^talk master .*?--no-wait$", argslog.read_text() if argslog.exists() else "", re.M | re.S)
 T.check("GU-ST2 a session item: «3 impegni fermi», one line «supervisor-app (3 h) ferma con 3 compiti: app-tablet, app-player, app-play»",
         len(tk3) == 3 and "3 impegni fermi" in tk3[-1] and "- supervisor-app (3 h) ferma con 3 compiti: app-tablet, app-player, app-play; prossimo: parte quando finisce" in tk3[-1], tk3[-1][:400] if tk3 else "")
+
+# GU-UP (04/11/2026, 1.118): una pre-release o una web col commit di un compito senza prova → la sessione del compito, una volta
+unproven_file.write_text(json.dumps([{"task": "app-menu", "session": "app", "project": "/x", "kind": "release", "build": "menu-2026-11-04", "at": NOW, "commit": "0261638e"},
+                                     {"task": "app-zoom", "session": None, "project": "/x", "kind": "web", "build": None, "at": NOW, "commit": "9687a89e"}]))
+_ua = lambda: argslog.read_text() if argslog.exists() else ""  # noqa: E731
+u0 = _ua()
+(state / "tidy.stamp").unlink(missing_ok=True)
+guard("run", now=NOW + 7200 + 3 * 3600)
+u1 = _ua()[len(u0):]
+(state / "tidy.stamp").unlink(missing_ok=True)
+guard("run", now=NOW + 7200 + 3 * 3600 + 700)
+u2 = _ua()[len(u0) + len(u1):]
+unproven_file.unlink()
+T.check("GU-UP the session of the task is told the pre-release, the commit and the command to register the test; a task without a session goes to the master, for a web; a second pass says nothing",
+        re.search(r"^talk app .*menu-2026-11-04.*0261638e.*app-menu.*supervisor task prova app-menu --build menu-2026-11-04", u1, re.M | re.S) is not None
+        and re.search(r"^talk master .*0261638e|^talk master .*9687a89e.*app-zoom", u1, re.M | re.S) is not None and "talk app " not in u2 and "app-zoom" not in u2, u1[-600:] + "|" + u2[-300:])
 
 srv.shutdown()
 T.rm(tmp)

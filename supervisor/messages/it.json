@@ -186,6 +186,8 @@
   "tasks.login_due": "Il login di {account} scade il {date} alle {time}: scrivi alla master «rifai il login di {account}» e tieni pronto il codice di 6 cifre che arriva per email",
   "tasks.login_expired": "Il login di {account} è scaduto il {date} alle {time}: scrivi alla master «rifai il login di {account}» e tieni pronto il codice di 6 cifre che arriva per email",
   "tasks.login_none": "{account} non ha un login: scrivi alla master «rifai il login di {account}» e tieni pronto il codice di 6 cifre che arriva per email",
+  "guard.unproven_release": "Guardia: la pre-release {build} contiene il commit {commit} del compito {task}, ma il compito non ha una prova registrata: in «Prova» non compare. Registrala ora: supervisor task prova {task} --build {build} --dove <dove> --fai <cosa tocca> --atteso <cosa deve vedere> (oppure supervisor task pause {task} --reason \"<cosa provare>\" --waits person --prova --release {build}).",
+  "guard.unproven_web": "Guardia: la web uscita alle {at} contiene il commit {commit} del compito {task}, ma il compito non ha una prova registrata: in «Prova» non compare. Registrala ora: supervisor task prova {task} --build <versione web> --dove <dove> --fai <cosa tocca> --atteso <cosa deve vedere> (oppure supervisor task pause {task} --reason \"<cosa provare>\" --waits person --prova --web <versione>).",
   "tasks.tidy_stale": "in archivio: nessun passo da {days} giorni e il compito non è in corso",
   "tasks.tidy_double": "superata: c'è una richiesta più recente sullo stesso compito",
   "tasks.turn_session": "tocca a {session}",

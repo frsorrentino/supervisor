@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.120 — 2026-11-04: a pre-release without a registered test no longer goes unnoticed (supervisor-prerelease-senza-prove-04-11, contract 1.118).**
+  - When a pre-release or a web contains the commit of a task in progress that has no test registered, the guard tells that task's session, once, with the command to register it. Then the test shows up in «Prova» instead of sitting only in the task's steps.
 - **0.8.119 — 2026-11-04: a login about to expire shows up in «Tocca a te» (supervisor-scadenza-login-04-11, contract 1.117).**
   - Every hour supervisor reads when the Claude login of each account expires (`claude auth status`, Claude Code 2.1.318). From 7 days before, «Tocca a te» has an item with the date and time: write to the master «rifai il login di …» and keep ready the 6-digit code that arrives by email. It goes by itself after the new login. `supervisor task login-check` reads it now.
 - **0.8.118 — 2026-11-04: a superseded task no longer blocks what depends on it (supervisor-superate-dipendenze-04-11, contract 1.116).**

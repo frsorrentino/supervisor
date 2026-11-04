@@ -361,6 +361,7 @@ def run():
                 log(f"tidy: {len(r.stdout.strip().splitlines())} voci superate")
         except (OSError, subprocess.TimeoutExpired):
             pass
+        unproven_alerts(t)
     # 16/10/2026: una volta l'ora i compiti aperti da piu' di 6 ore col controllo verde si chiudono (`task auto-close`)
     stamp = state_path().with_name("auto-close.stamp")
     try:
@@ -394,6 +395,45 @@ def quiet_now(t):
     h = dt.datetime.fromtimestamp(t).hour
     a, b = int(q[0]), int(q[1])
     return (a <= h < b) if a <= b else (h >= a or h < b)
+
+
+UNPROVEN_KEEP_S = 7 * 86400
+
+
+def unproven_alerts(t):
+    """1.118 (04/11/2026): un compito in corso il cui commit e' uscito in una pre-release o in una web senza una prova
+    registrata (`task unproven`): la sua sessione lo sa, una volta per uscita, con il comando per registrarla. Le chiavi
+    gia' avvisate in unproven-sent.json, per 7 giorni."""
+    try:
+        r = subprocess.run([CM_BIN, "task", "unproven", "--json"], capture_output=True, text=True, timeout=180)
+        items = json.loads(r.stdout) if r.stdout.strip().startswith("[") else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return
+    p = state_path().with_name("unproven-sent.json")
+    try:
+        sent = json.loads(p.read_text())
+    except (OSError, ValueError):
+        sent = {}
+    sent = {k: v for k, v in sent.items() if isinstance(v, (int, float)) and t - v < UNPROVEN_KEEP_S}
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    for x in items:
+        key = f"{x['task']}:{x['kind']}:{x.get('build') or x.get('at')}"
+        if key in sent:
+            continue
+        when = dt.datetime.fromtimestamp(int(x["at"])).strftime("%H:%M")
+        text = (M("guard.unproven_release", task=x["task"], build=x["build"], commit=x["commit"]) if x["kind"] == "release"
+                else M("guard.unproven_web", task=x["task"], at=when, commit=x["commit"]))
+        try:
+            subprocess.run([CM_BIN, "talk", x.get("session") or master, text, "--no-wait"], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        sent[key] = t
+        log(f"unproven: {key} → {x.get('session') or master}")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(sent))
+    except OSError:
+        pass
 
 
 def stalled_alerts(t):
