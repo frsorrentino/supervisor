@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.121 — 2026-11-04: the chat no longer comes back empty after a reload, «Approva» shows up for sessions on win, «Chiudi» always has an outcome, and a session launched on win starts from the code here (supervisor-chat-vuota-04-11, supervisor-approva-sessione-win-04-11, supervisor-chiudi-esito-04-11, supervisor-launch-win-base-04-11, contracts 1.119 and 1.120).**
+  - When the relay cannot find a session's conversation it now says so, instead of answering with an empty page that the app took for the whole chat: after a reload only the messages typed from the app were left. A session of the second account asked for by its short name finds its conversation, and the copy of a conversation on win is made by one reading at a time (three readings at once tripled it). The relay log says which page was asked for.
+  - A task waiting for an ok whose session now runs as «win:…» or «pix-…» shows its «Approva» on that session's card, and its count in «Tocca a te» goes there too.
+  - «Chiudi» on a session that is busy can now wait: «Chiudi quando finisce» closes it as soon as it stops, and «Chiudi comunque» stops it, asks it for a short handoff and closes it at the end of that turn, or after three minutes anyway. The card says the closing is armed. `/exit` on a session without a window goes through `supervisor close`, so the answer always says whether it closed and why not.
+  - `supervisor launch … --host win` no longer starts on an old copy left on win: a copy on another commit is set aside (renamed, never deleted) and made again from the HEAD here; if it holds work not yet brought back, the launch stops and says how to fetch it. The commit there is checked before the session starts.
 - **0.8.120 — 2026-11-04: a pre-release without a registered test no longer goes unnoticed (supervisor-prerelease-senza-prove-04-11, contract 1.118).**
   - When a pre-release or a web contains the commit of a task in progress that has no test registered, the guard tells that task's session, once, with the command to register it. Then the test shows up in «Prova» instead of sitting only in the task's steps.
 - **0.8.119 — 2026-11-04: a login about to expire shows up in «Tocca a te» (supervisor-scadenza-login-04-11, contract 1.117).**

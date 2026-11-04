@@ -418,15 +418,25 @@ class WindowsNative(Adapter):
     _PS_DIR = "$d = [Environment]::ExpandEnvironmentVariables(%s); $m = Join-Path $d '.cm-session.json';"
 
     def session_prepare(self, rdir):
-        """{exists, marker, base, root, ahead}: la cartella c'e'? e' nostra (.cm-session.json)? quanti commit oltre la base."""
+        """{exists, marker, base, root, ahead, dirty}: la cartella c'e'? e' nostra (.cm-session.json)? quanti commit oltre
+        la base, quanti file non committati (04/11: un lancio con una HEAD diversa rifa' la copia solo se sono zero)."""
         return self.ps_json(self._PS_DIR % self.q(rdir) + r"""
 $r = @{ exists = [bool](Test-Path $d); marker = $false }
 if (Test-Path $m) {
   $j = Get-Content $m -Raw | ConvertFrom-Json
   $r.marker = $true; $r.base = $j.base; $r.root = $j.root
   $r.ahead = [int](git -C $d rev-list --count "$($j.root)..HEAD" 2>$null)
+  $r.dirty = @(git -C $d status --porcelain 2>$null | Where-Object { $_.Trim() }).Count
 }
 ConvertTo-Json -InputObject $r -Compress""")
+
+    def session_retire(self, rdir, stamp):
+        """04/11 (supervisor-launch-win-base-04-11): la copia vecchia si mette da parte, mai cancellata: rinominata in
+        <cartella>.old-<stamp>. → {ok, to} o {error}."""
+        return self.ps_json(self._PS_DIR % self.q(rdir) + f"""
+$to = (Split-Path -Leaf $d) + '.old-' + {self.q(stamp)}
+try {{ Rename-Item -LiteralPath $d -NewName $to -ErrorAction Stop; ConvertTo-Json -Compress @{{ ok = $true; to = (Join-Path (Split-Path -Parent $d) $to) }} }}
+catch {{ ConvertTo-Json -Compress @{{ error = $_.Exception.Message }} }}""")
 
     def session_seed(self, rdir, tar, sha, who):
         """La fotografia diventa un repository nuovo: estrazione, git init, commit «base», .cm-session.json (escluso)."""

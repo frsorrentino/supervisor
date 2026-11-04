@@ -277,6 +277,22 @@ def cmd_launch(argv):
     if info.get("exists") and not info.get("marker"):
         print(M("rsession.foreign_dir", host=hname, rdir=rdir), file=sys.stderr)
         return 6
+    if info.get("exists") and info.get("base") != sha:
+        # 04/11 (supervisor-launch-win-base-04-11, trovato dalla master): la copia la' era sulla base del 25/10 e la
+        # sessione e' partita su un codice vecchio, senza il ramo di qui. Una HEAD diversa: se la' non c'e' lavoro da
+        # riportare (commit oltre la base, file non committati), la copia vecchia si mette da parte e se ne fa una nuova;
+        # altrimenti ci si ferma e si dice come portarlo qui
+        ahead, dirty_there = int(info.get("ahead") or 0), int(info.get("dirty") or 0)
+        if ahead or dirty_there:
+            print(M("rsession.stale_with_work", host=hname, rdir=rdir, base=str(info.get("base") or "?")[:10], head=sha[:10],
+                    ahead=ahead, dirty=dirty_there), file=sys.stderr)
+            return 6
+        moved = a.session_retire(rdir, dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        if not moved.get("ok"):
+            print(M("rsession.retire_failed", host=hname, rdir=rdir, error=str(moved.get("error") or "?")[:200]), file=sys.stderr)
+            return 6
+        print(M("rsession.stale_moved", host=hname, base=str(info.get("base") or "?")[:10], head=sha[:10], to=moved.get("to") or "?"), file=sys.stderr)
+        info = {"exists": False}
     if info.get("exists"):
         base_sha = info["base"]
         print(M("rsession.reuse", host=hname, rdir=rdir, base=base_sha[:10], ahead=info.get("ahead", 0)), file=sys.stderr)
@@ -292,6 +308,11 @@ def cmd_launch(argv):
         finally:
             shutil.rmtree(tmpd, ignore_errors=True)
         base_sha = sha
+    # 04/11: prima di avviare, la copia la' deve essere sulla HEAD di qui
+    there = a.session_prepare(rdir)
+    if there.get("base") != sha:
+        print(M("rsession.base_mismatch", host=hname, rdir=rdir, base=str(there.get("base") or "?")[:10], head=sha[:10]), file=sys.stderr)
+        return 6
     a.session_trust(rdir)
     a.session_start(name, rdir, list(args) + ["--remote-control", name, "-n", name])
     deadline = time.time() + float(sess.get("start_timeout_s") or 90)

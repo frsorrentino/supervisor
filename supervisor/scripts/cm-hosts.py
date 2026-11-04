@@ -826,6 +826,21 @@ def mirror_path(host, sid):
 
 
 def sync_transcript(host, session, sid=""):
+    """04/11 (supervisor-chat-vuota-04-11): una copia alla volta per sessione, anche fra processi. Due letture insieme
+    (la PWA ricaricata chiede piu' pagine, ognuna di qualche secondo) appendevano gli stessi byte due volte: la copia
+    diventava piu' lunga del file di la' e ripartiva da zero, e chi la leggeva in quel momento la trovava vuota."""
+    import fcntl
+    d = state_dir() / "hosts" / "transcripts"
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / f".lock-{re.sub(r'[^A-Za-z0-9._-]', '_', f'{host}-{session}')}", "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            return _sync_transcript(host, session, sid)
+        finally:
+            fcntl.flock(lk, fcntl.LOCK_UN)
+
+
+def _sync_transcript(host, session, sid=""):
     """09/10 (dal telefono: la chat di una sessione su win vuota nell'app): porta qui i byte nuovi del
     transcript della sessione `session` sull'host, in coda alla copia locale (mirror_path). Byte per byte, nessuna
     riscrittura: la copia e' il file di la'. Un file di la' piu' corto della copia la riparte da zero; un altro

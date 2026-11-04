@@ -18,6 +18,8 @@ RS9 wait win:<nome>: torna quando e' idle e stampa l'ultima risposta
 RS10 close win:<nome>: busy → rifiuto (exit 4) senza --force; con --force chiusa, record segnato; di nuovo: «non era
      in esecuzione»; close --dry-run non chiude
 RS11 talk a una sessione chiusa: exit 5, il messaggio resta nella casella in attesa
+RS15 launch --host su una copia la' con una base vecchia: senza lavoro la' si mette da parte e se ne fa una nuova;
+     con lavoro la' ci si ferma; prima di avviare la base la' deve essere la HEAD di qui
 RS7 proposta e scelta automatica: regia carica → riga di proposta (il lancio resta in locale); --host auto carica →
     remoto, scarica → locale; una cartella non ammessa non e' mai proposta
 """
@@ -206,6 +208,39 @@ nr.mkdir()
 repo(nr, {"a": "a\n"})
 r = launch(str(nr), "--host", "win", "--no-window", FAKE_WIN_NOREG="1")
 T.check("RS6 a session that never registers → exit 5 saying where to look", r.returncode == 5 and "win" in r.stderr and "4" in r.stderr, r.stdout + r.stderr)
+
+# RS15 (04/11/2026, supervisor-launch-win-base-04-11, trovato dalla master): launch --host win sulla cartella che la' c'e'
+# gia' con una base vecchia partiva sul codice vecchio («base fc7e723ed7» del 25/10, HEAD di qui 1fda8c82)
+nuova = ws / "personali" / "nuova"
+nuova.mkdir()
+repo(nuova, {"app.txt": "v1\n"})
+r1 = launch(str(nuova), "--host", "win", "--no-window")
+there = winroot / "cm" / "personali" / "nuova"
+(nuova / "app.txt").write_text("v2\n"); g(nuova, "commit", "-qam", "v2")
+head2 = g(nuova, "rev-parse", "HEAD").strip()
+n0 = len(calls())
+r2 = launch(str(nuova), "--host", "win", "--no-window")
+olds = sorted(p_.name for p_ in there.parent.glob("nuova.old-*"))
+mark2 = json.loads((there / ".cm-session.json").read_text()) if (there / ".cm-session.json").is_file() else {}
+T.check("RS15 the copy there on an old base, no work there to bring back → set aside (renamed .old-<time>, never deleted), a new copy of the HEAD here, the session starts on it, says so",
+        r1.returncode == 0 and r2.returncode == 0 and mark2.get("base") == head2 and (there / "app.txt").read_text() == "v2\n" and len(olds) == 1
+        and (there.parent / olds[0] / "app.txt").read_text() == "v1\n" and [c["verb"] for c in calls()[n0:] if c["verb"] in ("retire", "seed", "start")] == ["retire", "seed", "start"]
+        and "la vecchia è in" in r2.stderr, r2.stdout + r2.stderr)
+(there / "lavoro.txt").write_text("fatto la'\n")
+subprocess.run(["git", "-C", str(there), "add", "lavoro.txt"], check=True); subprocess.run(["git", "-C", str(there), "commit", "-qm", "lavoro la'"], check=True, capture_output=True)
+(nuova / "app.txt").write_text("v3\n"); g(nuova, "commit", "-qam", "v3")
+n0 = len(calls())
+r3 = launch(str(nuova), "--host", "win", "--no-window")
+T.check("RS15 the copy there on an old base WITH work there (a commit not brought back) → stops (exit 6), says the bases and the fetch command; nothing set aside, nothing started",
+        r3.returncode == 6 and "1 commit" in r3.stderr and "supervisor host fetch win" in r3.stderr
+        and not any(c["verb"] in ("retire", "seed", "start") for c in calls()[n0:]) and (there / "lavoro.txt").is_file(), r3.stdout + r3.stderr)
+bad = ws / "personali" / "basebad"
+bad.mkdir()
+repo(bad, {"a": "a\n"})
+n0 = len(calls())
+r4 = launch(str(bad), "--host", "win", "--no-window", FAKE_WIN_BADBASE="1")
+T.check("RS15 before starting the copy there is checked: a base that is not the HEAD here → stops (exit 6) and says it, no session started",
+        r4.returncode == 6 and "non parto" in r4.stderr and not any(c["verb"] == "start" for c in calls()[n0:]), r4.stdout + r4.stderr)
 
 # RS7
 r = rs("propose", str(alfa), CM_LOADAVG="12", CM_NPROC="8")

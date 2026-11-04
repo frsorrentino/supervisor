@@ -44,6 +44,7 @@ import socket
 import ssl
 import subprocess
 import sys
+import signal
 import threading
 import time
 import unicodedata
@@ -1299,6 +1300,7 @@ def collect_sources(now=None):
         "commitments": commitments_list(),   # 1.76
         "elicitations": elicitations_list(rows, now),   # 1.83
         "suggestions": suggestions_list(now), "usage_today": usage_today(rows, now), "closed": closed_saved(now),   # 1.84
+        "closing": closing_of(rows),   # 1.120
         "system": system_status(rows, runtime),   # 1.90
         "plugins": plugins_summary(),   # 1.95
         "home_order": home_order_read(),   # 1.97
@@ -1777,14 +1779,20 @@ def background_of(row):
     figli del processo claude una shell (i server MCP sono node o python, non shell). Solo per le sessioni di qui.
     28/10: la barra di stato non conta — Claude Code la lancia ogni pochi secondi come «/bin/sh -c <statusLine.command>»,
     e la chiusura falliva a caso."""
+    return bool(background_pids(row))
+
+
+def background_pids(row):
+    """I pid delle shell figlie del processo claude che sono lavoro in sottofondo (vedi background_of); [] se non ce ne
+    sono o la sessione e' su un altro host. 04/11: «Chiudi comunque» le ferma."""
     pid = row.get("pid")
     if not pid or (row.get("host") and row.get("host") != "local"):
-        return False
+        return []
     shells = [k for k, name in _children(pid) if name in BG_SHELLS]
     if not shells:
-        return False
+        return []
     sls = statusline_cmds(row.get("cwd"))
-    return any(" ".join(_cmdline(k)[2:]).strip() not in sls for k in shells)
+    return [k for k in shells if " ".join(_cmdline(k)[2:]).strip() not in sls]
 
 
 def close_check(name, rows, allow_attached=False):
@@ -1843,32 +1851,153 @@ def save_closed(chk, row, by):
     return rec
 
 
+CLOSE_WHEN = ("now", "after", "force")
+CLOSE_FORCE_S = 180   # «Chiudi comunque»: il tempo massimo del passaggio di consegne, poi si chiude lo stesso
+CLOSE_ARMED_MAX_S = 24 * 3600   # una chiusura armata che non scatta in un giorno si lascia cadere
+_CLOSE_LOCK = threading.Lock()
+
+
+def close_armed_path():
+    return rdir() / "close-armed.json"
+
+
+def close_armed():
+    """04/11 (supervisor-chiudi-esito-04-11): le chiusure armate dall'app, {tmux: {name, mode, at, by, deadline,
+    session_id}}. mode after = appena la sessione si ferma; force = dopo il passaggio di consegne o alla scadenza."""
+    d = read_json(close_armed_path(), {})
+    return d if isinstance(d, dict) else {}
+
+
+def close_one(n, row, chk, by, armed=None):
+    """Chiude una sessione chiudibile: salva lo stato, `supervisor close`, una riga nel ledger. → None, o il motivo."""
+    rec = save_closed(chk, row, by)
+    rc, out = run_cm("close", row.get("tmux") or row.get("name"))
+    if rc != 0:
+        closed_file(rec["tmux"]).unlink(missing_ok=True)
+        return (out.strip().splitlines() or ["close failed"])[0].strip()
+    ledger_write("closed-from-app", session=rec["tmux"], session_id=rec.get("session_id") or "", by=by, dirty_n=rec.get("dirty_n"),
+                 **({"armed": armed} if armed else {}))
+    return None
+
+
+def close_force_start(n, row, chk, by):
+    """«Chiudi comunque»: ferma il turno (o la domanda) e i lavori in sottofondo, chiede un breve passaggio di consegne e
+    arma la chiusura: scatta a fine di quel turno, o comunque dopo CLOSE_FORCE_S."""
+    tm = row.get("tmux") or row.get("name")
+    if chk["blocked_by"] in ("busy", "question"):
+        run_cm("interrupt", tm, "--wait", "10")
+    for k in background_pids(row):
+        try:
+            os.kill(k, signal.SIGTERM)
+        except OSError:
+            pass
+    rc, _ = relay_talk(tm, M("relay.close_force_handoff"), "--no-wait")
+    return rc == 0
+
+
+def close_arm(n, row, mode, by, now):
+    tm = row.get("tmux") or row.get("name")
+    with _CLOSE_LOCK:
+        d = close_armed()
+        d[tm] = {"name": n, "mode": mode, "at": int(now), "by": by or None, "session_id": row.get("session_id") or "",
+                 "deadline": int(now) + CLOSE_FORCE_S if mode == "force" else None}
+        write_json(close_armed_path(), d)
+
+
 def close_sessions(cmd, arg, session=""):
     """1.84 (24/10, B4 e ogni chiusura dall'app): op close — chiude solo le sessioni chiudibili, rifacendo i controlli
     adesso; prima di chiuderne una ne salva lo stato (esito, prossimo passo, file non committati, session_id, ora).
-    Risponde con chi e' chiusa e chi no, col motivo. ok se almeno una e' chiusa."""
+    Risponde con chi e' chiusa e chi no, col motivo. ok se almeno una e' chiusa.
+    1.120 (04/11, supervisor-chiudi-esito-04-11, il maintainer: «l'invio a vuoto di chiudi quando la sessione è senza finestra»):
+    `when` — now (o assente) come prima; after = una sessione occupata (al lavoro, con una domanda, con un lavoro in
+    sottofondo) si chiude appena si ferma; force = «Chiudi comunque», confermato nell'app: ferma il turno e il sottofondo,
+    chiede un breve passaggio di consegne e chiude a fine turno o dopo CLOSE_FORCE_S. ok anche se e' armata; il testo
+    dice sempre l'esito, sessione per sessione."""
+    when = str(cmd.get("when") or "now")
+    if when not in CLOSE_WHEN:
+        return False, M("relay.cmd_close_bad_when", when=S.one_line(when)[:20])
     names = close_names(arg, session)
     if not names:
         return False, M("relay.cmd_close_none")
     rows = _json_cmd("sessions", "--json") or []
-    done, kept = [], []
+    done, armed, kept, now = [], [], [], time.time()
     for n in names:
         chk, row = close_check(n, rows)
-        if not chk["closable"]:
+        if chk["closable"]:
+            why = close_one(n, row, chk, cmd.get("by"))
+            (kept.append(M("relay.cmd_close_kept", name=n, why=why)) if why else done.append(n))
+            continue
+        if when == "now" or chk["blocked_by"] in ("gone", "attached"):
             kept.append(M("relay.cmd_close_kept", name=n, why=M(f"relay.close_why_{chk['blocked_by']}")))
             continue
-        rec = save_closed(chk, row, cmd.get("by"))
-        rc, out = run_cm("close", row.get("tmux") or row.get("name"))
-        if rc != 0:
-            closed_file(rec["tmux"]).unlink(missing_ok=True)
-            kept.append(M("relay.cmd_close_kept", name=n, why=(out.strip().splitlines() or ["close failed"])[0].strip()))
+        if when == "force" and not close_force_start(n, row, chk, cmd.get("by")):
+            kept.append(M("relay.cmd_close_kept", name=n, why=M("relay.close_why_force_failed")))
             continue
-        ledger_write("closed-from-app", session=rec["tmux"], session_id=rec.get("session_id") or "", by=cmd.get("by"), dirty_n=rec.get("dirty_n"))
-        done.append(n)
-    if done:
+        close_arm(n, row, when, cmd.get("by"), now)
+        armed.append(M("relay.cmd_close_armed" if when == "after" else "relay.cmd_close_forcing", name=n, s=CLOSE_FORCE_S))
+    if done or armed:
         push_async()
-    lines = ([M("relay.cmd_close_done", names=", ".join(done))] if done else []) + kept
-    return bool(done), "\n".join(lines)
+    lines = ([M("relay.cmd_close_done", names=", ".join(done))] if done else []) + armed + kept
+    return bool(done or armed), "\n".join(lines)
+
+
+def close_tick(now=None):
+    """1.120: le chiusure armate — dopo ogni push del demone (almeno una al minuto). after: si chiude appena close_check la
+    trova chiudibile. force: a fine del turno del passaggio di consegne (un `stop` nel ledger dopo l'armo), o alla
+    scadenza anche occupata (prima Esc). Una sessione che non c'e' piu', o armata da piu' di un giorno, esce."""
+    if not _CLOSE_LOCK.acquire(blocking=False):
+        return
+    try:
+        armed = close_armed()
+        if not armed:
+            return
+        now = now or time.time()
+        rows = _json_cmd("sessions", "--json") or []
+        ledger = None
+        changed = False
+        for tm, a in list(armed.items()):
+            n = a.get("name") or tm
+            chk, row = close_check(n, rows)
+            if row is None or chk["blocked_by"] == "gone" or now - float(a.get("at") or 0) > CLOSE_ARMED_MAX_S:
+                armed.pop(tm); changed = True
+                continue
+            go = chk["closable"]
+            if a.get("mode") == "force":
+                if ledger is None:
+                    ledger = core.ledger_rows()
+                ended = any(x.get("event") == "stop" and x.get("session_id") == a.get("session_id")
+                            and S.epoch(x.get("ts") or "") >= float(a.get("at") or 0) for x in ledger) if a.get("session_id") else False
+                late = now >= float(a.get("deadline") or 0)
+                if late and not go and chk["blocked_by"] in ("busy", "question", "background"):
+                    run_cm("interrupt", tm, "--wait", "10")
+                    for k in background_pids(row):
+                        try:
+                            os.kill(k, signal.SIGTERM)
+                        except OSError:
+                            pass
+                    chk = dict(chk, closable=True, blocked_by=None, save=chk.get("save") or {"outcome": None, "next": None,
+                               "session_id": row.get("session_id") or None, "dirty_n": None, "dirty": None})
+                    go = chk["blocked_by"] is None
+                go = go and (ended or late)
+            if not go:
+                continue
+            why = close_one(n, row, chk, a.get("by"), armed=a.get("mode"))
+            if why:
+                log(f"chiusura armata di {n} non riuscita: {why[:160]}")
+            armed.pop(tm); changed = True
+        if changed:
+            write_json(close_armed_path(), armed)
+            push_async()
+    finally:
+        _CLOSE_LOCK.release()
+
+
+def closing_of(rows):
+    """1.120: {nome dello stato: {mode, at, deadline}} delle chiusure armate, per state.sessions[].closing."""
+    name = lambda r: S.short_name(r.get("name") or r.get("tmux") or "", prefixes())  # noqa: E731 — come build_session
+    by_tm = {(r.get("tmux") or r.get("name")): name(r) for r in rows or []}
+    return {by_tm.get(tm, a.get("name") or tm): {"mode": a.get("mode"), "at": a.get("at"), "deadline": a.get("deadline")}
+            for tm, a in close_armed().items()}
 
 
 def sys_kill(cmd, arg):
@@ -1923,11 +2052,32 @@ def plugins_op(op, arg):
     return ok, text
 
 
+def state_alias():
+    """04/11 (supervisor-approva-sessione-win-04-11, il maintainer: «perché la sua richiesta di approvazione non appare qui?»):
+    {nome del registro → nome della sessione viva in state.sessions[].name}. Un compito dice la sua sessione col nome di
+    quando e' nato («supervisor-app»), ma la sessione viva puo' chiamarsi «win:supervisor-app» (su win) o «pix-x» (nello
+    stato «x»): l'app abbina gli ok alla scheda per nome e non li mostrava. Dalle righe vive dell'ultima push: il nome
+    esatto di una sessione viva resta suo; un alias (tmux, nome corto, nome dopo «host:», remote_name) vale se e' di una
+    sola sessione."""
+    with _LIVE_LOCK:
+        rows = [r for r in (_LIVE["rows"] or []) if r.get("status") != "dead"]
+    name = lambda r: S.short_name(r.get("name") or r.get("tmux") or "", prefixes())  # noqa: E731 — come build_session
+    exact = {name(r) for r in rows}
+    alias = {}
+    for r in rows:
+        n = name(r)
+        keys = {r.get("tmux") or "", r.get("name") or "", str(r.get("name") or "").split(":", 1)[-1], r.get("remote_name") or ""}
+        keys |= {S.short_name(k, prefixes()) for k in list(keys)}
+        for k in keys - {"", n}:
+            alias.setdefault(k, set()).add(n)
+    return {k: next(iter(v)) for k, v in alias.items() if len(v) == 1 and k not in exact}
+
+
 def commitments_list():
     """1.76 (22/10, P2): gli impegni del registro (`task impegni --json`: approvati non compiuti, e chi aspetta un ok)
     per /state.commitments, con `project` relativo come sessions[].project; fermi prima, al massimo COMMITMENTS_MAX."""
     root = cm.expand(CFG["workspace"]["root"])
-    out = []
+    out, alias = [], state_alias()
     for x in _memo("impegni", lambda: _json_cmd("task", "impegni", "--json") or [], deps=[tasks_version]):
         if not isinstance(x, dict) or not x.get("task"):
             continue
@@ -1935,6 +2085,8 @@ def commitments_list():
         y["project"] = S.project_of(x.get("project") or "", root)
         y["title"] = S.one_line(str(x.get("title") or ""))[:200]
         y["short"] = short_title(x.get("short") or y["title"])   # 1.79: one line in the app, never «…»
+        if y.get("session"):   # 1.119: il nome della sessione viva, come state.sessions[].name
+            y["session"] = alias.get(y["session"], S.short_name(str(y["session"]), prefixes()))
         out.append(y)
     return out[:S.COMMITMENTS_MAX]
 
@@ -1989,6 +2141,11 @@ def push(dry_run=False, now=None, origin="diretta", requested=None, stamp=None, 
         f" · lock {_s(m['locked'] - t0)} s · raccolta {_s(m['collected'] - m['locked'])} s"
         f" · pubblicazione {_s(m['published'] - m['collected'])} s · contorno {_s(end - m['published'])} s"
         f" · ts→put {_s(m['put_at'] - m['ts'])} s · cpu {_s(cpu1[0] - cpu0[0])}+{_s(cpu1[1] - cpu0[1])} s")
+    if close_armed_path().is_file():   # 1.120: le chiusure armate dall'app, dopo ogni push (fuori dal lock delle push)
+        try:
+            close_tick()
+        except Exception as e:   # noqa: BLE001 — una chiusura non deve far cadere la push
+            log(f"chiusure armate FAILED: {str(e)[:200]}")
     return st
 
 
@@ -3283,6 +3440,10 @@ def run_cmd(cmd, arrived=None):
             pass
     # 15/10: per una risposta, la domanda a cui risponde (1.52) o «senza id»: dal log si vede se l'app la manda
     asked = (f" · domanda {cmd.get('question')}" if cmd.get("question") else " · senza id domanda") if cmd.get("op") in ("answer", "allow_all") else ""
+    # 04/11 (supervisor-chat-vuota-04-11): per transcript la pagina chiesta — «50» o «50:after=<id>» — perche' una pagina
+    # vuota e' normale dopo un after e non lo e' alla prima lettura, e senza l'argomento il log non le distingueva
+    if cmd.get("op") == "transcript":
+        asked = f" · {S.one_line(str(cmd.get('arg') or ''))[:100]}"
     log(f"cmd {cid}: {cmd.get('op')} {cmd.get('session') or ''} da {by}{' (locale)' if cmd.get('_local') else ''}{asked} → {'ok' if ok else 'ERR'} {str(text)[:80]}{timing}")
     row = last_sessions().get(str(cmd.get("session") or "")) or {}
     # 17/10/2026: le letture (PASSIVE_OPS) non vanno nel registro: non cambiano niente, e ogni apertura della chat ne

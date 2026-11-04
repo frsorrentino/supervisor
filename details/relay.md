@@ -644,6 +644,22 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.120 (04/11/2026, the maintainer from the web app: «dobbiamo risolvere l'invio a vuoto di chiudi quando la sessione è senza finestra»; the master's proposal accepted at 13:23). Additive, `v` stays 1.
+
+- **op `close` takes `when`**: `now` (or absent) as before; `after` = a session that is working, on a question or with a job in the background closes as soon as it stops; `force` = «Chiudi comunque», which the app confirms first: the relay sends Esc to the turn (or the question), stops the background shells, asks the session for a short handoff, and closes at the end of that turn or after 180 s anyway. An armed session answers ok with «<name> closes as soon as it finishes» or «<name>: stopped, writing the handoff; it closes at the end of the turn or within 180 s». An attached session or one that is not running is never armed: it stays with its reason. An unknown `when` is refused with the valid values. The text always says the outcome, one line per session.
+- **`state.sessions[].closing`** `{mode: "after"|"force", at, deadline}` (deadline null for after) while a closing is armed; absent otherwise. It goes when the session closes (then it is in `closed`), stops running, or after a day.
+- **`/exit` (op `slash`) for a session without a window** goes the way of `close` (`supervisor close`), with its checks, the save and the outcome; nothing is typed in the pane. With a window it is typed as before.
+
+Fixture: `cmd-result-sample.json` (`close` …1120 with when after, …1121 with when force).
+
+Contract 1.119 (04/11/2026, the maintainer from the web app: «after reloading the PWA the transcript messages are lost, only the user's remain»). No new key, `v` stays 1.
+
+- **`transcript` never answers an empty page with ok for a missing file.** A live session whose transcript cannot be found (its row, then its id in every account) is refused with «no transcript yet for <name>»; until now it was `{"entries": [], "more": false}` with ok, which the app took for the whole conversation and put in place of the entries it had. A session that has just started is refused the same way until its first turn: the app keeps what it shows and asks again.
+- The short name the app shows (`x` for the tmux `pix-x`) finds its session when the names map of the last push does not translate it; the exact name always wins, and a short name two sessions share finds none.
+- The local copy of a transcript on another host is made by one reading at a time: two readings together appended the same bytes twice.
+- The relay.log line of a `transcript` says the page asked for (`· 50`, `· 50:after=<id>`).
+- **`commitments[].session` and the keys of `sessions[].tocca` are the name of the live session** (`sessions[].name`): a task registered for `x` while only `win:x` runs is on `win:x`, a task of `pix-x` on `x`, so its «Approva» is on that card (supervisor-approva-sessione-win-04-11). The exact live name always wins; a name two live sessions share, a closed session or one never seen keep the registry name.
+
 Contract 1.118 (04/11/2026, from the master: five pre-releases out overnight and «Prova» empty, the test written only in the steps). No new key, `v` stays 1.
 
 - **A release with no test registered is noticed.** Every 10 minutes the guard runs `task unproven`: an open task, not paused and not superseded, with no test in force, whose commit (its id in the message) came out for the first time in a pre-release of the last 24 hours (the first tag containing it; the newest is named) or, without a tag, in a web published today (a deploy the relay saw, the commit between the previous deploy and this one). The session of the task (the master when it has none) is told once per release, with the `task prova` command to register it; the item then reaches «Prova» as usual.

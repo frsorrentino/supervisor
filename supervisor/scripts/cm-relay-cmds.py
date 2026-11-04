@@ -589,6 +589,10 @@ def slash_send(cmd, session, tm, arg):
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
     if not row or not row.get("tmux"):
         return False, M("relay.cmd_slash_no_session", name=session or "?")
+    if name == "exit" and not row.get("attached"):
+        # 1.120 (04/11, supervisor-chiudi-esito-04-11): una sessione senza finestra non ha nessuno al terminale — /exit
+        # passa da `close` (supervisor close), con i suoi controlli, il salvataggio e l'esito; mai digitato nel riquadro
+        return close_sessions(cmd, session, session)
     if row.get("status") in ("busy", "waiting") or row.get("waiting"):
         return False, M("relay.cmd_slash_busy", name=session)
     text = " ".join(str(cmd.get("text") or "").split())[:SLASH_TEXT_MAX]
@@ -1292,16 +1296,24 @@ def live_rows():
 def live_row(tm):
     """16/10 (relay al 50% di CPU): la riga viva di una sessione per le letture che il telefono e la web app ripetono
     (transcript, diff, changes, file). Le righe di `sessions --json --no-screen` restano in processo LIVE_ROWS_TTL_S;
-    un nome che non c'e' (sessione appena lanciata) le rilegge subito. Una copia, o None."""
+    un nome che non c'e' (sessione appena lanciata) le rilegge subito. Una copia, o None.
+    04/11 (supervisor-chat-vuota-04-11): un nome corto come lo mostra l'app («x» per la tmux «pix-x», quando la mappa
+    dei nomi dell'ultima push non lo traduce) trova la sua riga se e' una sola; il nome esatto vince sempre."""
+    def pick(rows):
+        exact = next((r for r in rows or [] if (r.get("tmux") or r.get("name")) == tm), None)
+        if exact is not None:
+            return exact
+        short = [r for r in rows or [] if S.short_name(r.get("tmux") or r.get("name") or "", prefixes()) == tm]
+        return short[0] if len(short) == 1 else None
     with _LIVE_LOCK:
         rows = _LIVE["rows"] if _LIVE["rows"] is not None and time.time() - _LIVE["at"] < LIVE_ROWS_TTL_S else None
-    hit = next((r for r in rows or [] if (r.get("tmux") or r.get("name")) == tm), None)
+    hit = pick(rows)
     if hit is None:
         rows = _json_cmd("sessions", "--json", "--no-screen")
         if rows is not None:
             with _LIVE_LOCK:
                 live_set(rows)
-        hit = next((r for r in rows or [] if (r.get("tmux") or r.get("name")) == tm), None)
+        hit = pick(rows)
     return dict(hit) if hit else None
 
 
@@ -1360,9 +1372,14 @@ def transcript_page(session, tm, arg, sid=None):
         except Exception:   # noqa: BLE001 — host irraggiungibile: si mostra la copia che c'e'
             pass
     path = core.transcript_of(row)
+    if not path and row.get("session_id") and not (row.get("host") and row.get("host") != "local"):
+        # 04/11 (supervisor-chat-vuota-04-11): il file per id, in projects/ di ogni account, se quello della riga manca
+        path = transcript_by_sid(str(row["session_id"]))
     if not path:
-        # 28/10: una sessione appena partita non ha ancora la trascrizione (nasce col primo turno): una pagina vuota
-        return True, json.dumps({"entries": [], "more": False})
+        # 04/11 (supervisor-chat-vuota-04-11, il maintainer: «dopo la ricarica della PWA … restano solo quelli dell'utente»): fino
+        # a ieri una pagina vuota con ok (28/10, «sessione appena partita»), che l'app prende per la conversazione intera
+        # e mette al posto delle voci che ha. Ora un rifiuto col motivo: l'app tiene quello che ha e riprova
+        return False, M("relay.cmd_transcript_missing", name=session)
     return transcript_read(path, n, mode, ref)
 
 
@@ -1881,11 +1898,12 @@ def tocca_state():
 
 def tocca_summary():
     """1.111: state.sessions[].tocca, per nome di sessione come in state.sessions[].name: {prove, decidi, guarda, segui}."""
-    out = {}
+    out, alias = {}, state_alias()
 
     def bump(sess, k, n):
-        if sess and n:
-            out.setdefault(S.short_name(str(sess), prefixes()), {"prove": 0, "decidi": 0, "guarda": 0, "segui": 0})[k] += int(n)
+        if sess and n:   # 1.119: il nome della sessione viva («win:x» per un compito di «x»), come gli ok nella scheda
+            key = alias.get(str(sess), S.short_name(str(sess), prefixes()))
+            out.setdefault(key, {"prove": 0, "decidi": 0, "guarda": 0, "segui": 0})[k] += int(n)
     for sess, c in tocca_tasks().items():
         bump(sess, "prove", c["prove"])
         bump(sess, "decidi", c["decidi"])

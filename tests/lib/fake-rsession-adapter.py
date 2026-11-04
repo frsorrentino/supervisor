@@ -52,8 +52,16 @@ class FakeWin:
         if m.exists():
             j = json.loads(m.read_text())
             r.update(base=j["base"], root=j["root"], ahead=int(subprocess.run(["git", "-C", str(d), "rev-list", "--count", j["root"] + "..HEAD"],
-                                                                                capture_output=True, text=True).stdout or 0))
+                                                                                capture_output=True, text=True).stdout or 0),
+                     dirty=len([x for x in subprocess.run(["git", "-C", str(d), "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines() if x.strip()]))
         return r
+
+    def session_retire(self, rdir, stamp):
+        note("retire", rdir=rdir, stamp=stamp)
+        d = local(rdir)
+        to = d.with_name(d.name + ".old-" + stamp)
+        d.rename(to)
+        return {"ok": True, "to": str(to)}
 
     def session_seed(self, rdir, tar, sha, who):
         note("seed", rdir=rdir, sha=sha, who=list(who))
@@ -71,7 +79,7 @@ class FakeWin:
         g("add", "-A")
         g("commit", "-q", "-m", f"supervisor: base {sha}")
         root = g("rev-parse", "HEAD").strip()
-        (d / ".cm-session.json").write_text(json.dumps({"base": sha, "root": root}))
+        (d / ".cm-session.json").write_text(json.dumps({"base": "0" * 40 if os.environ.get("FAKE_WIN_BADBASE") else sha, "root": root}))
         return {"ok": True, "root": root}
 
     def night_list(self, prefix, dirs, since):

@@ -839,6 +839,26 @@
       "by": "phone-pixel8"
     },
     {
+      "id": "6f1c2d3e-1120-4000-8000-000000001120",
+      "op": "close",
+      "session": null,
+      "arg": "atlas-shop",
+      "device": "phone",
+      "issued": 1789214397,
+      "by": "phone-pixel8",
+      "when": "after"
+    },
+    {
+      "id": "6f1c2d3e-1121-4000-8000-000000001121",
+      "op": "close",
+      "session": null,
+      "arg": "atlas-shop",
+      "device": "phone",
+      "issued": 1789214398,
+      "by": "phone-pixel8",
+      "when": "force"
+    },
+    {
       "id": "6f1c2d3e-0880-4000-8000-000000000880",
       "op": "suggestion",
       "session": null,
@@ -1760,6 +1780,18 @@
       "ok": false,
       "text": "atlas-shop not closed: it is working",
       "at": 1789214396
+    },
+    {
+      "id": "6f1c2d3e-1120-4000-8000-000000001120",
+      "ok": true,
+      "text": "atlas-shop closes as soon as it finishes",
+      "at": 1789214398
+    },
+    {
+      "id": "6f1c2d3e-1121-4000-8000-000000001121",
+      "ok": true,
+      "text": "atlas-shop: stopped, writing the handoff; it closes at the end of the turn or within 180 s",
+      "at": 1789214399
     },
     {
       "id": "6f1c2d3e-0880-4000-8000-000000000880",

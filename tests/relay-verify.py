@@ -1171,6 +1171,14 @@ T.check("R6 (1.52) the relay.log line of an answer says which question it answer
         "6f1c2d3e-0052-4000-8000-000000000505: answer ledger-api da phone-pixel9 · domanda q-1789211000-1 →" in _log6
         and "6f1c2d3e-0052-4000-8000-000000000506: answer ledger-api da phone-pixel9 · senza id domanda →" in _log6
         and "6f1c2d3e-0052-4000-8000-000000000503: allow_all ledger-api da phone-pixel9 · domanda q-1789210500-1 →" in _log6, _log6[-600:])
+# R105 (1.119, supervisor-chat-vuota-04-11): la riga di transcript dice la pagina chiesta — una pagina vuota e' normale
+# dopo «after», non alla prima lettura, e senza l'argomento il log non le distingueva
+send_cmd(ans(7, op="transcript", arg="50:after=abc.0"))
+send_cmd(ans(8, op="transcript", arg="50"))
+_log105 = (rdir2 / "relay.log").read_text()
+T.check("R105 (1.119) the relay.log line of a transcript says the page asked for («· 50:after=<id>», «· 50»)",
+        "6f1c2d3e-0052-4000-8000-000000000507: transcript ledger-api da phone-pixel9 · 50:after=abc.0 →" in _log105
+        and "6f1c2d3e-0052-4000-8000-000000000508: transcript ledger-api da phone-pixel9 · 50 →" in _log105, _log105[-600:])
 ledger.write_text(ledger_before)
 (state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
 # R6 (1.10, 15/09, da claude-master-watch): answer con «text:<testo>» e «chat»
@@ -1969,10 +1977,10 @@ r23c = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000201", sessio
 r23d = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000202", session="ledger-api"))
 r23e = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000203", session="nessuna"))
 r23f = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000204", arg="/exit", text=None))
-T.check("R23 (1.25) a busy session and one on a dialog → «<name> is busy», a missing one → «no session <name>», nothing typed; /exit (with its slash) is typed like the others",
+T.check("R23 (1.25, 1.120) a busy session and one on a dialog → «<name> is busy», a missing one → «no session <name>», nothing typed; /exit (with its slash) for a session without a window goes the way of close (`supervisor close`), nothing typed",
         r23c and r23c["text"] == "atlas-shop is busy" and r23d and r23d["text"] == "ledger-api is busy" and r23e and r23e["text"] == "no session nessuna"
-        and r23f and r23f["ok"] is True and r23f["text"] == "sent /exit to field-notes"
-        and [c for c in cm_calls()[n_calls:] if c.startswith("talk ")] == ["talk field-notes /exit --via tmux --no-wait"], str([r23c, r23d, r23e, r23f]) + str(cm_calls()[n_calls:]))
+        and r23f and r23f["ok"] is True and r23f["text"] == "closed: field-notes" and "close field-notes" in cm_calls()[n_calls:]
+        and [c for c in cm_calls()[n_calls:] if c.startswith("talk ")] == [], str([r23c, r23d, r23e, r23f]) + str(cm_calls()[n_calls:]))
 n_calls = len(cm_calls())
 r23g = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000205", arg="cost", text=None))
 T.check("R23 a command that opens a panel (cost): `panel field-notes --wait 6` reads and closes it, its text comes back in /result; compact and exit never wait for a panel",
@@ -4197,8 +4205,8 @@ T.check("R92 (1.93) transcript «n:after=<id>» with an id no longer in the tran
         _a92[0] is True and _ja92.get("reset") is True and [e["id"] for e in _ja92["entries"]] == _all92[-5:], str(_a92)[:300])
 T.check("R92 (1.93) transcript of a session that is no longer running but is in the registry → its conversation read-only; a name nowhere → still «is not running»",
         _b92[0] is True and [e["id"] for e in json.loads(_b92[1])["entries"]] == _all92[-5:] and _c92 == (False, "mai92 is not running"), str((_b92[:1], _c92)))
-T.check("R92 (1.93) transcript of a live session with no transcript yet (just started) → ok, no entries, more false",
-        _d92 == (True, json.dumps({"entries": [], "more": False})), str(_d92))
+T.check("R92 (1.93, 1.119) transcript of a live session with no transcript yet (just started) → refused with the reason, never an empty page with ok (the app would put it in place of the entries it has)",
+        _d92 == (False, "no transcript yet for nuova92"), str(_d92))
 
 # R93 (contratto 1.95, 29/10): plugin e skill — il riassunto in /state, l'elenco intero e gli aggiornamenti dall'app
 _res93 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
@@ -4651,5 +4659,213 @@ T.check("R104 state-2-idle carries state.tocca {n, prove, decidi, today{n, items
         and {(x["kind"], x["rule"]) for x in _tc["today"]["items"]} == {("pause", 1), ("prova", 2)}
         and all(set(x) == {"task", "short", "kind", "rule", "at"} for x in _tc["today"]["items"]) and st2.get("tocca") == _tc
         and "tocca" not in S.build_state(dict(SRC2, tocca_state=None), 1789214400), json.dumps(_tc))
+
+# R105 (04/11/2026, supervisor-chat-vuota-04-11, contratto 1.119): il maintainer dalla web app, «dopo la ricarica della PWA si
+# perdono i messaggi dei transcript, restano solo quelli dell'utente». La prima lettura («50») con ok e nessuna voce
+# sostituisce la lista dell'app: ora una sessione senza file e' un rifiuto col motivo; il nome corto dell'app trova la
+# sua tmux «pix-»; la copia di un transcript di win e' fatta da una lettura alla volta; il log dice la pagina chiesta
+_tx105 = tmp / "r105.jsonl"
+_tx105.write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+_all105 = [e["id"] for e in json.loads(RL.transcript_read(str(_tx105), 200, None, None)[1])["entries"]]
+_rows105 = [{"tmux": "pix-alfa105", "name": "pix-alfa105", "status": "idle", "cwd": "/x", "account": "work", "session_id": "S-a105"},
+            {"tmux": "beta105", "name": "beta105", "status": "idle", "cwd": "/x", "account": "personal", "session_id": "S-b105"},
+            {"tmux": "pix-beta105", "name": "pix-beta105", "status": "idle", "cwd": "/y", "account": "work", "session_id": "S-pb105"},
+            {"tmux": "pix-gamma105", "name": "pix-gamma105", "status": "idle", "cwd": "/x", "account": "work", "session_id": "S-g105"},
+            {"tmux": "pro-gamma105", "name": "pro-gamma105", "status": "idle", "cwd": "/x", "account": "other", "session_id": "S-g2105"},
+            {"tmux": "delta105", "name": "delta105", "status": "idle", "cwd": "/x", "account": "personal", "session_id": "S-d105"},
+            {"tmux": "eps105", "name": "eps105", "status": "idle", "cwd": "/x", "account": "personal", "session_id": "S-e105"}]
+_sv105 = dict(jc=RL._json_cmd, tof=RL.core.transcript_of, pre=RL.prefixes, bysid=RL.transcript_by_sid, live=dict(RL._LIVE))
+try:
+    RL._json_cmd = lambda *a, **k: ({"sessioni": []} if a[:1] == ("registry",) else copy.deepcopy(_rows105))
+    RL.prefixes = lambda: ["", "pix-", "pro-"]
+    RL.core.transcript_of = lambda row: str(_tx105) if row.get("session_id") in ("S-a105", "S-b105") else ""
+    RL.transcript_by_sid = lambda sid: str(_tx105) if sid == "S-d105" else None
+    RL._LIVE.update(at=0.0, rows=None)
+    _a105 = RL.transcript_page("alfa105", "alfa105", "5")       # il nome corto dell'app, la mappa della push non lo traduce
+    _rb105 = RL.live_row("beta105")                              # «beta105» e «pix-beta105» vivi: vince il nome esatto
+    _rg105 = RL.live_row("gamma105")                             # due righe col nome corto «gamma105»: nessuna
+    _d105 = RL.transcript_page("delta105", "delta105", "5")     # il file della riga manca, quello per id c'e'
+    _e105 = RL.transcript_page("eps105", "eps105", "50")        # nessun file
+finally:
+    RL._json_cmd, RL.core.transcript_of, RL.prefixes, RL.transcript_by_sid = _sv105["jc"], _sv105["tof"], _sv105["pre"], _sv105["bysid"]
+    RL._LIVE.update(_sv105["live"])
+T.check("R105 (1.119) transcript with the short name the app shows («alfa105» for the tmux «pix-alfa105», not in the names map) → the conversation of that session",
+        _a105[0] is True and [e["id"] for e in json.loads(_a105[1])["entries"]] == _all105[-5:], str(_a105)[:300])
+T.check("R105 (1.119) the short name: the exact name wins («beta105» next to «pix-beta105»), and a short name two sessions share finds none",
+        (_rb105 or {}).get("tmux") == "beta105" and _rg105 is None, str((_rb105, _rg105)))
+T.check("R105 (1.119) a live session whose row points to no file: the file by its id in every account; no file at all → «no transcript yet for <name>», ok false, never an empty page",
+        _d105[0] is True and [e["id"] for e in json.loads(_d105[1])["entries"]] == _all105[-5:] and _e105 == (False, "no transcript yet for eps105"), str((_d105[:1], _e105)))
+
+# la copia del transcript di win: due letture insieme (la PWA ricaricata), il file di la' arriva a pezzi lenti
+HM105 = load("cm-hosts")
+_remote105 = b"".join(json.dumps({"type": "user", "n": i, "pad": "x" * 300}).encode() + b"\n" for i in range(400))
+
+
+_served105, _sizes105 = [], []
+
+
+class _Tail105:
+    def session_tail(self, name, offset, max_bytes=40000):
+        time.sleep(0.05)
+        data = _remote105[offset:offset + max_bytes]
+        _served105.append(len(data))
+        return {"sid": "S-w105", "size": len(_remote105), "offset": offset, "data": base64.b64encode(data).decode()}
+
+
+_sv105h = dict(ad=HM105.adapter, sd=HM105.state_dir)
+try:
+    HM105.adapter = lambda host: _Tail105()
+    HM105.state_dir = lambda: tmp / "st105"
+    _m105 = HM105.mirror_path("win", "S-w105")
+    _th105 = [threading.Thread(target=HM105.sync_transcript, args=("win", "w105", "S-w105")) for _ in range(3)]
+    [t.start() for t in _th105]
+    while any(t.is_alive() for t in _th105):   # chi legge la copia intanto: mai piu' corta di prima
+        _sizes105.append(_m105.stat().st_size if _m105.is_file() else 0)
+        time.sleep(0.005)
+    [t.join(60) for t in _th105]
+    _mb105 = _m105.read_bytes() if _m105.is_file() else b""
+finally:
+    HM105.adapter, HM105.state_dir = _sv105h["ad"], _sv105h["sd"]
+T.check("R105 (1.119) three copies of a win transcript at the same time → one at a time: the remote bytes travel once, the local copy never shrinks while it is read, and ends as the remote file byte for byte",
+        _mb105 == _remote105 and sum(_served105) == len(_remote105) and all(b >= a for a, b in zip(_sizes105, _sizes105[1:])),
+        f"{len(_mb105)} vs {len(_remote105)}, served {sum(_served105)}, shrinks {sum(1 for a, b in zip(_sizes105, _sizes105[1:]) if b < a)}")
+
+# R106 (04/11/2026, supervisor-approva-sessione-win-04-11, contratto 1.119): il maintainer, «perché la sua richiesta di approvazione
+# non appare qui?» — due compiti in attesa di ok con session «supervisor-app» mentre girava solo «win:supervisor-app»:
+# l'app abbina l'ok alla scheda con commitments[].session == sessions[].name e la scheda non aveva Approva
+_rows106 = [{"tmux": "", "name": "win:supervisor-app", "host": "win", "remote_name": "win-supervisor-app", "status": "idle", "session_id": "S-w106"},
+            {"tmux": "pix-alfa106", "name": "pix-alfa106", "status": "idle", "account": "work", "session_id": "S-a106"},
+            {"tmux": "beta106", "name": "beta106", "status": "idle", "account": "personal", "session_id": "S-b106"},
+            {"tmux": "", "name": "win:beta106", "host": "win", "remote_name": "beta106", "status": "idle", "session_id": "S-wb106"},
+            {"tmux": "", "name": "win:gamma106", "host": "win", "remote_name": "gamma106", "status": "idle", "session_id": "S-g106"},
+            {"tmux": "", "name": "lab:gamma106", "host": "lab", "remote_name": "gamma106", "status": "idle", "session_id": "S-l106"},
+            {"tmux": "delta106", "name": "delta106", "status": "dead", "session_id": "S-d106"}]
+_imp106 = [{"task": f"t{i}-106", "title": "x", "short": "x", "project": "", "session": s_} for i, s_ in
+           enumerate(["supervisor-app", "pix-alfa106", "alfa106", "beta106", "gamma106", "delta106", "mai106", None])]
+_sv106 = dict(live=dict(RL._LIVE), jc=RL._json_cmd, memo=RL._memo, pre=RL.prefixes, tt=RL.tocca_tasks, rm=RL.results_mod, ld=RL._load)
+try:
+    RL._LIVE.update(at=time.time(), rows=copy.deepcopy(_rows106))
+    RL.prefixes = lambda: ["", "pix-"]
+    RL._memo = lambda key, fn, **kw: fn()
+    RL._json_cmd = lambda *a, **k: copy.deepcopy(_imp106) if a[:2] == ("task", "impegni") else _sv106["jc"](*a, **k)
+    _c106 = {x["task"]: x.get("session") for x in RL.commitments_list()}
+    RL.tocca_tasks = lambda: {"supervisor-app": {"prove": 1, "decidi": 0}, "pix-alfa106": {"prove": 0, "decidi": 2}}
+    RL.results_mod = lambda: _RS103
+    RL._load = lambda name: type("SG0", (), {"by_session": staticmethod(lambda: {})})() if name == "cm-seguiti" else _sv106["ld"](name)
+    _RS103.unseen_by_session = staticmethod(lambda: {})
+    _t106 = RL.tocca_summary()
+finally:
+    RL._LIVE.update(_sv106["live"])
+    RL._json_cmd, RL._memo, RL.prefixes, RL.tocca_tasks, RL.results_mod, RL._load = _sv106["jc"], _sv106["memo"], _sv106["pre"], _sv106["tt"], _sv106["rm"], _sv106["ld"]
+T.check("R106 (1.119) commitments[].session is the name of the live session: a task of «supervisor-app» while only «win:supervisor-app» runs → «win:supervisor-app»; «pix-alfa106» and «alfa106» → «alfa106» (the state name)",
+        _c106["t0-106"] == "win:supervisor-app" and _c106["t1-106"] == "alfa106" and _c106["t2-106"] == "alfa106", json.dumps(_c106))
+T.check("R106 (1.119) the exact live name stays («beta106» runs here and on win: the task stays on «beta106»); a name two hosts share, a closed session or one never seen keep the registry name; no session stays null",
+        _c106["t3-106"] == "beta106" and _c106["t4-106"] == "gamma106" and _c106["t5-106"] == "delta106" and _c106["t6-106"] == "mai106" and _c106["t7-106"] is None, json.dumps(_c106))
+T.check("R106 (1.119) sessions[].tocca counts a task of «supervisor-app» on the card «win:supervisor-app», and «pix-alfa106» on «alfa106»",
+        _t106.get("win:supervisor-app", {}).get("prove") == 1 and _t106.get("alfa106", {}).get("decidi") == 2 and "supervisor-app" not in _t106, json.dumps(_t106))
+
+# R107 (04/11/2026, supervisor-chiudi-esito-04-11, contratto 1.120): il maintainer, «dobbiamo risolvere l'invio a vuoto di chiudi
+# quando la sessione è senza finestra» — relay.log alle 11:47: «slash <sessione> → ERR not closed: a job is running in
+# the background». Chiudi ha sempre un esito; una sessione occupata si chiude appena finisce o «comunque»; /exit senza
+# finestra passa da close
+_d107 = tmp / "r107"; _d107.mkdir()
+_base107 = {"status": "idle", "waiting": False, "attached": False, "cwd": str(tmp), "account": "personal"}
+_rows107 = [dict(_base107, tmux=n, name=n, pid=p, session_id="S-" + n, **kw) for n, p, kw in (
+    ("libera107", 5101, {}), ("occupata107", 5102, {"status": "busy"}), ("sotto107", 5103, {}), ("forza107", 5104, {"status": "busy"}),
+    ("lenta107", 5105, {"status": "busy"}), ("domanda107", 5106, {"status": "waiting", "waiting": True}), ("vista107", 5107, {"attached": True}))]
+_kids107 = {5103: [(6103, "bash")], 5104: [(6104, "bash")]}
+_run107, _talk107, _led107, _ledrows107 = [], [], [], []
+_sv107 = dict(json=RL._json_cmd, run=RL.run_cm, talk=RL.relay_talk, rdir=RL.rdir, cdir=RL.closed_dir, last=RL.last_sessions,
+              kids=RL._children, cmdl=RL._cmdline, pa=RL.push_async, lw=RL.ledger_write, lr=RL.core.ledger_rows, kill=RL.os.kill, allowed=RL.slash_allowed)
+_killed107 = []
+
+
+def _runcm107(*a, **k):
+    _run107.append(a)
+    if a[:1] == ("close",):
+        global _rows107
+        _rows107 = [r for r in _rows107 if r["tmux"] != a[1]]
+    return 0, ""
+
+
+try:
+    RL._json_cmd = lambda *a, **k: copy.deepcopy(_rows107) if a[:1] == ("sessions",) else _sv107["json"](*a, **k)
+    RL.run_cm = _runcm107
+    RL.relay_talk = lambda *a: (_talk107.append(a), (0, "consegnato"))[1]
+    RL.rdir = lambda: _d107
+    RL.closed_dir = lambda: _d107 / "closed"
+    RL.last_sessions = lambda: {}
+    RL._children = lambda pid: _kids107.get(pid, [])
+    RL._cmdline = lambda pid: ["bash", "-c", "sleep 600"]
+    RL.push_async = lambda *a, **k: None
+    RL.ledger_write = lambda ev, **f: _led107.append((ev, f.get("session"), f.get("armed")))
+    RL.core.ledger_rows = lambda: list(_ledrows107)
+    RL.os.kill = lambda pid, sig: _killed107.append(pid)
+    RL.slash_allowed = lambda: ["exit"]
+    _bad107 = RL.close_sessions({"by": "web", "when": "later"}, "libera107")
+    _now107 = RL.close_sessions({"by": "web"}, "libera107,occupata107,vista107")
+    _aft107 = RL.close_sessions({"by": "web", "when": "after"}, "occupata107,sotto107,domanda107,vista107,mai107")
+    _closing107 = RL.closing_of(_rows107)
+    _armed_a107 = sorted(RL.close_armed())
+    RL.close_tick()                                   # ancora occupate: niente
+    _tick0_107 = sorted(RL.close_armed())
+    _kids107.pop(5103)                                 # il sottofondo di sotto107 finisce
+    for r in _rows107:
+        if r["tmux"] == "occupata107":
+            r["status"] = "idle"                       # occupata107 si ferma
+    RL.close_tick()
+    _tick1_107 = sorted(RL.close_armed())
+    _run_before_force107 = len(_run107)
+    _frc107 = RL.close_sessions({"by": "web", "when": "force"}, "forza107,lenta107")
+    _f_int107 = [a for a in _run107[_run_before_force107:] if a[:1] == ("interrupt",)]
+    _f_talk107 = [a[0] for a in _talk107]
+    _armed_f107 = RL.close_armed()
+    for r in _rows107:
+        if r["tmux"] == "forza107":
+            r["status"] = "idle"                       # fermata: idle, ma il passaggio di consegne non e' ancora finito
+    _kids107.pop(5104, None)
+    RL.close_tick()
+    _tick2_107 = sorted(RL.close_armed())
+    _ledrows107.append({"event": "stop", "session_id": "S-forza107", "ts": iso(int(time.time()) + 2)})   # finito il turno
+    RL.close_tick(now=time.time() + 3)
+    _tick3_107 = sorted(RL.close_armed())
+    RL.close_tick(now=time.time() + RL.CLOSE_FORCE_S + 5)   # lenta107 ancora al lavoro alla scadenza: Esc e chiusa
+    _tick4_107 = sorted(RL.close_armed())
+    _ex107 = RL.slash_send({"by": "web"}, "domanda107", "domanda107", "exit")   # senza finestra: la strada di close
+finally:
+    RL._json_cmd, RL.run_cm, RL.relay_talk, RL.rdir, RL.closed_dir, RL.last_sessions = _sv107["json"], _sv107["run"], _sv107["talk"], _sv107["rdir"], _sv107["cdir"], _sv107["last"]
+    RL._children, RL._cmdline, RL.push_async, RL.ledger_write, RL.core.ledger_rows = _sv107["kids"], _sv107["cmdl"], _sv107["pa"], _sv107["lw"], _sv107["lr"]
+    RL.os.kill, RL.slash_allowed = _sv107["kill"], _sv107["allowed"]
+_closed107 = [a[1] for a in _run107 if a[:1] == ("close",)]
+T.check("R107 (1.120) close with an unknown `when` → refused with the valid values; when now (or absent): a free session closes, a busy or attached one is kept with the reason, in one answer",
+        _bad107[0] is False and "now, after, force" in _bad107[1]
+        and _now107 == (True, "closed: libera107\noccupata107 not closed: it is working\nvista107 not closed: it is attached to the PC"), str((_bad107, _now107)))
+T.check("R107 (1.120) when after: busy, background and question are armed (ok, «closes as soon as it finishes»); attached and gone are kept with the reason; state.sessions[].closing says it",
+        _aft107[0] is True and "occupata107 closes as soon as it finishes" in _aft107[1] and "sotto107 closes as soon as it finishes" in _aft107[1]
+        and "domanda107 closes as soon as it finishes" in _aft107[1] and "vista107 not closed: it is attached to the PC" in _aft107[1] and "mai107 not closed: it is not running" in _aft107[1]
+        and _armed_a107 == ["domanda107", "occupata107", "sotto107"] and _closing107.get("occupata107", {}).get("mode") == "after" and "libera107" not in _closing107, str((_aft107, _armed_a107, _closing107)))
+T.check("R107 (1.120) the armed closings fire when the session stops: nothing while busy; then the stopped one and the one whose background ended close, saved and in the ledger with armed after; the one still on a question waits",
+        _tick0_107 == ["domanda107", "occupata107", "sotto107"] and _tick1_107 == ["domanda107"] and {"occupata107", "sotto107"} <= set(_closed107)
+        and ("closed-from-app", "occupata107", "after") in _led107 and (_d107 / "closed" / "sotto107.json").is_file(), str((_tick0_107, _tick1_107, _closed107, _led107)))
+T.check("R107 (1.120) when force («Chiudi comunque», confirmed in the app): Esc to the turn, the background shell stopped, the handoff asked to the session, armed with a deadline",
+        _frc107[0] is True and "forza107: stopped, writing the handoff" in _frc107[1] and [a[1] for a in _f_int107] == ["forza107", "lenta107"]
+        and 6104 in _killed107 and _f_talk107[-2:] == ["forza107", "lenta107"] and _armed_f107["forza107"]["mode"] == "force"
+        and _armed_f107["forza107"]["deadline"] == _armed_f107["forza107"]["at"] + RL.CLOSE_FORCE_S, str((_frc107, _f_int107, _killed107, _talk107[-2:], _armed_f107)))
+T.check("R107 (1.120) a forced closing waits for the end of the handoff turn (a stop in the ledger after it was armed), then closes; at the deadline one still working gets Esc and closes anyway",
+        "forza107" in _tick2_107 and "forza107" not in _tick3_107 and "lenta107" in _tick3_107 and _tick4_107 == ["domanda107"] and "lenta107" in _closed107
+        and ("closed-from-app", "lenta107", "force") in _led107, str((_tick2_107, _tick3_107, _tick4_107, _closed107)))
+T.check("R107 (1.120) /exit for a session without a window goes the way of close: an answer with the reason (here a question is waiting), nothing typed in the pane",
+        _ex107 == (False, "domanda107 not closed: a question is waiting") and not any(a[1].startswith("/exit") for a in _talk107 if len(a) > 1), str(_ex107))
+
+_fx107 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_fc107 = {c["id"]: c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"]}
+T.check("R107 (1.120) the fixture for the app: close with when after and when force, the texts exactly as the relay writes them",
+        _fc107["6f1c2d3e-1120-4000-8000-000000001120"]["when"] == "after" and _fc107["6f1c2d3e-1121-4000-8000-000000001121"]["when"] == "force"
+        and _fx107["6f1c2d3e-1120-4000-8000-000000001120"]["text"] == RL.M("relay.cmd_close_armed", name="atlas-shop", s=RL.CLOSE_FORCE_S)
+        and _fx107["6f1c2d3e-1121-4000-8000-000000001121"]["text"] == RL.M("relay.cmd_close_forcing", name="atlas-shop", s=RL.CLOSE_FORCE_S), "")
+_st107 = S.build_state(dict(SRC2, closing={"atlas-shop": {"mode": "force", "at": 1789214398, "deadline": 1789214578}}), 1789214400)
+_cl107 = {x["name"]: x.get("closing") for x in _st107["sessions"]}
+T.check("R107 (1.120) state.sessions[].closing {mode, at, deadline} only on the session with an armed closing; absent on the others",
+        _cl107.get("atlas-shop") == {"mode": "force", "at": 1789214398, "deadline": 1789214578} and sum(1 for v in _cl107.values() if v) == 1, json.dumps(_cl107))
 
 T.finish()
