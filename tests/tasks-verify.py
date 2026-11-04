@@ -382,7 +382,11 @@ b2 = json.loads(cm("stall-check", "--json", env=A16b)[1])
 T.check("T16b two stalled tasks of an idle session → ONE item for the session with both tasks; a session that made a step on another task → nothing; the second run → nothing",
         [(x["session"], sorted(x["tasks"])) for x in b1 if x["session"] in ("s18", "s19")] == [("s18", ["sf1", "sf2"])]
         and next(x for x in b1 if x["session"] == "s18")["idle_s"] >= 3 * 3600 - 60 and b2 == [], json.dumps(b1)[:400])
+_imp16c = {x["task"]: x["stalled"] for x in json.loads(cm("impegni", "--json", env=A16b)[1])}
 _g16b("commit", "-q", "--allow-empty", "-m", "nuovo")
+_imp16d = {x["task"]: x["stalled"] for x in json.loads(cm("impegni", "--json", env=A16b)[1])}
+T.check("T16c (04/11, supervisor-impegni-fermi-sessione-04-11) impegni counts the same way: the idle session's tasks stalled, the one queued behind a working session not; after a commit in its folder none",
+        (_imp16c.get("sf1"), _imp16c.get("sf2"), _imp16c.get("sg1"), _imp16d.get("sf1"), _imp16d.get("sf2")) == (True, True, False, False, False), json.dumps((_imp16c, _imp16d)))
 _alerts16b = json.loads((tmp / "alerts16b.json").read_text())
 b3 = json.loads(cm("stall-check", "--json", env=A16b)[1])
 T.check("T16b a fresh commit in the session's folder counts as work: nothing, and the session leaves the alerts file (it alerts again when idle again)",

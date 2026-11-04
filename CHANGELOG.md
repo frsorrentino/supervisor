@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.116 — 2026-11-04: «stalled» means the same everywhere (supervisor-impegni-fermi-sessione-04-11, contract 1.114).**
+  - The app's home, the master's hook and `task impegni` count stalled tasks as the alerts do since 0.8.115: a task queued behind a session that is working is not stalled.
 - **0.8.115 — 2026-11-04: a task is stalled only if its session is (supervisor-fermi-per-sessione-04-11).**
   - `task stall-check` measures the session: tasks queued behind a session that made a step or a result on any task, or a commit in its folders, in the last 2 hours no longer fire. When a session is really idle the master gets one line for it, with its stalled tasks listed, instead of one alert per task.
 - **0.8.114 — 2026-11-03: the contract's sample state carries `state.tocca` (supervisor-tocca-fixture-03-11).**

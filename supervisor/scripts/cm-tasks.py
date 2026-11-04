@@ -996,6 +996,18 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
                     "paused": {"reason": pz["reason"], "at": int(pz["since"] or pz["at"]), "by": pz["by_"], "waits": pz["waits"],
                                "recheck": pz["recheck"]} if pz else None,   # 1.88: waits person | external | null
                     "stalled": bool(approved and not pz and idle >= stall_s)})
+    # 04/11/2026 (supervisor-impegni-fermi-sessione-04-11): la stessa regola di stall-check (0.8.115): un compito di una
+    # sessione che da meno di stall_s ha fatto un passo o un esito su un compito qualsiasi, o un commit nelle cartelle
+    # dei suoi compiti, non e' fermo: e' in coda dietro una sessione al lavoro. Home, hook della master e `task impegni`
+    act, cache = {}, {}
+    for x in out:
+        if x["stalled"] and x["session"]:
+            if x["session"] not in act:
+                projects = [r["project"] for r in con.execute("SELECT project FROM tasks WHERE session=? AND state IN (%s)"
+                                                              % ",".join("?" * len(OPEN_STATES)), (x["session"], *OPEN_STATES)).fetchall()]
+                act[x["session"]] = session_activity(con, x["session"], projects, cache)
+            if now_ - act[x["session"]] < stall_s:
+                x["stalled"] = False
     out.sort(key=lambda x: (not x["stalled"], -x["idle_s"], x["task"]))
     return out
 

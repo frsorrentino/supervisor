@@ -644,6 +644,10 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.114 (04/11/2026, from the master: four tasks «stalled» behind supervisor-app at work). No new key, `v` stays 1.
+
+- **`state.commitments[].stalled`** (and `task impegni`, the master's hook, the night report) is measured on the session, as `task stall-check` since 0.8.115: a task of a session that made a step or a result on any task, or a commit in the folders of its tasks, within `tasks.stall_hours` is not stalled; it waits in the queue behind a session at work. `idle_s` and `last_step` stay those of the task.
+
 Contract 1.113 (03/11/2026, the maintainer: «le decisioni superate devono andare da sole: semplificare, non dare compiti in più»). Additive, `v` stays 1.
 
 - **Tidying, every 10 minutes (`task tidy`).** What no longer asks anything leaves «Tocca a te» by itself: (1) a test whose build a newer tag of the same project contains (`git merge-base --is-ancestor`), both a pause with `prova` and a test of the bench; (2) a pause, a test or a needs-you request of a task already done, closed or cancelled; (3) two needs-you requests on the same task: the newest stays; (4) tests only: no step for 7 days and the task not running, into the archive. A wait for an action of the person without a test never expires by itself. The closing is «superata»: the pause closes or the test is retired, with a step that says why; never a confirmation of the person, never a closed task.
