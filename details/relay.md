@@ -644,6 +644,14 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.126 (05/11/2026, the maintainer: «con il clear automatico rimangono visibili solo i prompt inviati e non i transcript di risposta»; task supervisor-catena-trascrizioni-05-11). Additive, `v` stays 1.
+
+- **op `transcript` follows the session across its conversations.** After a `/clear` (also the automatic one after a handoff), a restart or a resume, a session writes a new transcript; until now the chat showed only that one. Now, when a page reaches the start of the current conversation, or the id asked for is in an earlier one, the relay goes on into the conversations before, of the same session, up to 7 days (at most 12). A chat open across a `/clear` that asks `after=<id of before>` gets the new entries, no `reset`.
+- **A new entry role, `separator`**, between two conversations: `{id, role: "separator", reason: "clear"|"startup"|"resume"|"restart"|"compact", at (epoch of the new conversation's start, from the PC), memory: "none"|"handoff"|"all"|"summary", handoff (the file announced, or null), text}`. `memory` is what the session remembers from there on: nothing after a `/clear` or a clean restart, only the handoff when one was announced, all after a resume. A compaction inside a conversation gives a lighter one (`reason: "compact"`, `memory: "summary"`) at its place. `text` is a readable line in the relay's language («/clear alle 18:52: da qui la sessione ricorda solo il passaggio di consegne»), so an app that does not know the role can still show it.
+- The chain comes from this computer's session ledger; sessions on win have no chain yet (no hooks there).
+
+Fixture: `cmd-result-sample.json` (…1230 a page across an automatic `/clear` after a handoff, with its separator).
+
 Contract 1.125 (05/11/2026, the maintainer: «All'avvio di una sessione, o al clear o al riavvio, le informazioni sul modello mancano nell'header … se si cambia modello durante un turno, l'operazione riesca»; task supervisor-modello-stato-05-11). No new key, `v` stays 1.
 
 - **`sessions[].model` and `effort` are there before the first turn.** After a start, a `/clear` or a restart the transcript has no turn yet. The model now comes from Claude Code's own SessionStart payload (`model`, measured in 2.1.318), noted for the session until a newer turn says it; the effort, and the model when that is missing, from what Claude Code gives the status line (fable-director's snapshot in `relay.window_hint_dir`). Never over a turn or a change from the selector. A session of win gets them at its first turn, as before (no hooks there).

@@ -1300,6 +1300,15 @@
       "device": "phone",
       "id": "6f1c2d3e-1220-4000-8000-000000001220",
       "op": "model"
+    },
+    {
+      "session": "atlas-shop",
+      "arg": "4",
+      "issued": 1789215660,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1230-4000-8000-000000001230",
+      "op": "transcript"
     }
   ],
   "result": [
@@ -2130,6 +2139,12 @@
       "ok": true,
       "text": "atlas-shop is working: model Fable 5.1 is chosen and applies at the end of the turn, before the next prompt",
       "at": 1789215001
+    },
+    {
+      "id": "6f1c2d3e-1230-4000-8000-000000001230",
+      "ok": true,
+      "text": "{\"entries\": [{\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"b7.1\", \"role\": \"assistant\", \"text\": \"The handoff is in docs/handoff-2026-09-12.md: the session continues from it after /clear.\", \"at\": 1789215560}, {\"id\": \"sep-5e0c41aa-9b2f-1789215600\", \"role\": \"separator\", \"reason\": \"clear\", \"at\": 1789215600, \"memory\": \"handoff\", \"handoff\": \"/home/dev/storefront/docs/handoff-2026-09-12.md\", \"text\": \"/clear at 18:52: from here the session remembers only the handoff\"}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"c1.0\", \"role\": \"user\", \"text\": \"Continue from the handoff\", \"at\": 1789215630}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"c2.0\", \"role\": \"assistant\", \"text\": \"Resuming: the totals test is next.\", \"at\": 1789215655}], \"more\": true}",
+      "at": 1789215661
     }
   ]
 }

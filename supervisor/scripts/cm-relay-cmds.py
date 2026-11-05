@@ -1341,6 +1341,118 @@ def transcript_by_sid(sid):
     return str(hit) if hit else None
 
 
+# ------------------------------------------------------------------ 1.126 (05/11/2026, supervisor-catena-trascrizioni-05-11)
+# Dopo un /clear (anche quello automatico dopo un handoff), un riavvio o una ripresa la sessione scrive in una trascrizione
+# nuova, e la chat del telefono perdeva le risposte di prima. La chat segue la catena delle conversazioni della stessa
+# sessione (fino a CHAIN_DAYS), con una voce «separator» per ogni passaggio: il motivo e l'ora dal PC.
+CHAIN_DAYS = 7
+CHAIN_MAX = 12
+LEDGER_TAIL = 16 * 1024 * 1024
+_CHAIN_CACHE = {}
+
+
+def _ledger_rows():
+    """Le righe start/end della coda del ledger (cache finche' il file non cambia)."""
+    f = Path(cm.expand(CFG["state_dir"])) / "ledger.jsonl"
+    try:
+        st = f.stat()
+    except OSError:
+        return []
+    key = (st.st_mtime, st.st_size)
+    if _CHAIN_CACHE.get("key") == key:
+        return _CHAIN_CACHE["rows"]
+    rows = []
+    try:
+        with open(f, "rb") as fh:
+            fh.seek(max(0, st.st_size - LEDGER_TAIL))
+            raw = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        raw = []
+    for ln in raw:
+        if '"event": "start"' not in ln and '"event": "end"' not in ln:
+            continue
+        try:
+            r = json.loads(ln)
+            r["_at"] = __import__("datetime").datetime.fromisoformat(r.get("ts") or "").timestamp()
+        except (ValueError, TypeError):
+            continue
+        rows.append(r)
+    _CHAIN_CACHE.update(key=key, rows=rows)
+    return rows
+
+
+def _separator(newer_sid, start):
+    """La voce fra due conversazioni: reason clear|startup|resume|restart, memory none|handoff|all, alla partenza della nuova."""
+    reason = "restart" if start.get("restart") else (start.get("source") or "startup")
+    if reason == "resume" or start.get("restart") == "resume":
+        memory = "all"
+    else:
+        memory = "handoff" if start.get("handoff") else "none"
+    at = int(start.get("_at") or 0)
+    hm = time.strftime("%H:%M", time.localtime(at))
+    return {"id": f"sep-{newer_sid[:12]}-{at}", "role": "separator", "reason": reason, "at": at, "memory": memory,
+            "handoff": start.get("handoff") or None, "text": M(f"relay.chat_sep_{memory}", what=M(f"relay.chat_reason_{reason}"), time=hm)}
+
+
+def conversation_chain(sid, cwd="", tm="", now_=None):
+    """[{sid, path, sep}] delle conversazioni prima di `sid` nella stessa sessione, dalla piu' recente; sep e' la voce
+    che apre la conversazione dopo di lei. Il legame: prev_sid nella riga start (dal 05/11), altrimenti, per un /clear,
+    la riga end con reason clear della stessa tmux (o cartella) pochi secondi prima. Fino a CHAIN_DAYS e CHAIN_MAX."""
+    now_ = now_ or time.time()
+    rows = _ledger_rows()
+    out, seen, cur = [], {sid}, sid
+    for _ in range(CHAIN_MAX):
+        st = next((r for r in rows if r.get("event") == "start" and r.get("session_id") == cur and r.get("source") != "compact"), None)
+        if not st:
+            break
+        prev = st.get("prev_sid")
+        if not prev and st.get("source") == "clear":
+            cand = [r for r in rows if r.get("event") == "end" and r.get("reason") == "clear" and 0 <= st["_at"] - r["_at"] <= 30
+                    and r.get("session_id") not in seen
+                    and ((r.get("tmux") == st.get("tmux")) if (r.get("tmux") and st.get("tmux")) else (r.get("cwd") == st.get("cwd")))]
+            prev = cand[-1]["session_id"] if cand else None
+        if not prev or prev in seen or now_ - st["_at"] > CHAIN_DAYS * 86400:
+            break
+        path = transcript_by_sid(prev)
+        if not path:
+            break
+        out.append({"sid": prev, "path": path, "sep": _separator(cur, st)})
+        seen.add(prev)
+        cur = prev
+    return out
+
+
+COMPACT_RE = re.compile(rb'"subtype"\s*:\s*"compact_boundary"')
+
+
+def _with_compacts(path, start, entries):
+    """Le voci di un file con una «separator» leggera (reason compact, memory summary) a ogni compattazione."""
+    seps = []
+    try:
+        with open(path, "rb") as f:
+            f.seek(start)
+            for ln in f:
+                if not COMPACT_RE.search(ln):
+                    continue
+                try:
+                    d = json.loads(ln)
+                except ValueError:
+                    continue
+                at = int(core._turn_epoch(d.get("timestamp")))
+                hm = time.strftime("%H:%M", time.localtime(at))
+                seps.append({"id": f"sep-{str(d.get('uuid') or at)[:36]}", "role": "separator", "reason": "compact", "at": at,
+                             "memory": "summary", "handoff": None, "text": M("relay.chat_sep_summary", what=M("relay.chat_reason_compact"), time=hm)})
+    except OSError:
+        return entries
+    if not seps:
+        return entries
+    out = list(entries)
+    for sep in seps:
+        i = next((k for k, e in enumerate(out) if int(e.get("at") or 0) > sep["at"]), len(out))
+        out.insert(i, sep)
+    return out
+
+
 def transcript_page(session, tm, arg, sid=None):
     """1.22 (30/09): la chat di una sessione per il telefono. arg «n» = le ultime n voci; «n:before=<id>» = le n
     prima di quella voce; «n:after=<id>» = le prime n dopo (il telefono lo ripete a scheda aperta, e costa poco:
@@ -1367,7 +1479,7 @@ def transcript_page(session, tm, arg, sid=None):
         path = core.transcript_of(row) if row else None
         if not path:
             return False, M("relay.cmd_interrupt_gone", name=session)
-        return transcript_read(path, n, mode, ref)
+        return transcript_read(path, n, mode, ref, chain_of(row, tm))
     if row.get("host") and row.get("host") != "local":
         # 09/10: la chat di una sessione su un altro host: prima i byte nuovi del suo transcript, nella copia locale
         try:
@@ -1385,11 +1497,23 @@ def transcript_page(session, tm, arg, sid=None):
         # a ieri una pagina vuota con ok (28/10, «sessione appena partita»), che l'app prende per la conversazione intera
         # e mette al posto delle voci che ha. Ora un rifiuto col motivo: l'app tiene quello che ha e riprova
         return False, M("relay.cmd_transcript_missing", name=session)
-    return transcript_read(path, n, mode, ref)
+    return transcript_read(path, n, mode, ref, chain_of(row, tm))
 
 
-def transcript_read(path, n, mode, ref):
-    """La pagina di voci di una trascrizione (vedi transcript_page)."""
+def chain_of(row, tm):
+    """La catena di una sessione di qui (le sessioni degli altri host non hanno ledger qui: nessuna)."""
+    if not row or not row.get("session_id") or (row.get("host") and row.get("host") != "local"):
+        return []
+    try:
+        return conversation_chain(str(row["session_id"]), row.get("cwd") or "", row.get("tmux") or tm or "")
+    except Exception:   # noqa: BLE001 — la catena e' un di piu': la conversazione di adesso c'e' comunque
+        return []
+
+
+def transcript_read(path, n, mode, ref, chain=None):
+    """La pagina di voci di una trascrizione (vedi transcript_page). 1.126: `chain` = le conversazioni di prima della
+    stessa sessione (conversation_chain): quando la pagina arriva all'inizio del file, o la voce chiesta non c'e', si
+    legge anche la precedente, con la sua voce «separator» in mezzo."""
     size = os.path.getsize(path)
     for window in TRANSCRIPT_WINDOWS:
         start = 0 if window is None or window >= size else size - window
@@ -1400,6 +1524,24 @@ def transcript_read(path, n, mode, ref):
         if not ref and len(entries) < n and start:
             continue
         break
+    entries = _with_compacts(path, start, entries)
+    ids = [e["id"] for e in entries]
+    older = list(chain or []) if not start else []
+    # 1.126: la conversazione di prima entra quando serve: la voce chiesta e' la' (la chat aperta dopo un /clear), o la
+    # pagina dal fondo (o prima di una voce) arriva all'inizio di questo file
+    while older:
+        need = (ref and ref not in ids) or (not ref and len(entries) < n) or \
+               (mode == "before" and ref in ids and ids.index(ref) - n < 0)
+        if not need:
+            break
+        prev = older.pop(0)
+        try:
+            pe = _with_compacts(prev["path"], 0, core.transcript_entries(prev["path"], 0, diff_cap=(DF.ENTRY_LINES, DF.ENTRY_BYTES)))
+        except OSError:
+            older = []
+            break
+        entries = pe + [prev["sep"]] + entries
+        ids = [e["id"] for e in entries]
     reset = False
     if ref and ref not in ids:
         if mode != "after":
@@ -1414,7 +1556,7 @@ def transcript_read(path, n, mode, ref):
     else:
         end = ids.index(ref) if mode == "before" else len(entries)
         page = entries[max(0, end - n):end]
-        more = end - n > 0 or bool(start)
+        more = end - n > 0 or bool(start) or bool(older)
     page = [dict(e, diff=DF.redact_diff(e["diff"])) if e.get("diff") else e for e in page]   # 1.72: solo le voci che escono
     while page and len(json.dumps({"entries": page, "more": True}, ensure_ascii=False).encode()) > TRANSCRIPT_MAX_BYTES:
         if mode == "after":

@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.132 — 2026-11-05: the chat keeps the answers from before a /clear, a restart or a resume (supervisor-catena-trascrizioni-05-11, contract 1.126).**
+  - After a `/clear` (also the automatic one after a handoff) the app's chat no longer drops Claude's earlier answers: scrolling up, it shows the conversations before, up to 7 days, each under a bar that says what happened and when (a /clear, a restart, a resume, a compaction) and what the session still remembers from there.
 - **0.8.131 — 2026-11-05: `host fetch` brings back the work of a session on win even after it realigned its branch to origin (supervisor-host-fetch-base-05-11).**
   - The patches start from the newest commit there that also exists here, not from the base saved at launch: a session that reset its branch to origin and then committed no longer fails with «already exists in index».
   - When the history there has nothing in common with this one, the command says so and gives the manual way (`git format-patch -o` there, `git am --3way` here).

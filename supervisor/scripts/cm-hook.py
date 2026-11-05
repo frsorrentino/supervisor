@@ -114,6 +114,59 @@ def note_start_model(sid, model):
         pass
 
 
+def chain_fields(p, handoff_line=""):
+    """05/11/2026 (supervisor-catena-trascrizioni-05-11): nella riga «start» del ledger cio' che serve alla chat per
+    legare questa conversazione alla precedente della stessa sessione: il nome tmux; prev_sid, la conversazione di
+    prima (un /clear: la riga «end» con reason clear dello stesso processo, pochi secondi prima; un riavvio di
+    supervisor: il marcatore che lascia l'esecutore); restart clean|resume; handoff, il file annunciato."""
+    out = {}
+    tm = my_tmux_name()
+    if tm:
+        out["tmux"] = tm
+    m = re.search(r"(?:leggi|read) (\S+) \(", handoff_line or "")
+    if m:
+        out["handoff"] = m.group(1)
+    flag = os.environ.get("CM_RESTART_FLAG_FILE") or cm.expand((CFG.get("restart") or {}).get("flag_file") or "") or str(STATE / "restart.json")
+    mk = Path(flag).parent / "restarted" / f"{tm}.json" if tm else None
+    try:
+        if mk and mk.is_file():
+            d = json.loads(mk.read_text())
+            mk.unlink(missing_ok=True)
+            if time.time() - float(d.get("at") or 0) < 900:
+                out["restart"] = "clean" if d.get("clean") else "resume"
+                if d.get("prev_sid") and d["prev_sid"] != p.get("session_id"):
+                    out["prev_sid"] = d["prev_sid"]
+                return out
+    except (OSError, ValueError):
+        pass
+    if p.get("source") == "clear":
+        # il pid del ledger e' quello di chi lancia l'hook, diverso a ogni chiamata (15:11:28 end 27950, 15:11:30 start
+        # 28046): si lega per nome tmux, o, per le righe senza, per cartella entro pochi secondi
+        now_, cwd = time.time(), p.get("cwd") or ""
+        try:
+            with open(STATE / "ledger.jsonl", "rb") as f:
+                f.seek(0, 2)
+                f.seek(max(0, f.tell() - 200_000))
+                tail = f.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            tail = []
+        for ln in reversed(tail):
+            if '"end"' not in ln:
+                continue
+            try:
+                r = json.loads(ln)
+                at = datetime.datetime.fromisoformat(r.get("ts") or "").timestamp()
+            except ValueError:
+                continue
+            if now_ - at > 30:
+                break
+            same = (r.get("tmux") == tm) if (tm and r.get("tmux")) else (r.get("cwd") == cwd)
+            if r.get("event") == "end" and r.get("reason") == "clear" and same and r.get("session_id") != p.get("session_id"):
+                out["prev_sid"] = r["session_id"]
+                break
+    return out
+
+
 def ledger(event, p, **extra):
     try:
         STATE.mkdir(parents=True, exist_ok=True)
@@ -505,7 +558,17 @@ def main(argv):
     if ev == "SessionStart":
         registry_update()
         (STATE / "waiting" / sid).unlink(missing_ok=True) if sid else None
-        ledger("start", p, source=p.get("source", ""), model=p.get("model") or None)   # 05/11: il modello del payload, misurato
+        handoff_line = ""
+        if p.get("source", "startup") in ("clear", "startup", ""):
+            try:   # 13/10: l'handoff di /supervisor:handoff scritto prima di /clear (05/11: a ogni /clear fino al primo prompt)
+                spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
+                ho = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(ho)
+                handoff_line = ho.announce(p.get("cwd") or os.getcwd(), sid or None) or ""
+            except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
+                handoff_line = ""
+        ledger("start", p, source=p.get("source", ""), model=p.get("model") or None,   # 05/11: il modello del payload, misurato
+               **chain_fields(p, handoff_line))
         note_start_model(sid, p.get("model"))
         k = kernel_text(p)
         if k:
@@ -519,16 +582,8 @@ def main(argv):
         c = commitments_block()   # P2: a ogni giro di regia, dal registro
         if c:
             sys.stdout.write(c + "\n")
-        if p.get("source", "startup") in ("clear", "startup", ""):
-            try:   # 13/10: l'handoff di /supervisor:handoff scritto prima di /clear, una volta sola
-                spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
-                ho = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(ho)
-                line = ho.announce(p.get("cwd") or os.getcwd(), sid or None)   # 05/11: a ogni /clear finche' non si riparte
-                if line:
-                    sys.stdout.write(line + "\n")
-            except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
-                pass
+        if handoff_line:
+            sys.stdout.write(handoff_line + "\n")
         try:   # 23/09: i messaggi arrivati mentre la sessione era chiusa (casella persistente)
             box = inbox().deliver_block(my_tmux_name(), p.get("cwd") or os.getcwd(), "session-start")
             if box:
@@ -539,7 +594,7 @@ def main(argv):
     elif ev == "SessionEnd":
         explicit = p.get("reason", "") in ("prompt_input_exit", "logout")
         registry_update(closed=my_tmux_name() if explicit else "")
-        ledger("end", p, reason=p.get("reason", ""))
+        ledger("end", p, reason=p.get("reason", ""), **({"tmux": my_tmux_name()} if my_tmux_name() else {}))   # 05/11: la catena della chat
         relay_push()
     elif ev == "UserPromptSubmit":
         if sid:

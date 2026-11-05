@@ -98,12 +98,13 @@ arm() {
     esac
     shift
   done
-  python3 - "$(flag_of "$nome")" "$nome" "$pid" "$cartella" "$clean" "$conf_da" "$conf_a" "$sid" "$acc_a" <<'PY'
+  python3 - "$(flag_of "$nome")" "$nome" "$pid" "$cartella" "$clean" "$conf_da" "$conf_a" "$sid" "$acc_a" "${CLAUDE_CODE_SESSION_ID:-}" <<'PY'
 import json, sys, time, uuid
-f, nome, pid, cartella, clean, conf_da, conf_a, sid, acc_a = sys.argv[1:]
+f, nome, pid, cartella, clean, conf_da, conf_a, sid, acc_a, prima = sys.argv[1:]
+# 05/11 (supervisor-catena-trascrizioni-05-11): «prima» = la conversazione di adesso, per la catena della chat
 json.dump({"tmux": nome, "pid": int(pid), "cartella": cartella, "armato": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
            "gen": uuid.uuid4().hex[:8], "pulita": clean == "true", "conf_da": conf_da, "conf_a": conf_a,
-           "sessione": sid, "account_a": acc_a}, open(f, "w"))
+           "sessione": sid, "account_a": acc_a, "prima": prima}, open(f, "w"))
 PY
   # P5 (22/10/2026): dalla master, la parte «impegni» del passaggio di consegne dal registro, prima del riavvio
   [ "$nome" = "${CM_WORKSPACE_ROOT_SESSION_NAME:-master}" ] && python3 "$CM_SCRIPTS/cm-handoff.py" --snapshot "$cartella" "$nome" >/dev/null 2>&1 || true
@@ -182,6 +183,11 @@ esegui() {
   nome=$(json_get "$flag" tmux); pid=$(json_get "$flag" pid); cartella=$(json_get "$flag" cartella)
   conf_da=$(json_get "$flag" conf_da); conf_a=$(json_get "$flag" conf_a); sid=$(json_get "$flag" sessione)
   acc_a=$(json_get "$flag" account_a); pulita=$(json_get "$flag" pulita); gen=$(json_get "$flag" gen)
+  # 05/11 (supervisor-catena-trascrizioni-05-11): il SessionStart dopo il riavvio legge da qui che e' un riavvio e da
+  # quale conversazione viene, per la barra della chat
+  mkdir -p "$(dirname "$FLAG")/restarted"
+  python3 -c 'import json,sys,time; json.dump({"prev_sid": sys.argv[2], "clean": sys.argv[3] == "true", "at": time.time()}, open(sys.argv[1], "w"))' \
+    "$(dirname "$FLAG")/restarted/$nome.json" "$(json_get "$flag" prima)" "$pulita" 2>/dev/null || true
   rm -f "$flag"
   echo "=== $(date -Is) riavvio di '$nome' ($cartella) gen=$gen ==="
   [ -n "$nome" ] && [ -n "$pid" ] && [ -n "$cartella" ] || { echo "flag illeggibile, annullato"; exit 1; }
