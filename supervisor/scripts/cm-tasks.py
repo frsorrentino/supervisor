@@ -685,9 +685,41 @@ def inbox_approval_text(by, rec_id, note=None, task_session=None):
     age = time.time() - float(rec.get("created") or 0)
     if age > INBOX_MAX_AGE_S:
         sys.exit(f"task approve --inbox: message {rec_id} is {int(age // 60)} minutes old (at most {INBOX_MAX_AGE_S // 60})")
-    quote = " ".join(str(rec.get("text") or "").split())[:400]
+    quote = _user_words(rec.get("text"))
     when = time.strftime("%d/%m %H:%M", time.localtime(float(rec["created"])))
     return f"{by}, {when}: «{quote}» (inbox {rec_id}, origin {origin}, to {caller})" + (f" — {note}" if note else "")
+
+
+def _user_words(text, cap=400):
+    """05/11/2026 (supervisor-ok-testo-relay-05-11): le parole della persona di un messaggio della casella. Quello arrivato
+    dal relay porta davanti il contenitore («Dall'utente via telefono. Rispondi nella tua finestra…»): si toglie come fa
+    la chat (cm-core._origin_of), cosi' il registro, prova di chi ha approvato cosa, cita la persona e non il relay."""
+    t = str(text or "")
+    try:
+        t = _load("cm-core")._origin_of(t)[0]
+    except Exception:   # noqa: BLE001 — senza cm-core il testo com'e'
+        pass
+    return " ".join(t.split())[:cap]
+
+
+def is_remote_session(name):
+    """Una sessione su un altro host (win:nome, o un nome registrato da launch --host): li' `task show` non c'e'."""
+    if not name:
+        return False
+    if ":" in name:
+        return True
+    try:
+        return bool(_load("cm-rsession").resolve(name))
+    except Exception:   # noqa: BLE001
+        return False
+
+
+def card_for(row):
+    """05/11: la carta del compito per una sessione di win, che il registro non lo legge: titolo, esito atteso, piano."""
+    t = _contract_task(row)
+    return M("tasks.card_remote", task=row["id"], title=" ".join(str(t.get("title") or "").split())[:200],
+             expected=" ".join(str((t.get("outcome") or {}).get("expected") or "-").split())[:300],
+             plan=" ".join(str(t.get("plan") or row["plan"] or "-").split())[:900])
 
 
 def pin_approval_text(by, pin, note=None):
@@ -723,7 +755,7 @@ def standing_text(by, rec_id):
     origin = str(rec.get("origin") or "?")
     if origin not in ("relay", "terminal"):
         sys.exit(f"task standing add: message {rec_id} did not come from the person (origin {origin}): a standing ok is the person's own message, never a cron prompt or another session's text")
-    quote = " ".join(str(rec.get("text") or "").split())[:400]
+    quote = _user_words(rec.get("text"))
     when = time.strftime("%d/%m %H:%M", time.localtime(float(rec["created"])))
     return f"{by}, {when}: «{quote}» (inbox {rec_id}, origin {origin}, to {caller})"
 
@@ -1508,7 +1540,8 @@ def answer(con, tids, by, text, ok_at=None, choice=None, prove_ids=None, ko=None
         sess = row["session"] or (_contract_task(row).get("where") or {}).get("session")
         quote = " ".join(text.split())[:200]
         for name in dict.fromkeys(n for n in (sess, root_session()) if n and n != caller):
-            _talk(name, M("tasks.answer_told", person=M("tasks.person"), task=tid, did=summary, quote=quote, where=where))
+            _talk(name, M("tasks.answer_told", person=M("tasks.person"), task=tid, did=summary, quote=quote, where=where)
+                  + ("\n\n" + card_for(row) if is_remote_session(name) else ""))
         lines.append(f"{tid}: {summary}")
     return lines
 
@@ -2448,7 +2481,8 @@ def main(argv):
         sess = row["session"] or (_contract_task(row).get("where") or {}).get("session")
         did = M("tasks.answer_did_choice", choice=choice) if choice else M("tasks.answer_did_ok")
         for name in dict.fromkeys(n for n in (sess, root_session()) if n and n != caller):
-            _talk(name, M("tasks.answer_told", person=M("tasks.person"), task=args[0], did=did, quote=" ".join(text.split())[:200], where=M("tasks.answer_where", origin="pin" if pin else "chat")))
+            _talk(name, M("tasks.answer_told", person=M("tasks.person"), task=args[0], did=did, quote=" ".join(text.split())[:200], where=M("tasks.answer_where", origin="pin" if pin else "chat"))
+                  + ("\n\n" + card_for(row) if is_remote_session(name) else ""))
         return 0
     if verb == "tidy":
         if _flag(args, "--archive"):

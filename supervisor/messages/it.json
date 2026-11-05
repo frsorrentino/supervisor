@@ -1315,6 +1315,7 @@
   "tasks.answer_newer": "restano le prove {nums}, scritte dopo il messaggio: non le ha viste",
   "tasks.answer_settle": "il controllo gira (task settle)",
   "tasks.answer_told": "{person} ha risposto a {task} {where}: {did}. Testo: «{quote}». Vale ovunque: non chiederlo di nuovo, prosegui.",
+  "tasks.card_remote": "La carta di {task} (su questo host il registro non c'è): {title}. Esito atteso: {expected}. Piano: {plan}",
   "hook.answers_pending": "Aspettano una risposta della persona: {items}. Se questo messaggio risponde a una di queste voci, registralo una volta sola: `supervisor task ok ID… --by <nome> --inbox {id}` (prove: --prove 72-80, scelta: --choice C, «non va»: --ko \"motivo\"); vale ovunque (app, orologio, master). Se il messaggio può valere per voci diverse con effetti diversi, chiedi quale.",
   "relay.prova_told_ok": "{person} ha segnato ok le prove {nums} di {task} {device}; ne restano {left}. Vale ovunque: non chiederle di nuovo in chat.",
   "relay.prova_told_ko": "{person} {device}: la prova {nums} di {task} non va: «{text}». Riparti da qui; la master lo sa."

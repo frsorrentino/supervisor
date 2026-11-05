@@ -592,6 +592,10 @@ def slash_send(cmd, session, tm, arg):
     if not SLASH_RE.fullmatch(name) or name not in slash_allowed():
         return False, M("relay.cmd_slash_not_allowed", cmd=name or "?")
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
+    if name == "exit" and row and row.get("host") and row.get("host") != "local":
+        # 05/11 (supervisor-chiudi-win-05-11): una sessione su un altro host non ha tmux qui; il tasto Chiudi rispondeva
+        # «no session» prima di arrivare a close, che `supervisor close` da terminale invece chiude
+        return close_sessions(cmd, session, session)
     if not row or not row.get("tmux"):
         return False, M("relay.cmd_slash_no_session", name=session or "?")
     if name == "exit" and not row.get("attached"):
@@ -1706,7 +1710,12 @@ def wake_after_approve(tid, text):
         except OSError:
             pass
     if sess:
-        spawn("talk", sess, M("relay.approve_wake", **kw), "--no-wait")
+        wake = M("relay.approve_wake", **kw)
+        if ":" in sess or _load("cm-rsession").resolve(sess):   # 05/11: su win `task show` non c'e': la carta va col via
+            wake += "\n\n" + M("tasks.card_remote", task=tid, title=S.one_line(str(task.get("title") or ""))[:200],
+                                 expected=S.one_line(str((task.get("outcome") or {}).get("expected") or "-"))[:300],
+                                 plan=S.one_line(str(task.get("plan") or info.get("plan") or "-"))[:900])
+        spawn("talk", sess, wake, "--no-wait")
         clear_needs_you(sess)
     if sess != master:
         spawn("talk", master, M("relay.approve_master", session=sess or "-", **kw), "--no-wait")

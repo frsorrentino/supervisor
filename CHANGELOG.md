@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.133 — 2026-11-05: an ok recorded from your message quotes your words, a session on win gets the card with it, and «Chiudi» closes a session on win (supervisor-ok-testo-relay-05-11, supervisor-chiudi-win-05-11).**
+  - When a session records an ok you sent from the phone or the web app, the registry and the notice to the sessions now quote what you wrote, not the relay's «Dall'utente via telefono…» wrapper.
+  - A session on win, which cannot read the registry, receives with the ok the task's title, expected outcome and plan.
+  - «Chiudi» in the app on a session on win now closes it as `supervisor close` does, with its checks and the outcome, instead of answering «no session».
 - **0.8.132 — 2026-11-05: the chat keeps the answers from before a /clear, a restart or a resume (supervisor-catena-trascrizioni-05-11, contract 1.126).**
   - After a `/clear` (also the automatic one after a handoff) the app's chat no longer drops Claude's earlier answers: scrolling up, it shows the conversations before, up to 7 days, each under a bar that says what happened and when (a /clear, a restart, a resume, a compaction) and what the session still remembers from there.
 - **0.8.131 — 2026-11-05: `host fetch` brings back the work of a session on win even after it realigned its branch to origin (supervisor-host-fetch-base-05-11).**
