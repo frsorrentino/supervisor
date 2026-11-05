@@ -79,8 +79,11 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 poi `suggest fill` lo ripropone (1.88)
   supervisor task closed [AAAA-MM-GG] [--json]  i compiti chiusi quel giorno (oggi) con la prova (release, commit, file o
                                                 controllo) e i sei giorni prima con un conteggio; exit 3 senza registro
-  supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P]
+  supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P] [--importance alta|media|bassa]
                                                 corregge il contratto di un compito aperto (validato di nuovo)
+  supervisor task importance [ID | --cwd DIR] [--json]   05/11: quanto pesa il compito (alta, media, bassa),
+                                                dichiarata o dedotta; con --cwd quello attivo della cartella piu'
+                                                vicina. Lo stesso nel file ~/.claude/supervisor/task-importance.json
   supervisor task short ID "testo" [--by B]     il titolo breve (task.short, 1-28 caratteri, una riga nell'app: contratto
                                                 1.79); senza, impegni e closed ne ricavano uno dal titolo (parole intere)
   supervisor task confirm ID --by B (--inbox MSG | --pin P)   la conferma della persona (come task ok); `task
@@ -1922,7 +1925,7 @@ def stall_check(con, now_=None):
     return new
 
 
-def amend(con, tid, check=None, timeout_s=None, expected=None, kind=None, proof=None, by=None):
+def amend(con, tid, check=None, timeout_s=None, expected=None, kind=None, proof=None, by=None, importance=None):
     """Corregge il contratto di un compito aperto; validato di nuovo (schema e regola dell'esito). [] o gli errori."""
     row = get_task(con, tid)
     if row["state"] not in OPEN_STATES:
@@ -1946,8 +1949,11 @@ def amend(con, tid, check=None, timeout_s=None, expected=None, kind=None, proof=
             o["proof"] = proof
         t["outcome"] = o
         changes.append(f"outcome ({o.get('kind')}): {o.get('expected')}")
+    if importance is not None:   # 05/11/2026: l'importanza dichiarata (schema: alta, media, bassa)
+        t["importance"] = importance
+        changes.append(f"importance: {importance}")
     if not changes:
-        sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P]")
+        sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P] [--importance alta|media|bassa]")
     errs = validate(contract) or outcome_errors(t) or check_syntax_errors(t)
     if errs:
         return errs
@@ -2224,16 +2230,28 @@ def main(argv):
         con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (now(), args[0]))
         con.commit()
         return 0
+    if verb == "importance":
+        tid, cwd = (args[0] if args and not args[0].startswith("-") else None), _opt(args, "--cwd")
+        if tid:
+            r = get_task(con, tid)
+            res = {**importance_of(con, r), "task": tid}
+        else:
+            res = importance_for_cwd(con, cwd or os.getcwd())
+        if res is None:
+            res = {"importance": None, "task": None, "source": None, "why": None}
+        print(json.dumps(res, ensure_ascii=False) if as_json else (f"{res['task']}: {res['importance']} ({res['source']}: {res['why']})" if res["task"] else "-"))
+        return 0
     if verb == "amend":
         check, to = _opt(args, "--check"), _opt(args, "--timeout")
+        imp = _opt(args, "--importance")
         expected, kind, proof, by = _opt(args, "--outcome"), _opt(args, "--kind"), _opt(args, "--proof"), _opt(args, "--by")
         if not args:
-            sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P]")
+            sys.exit("usage: task amend ID [--check CMD] [--timeout S] [--outcome TEXT] [--kind K] [--proof P] [--importance alta|media|bassa]")
         try:
             to = int(to) if to is not None else None
         except ValueError:
             sys.exit("task amend: --timeout wants seconds")
-        errs = amend(con, args[0], check, to, expected, kind, proof, by)
+        errs = amend(con, args[0], check, to, expected, kind, proof, by, imp)
         if errs:
             print("\n".join(errs), file=sys.stderr)
             return 2
@@ -2451,5 +2469,117 @@ def main(argv):
     sys.exit(f"task: unknown verb {verb}")
 
 
+# ------------------------------------------------------------------ importanza (05/11/2026, supervisor-importanza-compito-05-11)
+IMPORTANCE = ("alta", "media", "bassa")
+IMPORTANCE_LOW_TYPES = ("chore", "verify", "test", "tests", "test-fix")
+HIGH_STAKES_DEFAULT = ("personali/rino", "clienti", "enti")
+# i verbi che non cambiano il registro: dopo di loro il file dell'importanza non si riscrive
+IMPORTANCE_READ_ONLY = ("show", "list", "impegni", "importance", "closed", "board", "check", "confirmed", "pagella", "unproven",
+                        "login-check", "prove", "decisioni", "stall-check", "help", "-h", "--help")
+
+
+def importance_path():
+    """Il file che fable-director (advice.py, nella statusline) legge invece di lanciare un processo: ~/.claude/supervisor/
+    task-importance.json, fisso nella home (CM_IMPORTANCE_FILE per i test)."""
+    p = os.environ.get("CM_IMPORTANCE_FILE")
+    return Path(p) if p else Path.home() / ".claude" / "supervisor" / "task-importance.json"
+
+
+def high_stakes_dirs():
+    """Le cartelle ad alta posta (tasks.high_stakes_dirs, relative alla radice dei progetti o assolute): un compito li' e'
+    alto. Senza config: personali/rino, clienti, enti."""
+    cm_, cfg = _cfg()
+    lst = (cfg.get("tasks") or {}).get("high_stakes_dirs")
+    lst = list(HIGH_STAKES_DEFAULT) if lst is None else [str(x) for x in lst if str(x).strip()]
+    root = os.path.expanduser(str((cfg.get("workspace") or {}).get("root") or "~/Desktop/workspaces"))
+    if cm_:
+        root = cm_.expand(root)
+    return [os.path.normpath(x if os.path.isabs(os.path.expanduser(x)) else os.path.join(root, x)) for x in (os.path.expanduser(y) for y in lst)]
+
+
+def _under(path, base):
+    path, base = os.path.normpath(str(path)), os.path.normpath(str(base))
+    return path == base or path.startswith(base.rstrip(os.sep) + os.sep)
+
+
+def importance_of(con, row):
+    """{importance, source, why} di un compito: quella dichiarata nel contratto (task.importance) o, senza, dedotta dai
+    fatti del registro, mai dal testo e senza modello: alta con un ok che ha undo no, con un esito deploy (scrive in
+    produzione), in una cartella ad alta posta (clienti, enti, tasks.high_stakes_dirs); bassa per i tipi chore e prova;
+    media altrimenti."""
+    t = json.loads(row["contract"])["task"]
+    if t.get("importance") in IMPORTANCE:
+        return {"importance": t["importance"], "source": "declared", "why": M("tasks.imp_declared")}
+    if con.execute("SELECT 1 FROM approvals WHERE task=? AND undo='no' LIMIT 1", (row["id"],)).fetchone():
+        return {"importance": "alta", "source": "inferred", "why": M("tasks.imp_undo_no")}
+    if (t.get("outcome") or {}).get("kind") == "deploy":
+        return {"importance": "alta", "source": "inferred", "why": M("tasks.imp_deploy")}
+    hs = next((d for d in high_stakes_dirs() if row["project"] and _under(row["project"], d)), None)
+    if hs:
+        return {"importance": "alta", "source": "inferred", "why": M("tasks.imp_dir", dir=os.path.basename(hs))}
+    if str(t.get("type") or "") in IMPORTANCE_LOW_TYPES:
+        return {"importance": "bassa", "source": "inferred", "why": M("tasks.imp_low", type=t.get("type"))}
+    return {"importance": "media", "source": "inferred", "why": M("tasks.imp_medium")}
+
+
+def active_by_dir(con):
+    """{cartella: voce} col compito attivo di ogni cartella dei compiti aperti: prima uno in corso (running), poi quello
+    con l'ultimo passo piu' recente. La voce: {importance, task, source, why, state running|open, last_step_at}."""
+    best = {}
+    for r in con.execute("SELECT * FROM tasks WHERE state IN (%s) AND project IS NOT NULL" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall():
+        last = max(int(r["updated_at"] or 0), int(r["created_at"] or 0),
+                   int(con.execute("SELECT MAX(at) FROM steps WHERE task=?", (r["id"],)).fetchone()[0] or 0))
+        key = (r["state"] == "running", last, r["id"])
+        d = os.path.normpath(r["project"])
+        if d not in best or key > best[d][0]:
+            best[d] = (key, r, last)
+    out = {}
+    for d, (_, r, last) in sorted(best.items()):
+        out[d.replace(os.sep, "/")] = {**importance_of(con, r), "task": r["id"], "state": "running" if r["state"] == "running" else "open",
+                                      "last_step_at": last}
+    return out
+
+
+def importance_for_cwd(con, cwd):
+    """La voce della cartella piu' vicina fra cwd e quelle sopra, o None."""
+    dirs = active_by_dir(con)
+    p = os.path.normpath(os.path.abspath(os.path.expanduser(str(cwd))))
+    while True:
+        hit = dirs.get(p.replace(os.sep, "/"))
+        if hit:
+            return hit
+        up = os.path.dirname(p)
+        if up == p:
+            return None
+        p = up
+
+
+def write_importance(con):
+    """Riscrive il file dell'importanza (tmp + rename); un errore di scrittura non ferma il comando."""
+    f = importance_path()
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"version": 1, "updated_at": now(), "dirs": active_by_dir(con)}, ensure_ascii=False))
+        os.replace(tmp, f)
+    except OSError:
+        pass
+
+
+def cli(argv):
+    """main, poi, per un verbo che puo' aver cambiato il registro, il file dell'importanza."""
+    try:
+        return main(argv)
+    finally:
+        if argv and argv[0] not in IMPORTANCE_READ_ONLY and db_path().exists():
+            try:
+                c = connect(create=False)
+                if c is not None:
+                    write_importance(c)
+                    c.close()
+            except sqlite3.Error:
+                pass
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(cli(sys.argv[1:]))

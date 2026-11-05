@@ -410,6 +410,11 @@
     "quiet_hours": [
       23,
       7
+    ],
+    "high_stakes_dirs": [
+      "personali/rino",
+      "clienti",
+      "enti"
     ]
   },
   "plugins": {

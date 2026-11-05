@@ -163,3 +163,28 @@ prompts, the tests they ran with their summary line, the folder's commits, the
 «Esito:» lines and the registry's outcomes, from code. The phone reads the same
 timeline (contract 1.29, op `timeline`) for its summary; there each session's
 `project` is relative to the projects' root, as in `state.sessions[].project`.
+
+## How much a task weighs
+
+Every task has an importance: `alta`, `media` or `bassa`. fable-director's model advice
+follows it, so a heavy task gets the stronger model and a side task does not.
+Declare it in the contract (`task.importance`) or later with
+`supervisor task amend ID --importance alta`. Without it, the registry infers it
+from its own facts, never from the text and with no model:
+
+- **alta**: an ok with «undo: no» (it cannot be taken back), an outcome `deploy`
+  (it writes to production), or a folder under `tasks.high_stakes_dirs`
+  (by default `personali/rino`, `clienti`, `enti`, relative to the projects' root);
+- **bassa**: a task of type `chore`, `verify` or `test`;
+- **media**: everything else.
+
+`supervisor task importance ID --json` says the importance of a task and why;
+`supervisor task importance --cwd DIR --json` that of the active task of the
+nearest folder (the running one, else the one with the newest step), or all null.
+fable-director reads the same answer from a file, so as not to start a process at
+each refresh of its status line: `~/.claude/supervisor/task-importance.json`,
+`{"version": 1, "updated_at", "dirs": {"<folder>": {"importance", "task", "source":
+"declared"|"inferred", "why", "state": "running"|"open", "last_step_at"}}}`, one
+entry per folder with an open task. It is rewritten at once (temporary file and
+rename) after every `supervisor task` command that changes the registry, and by the
+guard's tidying every 10 minutes.

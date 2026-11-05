@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.128 — 2026-11-05: every task says how much it weighs, so fable-director's model advice can follow it (supervisor-importanza-compito-05-11).**
+  - A task can declare its importance (alta, media, bassa); without it the registry infers it from its facts: alta when an ok cannot be undone, when it deploys to production or when it sits in a high-stakes folder (personali/rino, clienti, enti by default, `tasks.high_stakes_dirs`); bassa for chores and checks; media otherwise. Nothing is guessed from the text and no model is used.
+  - `supervisor task importance` says it, with the reason. fable-director reads the importance of the task at work in each folder from `~/.claude/supervisor/task-importance.json`, rewritten at each change of the registry, without starting a process at each refresh.
 - **0.8.127 — 2026-11-05: «Invia dal mio GitHub» shows up only for who can open the private feedback repository (supervisor-feedback-github-ok-05-11, contract 1.124).**
   - The feedback draft now says whether the GitHub account of the computer running the relay can read frsorrentino/supervisor-feedback; the app hides the button when it cannot, instead of leading to GitHub's «page not found». The answer is checked again every 10 minutes.
 - **0.8.126 — 2026-11-05: the screenshot of the app's Feedback reaches the GitHub issue, whichever way you send it (supervisor-feedback-immagine-05-11, contract 1.123).**
