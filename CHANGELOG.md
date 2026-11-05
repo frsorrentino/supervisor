@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.125 — 2026-11-05: a newer pre-release carries the open tests of the one it contains, and no longer closes as superseded tasks never tested (supervisor-supera-prove-05-11, contract 1.122).**
+  - When a new pre-release contains the previous one, the tests you had not done yet move to the new one: same task, same text, the new build. They stay in «Prova» and the pause stays in «Decidi», naming the new pre-release. Until now they disappeared, and the pauses of tasks you never tested were closed.
+  - A task closes as superseded only when its own test on the new pre-release is ok. Another task closed green on the same pre-release no longer closes it.
 - **0.8.124 — 2026-11-04: «Carica i messaggi precedenti» loads the older messages again (supervisor-relay-pagina-before-04-11).**
   - With a chat open, asking for the older messages often brought back only your own prompts: the request for the older page was dropped in favour of the chat's own updates. Now both are answered.
 - **0.8.123 — 2026-11-04: the app's Feedback reaches the relay and becomes an observation, sent with the anonymous draft and the choice between GitHub and anonymous (supervisor-feedback-app-04-11, contract 1.121).**

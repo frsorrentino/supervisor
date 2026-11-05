@@ -644,6 +644,11 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.122 (05/11/2026, from the master: at 09:50 rule 1 of the tidying took tests #102-#106 of a pre-release out of «Prova» because a newer one contains it, and closed the pauses of four tasks never tested; at 10:29 an unrelated task closed green on the newer pre-release would have closed them as superseded; task supervisor-supera-prove-05-11). No new key, `v` stays 1.
+
+- **Rule 1 carries a test over instead of taking it away.** When a newer tag of the same project contains the build of a test still to do, a test of the bench is retired and the same test (task, `dove`, `fai`, `atteso`) is written on the newer build: a new id in op `prove`, so an id the app showed before is refused as gone and the next read has the new one. A pause with `prova` stays open: its `prova.release` becomes the newer tag and its `reason` names it (the old tag in the text replaced, or «· si prova sulla pre-release <new>» added). The row in `state.tocca.today` says «portata avanti» (it), «carried over» (en).
+- **A task closes as `superseded` only with a test of its own ok on the pre-release that carried it**, and nothing taking it up again (no open or new pause, no test to do, no step of its session). Another task of the project closed green on that pre-release closes nothing: its tests speak of its own work. A pause with a test is answered as before («Tutto va» / «Non va»), never closed by rule 1.
+
 Contract 1.121 (04/11/2026, the maintainer from the phone: a Feedback button in the app for whoever uses it, by the observe road; task supervisor-feedback-app-04-11). Additive, `v` stays 1.
 
 - **New op `feedback_app`**, only from a touch (`device`, as every feedback op), in two steps.

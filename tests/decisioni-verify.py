@@ -662,9 +662,12 @@ T.check("TA0 --dry-run says what would go and changes nothing", _dry and decisio
 _run = json.loads(cm("tidy", "--json")[1])
 _by = {(x["task"], x["kind"]): x["rule"] for x in _run}
 _open = lambda tid: bool(__import__("sqlite3").connect(tmp / "tasks.db").execute("SELECT 1 FROM pauses WHERE task=? AND resumed_at IS NULL", (tid,)).fetchone())  # noqa: E731
-T.check("TA1 a test of build a goes when a newer tag of the same project contains a (b); a test of b stays: c is newer but does not contain it",
-        _by.get(("ta-old", "pause")) == 1 and not _open("ta-old") and _open("ta-new") and _by.get(("ta-banco-old", "prova")) == 1
-        and not ids_of("ta-banco-old") and ids_of("ta-banco-new"), str(_run))
+_live = lambda tid: __import__("sqlite3").connect(tmp / "tasks.db").execute("SELECT build, dove, fai, atteso FROM prove WHERE task=? AND superseded_at IS NULL", (tid,)).fetchall()  # noqa: E731
+_pz = lambda tid: __import__("sqlite3").connect(tmp / "tasks.db").execute("SELECT reason, prova FROM pauses WHERE task=? AND resumed_at IS NULL", (tid,)).fetchone()  # noqa: E731
+T.check("TA1 (1.122) a test of build a is carried over when a newer tag of the same project contains a (b): the pause stays, on b; the bench test is the same on b; a test of b stays: c is newer but does not contain it",
+        _by.get(("ta-old", "pause")) == 1 and _open("ta-old") and json.loads(_pz("ta-old")[1])["release"] == "b" and "b" in _pz("ta-old")[0]
+        and _open("ta-new") and _by.get(("ta-banco-old", "prova")) == 1
+        and _live("ta-banco-old") == [("b", "home", "tocca", "si apre")] and ids_of("ta-banco-old") and ids_of("ta-banco-new"), str(_run))
 T.check("TA1 «superata» is never a confirmation: no confirmed approval, the task still open, a step that says why",
         cm("confirmed", "ta-old")[0] != 0 and show("ta-old")["state"] == "assigned" and "b contiene a" in show("ta-old")["steps"][-1]["text"], str(show("ta-old")["steps"][-1:]))
 T.check("TA2 a pause and a request of a task already closed go", _by.get(("ta-done", "pause")) == 2 and not _open("ta-done") and not (_nd2 / "ny-done.json").exists(), str(_run))
@@ -684,53 +687,89 @@ T.check("TA8 state.tocca: one count from the same items as the pages (tests of t
         and _ts["n"] == _ts["prove"] + _ts["decidi"] and _ts["today"]["n"] == len(_run) and [x["task"] for x in _pv["archived"]] == ["ta-stale"], json.dumps(_ts)[:400])
 
 
-# superate_chiuse (04/11/2026, contratto 1.115, supervisor-superate-chiuse-04-11): un compito la cui prova e' stata superata
-# si chiude come superato quando il compito della pre-release che lo supera e' chiuso verde; mai done, mai confermato
+# superate_chiuse (04/11/2026, contratto 1.115, supervisor-superate-chiuse-04-11; 1.122, 05/11, supervisor-supera-prove-05-11):
+# un compito portato avanti dalla regola 1 si chiude come superato solo con una sua prova ok sulla pre-release nuova; mai done,
+# mai perche' si e' chiuso un altro compito
 _sq = lambda: __import__("sqlite3").connect(tmp / "tasks.db")  # noqa: E731
-T.check("SU1 the owner of b still open (ta-new): ta-old and ta-banco-old stay open, without a pause and without a test",
-        show("ta-old")["state"] == "assigned" and show("ta-banco-old")["state"] == "assigned" and not _open("ta-old")
+T.check("SU1 the owner of b still open (ta-new): ta-old and ta-banco-old stay open, with their test on b",
+        show("ta-old")["state"] == "assigned" and show("ta-banco-old")["state"] == "assigned" and _open("ta-old") and ids_of("ta-banco-old")
         and json.loads(cm("tidy", "--json")[1]) == [], show("ta-old")["state"])
 cm("done", "ta-new")
+_run_su0 = json.loads(cm("tidy", "--json")[1])
+T.check("SU2 (1.122) the owner of b closed green closes nothing else (only its own pause, rule 2): ta-old and ta-banco-old were never tested",
+        [(x["task"], x["kind"], x["rule"]) for x in _run_su0] == [("ta-new", "pause", 2)] and show("ta-old")["state"] == "assigned" and show("ta-banco-old")["state"] == "assigned"
+        and _open("ta-old") and ids_of("ta-banco-old"), str(_run_su0))
+_okb = tap(",".join(str(i) for i in ids_of("ta-banco-old")))
 _run_su = json.loads(cm("tidy", "--json")[1])
 _bysu = {(x["task"], x["kind"]): x["rule"] for x in _run_su}
 _cl = json.loads(cm("closed", "--json")[1])
 _clr = {x["task"]: x["outcome"] for x in _cl["rows"]}
-T.check("SU2 the owner of b closed green: ta-old (a pause) and ta-banco-old (a test of the bench) close as superseded, one row each",
-        show("ta-old")["state"] == "superseded" and show("ta-banco-old")["state"] == "superseded"
-        and {k: v for k, v in _bysu.items() if k[1] == "task"} == {("ta-old", "task"): 1, ("ta-banco-old", "task"): 1} and "b" in show("ta-old")["steps"][-1]["text"] and "ta-new" in show("ta-old")["steps"][-1]["text"], str(_run_su))
-T.check("SU3 superseded is not done: no confirmation, no row in the report card, closed lists it with outcome superseded",
-        cm("confirmed", "ta-old")[0] != 0 and not _sq().execute("SELECT 1 FROM closures WHERE task IN ('ta-old','ta-banco-old')").fetchone()
-        and _clr.get("ta-old") == "superseded" and _clr.get("ta-new") == "green", str(_clr))
+T.check("SU2 its own test on b ok: ta-banco-old closes as superseded, one row, a step naming b; ta-old (a pause, no answer) stays",
+        _okb[0] and show("ta-banco-old")["state"] == "superseded" and show("ta-old")["state"] == "assigned"
+        and {k: v for k, v in _bysu.items() if k[1] == "task"} == {("ta-banco-old", "task"): 1} and "b" in show("ta-banco-old")["steps"][-1]["text"], str(_run_su))
+T.check("SU3 superseded is not done: no row in the report card, closed lists it with outcome superseded",
+        not _sq().execute("SELECT 1 FROM closures WHERE task IN ('ta-old','ta-banco-old')").fetchone()
+        and _clr.get("ta-banco-old") == "superseded" and _clr.get("ta-new") == "green" and "ta-old" not in _clr, str(_clr))
 _ts2 = RL.tocca_state()
 T.check("SU4 among today's closures by themselves (task tidy --today, state.tocca.today) with kind task",
-        {("ta-old", "task"), ("ta-banco-old", "task")} <= {(x["task"], x["kind"]) for x in json.loads(cm("tidy", "--today", "--json")[1])}
-        and ("ta-old", "task") in {(x["task"], x["kind"]) for x in _ts2["today"]["items"]}, json.dumps(_ts2["today"])[:300])
-T.check("SU5 a second run closes nothing more; a superseded task is not taken again by done", json.loads(cm("tidy", "--json")[1]) == [] and cm("done", "ta-old")[0] != 0, "")
-# la catena e le attese, scritte nel registro: su-d superato da e1, il cui compito su-e e' superato da f1, chiuso verde da su-f
-for _t in ("su-d", "su-e", "su-f", "su-step", "su-prova", "su-canc", "su-pausa"):
+        ("ta-banco-old", "task") in {(x["task"], x["kind"]) for x in json.loads(cm("tidy", "--today", "--json")[1])}
+        and ("ta-banco-old", "task") in {(x["task"], x["kind"]) for x in _ts2["today"]["items"]}, json.dumps(_ts2["today"])[:300])
+T.check("SU5 a second run closes nothing more; a superseded task is not taken again by done", json.loads(cm("tidy", "--json")[1]) == [] and cm("done", "ta-banco-old")[0] != 0, "")
+# le attese, scritte nel registro: tutti portati su f1 dalla regola 1, ognuno con una sua prova ok su f1 tranne su-altro
+for _t in ("su-d", "su-step", "su-prova", "su-pausa", "su-altro"):
     add_in(_t, _repo)
-cm("pause", "su-e", "--reason", "Prova", "--waits", "person", "--prova", "--release", "e1")
-cm("pause", "su-f", "--reason", "Prova", "--waits", "person", "--prova", "--release", "f1")
-cm("pause", "su-canc", "--reason", "Prova", "--waits", "person", "--prova", "--release", "g1")
 cm("prova", "su-prova", "--build", "h1", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
 _c = _sq()
 _T0 = int(time.time()) + 100
-_c.execute("UPDATE pauses SET resumed_at=? WHERE task IN ('su-e','su-f','su-canc')", (_T0 - 50,))
-_c.execute("UPDATE tasks SET state='superseded' WHERE id='su-e'")
-_c.execute("UPDATE tasks SET state='done' WHERE id='su-f'")
-_c.execute("UPDATE tasks SET state='cancelled' WHERE id='su-canc'")
-for _t, _b in (("su-d", "e1"), ("su-e", "f1"), ("su-step", "f1"), ("su-prova", "f1"), ("su-canc-of", "g1"), ("su-pausa", "f1")):
-    _c.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,'pause',1,'superata',?)", (_T0, _t, _b))
+for _t in ("su-d", "su-step", "su-prova", "su-pausa", "su-altro"):
+    _c.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,'prova',1,'portata avanti',?)", (_T0, _t, "f1"))
+for _t in ("su-d", "su-step", "su-prova", "su-pausa"):
+    _c.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_, result, result_at) VALUES (?,'f1','home','tocca','si apre',?,'sess','ok',?)", (_t, _T0 - 10, _T0 + 1))
 _c.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES ('su-step',?,'sess','step','riprendo',NULL)", (_T0 + 1,))
 _c.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits) VALUES ('su-pausa',?,'sess','Serve il login',NULL,'person')", (_T0 + 1,))
 _c.commit(); _c.close()
-add_in("su-canc-of", _repo)
 _run_ch = json.loads(cm("tidy", "--json")[1])
 _st = lambda t: show(t)["state"]  # noqa: E731
-T.check("SU6 a chain: su-d superseded by e1, whose task is superseded by f1, closed green: su-d closes with f1 and su-f",
-        _st("su-d") == "superseded" and "f1" in show("su-d")["steps"][-1]["text"] and "su-f" in show("su-d")["steps"][-1]["text"], str(_run_ch))
-T.check("SU7 taken up again after the closure (a step of the session, a test to do, a new pause) or the owner cancelled: it stays open",
-        all(_st(t) == "assigned" for t in ("su-step", "su-prova", "su-pausa", "su-canc-of")) and {x["task"] for x in _run_ch} == {"su-d"}, str(_run_ch))
+T.check("SU6 its own test ok on the pre-release that carried it: su-d closes as superseded, the step names f1",
+        _st("su-d") == "superseded" and "f1" in show("su-d")["steps"][-1]["text"], str(_run_ch))
+T.check("SU7 taken up again (a step of the session, a test to do, a new pause), or no test of its own ok on f1 though su-d has one: it stays open",
+        all(_st(t) == "assigned" for t in ("su-step", "su-prova", "su-pausa", "su-altro")) and {x["task"] for x in _run_ch} == {"su-d"}, str(_run_ch))
+# supera_prove (05/11/2026, contratto 1.122, supervisor-supera-prove-05-11): alle 09:50 la regola 1 aveva tolto da Prova le
+# prove della pre-release vecchia perche' la nuova la contiene; alle 10:29 un compito estraneo chiuso verde sulla nuova avrebbe
+# chiuso come superati compiti mai provati. Due pre-release (v1 contiene m1) e compiti diversi.
+_repo2 = tmp / "app-repo-2"
+_repo2.mkdir()
+def _g2(*a, when=None):
+    e = dict(_genv, **({"GIT_COMMITTER_DATE": when, "GIT_AUTHOR_DATE": when} if when else {}))
+    return subprocess.run(["git", "-C", str(_repo2), *a], capture_output=True, text=True, env=e, check=True).stdout
+_g2("init", "-q", "-b", "main")
+_g2("commit", "-q", "--allow-empty", "-m", "movimenti", when="2026-11-04T10:00:00"); _g2("tag", "m1")
+_g2("commit", "-q", "--allow-empty", "-m", "volo", when="2026-11-05T09:00:00"); _g2("tag", "v1")
+for _t in ("sp-eff", "sp-tasto", "sp-volo"):
+    add_in(_t, _repo2)
+cm("prova", "sp-eff", "--build", "m1", "--dove", "home", "--fai", "scorri la lista", "--atteso", "le schede si muovono")
+cm("prova", "sp-eff", "--build", "m1", "--dove", "menu", "--fai", "apri il menu", "--atteso", "si apre piano")
+cm("pause", "sp-tasto", "--reason", "Prova il tasto sulla pre-release m1", "--waits", "person", "--prova", "--release", "m1")
+cm("prova", "sp-volo", "--build", "v1", "--dove", "chat", "--fai", "guarda il titolo", "--atteso", "si legge")
+_eff_old = ids_of("sp-eff")
+_run_sp = json.loads(cm("tidy", "--json")[1])
+T.check("SP1 v1 contains m1: sp-eff's two tests are carried to v1 (same where, do, expected; new ids, still in Prova); sp-tasto's pause stays, its reason and test name v1",
+        len(_eff_old) == 2 and sorted(_live("sp-eff")) == [("v1", "home", "scorri la lista", "le schede si muovono"), ("v1", "menu", "apri il menu", "si apre piano")]
+        and len(ids_of("sp-eff")) == 2 and not set(ids_of("sp-eff")) & set(_eff_old)
+        and _open("sp-tasto") and _pz("sp-tasto")[0] == "Prova il tasto sulla pre-release v1" and json.loads(_pz("sp-tasto")[1])["release"] == "v1"
+        and {(x["task"], x["kind"]) for x in _run_sp} == {("sp-eff", "prova"), ("sp-tasto", "pause")}, str(_run_sp))
+T.check("SP1 Tocca a te still counts them: the bench tests and the pause with a test",
+        any(i.get("task") == "sp-tasto" and i.get("prova") for g in decisioni()["groups"] for i in g["items"]) and len(ids_of("sp-eff")) == 2, "")
+tap(",".join(str(i) for i in ids_of("sp-volo")))
+cm("done", "sp-volo")
+_run_sp2 = json.loads(cm("tidy", "--json")[1])
+T.check("SP2 sp-volo, another task, tested ok on v1 and closed green: sp-eff and sp-tasto stay open with their tests (the 10:29 closure)",
+        _run_sp2 == [] and show("sp-eff")["state"] == "assigned" and show("sp-tasto")["state"] == "assigned" and len(ids_of("sp-eff")) == 2 and _open("sp-tasto"), str(_run_sp2))
+tap(",".join(str(i) for i in ids_of("sp-eff")))
+_run_sp3 = json.loads(cm("tidy", "--json")[1])
+T.check("SP3 sp-eff's own tests ok on v1: it closes as superseded, naming v1; sp-tasto (no answer yet) stays",
+        show("sp-eff")["state"] == "superseded" and "v1" in show("sp-eff")["steps"][-1]["text"] and show("sp-tasto")["state"] == "assigned"
+        and [(x["task"], x["kind"]) for x in _run_sp3] == [("sp-eff", "task")], str(_run_sp3))
 _old_db = tmp / "old-tidy.db"
 _oc = __import__("sqlite3").connect(_old_db)
 _oc.execute("CREATE TABLE tidy (n INTEGER PRIMARY KEY, at INTEGER, task TEXT, kind TEXT, rule INTEGER, text TEXT)")
