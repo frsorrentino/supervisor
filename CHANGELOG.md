@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.131 — 2026-11-05: `host fetch` brings back the work of a session on win even after it realigned its branch to origin (supervisor-host-fetch-base-05-11).**
+  - The patches start from the newest commit there that also exists here, not from the base saved at launch: a session that reset its branch to origin and then committed no longer fails with «already exists in index».
+  - When the history there has nothing in common with this one, the command says so and gives the manual way (`git format-patch -o` there, `git am --3way` here).
 - **0.8.130 — 2026-11-05: after a handoff the session clears by itself; the model is shown from the start, and a change during a turn is kept (supervisor-clear-dopo-handoff-05-11, supervisor-modello-stato-05-11, contract 1.125).**
   - When a session writes a handoff (supervisor's or fable-director's), supervisor sends `/clear` to it as soon as that turn ends, here and on win: you no longer send it by hand. It does not when the turn ends with a question for you, a request is open, or a restart is armed.
   - After `/clear` the session is pointed to that handoff again at each `/clear`, until it gets its first prompt: two `/clear` in a row no longer lose it.

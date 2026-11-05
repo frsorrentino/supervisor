@@ -109,10 +109,17 @@ class FakeWin:
             (ROOT / "registry.json").write_text(json.dumps(reg))
         return {"ok": True}
 
-    def session_patches(self, rdir, local_mbox):
-        note("patches", rdir=rdir)
+    def session_history(self, rdir, n=2000):
+        note("history", rdir=rdir)
         d = local(rdir)
         root = json.loads((d / ".cm-session.json").read_text())["root"]
+        h = subprocess.run(["git", "-C", str(d), "rev-list", "-n", str(n), "HEAD"], capture_output=True, text=True).stdout.split()
+        return {"root": root, "hashes": h}
+
+    def session_patches(self, rdir, local_mbox, base=None):
+        note("patches", rdir=rdir, base=base)
+        d = local(rdir)
+        root = base or json.loads((d / ".cm-session.json").read_text())["root"]
         n = int(subprocess.run(["git", "-C", str(d), "rev-list", "--count", root + "..HEAD"], capture_output=True, text=True).stdout)
         dirty = len([l for l in subprocess.run(["git", "-C", str(d), "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines() if l.strip()])
         if n:

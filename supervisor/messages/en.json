@@ -1080,6 +1080,7 @@
   "rsession.other_host": "session “{name}” is on {host}",
   "rsession.dirty_there": "on {host} {n} uncommitted or untracked files stay there: commit them in the session and repeat",
   "rsession.nothing_new": "{name} on {host}: no new commits since the base {base}",
+  "rsession.diverged": "{host}:{name} has a diverged history: neither the seed's base ({base}) nor a commit of here is in the history of HEAD there. Nothing brought: there run git format-patch -o <folder> <base>..HEAD (with -o, not a PowerShell >, which writes UTF-16), copy the folder here and apply with git am --3way.",
   "rsession.am_failed": "the patches do not apply on the base: {err}",
   "rsession.fetched": "{n} commits from {host} on branch {branch} (base {base})",
   "rsession.merge_howto": "  here:  git log {branch}   ·   git merge {branch}   (push always starts here)",

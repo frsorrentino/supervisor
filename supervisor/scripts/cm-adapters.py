@@ -507,19 +507,33 @@ Register-ScheduledTask -TaskName 'cm-session-{name}' -TaskPath '\\claude-master\
 Start-ScheduledTask -TaskPath '\\claude-master\\' -TaskName 'cm-session-{name}' -ErrorAction Stop
 ConvertTo-Json -Compress @{{ ok = $true; user = $u; task = 'cm-session-{name}' }}""")
 
-    def session_patches(self, rdir, local_mbox):
-        """{count, dirty}: i commit oltre la base come serie di patch, scritti byte per byte (cmd /c: la pipe di
-        PowerShell 5.1 ricodificherebbe il testo), poi copiati qui con scp."""
-        out_rel = f"{HELPER_DIR}/out/{hashlib.sha1(rdir.encode()).hexdigest()[:12]}.mbox"
+    def session_history(self, rdir, n=2000):
+        """05/11/2026 (supervisor-host-fetch-base-05-11): {root, hashes}: la base del seme e gli ultimi n commit della
+        storia di HEAD la', dal piu' nuovo; il fetch ci cerca il primo che c'e' anche qui."""
         d = self.ps_json(self._PS_DIR % self.q(rdir) + f"""
 if (-not (Test-Path $m)) {{ ConvertTo-Json -Compress @{{ error = "no .cm-session.json in $d" }}; exit 1 }}
 $j = Get-Content $m -Raw | ConvertFrom-Json
-$n = [int](git -C $d rev-list --count "$($j.root)..HEAD")
+$h = @(git -C $d rev-list -n {int(n)} HEAD)
+ConvertTo-Json -Compress @{{ root = $j.root; hashes = $h }}""", timeout=120)
+        return {"root": d.get("root"), "hashes": [str(x) for x in d.get("hashes") or []]}
+
+    def session_patches(self, rdir, local_mbox, base=None):
+        """{count, dirty}: i commit oltre la base come serie di patch, scritti byte per byte (cmd /c: la pipe di
+        PowerShell 5.1 ricodificherebbe il testo), poi copiati qui con scp. base: un commit della storia di HEAD la'
+        (05/11: dopo un riallineamento a origin la base del seme non e' piu' nella storia); senza, quella del seme."""
+        out_rel = f"{HELPER_DIR}/out/{hashlib.sha1(rdir.encode()).hexdigest()[:12]}.mbox"
+        if base is not None and not re.fullmatch(r"[0-9a-f]{7,40}", str(base)):
+            raise HostError("remote", f"bad base {base}")
+        d = self.ps_json(self._PS_DIR % self.q(rdir) + f"""
+if (-not (Test-Path $m)) {{ ConvertTo-Json -Compress @{{ error = "no .cm-session.json in $d" }}; exit 1 }}
+$j = Get-Content $m -Raw | ConvertFrom-Json
+$b = {self.q(base) if base else "$j.root"}
+$n = [int](git -C $d rev-list --count "$b..HEAD")
 $dirty = @(git -C $d status --porcelain | Where-Object {{ $_ }}).Count
 if ($n -gt 0) {{
   $o = Join-Path $env:USERPROFILE {self.q(out_rel.replace('/', chr(92)))}
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $o) | Out-Null
-  cmd /c "git -C `"$d`" format-patch --stdout $($j.root)..HEAD > `"$o`""
+  cmd /c "git -C `"$d`" format-patch --stdout $b..HEAD > `"$o`""
 }}
 ConvertTo-Json -Compress @{{ count = $n; dirty = $dirty }}""", timeout=300)
         if d.get("count"):

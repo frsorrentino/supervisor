@@ -20,6 +20,7 @@ RS10 close win:<nome>: busy → rifiuto (exit 4) senza --force; con --force chiu
 RS11 talk a una sessione chiusa: exit 5, il messaggio resta nella casella in attesa
 RS15 launch --host su una copia la' con una base vecchia: senza lavoro la' si mette da parte e se ne fa una nuova;
      con lavoro la' ci si ferma; prima di avviare la base la' deve essere la HEAD di qui
+RS16 (05/11) la storia la' riallineata a quella di qui: il fetch parte dal commit comune; storia divergente: lo dice
 RS7 proposta e scelta automatica: regia carica → riga di proposta (il lancio resta in locale); --host auto carica →
     remoto, scarica → locale; una cartella non ammessa non e' mai proposta
 """
@@ -511,6 +512,31 @@ T.check("RS14 remote-session-report: two attachments → the PDF in the inbox th
         (rr.get("two") or [False])[0] is True and len(_inb) == 1 and _inb[0].read_bytes() == b"%PDF-x" and (_chat / ".claude-master-inbox" / ".gitignore").is_file()
         and len(_tk) == 2 and all(t[0] == "talk" and t[1] == "win:chat" for t in _tk) and "W:\\cm\\personali\\chat\\.claude-master-inbox\\" in _tk[1][2]
         and _tk[1][2].index("offerta.pdf") < _tk[1][2].index(".png") and not rr.get("left"), json.dumps(rr)[:800])
+
+# RS16 (05/11/2026, supervisor-host-fetch-base-05-11): la' la sessione riallinea il suo ramo alla storia di origin (gli
+# hash di qui) e poi fa un commit: la base del seme non e' piu' nella storia di HEAD; il fetch parte dal commit comune
+ra = ws / "personali" / "riallinea"
+ra.mkdir(parents=True, exist_ok=True)
+repo(ra, {"r.txt": "uno\n"})
+subprocess.run(["git", "-C", str(ra), "commit", "-q", "--allow-empty", "-m", "secondo di qui"], check=True)
+r16l = launch(str(ra), "--host", "win", "--no-window")
+rra = winroot / "cm" / "personali" / "riallinea"
+subprocess.run(["git", "-C", str(rra), "fetch", "-q", str(ra), "HEAD"], check=True, capture_output=True)
+subprocess.run(["git", "-C", str(rra), "reset", "-q", "--hard", "FETCH_HEAD"], check=True)
+(rra / "nuovo.txt").write_text("fatto su win dopo il riallineamento\n")
+subprocess.run(["git", "-C", str(rra), "add", "nuovo.txt"], check=True)
+subprocess.run(["git", "-C", str(rra), "commit", "-q", "-m", "dopo il riallineamento", "--author", "Ada Prova <ada@example.com>"], check=True)
+head_ra = g(ra, "rev-parse", "HEAD").strip()
+r16 = rs("fetch", "win", "win-riallinea")
+T.check("RS16 the case of 05/11: the history there realigned to this one's commits, then one commit → fetched on top of the common commit, one patch, no «already exists»",
+        r16l.returncode == 0 and r16.returncode == 0 and g(ra, "log", "-1", "--format=%s|%an", "win/riallinea").strip() == "dopo il riallineamento|Ada Prova"
+        and g(ra, "rev-parse", "win/riallinea~1").strip() == head_ra and "already exists" not in r16.stderr, r16.stdout + r16.stderr)
+subprocess.run(["git", "-C", str(rra), "checkout", "-q", "--orphan", "altro"], check=True)
+subprocess.run(["git", "-C", str(rra), "commit", "-q", "-m", "storia nuova"], check=True)
+r16b = rs("fetch", "win", "win-riallinea")
+T.check("RS16 a diverged history (neither the seed's base nor a commit of here): exit 4, says so with the manual way (format-patch -o, not a PowerShell >), no branch moved",
+        r16b.returncode == 4 and "divergente" in r16b.stderr and "format-patch -o" in r16b.stderr and "UTF-16" in r16b.stderr
+        and g(ra, "log", "-1", "--format=%s", "win/riallinea").strip() == "dopo il riallineamento", r16b.stdout + r16b.stderr)
 
 T.rm(tmp)
 T.finish()

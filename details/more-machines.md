@@ -62,7 +62,12 @@ supervisor offload ~/film --recipe render   # the exact commit, the declared ass
   HEAD (`git archive`, no secret files), never the history; the host has no git
   credentials. `host fetch win <name>` brings the commits made there back as
   patches on a local branch `win/<name>`, applied in a temporary worktree so the
-  shared checkout is untouched; merge and push happen here. When this machine is
+  shared checkout is untouched; merge and push happen here. The patches start
+  from the newest commit of the history there that is the snapshot's base or a
+  commit of here: a session that realigned its branch to origin and then
+  committed brings back only its new commits. A history with neither is said to
+  have diverged, with the manual way (`git format-patch -o`, then `git am
+  --3way` here). When this machine is
   loaded (1-minute load above its cores, or less than 2 GB free) `launch`
   suggests the host in one line; `--host auto` picks it.
   `talk win:<name> "…"`, `wait win:<name>` and `close win:<name>` reach it

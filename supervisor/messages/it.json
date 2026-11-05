@@ -1080,6 +1080,7 @@
   "rsession.other_host": "la sessione «{name}» è su {host}",
   "rsession.dirty_there": "su {host} {n} file non committati o non tracciati restano là: committali nella sessione e ripeti",
   "rsession.nothing_new": "{name} su {host}: nessun commit nuovo dalla base {base}",
+  "rsession.diverged": "{host}:{name} ha una storia divergente: né la base del seme ({base}) né un commit di qui sono nella storia di HEAD là. Niente portato: lì fai git format-patch -o <cartella> <base>..HEAD (con -o, non con un > di PowerShell, che scrive in UTF-16), copia la cartella qui e applica con git am --3way.",
   "rsession.am_failed": "le patch non si applicano sulla base: {err}",
   "rsession.fetched": "{n} commit da {host} sul ramo {branch} (base {base})",
   "rsession.merge_howto": "  qui:  git log {branch}   ·   git merge {branch}   (il push parte sempre da qui)",

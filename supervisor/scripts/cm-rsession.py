@@ -386,13 +386,29 @@ def cmd_fetch(argv):
     branch = f"{hname}/{name.removeprefix(hname + '-')}"
     wt = tmpd / "wt"
     try:
-        out = a.session_patches(rec["remote_dir"], tmpd / "series.mbox")
+        # 05/11/2026 (supervisor-host-fetch-base-05-11): la' la storia puo' essere stata riallineata a origin (16:44, la
+        # sessione di fable-director: reset su origin/main e un commit nuovo); allora la base del seme non c'e' piu' e le
+        # patch dalla base salvata riportavano commit che qui ci sono gia' («already exists in index»). La base e' il primo
+        # commit della storia di HEAD la' che e' o la base del seme o un commit che c'e' anche qui
+        remote_base, local_base = None, rec["base"]
+        if hasattr(a, "session_history"):
+            hist = a.session_history(rec["remote_dir"])
+            for h in hist.get("hashes") or []:
+                if h == hist.get("root"):
+                    break
+                if subprocess.run(["git", "-C", rec["dir"], "cat-file", "-e", f"{h}^{{commit}}"], capture_output=True).returncode == 0:
+                    remote_base = local_base = h
+                    break
+            else:
+                print(M("rsession.diverged", host=hname, name=name, base=rec["base"][:10]), file=sys.stderr)
+                return 4
+        out = a.session_patches(rec["remote_dir"], tmpd / "series.mbox", remote_base) if remote_base else a.session_patches(rec["remote_dir"], tmpd / "series.mbox")
         if out.get("dirty"):
             print(M("rsession.dirty_there", host=hname, n=out["dirty"]), file=sys.stderr)
         if not out.get("count"):
-            print(M("rsession.nothing_new", host=hname, name=name, base=rec["base"][:10]))
+            print(M("rsession.nothing_new", host=hname, name=name, base=local_base[:10]))
             return 0
-        git(rec["dir"], "worktree", "add", "--detach", str(wt), rec["base"])
+        git(rec["dir"], "worktree", "add", "--detach", str(wt), local_base)
         am = subprocess.run(["git", "-C", str(wt), "am", "--keep-cr", "--committer-date-is-author-date", str(tmpd / "series.mbox")],
                             capture_output=True, text=True)
         if am.returncode != 0:
@@ -406,7 +422,7 @@ def cmd_fetch(argv):
             subprocess.run(["git", "-C", rec["dir"], "worktree", "remove", "--force", str(wt)], capture_output=True)
         subprocess.run(["git", "-C", rec["dir"], "worktree", "prune"], capture_output=True)
         shutil.rmtree(tmpd, ignore_errors=True)
-    print(M("rsession.fetched", n=out["count"], host=hname, branch=branch, base=rec["base"][:10]))
+    print(M("rsession.fetched", n=out["count"], host=hname, branch=branch, base=local_base[:10]))
     print(M("rsession.merge_howto", branch=branch))
     return 0
 
