@@ -189,6 +189,7 @@
   "tasks.imp_dir": "cartella ad alta posta ({dir})",
   "tasks.imp_low": "lavoro di contorno ({type})",
   "tasks.imp_medium": "nessun segno di posta alta o bassa",
+  "tasks.follows_ok": "approvato dal seguito di {orig}: l'ok del {when} — {text}",
   "tasks.tidy_carry_reason": "{reason} · si prova sulla pre-release {new}",
   "tasks.login_due": "Il login di {account} scade il {date} alle {time}: scrivi alla master «rifai il login di {account}» e tieni pronto il codice di 6 cifre che arriva per email",
   "tasks.login_expired": "Il login di {account} è scaduto il {date} alle {time}: scrivi alla master «rifai il login di {account}» e tieni pronto il codice di 6 cifre che arriva per email",

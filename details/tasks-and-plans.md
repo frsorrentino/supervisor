@@ -188,3 +188,14 @@ each refresh of its status line: `~/.claude/supervisor/task-importance.json`,
 entry per folder with an open task. It is rewritten at once (temporary file and
 rename) after every `supervisor task` command that changes the registry, and by the
 guard's tidying every 10 minutes.
+
+## A follow-up keeps the ok
+
+A task registered as the follow-up of another (`supervisor task add FILE --follows ID`,
+or `task.follows` in the contract) inherits the person's ok of that task when it is
+approved or closed green: the registry writes «approvato dal seguito di ID» with the
+time and text of the original ok, and the person is not asked again. It happens at
+`add` and, if the origin is approved later, at the follow-up's `wait-ok`. A card that
+asks for a choice is never inherited, nor is the ok of a task cancelled, failed or
+waiting on a new card. The 60-minute limit on an ok read from the inbox stays for new
+oks.

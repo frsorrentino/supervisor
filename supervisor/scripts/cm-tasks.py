@@ -115,6 +115,9 @@ Fase A del programma del 01/11 (contratto 1.99):
   supervisor task cause ID [ID...] --cause C [--note FRASE] [--by B]
                                                 unisce pause con la stessa causa scritta in parole diverse e dice cosa sbloccano
   supervisor task add FILE|- --defect-of ID     il compito corregge un difetto di ID: il precedente sulle card dell'ok
+  supervisor task add FILE|- --follows ID      05/11: il seguito di ID (task.follows): eredita l'ok della persona di ID se
+                                                quello e' approvato o chiuso verde («approvato dal seguito di ID»), anche
+                                                oltre i 60 minuti; mai una scelta; anche al wait-ok del seguito
 
 Il contratto e' schemas/task-contract.v1.json, condiviso con fable-director (copiato, mai importato). Il
 registro e' SQLite in ~/.config/cc-supervisor/tasks.db (CM_TASKS_DB per i test). Nessun «fatto» a giudizio:
@@ -750,6 +753,29 @@ def standing_apply(con, tid):
         return None
     approve(con, tid, r["by_"], f"{r['text']} — standing ok n{r['n']} for {r['kind']} in {r['project']}")
     return r
+
+
+def follows_apply(con, tid):
+    """05/11/2026 (supervisor-ok-seguito-05-11): un compito registrato come seguito di un altro (task.follows) eredita l'ok
+    della persona del compito d'origine, se quello e' approvato o chiuso verde: la persona non ridice un ok gia' dato e il
+    limite dei 60 minuti resta per gli ok nuovi. Mai una scelta (una carta con opzioni la fa la persona), mai se il
+    seguito ha gia' un ok. Torna l'id d'origine o None."""
+    row = get_task(con, tid)
+    orig = (_contract_task(row).get("follows") or "").strip()
+    if not orig or request_options(con, tid):
+        return None
+    if con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL AND (what IS NULL OR what<>'confirmed') LIMIT 1", (tid,)).fetchone():
+        return None
+    o = con.execute("SELECT state FROM tasks WHERE id=?", (orig,)).fetchone()
+    appr = con.execute("SELECT by_, at, text FROM approvals WHERE task=? AND by_ IS NOT NULL AND (what IS NULL OR what<>'confirmed') "
+                       "ORDER BY n DESC LIMIT 1", (orig,)).fetchone()
+    # approvato (aperto con un ok della persona, non fermo su una carta nuova) o chiuso verde; fallito, cancellato o
+    # superato non passano niente
+    if o is None or appr is None or o["state"] not in ("assigned", "approved", "running", "done"):
+        return None
+    approve(con, tid, appr["by_"], M("tasks.follows_ok", orig=orig, when=time.strftime("%d/%m %H:%M", time.localtime(int(appr["at"]))),
+                                     text=str(appr["text"] or "")[:400]))
+    return orig
 
 
 def ever_worked(con, tid):
@@ -2062,12 +2088,19 @@ def main(argv):
         con.commit()
         return 0
     if verb == "add":
-        topic, defect_of = _opt(args, "--topic"), _opt(args, "--defect-of")
+        topic, defect_of, follows = _opt(args, "--topic"), _opt(args, "--defect-of"), _opt(args, "--follows")
         if len(args) != 1:
-            sys.exit("usage: task add FILE|- [--topic T] [--defect-of ID]")
+            sys.exit("usage: task add FILE|- [--topic T] [--defect-of ID] [--follows ID]")
         if defect_of:
             get_task(con, defect_of)   # 1.99: il difetto di un compito che c'e'
-        tid, errs = add(con, _read(args[0]), topic)
+        contract = _read(args[0])
+        if follows:   # 05/11: il seguito di un compito; nel contratto e' task.follows
+            get_task(con, follows)
+            if isinstance(contract, dict) and isinstance(contract.get("task"), dict):
+                contract["task"]["follows"] = follows
+        elif isinstance(contract, dict) and isinstance(contract.get("task"), dict) and contract["task"].get("follows"):
+            get_task(con, contract["task"]["follows"])
+        tid, errs = add(con, contract, topic)
         if errs:
             print("\n".join(errs), file=sys.stderr)
             return 2
@@ -2075,6 +2108,9 @@ def main(argv):
             con.execute("INSERT OR REPLACE INTO defects (task, defect_of, at) VALUES (?,?,?)", (tid, defect_of, now()))
             con.commit()
         print(tid)
+        orig = follows_apply(con, tid)
+        if orig:
+            print(f"{tid}: approved as a follow-up of {orig}")
         return 0
     if verb == "list":
         st, plan = _opt(args, "--state"), _opt(args, "--plan")
@@ -2330,6 +2366,10 @@ def main(argv):
         r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
         if r is not None:
             print(f"{args[0]}: approved by standing ok n{r['n']} ({r['by_']}, {r['kind']} in {r['project']})")
+        else:
+            orig = follows_apply(con, args[0])   # 05/11: il seguito di un compito approvato
+            if orig:
+                print(f"{args[0]}: approved as a follow-up of {orig}")
         return 0
     if verb == "standing":
         sub = args[0] if args else "list"

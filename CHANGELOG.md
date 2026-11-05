@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.129 — 2026-11-05: a follow-up task keeps the ok you gave to the task it comes from (supervisor-ok-seguito-05-11).**
+  - When a session registers the next part of an approved job as its own task (`task add --follows ID`), the task is approved with your ok of the first one, written as «approvato dal seguito di ID» with its time and text. You are no longer asked again just because more than an hour went by.
+  - A choice you have to make, or the ok of a task cancelled or waiting on a new card, is never carried over.
 - **0.8.128 — 2026-11-05: every task says how much it weighs, so fable-director's model advice can follow it (supervisor-importanza-compito-05-11).**
   - A task can declare its importance (alta, media, bassa); without it the registry infers it from its facts: alta when an ok cannot be undone, when it deploys to production or when it sits in a high-stakes folder (personali/rino, clienti, enti by default, `tasks.high_stakes_dirs`); bassa for chores and checks; media otherwise. Nothing is guessed from the text and no model is used.
   - `supervisor task importance` says it, with the reason. fable-director reads the importance of the task at work in each folder from `~/.claude/supervisor/task-importance.json`, rewritten at each change of the registry, without starting a process at each refresh.

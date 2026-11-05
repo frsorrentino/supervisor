@@ -189,6 +189,7 @@
   "tasks.imp_dir": "high-stakes folder ({dir})",
   "tasks.imp_low": "side work ({type})",
   "tasks.imp_medium": "no sign of high or low stakes",
+  "tasks.follows_ok": "approved as a follow-up of {orig}: the ok of {when} — {text}",
   "tasks.tidy_carry_reason": "{reason} · test it on pre-release {new}",
   "tasks.login_due": "The login of {account} expires on {date} at {time}: write to the master «redo the login of {account}» and keep ready the 6-digit code that arrives by email",
   "tasks.login_expired": "The login of {account} expired on {date} at {time}: write to the master «redo the login of {account}» and keep ready the 6-digit code that arrives by email",
