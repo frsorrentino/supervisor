@@ -2089,25 +2089,25 @@
     {
       "id": "6f1c2d3e-1210-4000-8000-000000001210",
       "ok": true,
-      "text": "{\"hash\": \"7c41e09a2b\", \"kind\": \"bug\", \"label\": \"bug\", \"title\": \"[supervisor-app] field observations: bug from the app, The session list stays empty after the login.\", \"body\": \"Collected on 2026-11-04 by claude-observe (https://github.com/frsorrentino/claude-observe): a bug written in the Supervisor app; parameter values are never stored.\\n\\n- bug: The session list stays empty after the login.\\n  - note: It happens with a file <file>.pdf open\\n  - note: app_version 2.4.1 · os Android 15 · device Pixel 7 · screen Sessions\", \"screenshot\": true, \"options\": [{\"id\": \"github\", \"label\": \"Send from my GitHub\", \"description\": \"Opens the issue already written on frsorrentino/supervisor with your GitHub account: you check it, attach the screenshot if you want and send it\"}, {\"id\": \"anonymous\", \"label\": \"Send anonymously\", \"description\": \"A public issue opened by the observe service, without your name; the screenshot does not go: the service takes text only\"}, {\"id\": \"later\", \"label\": \"Not now\", \"description\": \"It stays among the observations of this computer, nothing is sent\"}]}",
+      "text": "{\"hash\": \"7c41e09a2b\", \"kind\": \"bug\", \"label\": \"bug\", \"title\": \"[supervisor-app] field observations: bug from the app, The session list stays empty after the login.\", \"body\": \"Collected on 2026-11-04 by claude-observe (https://github.com/frsorrentino/claude-observe): a bug written in the Supervisor app; parameter values are never stored.\\n\\n- bug: The session list stays empty after the login.\\n  - note: It happens with a file <file>.pdf open\\n  - note: app_version 2.4.1 · os Android 15 · device Pixel 7 · screen Sessions\", \"screenshot\": true, \"screenshot_notice\": \"Only the maintainer sees the screenshot, in the private feedback repository, as it is: nobody removes names or data from it. Look at it before sending\", \"options\": [{\"id\": \"github\", \"label\": \"Send from my GitHub\", \"description\": \"Opens the issue already written on frsorrentino/supervisor-feedback, the private feedback repository, with your GitHub account and the screenshot already in it: you check it and send it. It works only if you can read that repository\"}, {\"id\": \"anonymous\", \"label\": \"Send anonymously\", \"description\": \"An issue in the private feedback repository, opened by the observe service without your name, with the screenshot: only the maintainer reads it\"}, {\"id\": \"later\", \"label\": \"Not now\", \"description\": \"It stays among the observations of this computer, nothing is sent\"}]}",
       "at": 1789214801
     },
     {
       "id": "6f1c2d3e-1211-4000-8000-000000001211",
       "ok": true,
-      "text": "{\"choice\": \"anonymous\", \"url\": \"https://github.com/frsorrentino/supervisor/issues/901\", \"text\": \"Sent anonymously, without the screenshot: https://github.com/frsorrentino/supervisor/issues/901\"}",
+      "text": "{\"choice\": \"anonymous\", \"url\": \"https://github.com/frsorrentino/supervisor-feedback/issues/901\", \"text\": \"Sent anonymously, with the screenshot: https://github.com/frsorrentino/supervisor-feedback/issues/901\", \"screenshot_url\": null}",
       "at": 1789214806
     },
     {
       "id": "6f1c2d3e-1212-4000-8000-000000001212",
       "ok": true,
-      "text": "{\"choice\": \"github\", \"url\": \"https://github.com/frsorrentino/supervisor/issues/new?title=%5Bsupervisor-app%5D+field+observations%3A+bug+from+the+app%2C+The+session+list+stays+empty+after+the+login.&body=Collected+on+2026-11-04+by+claude-observe+%28https%3A%2F%2Fgithub.com%2Ffrsorrentino%2Fclaude-observe%29%3A+a+bug+written+in+the+Supervisor+app%3B+parameter+values+are+never+stored.%0A%0A-+bug%3A+The+session+list+stays+empty+after+the+login.%0A++-+note%3A+It+happens+with+a+file+%3Cfile%3E.pdf+open%0A++-+note%3A+app_version+2.4.1+%C2%B7+os+Android+15+%C2%B7+device+Pixel+7+%C2%B7+screen+Sessions&labels=app%2Cbug\", \"text\": \"Open the link: the issue is already written; attach the screenshot there and send it from your GitHub\"}",
+      "text": "{\"choice\": \"github\", \"url\": \"https://github.com/frsorrentino/supervisor-feedback/issues/new?title=%5Bsupervisor-app%5D+field+observations%3A+bug+from+the+app%2C+The+session+list+stays+empty+after+the+login.&body=Collected+on+2026-11-04+by+claude-observe+%28https%3A%2F%2Fgithub.com%2Ffrsorrentino%2Fclaude-observe%29%3A+a+bug+written+in+the+Supervisor+app%3B+parameter+values+are+never+stored.%0A%0A-+bug%3A+The+session+list+stays+empty+after+the+login.%0A++-+note%3A+It+happens+with+a+file+%3Cfile%3E.pdf+open%0A++-+note%3A+app_version+2.4.1+%C2%B7+os+Android+15+%C2%B7+device+Pixel+7+%C2%B7+screen+Sessions%0A-+screenshot%3A+%21%5Bscreenshot%5D%28https%3A%2F%2Fgithub.com%2Ffrsorrentino%2Fsupervisor-feedback%2Fraw%2Fmain%2Fimages%2F2026%2F11%2F3f9c0a7d51e2b8846c1d0e2a.jpg%29&labels=app%2Cbug\", \"text\": \"Open the link: the issue is already written, with the screenshot; send it from your GitHub\", \"screenshot_url\": \"https://github.com/frsorrentino/supervisor-feedback/raw/main/images/2026/11/3f9c0a7d51e2b8846c1d0e2a.jpg\"}",
       "at": 1789214806
     },
     {
       "id": "6f1c2d3e-1213-4000-8000-000000001213",
       "ok": true,
-      "text": "{\"choice\": \"later\", \"url\": null, \"text\": \"Not now: the feedback stays among the observations of this computer, nothing was sent\"}",
+      "text": "{\"choice\": \"later\", \"url\": null, \"text\": \"Not now: the feedback stays among the observations of this computer, nothing was sent\", \"screenshot_url\": null}",
       "at": 1789214806
     },
     {

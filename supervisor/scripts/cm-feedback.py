@@ -27,9 +27,9 @@ tenerli. Cosi' bozza, hash, pulizia, invio anonimo, consenso e conteggi locali s
   osservazione di supervisor-app (nota, nella casella di observe, con i dati tecnici e la schermata se la persona l'ha
   voluta) e rende la bozza anonimizzata, nel formato che il servizio anonimo accetta, con le tre scelte; il secondo, con
   l'hash della bozza, la manda: «Invia dal mio GitHub» = il link della issue precompilata (etichette app e il tipo) che
-  l'app apre col GitHub della persona, dove puo' allegare la schermata; «Invia anonimo» = il servizio di observe, senza
-  la schermata (il servizio tratta solo testo); «Non ora» = l'osservazione resta nella casella. Le issue vanno nel repo
-  pubblico frsorrentino/supervisor, dove il servizio manda gia' supervisor-app.
+  l'app apre col GitHub della persona; «Invia anonimo» = il servizio di observe; «Non ora» = l'osservazione resta nella
+  casella. 1.123 (05/11/2026): la schermata va su tutte e due le strade, caricata dal servizio; le issue e le schermate
+  vanno nel repo PRIVATO frsorrentino/supervisor-feedback, perche' nessuno ripulisce quello che un'immagine mostra.
 
 Uso: cm-feedback.py [--json]   (lo stato)
 """
@@ -184,7 +184,7 @@ def text(plugin, body):
 
 # ------------------------------------------------------------------ il Feedback dell'app (1.121)
 APP = "supervisor-app"
-APP_REPO = "frsorrentino/supervisor"   # dove il servizio anonimo manda gia' supervisor-app (OBSERVE_REPOS di report.php)
+APP_REPO = "frsorrentino/supervisor-feedback"   # privato, dove il servizio anonimo manda supervisor-app (OBSERVE_REPOS di report.php)
 APP_KINDS = {"suggerimento": "suggestion", "bug": "bug"}   # il tipo dell'app → la parola della bozza; l'etichetta e' il tipo
 APP_CHOICES = ("github", "anonymous", "later")
 APP_TECH_KEYS, APP_TECH_VALUE = 10, 80
@@ -234,6 +234,7 @@ def app_draft(kind, body, tech=None, shot=None):
     (d / f"draft-{h}.json").write_text(json.dumps({"hash": h, "kind": kind, "title": got["title"], "body": got["body"], "rec": got["rec"],
                                                    "screenshot": str(shot_path) if shot_path else None, "at": int(now)}, ensure_ascii=False), encoding="utf-8")
     return True, json.dumps({"hash": h, "kind": kind, "label": kind, "title": got["title"], "body": got["body"], "screenshot": bool(shot_path),
+                             "screenshot_notice": msg("feedback.app_shot_public") if shot_path else None,   # 1.123
                              "options": _app_options(bool(shot_path))}, ensure_ascii=False)
 
 
@@ -253,14 +254,16 @@ def app_send(hash_, choice):
         got = _probe(HERE.parent, "app_" + choice, stdin=json.dumps(dr, ensure_ascii=False))
         if not got.get("ok"):
             return False, str(got.get("error"))
-        url = got.get("url")
+        url, why = got.get("url"), got.get("shot_error")
         if choice == "anonymous":
-            text = msg("feedback.app_sent_anon_shot" if shot else "feedback.app_sent_anon", url=url or "")
+            text = (msg("feedback.app_sent_anon_noshot", why=why, url=url or "") if shot and why
+                    else msg("feedback.app_sent_anon_shot" if shot else "feedback.app_sent_anon", url=url or ""))
             _remember_sent(APP, url)
         else:
-            text = msg("feedback.app_github_shot" if shot else "feedback.app_github")
+            text = msg("feedback.app_github_noshot", why=why) if shot and why else msg("feedback.app_github_shot" if shot else "feedback.app_github")
     f.unlink(missing_ok=True)   # una bozza si manda una volta sola
-    return True, json.dumps({"choice": choice, "url": url, "text": text}, ensure_ascii=False)
+    return True, json.dumps({"choice": choice, "url": url, "text": text, "screenshot_url": got.get("shot_url") if choice != "later" else None},
+                            ensure_ascii=False)
 
 
 def _app_text(ob, d):
@@ -280,6 +283,27 @@ def _app_text(ob, d):
                       f"a {word} written in the Supervisor app; parameter values are never stored.", "", *rows])
     title, _, body = ob.redact_out(f"{title}\n\n{body}", APP).partition("\n\n")
     return title.replace("\n", " ")[:300], body
+
+
+APP_SHOT_MAX = 1048576   # il limite del servizio (report.php OBSERVE_IMAGE_MAX)
+APP_SHOT_MIME = {"jpg": "image/jpeg", "png": "image/png"}
+
+
+def _app_shot(d):
+    """La schermata della bozza per il servizio: ((mime, bytes), None), (None, perche' no) o (None, None) senza schermata."""
+    p = Path(d["screenshot"]) if d.get("screenshot") else None
+    if p is None:
+        return None, None
+    mime = APP_SHOT_MIME.get(p.suffix.lstrip(".").lower())
+    try:
+        data = p.read_bytes() if mime else b""
+    except OSError:
+        data = b""
+    if not data:
+        return None, msg("feedback.app_shot_gone")
+    if len(data) > APP_SHOT_MAX:
+        return None, msg("feedback.app_shot_big")
+    return (mime, data), None
 
 
 def _app_mark(ob, rec, where):
@@ -405,16 +429,36 @@ def probe_app(ob, action, d):
     if action == "app_anonymous":
         if not ob.endpoint(APP):
             return {"ok": False, "error": msg("feedback.no_endpoint", plugin=APP)}
-        try:
-            url = ob.send_anonymous(APP, {"repo": APP_REPO}, d["title"], d["body"], [], False)   # mai la schermata
+        img, why = _app_shot(d)
+        try:   # 1.123: la schermata va col testo; il servizio la carica nel repo pubblico delle immagini e la linka
+            url = ob.send_anonymous(APP, {"repo": APP_REPO}, d["title"], d["body"], [], False, labels=["app", d["kind"]], image=img)
         except (ValueError, OSError) as e:
-            return {"ok": False, "error": str(e)[:300]}
+            if not img:
+                return {"ok": False, "error": str(e)[:300]}
+            # un servizio che rifiuta l'immagine (il limite del giorno, un report.php di prima che prende solo i sei
+            # campi): il testo parte lo stesso, una volta, e la risposta dice perche' senza la schermata
+            why = str(e)[:200]
+            try:
+                url = ob.send_anonymous(APP, {"repo": APP_REPO}, d["title"], d["body"], [], False)
+            except (ValueError, OSError) as e2:
+                return {"ok": False, "error": str(e2)[:300]}
         _app_mark(ob, d.get("rec"), url)
-        return {"ok": True, "url": url}
+        return {"ok": True, "url": url, "shot_error": why, "shot_url": None}
     if action == "app_github":
-        url = ob.issue_link(APP_REPO, d["title"], d["body"], limit=7400) + "&" + urllib.parse.urlencode({"labels": f"app,{d['kind']}"})
+        img, why = _app_shot(d)
+        body, shot_url = d["body"], None
+        if img:   # 1.123: prima la schermata, dal servizio; il suo link e' gia' nel testo della issue
+            if not ob.endpoint(APP):
+                why = msg("feedback.no_endpoint", plugin=APP)
+            else:
+                try:
+                    shot_url = ob.upload_image(APP, *img)
+                    body += f"\n- screenshot: ![screenshot]({shot_url})"
+                except (ValueError, OSError) as e:
+                    why = str(e)[:200]
+        url = ob.issue_link(APP_REPO, d["title"], body, limit=7400) + "&" + urllib.parse.urlencode({"labels": f"app,{d['kind']}"})
         _app_mark(ob, d.get("rec"), "github link")
-        return {"ok": True, "url": url}
+        return {"ok": True, "url": url, "shot_error": why, "shot_url": shot_url}
     return {"ok": False, "error": f"action {action}?"}
 
 

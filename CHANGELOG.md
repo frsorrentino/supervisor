@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.126 — 2026-11-05: the screenshot of the app's Feedback reaches the GitHub issue, whichever way you send it (supervisor-feedback-immagine-05-11, contract 1.123).**
+  - The feedback and its screenshot now go to a private repository, frsorrentino/supervisor-feedback, that only the maintainer reads: nobody removes names or data from what a screenshot shows, so it is not published.
+  - «Invia anonimo» now sends the screenshot too: observe's service removes its hidden data (place, camera), stores it in that repository and shows it in the issue, labelled app and bug or suggerimento.
+  - «Invia dal mio GitHub» opens the issue with the screenshot already in it: nothing to attach by hand. It works only for who can read the private repository.
+  - Before you send, the sheet says who will see the screenshot. If it cannot go (over 1 MB, the service's limit of the day), the feedback goes without it and the answer says why.
 - **0.8.125 — 2026-11-05: a newer pre-release carries the open tests of the one it contains, and no longer closes as superseded tasks never tested (supervisor-supera-prove-05-11, contract 1.122).**
   - When a new pre-release contains the previous one, the tests you had not done yet move to the new one: same task, same text, the new build. They stay in «Prova» and the pause stays in «Decidi», naming the new pre-release. Until now they disappeared, and the pauses of tasks you never tested were closed.
   - A task closes as superseded only when its own test on the new pre-release is ok. Another task closed green on the same pre-release no longer closes it.
