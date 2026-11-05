@@ -644,6 +644,13 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.125 (05/11/2026, the maintainer: «All'avvio di una sessione, o al clear o al riavvio, le informazioni sul modello mancano nell'header … se si cambia modello durante un turno, l'operazione riesca»; task supervisor-modello-stato-05-11). No new key, `v` stays 1.
+
+- **`sessions[].model` and `effort` are there before the first turn.** After a start, a `/clear` or a restart the transcript has no turn yet. The model now comes from Claude Code's own SessionStart payload (`model`, measured in 2.1.318), noted for the session until a newer turn says it; the effort, and the model when that is missing, from what Claude Code gives the status line (fable-director's snapshot in `relay.window_hint_dir`). Never over a turn or a change from the selector. A session of win gets them at its first turn, as before (no hooks there).
+- **op `model` and `effort` on a busy session succeed**: answered ok with «<name> is working: model <label> is chosen and applies at the end of the turn, before the next prompt» (effort alike). The change waits, `sessions[].model`/`effort` show the chosen value at once, and supervisor applies it as soon as the turn ends (the Stop hook here; the hosts poller for win), with the same checks as before. A session on a dialog or with text typed is still refused with its reason (rc 3); the effort refusal sample …0121 is now this answer.
+
+Fixture: `cmd-result-sample.json` (…0121 effort on a busy session, ok with the pending text; …1220 model on a busy session).
+
 Contract 1.124 (05/11/2026, from the master for the app: with the private repository «Invia dal mio GitHub» works only for who can read it; task supervisor-feedback-github-ok-05-11). Additive, `v` stays 1.
 
 - **The draft of `feedback_app` gains `github_ok`** (bool, before `options`): true only when the GitHub account of the relay's computer can read frsorrentino/supervisor-feedback (`gh api repos/frsorrentino/supervisor-feedback` answers 200); false on 404, without gh or without its login. The answer is remembered 10 minutes; a gh that does not answer gives false and is asked again next time. The app shows «Invia dal mio GitHub» only with `github_ok: true`, and hides it when the key is missing (a relay before 1.124). `options` does not change.

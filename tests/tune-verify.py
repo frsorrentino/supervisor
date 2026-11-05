@@ -7,7 +7,7 @@ TU2  model per id, spostandosi verso l'alto (Sonnet → Fable); Opus 5.5 per id 
      una voce configurata ma assente dalla lista → uscita 4 dopo un giro intero, mai «s»
 TU3  effort: cursore tutto a sinistra e poi avanti, «s» → «(this session only)», per low e per max
 TU4  valori fuori dalle scelte (modello sconosciuto, ultracode) → uscita 2, nessun tasto mandato
-TU5  sessione al lavoro («esc to interrupt») → uscita 3, niente selettore aperto
+TU5  sessione al lavoro («esc to interrupt») → uscita 0, il cambio aspetta il fine turno (05/11), niente selettore aperto
 TU6  domanda aperta («Enter to select») → uscita 3
 TU7  testo scritto dall'utente nel prompt → uscita 3, il testo resta com'era
 TU8  selettore che non si apre → uscita 4 dopo tune.timeout_s
@@ -102,10 +102,13 @@ with T.PrivateTmux() as tm:
 
     start(tm, "beta", "busy")
     r = tune(tm, "effort", "beta", "low")
-    T.check("TU5 a session at work («esc to interrupt») → exit 3, no picker opened", r.returncode == 3 and "sta lavorando" in r.stdout and "to adjust" not in pane(tm, "beta"), r.stdout + pane(tm, "beta"))
+    _pb = tmp / "state" / "tune-pending" / "beta.json"
+    T.check("TU5 (05/11) a session at work («esc to interrupt») → exit 0, the effort waits for the end of the turn (tune-pending), no picker opened",
+            r.returncode == 0 and "a fine turno" in r.stdout and json.loads(_pb.read_text()).get("effort") == "low" and "to adjust" not in pane(tm, "beta"), r.stdout + pane(tm, "beta"))
     start(tm, "busy294", "busy294")
     r = tune(tm, "effort", "busy294", "low")
-    T.check("TU5b a session at work with the 2.1.294 status line (no «esc to interrupt») → exit 3, no picker opened", r.returncode == 3 and "sta lavorando" in r.stdout and "to adjust" not in pane(tm, "busy294"), r.stdout + pane(tm, "busy294"))
+    T.check("TU5b a session at work with the 2.1.294 status line (no «esc to interrupt») → exit 0, waits, no picker opened",
+            r.returncode == 0 and "a fine turno" in r.stdout and (tmp / "state" / "tune-pending" / "busy294.json").is_file() and "to adjust" not in pane(tm, "busy294"), r.stdout + pane(tm, "busy294"))
 
     start(tm, "gamma", "question")
     r = tune(tm, "model", "gamma", "claude-sonnet-5")

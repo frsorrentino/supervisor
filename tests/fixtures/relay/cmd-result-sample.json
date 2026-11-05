@@ -1291,6 +1291,15 @@
       "kind": "bug",
       "text": "Screen attached",
       "share": "k3f9a2"
+    },
+    {
+      "session": "atlas-shop",
+      "arg": "claude-fable-5-1",
+      "issued": 1789215000,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1220-4000-8000-000000001220",
+      "op": "model"
     }
   ],
   "result": [
@@ -1356,8 +1365,8 @@
     },
     {
       "id": "6f1c2d3e-0121-4000-8000-000000000121",
-      "ok": false,
-      "text": "atlas-shop is working: try again when it is idle",
+      "ok": true,
+      "text": "atlas-shop is working: effort low is chosen and applies at the end of the turn, before the next prompt",
       "at": 1789210981
     },
     {
@@ -2115,6 +2124,12 @@
       "ok": false,
       "text": "feedback_app: the screenshot goes only with the person's yes (screenshot_ok: true); not taken",
       "at": 1789214807
+    },
+    {
+      "id": "6f1c2d3e-1220-4000-8000-000000001220",
+      "ok": true,
+      "text": "atlas-shop is working: model Fable 5.1 is chosen and applies at the end of the turn, before the next prompt",
+      "at": 1789215001
     }
   ]
 }

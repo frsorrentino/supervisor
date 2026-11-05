@@ -82,6 +82,117 @@ DIM = re.compile(r"\x1b\[[0-9;]*m")
 # la sua console (adattatore, su Windows cm-console.ps1), una chiamata per lettura o per gruppo di tasti. Li' il
 # prompt e il cursore sono «>», e il suggerimento grigio non si distingue dal testo scritto: non si controlla.
 REMOTE = {}   # nome come lo chiama il relay → (adattatore, nome di la')
+# 05/11/2026 (supervisor-modello-stato-05-11, la persona: «se si cambia modello durante un turno, l'operazione riesca»):
+# un cambio a sessione occupata non si rifiuta piu': resta in attesa qui, lo stato lo da' gia' come scelto (annotato in
+# tune.file) e supervisor lo applica a fine turno (Stop hook; per win il giro di `hosts poll`), prima del prompt dopo
+PENDING_WAIT_S = 180
+
+
+def pending_path(name):
+    return Path(cm.expand(CFG["state_dir"])) / "tune-pending" / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".json")
+
+
+def pending_of(name):
+    import json
+    try:
+        d = json.loads(pending_path(name).read_text())
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_pending(name, _replace=False, **kv):
+    """Un cambio in attesa, unito a quelli gia' li'; _replace scrive solo questi (cio' che resta dopo un'applicazione)."""
+    import json
+    d = {} if _replace else pending_of(name)
+    d.update(kv)
+    d["at"] = time.time()
+    f = pending_path(name)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(d))
+    os.replace(tmp, f)
+
+
+def _pending_log(text):
+    try:
+        f = pending_path("x").parent / "apply.log"
+        with open(f, "a") as fh:
+            fh.write(time.strftime("%Y-%m-%dT%H:%M:%S ") + text + "\n")
+    except OSError:
+        pass
+
+
+def spawn_apply(name):
+    """Stacca l'esecutore che applica il cambio in attesa appena la casella e' libera (un lock evita i doppi)."""
+    import subprocess
+    lock = pending_path(name).with_suffix(".lock")
+    try:
+        if lock.exists() and time.time() - lock.stat().st_mtime < PENDING_WAIT_S * 3 + 120:
+            return False
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text(str(time.time()))
+    except OSError:
+        return False
+    if os.environ.get("CM_TUNE_SPAWN"):   # i test: si scrive, niente processo
+        with open(os.environ["CM_TUNE_SPAWN"], "a") as f:
+            f.write(name + "\n")
+        return True
+    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "apply-pending", name],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return True
+
+
+def apply_pending(name, wait_s=PENDING_WAIT_S):
+    """L'esecutore: aspetta la casella vuota, poi il modello e l'effort in attesa, coi comandi di sempre. Un cambio
+    riuscito o rifiutato per un motivo vero (valore, selettore) esce dall'attesa; uno ancora occupato resta."""
+    import subprocess
+    lock = pending_path(name).with_suffix(".lock")
+    try:
+        end = time.time() + wait_s
+        while time.time() < end:
+            d = pending_of(name)
+            if not d:
+                return 0
+            ok, why = prompt_ready(name)
+            if ok:
+                break
+            if why == "dialog":
+                _pending_log(f"{name}: a dialog is open, the change waits")
+                return 3
+            time.sleep(2)
+        else:
+            _pending_log(f"{name}: never idle in {wait_s} s, the change waits")
+            return 3
+        rc_all = 0
+        for what in ("model", "effort"):
+            value = d.get(what)
+            if not value:
+                continue
+            r = subprocess.run([sys.executable, str(Path(__file__).resolve()), what, name, str(value)], capture_output=True, text=True,
+                               env={**os.environ, "CM_TUNE_APPLYING": "1"}, timeout=COMPACT_WAIT_S + 120)
+            _pending_log(f"{name}: {what} {value} → rc {r.returncode} {(r.stdout or '').strip().splitlines()[:1]}")
+            if r.returncode == 3:   # tornata occupata: resta in attesa per il fine turno dopo
+                return 3
+            cur = pending_of(name)
+            cur.pop(what, None)
+            if [k for k in cur if k != "at"]:
+                save_pending(name, _replace=True, **{k: v for k, v in cur.items() if k != "at"})
+            else:
+                pending_path(name).unlink(missing_ok=True)
+            rc_all = rc_all or r.returncode
+        return rc_all
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _queue_if_busy(name, why, **change):
+    """Una sessione occupata (non un dialogo, non testo scritto): il cambio resta in attesa e lo stato lo da' gia'."""
+    if why != "busy" or os.environ.get("CM_TUNE_APPLYING"):
+        return False
+    save_pending(name, **{k: (v["id"] if isinstance(v, dict) else v) for k, v in change.items()})
+    remember(name, **change)
+    return True
 GLYPHS = ("❯",)
 KEYMAP = {"Escape": "Esc", "Enter": "Enter", "Up": "Up", "Down": "Down", "Left": "Left", "Right": "Right"}
 
@@ -366,6 +477,9 @@ def _set_model(name, wanted):
         print(M("tune.bad_model", model=wanted, choices=", ".join(m["id"] for m in models())))
         return 2
     ok, why = prompt_ready(name)
+    if not ok and _queue_if_busy(name, why, model={"id": choice["id"], "label": choice.get("label")}):
+        print(M("tune.model_pending", name=name, model=choice.get("label") or choice["id"]))
+        return 0
     if not ok:
         print(M(f"tune.not_ready_{why}", name=name))
         return 3
@@ -418,6 +532,9 @@ def _set_effort(name, level):
         print(M("tune.bad_effort", effort=level, choices=", ".join(efforts())))
         return 2
     ok, why = prompt_ready(name)
+    if not ok and _queue_if_busy(name, why, effort=level):
+        print(M("tune.effort_pending", name=name, effort=level))
+        return 0
     if not ok:
         print(M(f"tune.not_ready_{why}", name=name))
         return 3
@@ -505,7 +622,27 @@ def set_effort(name, level):
         return _set_effort(name, level)
 
 
+def bind(name):
+    """Una sessione di un altro host: la sua console (adattatore), come per un cambio. False se non si raggiunge."""
+    global WAIT_S, GLYPHS
+    if tmux("has-session", "-t", f"={name}").returncode == 0:
+        return True
+    hit = _load("cm-rsession").resolve(name)
+    a = _load("cm-hosts").adapter(hit[0]) if hit else None
+    if not hasattr(a, "session_console"):
+        return False
+    REMOTE[name] = (a, hit[1])
+    GLYPHS = ("❯", ">")
+    WAIT_S *= 3
+    return True
+
+
 def main(argv):
+    if argv[:1] == ["apply-pending"] and len(argv) == 2:
+        if not bind(argv[1]):
+            print(M("tune.no_session", name=argv[1]))
+            return 1
+        return apply_pending(argv[1], PENDING_WAIT_S * (3 if argv[1] in REMOTE else 1))
     if len(argv) < 3 or argv[0] not in ("model", "effort", "permissions"):
         print(M("tune.usage"), file=sys.stderr)
         return 2

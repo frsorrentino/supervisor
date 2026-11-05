@@ -569,7 +569,7 @@ case "$1" in
   talk) if [ -f "{tmp / 'talk-saved'}" ]; then echo "supervisor talk: «$2» è chiusa; messaggio m1 salvato nella casella, le arriva quando riparte (stato: supervisor talk --status m1)" >&2; else python3 "{fake_talk}" "$2" "$3"; echo "consegnato"; fi ;;
   model) echo "$2: model Sonnet 5, this session only" ;;
   permissions) if [ "$2" = "work-ledger-api" ]; then echo "$2: $3 is not in this session's Shift+Tab cycle, left on plan"; exit 4; else echo "$2: permissions now $3"; fi ;;
-  effort) if [ "$2" = "atlas-shop" ]; then echo "atlas-shop is working: try again when it is idle"; exit 3; else echo "$2: effort $3, this session only"; fi ;;
+  effort) if [ "$2" = "atlas-shop" ]; then echo "atlas-shop is working: effort low is chosen and applies at the end of the turn, before the next prompt"; exit 0; else echo "$2: effort $3, this session only"; fi ;;
   report) python3 "{fake_talk}" "$6" "segnalazione: $4"; if [ "$3" != "-" ]; then cp "$3" "{tmp / 'report-img'}"; echo "segnalazione consegnata a «$6»"; echo "  immagine: $2/docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg"; else echo "segnalazione consegnata a «$6»"; fi ;;
   interrupt) case "$2" in atlas-shop) echo "$2: fermata" ;; field-notes) echo "$2: niente da fermare" >&2; exit 1 ;; *) echo "supervisor interrupt: «$2» non è viva" >&2; exit 3 ;; esac ;;
   night) case "$2" in
@@ -1189,8 +1189,8 @@ res = send_cmd(CMDS[9])   # model field-notes claude-sonnet-5
 T.check("R10 (1.12) model → `model field-notes claude-sonnet-5`, /result ok with the command's line (as in the fixture)",
         res and res["ok"] is True and res["text"] == RES[9]["text"] and "model field-notes claude-sonnet-5" in cm_calls(), str(res) + str(cm_calls()[-3:]))
 res = send_cmd(CMDS[10])   # effort atlas-shop low: occupata
-T.check("R10 (1.12) effort on a busy session → /result ok=false with the short reason, as the watch shows it",
-        res and res["ok"] is False and res["text"] == RES[10]["text"], str(res))
+T.check("R10 (1.125) effort on a busy session → /result ok with «chosen, applies at the end of the turn», as in the fixture",
+        res and res["ok"] is True and res["text"] == RES[10]["text"], str(res))
 r = relay("push", "--dry-run"); dry10 = json.loads(r.stdout)
 T.check("R10 (1.12) /state carries choices: full model ids (as in session.model.id) with labels, and the five efforts",
         dry10.get("choices") == json.loads((FIX / "state-1-question.json").read_text())["choices"], str(dry10.get("choices")))

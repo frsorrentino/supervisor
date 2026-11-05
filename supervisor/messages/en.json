@@ -816,6 +816,8 @@
   "tune.model_set": "{name}: model {model}, this session only",
   "tune.compacting": "{name}: summarizing the conversation for the smaller window, switch not confirmed yet (not interrupted)",
   "tune.effort_set": "{name}: effort {effort}, this session only",
+  "tune.effort_pending": "{name} is working: effort {effort} is chosen and applies at the end of the turn, before the next prompt",
+  "tune.model_pending": "{name} is working: model {model} is chosen and applies at the end of the turn, before the next prompt",
   "tune.bad_permission": "unknown permission mode: {mode}",
   "tune.perm_dialog": "{name}: a dialog is open, answer it first",
   "tune.perm_unreadable": "{name}: footer not readable, nothing changed",

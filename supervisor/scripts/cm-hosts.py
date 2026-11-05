@@ -988,11 +988,29 @@ def cmd_poll(argv):
         return 0
     off = _load("cm-offload")
     off.tick([])
+    _autoclear()
     if any(lively(read_json(snap_path(n), {})) for n in names if n != "local"):
         time.sleep(30)
         poll_round(names, False)
         off.tick([])
+        _autoclear()
     return 0
+
+
+def _autoclear():
+    """05/11 (supervisor-clear-dopo-handoff-05-11): sul win nativo gli hook non girano; il /clear dopo un passaggio di
+    consegne di una sessione di win parte da qui, dal giro del sondatore."""
+    try:
+        _load("cm-handoff").autoclear_remote()
+    except Exception as e:   # noqa: BLE001 — un aiuto in piu': il giro del sondatore resta
+        print(f"autoclear: {e}", file=sys.stderr)
+    try:   # 05/11 (supervisor-modello-stato-05-11): un cambio chiesto a una sessione di win occupata, a fine turno
+        tu = _load("cm-tune")
+        for r in remote_session_rows():
+            if r.get("status") == "idle" and tu.pending_of(r["name"]):
+                tu.spawn_apply(r["name"])
+    except Exception as e:   # noqa: BLE001
+        print(f"tune pending: {e}", file=sys.stderr)
 
 
 CRON_TAG = "supervisor hosts poll"

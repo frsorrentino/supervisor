@@ -19,4 +19,4 @@ supervisor handoff --prepare ${ARGUMENTS}
 
 3. Run the `THEN:` command it printed (`supervisor handoff --written PATH`): it records the file, appends the «Impegni dal registro» section from the task registry (never write that section yourself: the registry is the source) and prints its size.
 
-4. Tell the user in two lines: the path, and that sending `/clear` is enough — at the next start supervisor points the session to this file once. You cannot run `/clear` yourself: the user sends it (terminal, phone or web app).
+4. Tell the user in two lines: the path, and that supervisor sends `/clear` by itself when this turn ends, then points the session to this file at the next start. Do not ask the user to send it. If you end the turn with a question for the user (a «Tipo: aspetta» line), supervisor does not clear: the user sends `/clear` after answering.

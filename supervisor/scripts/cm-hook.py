@@ -85,6 +85,35 @@ def payload():
         return {}
 
 
+def note_start_model(sid, model):
+    """05/11/2026 (supervisor-modello-stato-05-11): all'avvio, dopo /clear e dopo un riavvio la trascrizione non ha
+    ancora un turno, e il modello nello stato era null. Il payload del SessionStart porta `model` (Claude Code 2.1.318:
+    hook_event_name "SessionStart", source, agent_type, model): si annota in tune.file per la sessione, come fa un
+    cambio dal selettore, e vale finche' un turno piu' recente non riporta quello della trascrizione."""
+    f = (CFG.get("tune") or {}).get("file") or ""
+    if not sid or not model or not f:
+        return
+    m = str(model).strip()
+    base = m.split("[")[0]
+    label = next((x.get("label") for x in (CFG.get("tune") or {}).get("models") or []
+                  if isinstance(x, dict) and str(x.get("id") or "").split("[")[0] == base), None)
+    path = Path(cm.expand(f))
+    try:
+        data = json.loads(path.read_text()) if path.is_file() else {}
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+    data[sid] = {"model": {"id": m, "label": label}, "at": time.time(), "source": "session_start"}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
 def ledger(event, p, **extra):
     try:
         STATE.mkdir(parents=True, exist_ok=True)
@@ -476,7 +505,8 @@ def main(argv):
     if ev == "SessionStart":
         registry_update()
         (STATE / "waiting" / sid).unlink(missing_ok=True) if sid else None
-        ledger("start", p, source=p.get("source", ""))
+        ledger("start", p, source=p.get("source", ""), model=p.get("model") or None)   # 05/11: il modello del payload, misurato
+        note_start_model(sid, p.get("model"))
         k = kernel_text(p)
         if k:
             sys.stdout.write(k + "\n")
@@ -494,7 +524,7 @@ def main(argv):
                 spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
                 ho = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(ho)
-                line = ho.announce(p.get("cwd") or os.getcwd())
+                line = ho.announce(p.get("cwd") or os.getcwd(), sid or None)   # 05/11: a ogni /clear finche' non si riparte
                 if line:
                     sys.stdout.write(line + "\n")
             except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
@@ -606,6 +636,23 @@ def main(argv):
                 box = ""
             if box:
                 sys.stdout.write(json.dumps({"decision": "block", "reason": box}, ensure_ascii=False) + "\n")
+                return 0
+            try:   # 05/11 (supervisor-clear-dopo-handoff-05-11): un passaggio di consegne scritto nel turno → /clear da supervisor
+                spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
+                ho = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(ho)
+                ho.on_stop(my_tmux_name(), p.get("transcript_path") or "")
+            except Exception:   # noqa: BLE001 — un aiuto in piu': mai far cadere lo Stop
+                pass
+            try:   # 05/11 (supervisor-modello-stato-05-11): un cambio di modello o effort chiesto durante il turno
+                tn = my_tmux_name()
+                spec = importlib.util.spec_from_file_location("cm_tune", HERE / "cm-tune.py")
+                tu = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(tu)
+                if tn and tu.pending_of(tn):
+                    tu.spawn_apply(tn)
+            except Exception:   # noqa: BLE001
+                pass
     elif ev == "StopFailure":
         # 22/10/2026 (0.8.41, nota sul changelog 2.1.306): in 65 stop-failure del ledger error_details era sempre vuoto e il
         # motivo vero stava in last_assistant_message («the API error string itself»), che nessuno leggeva

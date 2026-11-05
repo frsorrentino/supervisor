@@ -347,7 +347,37 @@ def session_runtime(row, tail_bytes=512 * 1024, head_bytes=1024 * 1024):
     trascrizione non riporta ancora. Vedi _transcript_runtime per la lettura e _tuned per l'annotazione."""
     out = _transcript_runtime(row, tail_bytes, head_bytes)
     last_turn = out.pop("_ts", 0.0)
-    return _tuned(row, out, last_turn)
+    out = _tuned(row, out, last_turn)
+    if not out.get("model") or not out.get("effort"):
+        out = _statusline(row, out)
+    return out
+
+
+def _statusline(row, out):
+    """05/11/2026 (supervisor-modello-stato-05-11): prima del primo turno (avvio, /clear, riavvio) la trascrizione non
+    dice ne' modello ne' effort. La statusline li riceve da Claude Code a ogni refresh, anche prima del primo turno, e
+    fable-director li salva per sessione in relay.window_hint_dir (<session_id>.json: model, effort): si prendono da
+    li' solo quando mancano, mai sopra la trascrizione o un cambio annotato."""
+    hint_dir = (_cfg().get("relay") or {}).get("window_hint_dir")
+    sid = (row or {}).get("session_id") or ""
+    if not hint_dir or not sid or (row or {}).get("host"):
+        return out
+    try:
+        snap = json.loads((Path(cm.expand(hint_dir)) / f"{sid}.json").read_text())
+    except (OSError, ValueError):
+        return out
+    if not isinstance(snap, dict):
+        return out
+    mid = str(snap.get("model") or "").strip()
+    if not out.get("model") and mid and not mid.startswith("<"):
+        base = mid.split("[")[0]
+        label = next((x.get("label") for x in (_cfg().get("tune") or {}).get("models") or []
+                      if isinstance(x, dict) and str(x.get("id") or "").split("[")[0] == base), None)
+        out["model"] = {"id": mid, "label": label}
+    eff = str(snap.get("effort") or "").strip()
+    if not out.get("effort") and eff in ("low", "medium", "high", "xhigh", "max"):
+        out["effort"] = eff
+    return out
 
 
 def permission_mode(row, tail_bytes=512 * 1024):

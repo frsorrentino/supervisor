@@ -91,7 +91,12 @@ ho("--written", p_here)
 r = session_start("clear")
 T.check("H4 SessionStart after /clear carries the HANDOFF line", "HANDOFF: first read " + p_here in r.stdout, r.stdout[-400:] + r.stderr[-400:])
 r = session_start("clear")
-T.check("H4 the next start does not repeat it", "HANDOFF:" not in r.stdout, r.stdout[-400:])
+T.check("H4 (05/11) a second /clear before any prompt carries it again (the master's two /clear at 15:11 and 15:13)", "HANDOFF: first read " + p_here in r.stdout, r.stdout[-400:])
+time.sleep(1.1)
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), "UserPromptSubmit"], input=json.dumps({"session_id": "sid-h4", "cwd": str(proj), "prompt": "riprendi",
+               "hook_event_name": "UserPromptSubmit"}), capture_output=True, text=True, env=dict(ENV, CM_RELAY_NO_PUSH="1"), cwd=str(proj), timeout=60)
+r = session_start("clear")
+T.check("H4 once the session wrote a prompt, the next start does not repeat it", "HANDOFF:" not in r.stdout, r.stdout[-400:])
 
 # H6 (22/10/2026, P5): la sezione «Impegni dal registro» la scrive il codice (--written), una sola; --snapshot per restart arm
 db6 = tmp / "tasks6.db"

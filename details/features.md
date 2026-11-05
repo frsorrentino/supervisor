@@ -66,8 +66,12 @@ safe instant.
 When a long session gets expensive, a handoff plus `/clear` keeps what matters
 for a fraction of the cost. `/supervisor:handoff --here` writes a short
 distillate of the session (goal, decisions, verified facts, open items, paths,
-what to invoke next) into the project's `docs/`. After `/clear`, the next start
-points the session to that file once. The app's «Handoff» button sends the
+what to invoke next) into the project's `docs/`. When the turn that wrote it
+ends, supervisor sends `/clear` to the session by itself, typed like a prompt
+from the app, here and on win; it does not when the turn ends with a question for
+you, a request is open, or a restart is armed. After `/clear`, the next start
+points the session to that file, again at each `/clear` until the session gets
+its first prompt. The app's «Handoff» button sends the
 command each session has. The optional companion plugin
 [fable-director](https://github.com/frsorrentino/fable-director) has its own
 `/fable-director:handoff`, which also checks that no budget is open and that

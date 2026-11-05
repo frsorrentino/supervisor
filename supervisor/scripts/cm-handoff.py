@@ -7,6 +7,16 @@
   supervisor handoff --announce CWD       usato dal hook: la riga da mettere nel contesto, una volta sola
   supervisor handoff --snapshot CWD NAME  usato da `restart arm` nella master: la sezione impegni nel passaggio di
                                           consegne recente, o in handoffs/impegni-NAME-<data>-<ora>.md con il puntatore
+  supervisor handoff --clear-when-idle NAME PATH   05/11: l'esecutore staccato del /clear dopo un passaggio di consegne
+  supervisor handoff --autoclear-remote    05/11: dal giro di `hosts poll`: lo stesso per le sessioni di win
+
+05/11/2026 (supervisor-clear-dopo-handoff-05-11, la persona: «alla fine dell'endoff in automatico effettua un clear»):
+quando in un turno e' stato scritto un passaggio di consegne (`supervisor handoff --written PATH` o il --written di
+fable-director, anche --here), a fine turno supervisor manda /clear alla sessione, come un prompt dell'app (digitato
+nel riquadro, a casella vuota). Mai senza il file (o vuoto, o piu' vecchio del turno), con la sessione che aspetta una
+risposta (in attesa, una richiesta needs-you, un «Tipo: aspetta»), con un riavvio armato o un prompt in coda.
+L'annuncio dopo /clear non consuma piu' il puntatore alla prima lettura: torna a ogni /clear finche' la sessione che
+l'ha avuto non scrive un prompt (05/11 15:13: un secondo /clear di fila trovava il puntatore gia' consumato).
 
 Il tasto «Handoff» dell'app manda il comando che lo stato indica per la sessione (sessions[].handoff, contratto
 1.51): «/fable-director:handoff --here» se la sessione ha fable-director, altrimenti «/supervisor:handoff --here»
@@ -127,16 +137,55 @@ def written(path, cwd):
     return 0
 
 
-def announce(cwd):
-    """La riga per il SessionStart: solo un puntatore recente, e una volta sola (poi il puntatore e' consumato)."""
+def _prompted_since(sids, since):
+    """Una sessione fra `sids` ha scritto un prompt (riga «prompt» del ledger) dopo `since`?"""
+    try:
+        with open(STATE / "ledger.jsonl", "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 2_000_000))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return False
+    for ln in reversed(lines):
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue
+        try:
+            ts = datetime.datetime.fromisoformat(r.get("ts") or "").timestamp()
+        except ValueError:
+            continue
+        if ts < since:
+            return False
+        if r.get("event") == "prompt" and r.get("session_id") in sids:
+            return True
+    return False
+
+
+def announce(cwd, sid=None):
+    """La riga per il SessionStart: solo un puntatore recente. 05/11: torna a ogni /clear finche' una sessione che l'ha
+    avuto non scrive un prompt (allora il puntatore e' consumato); senza session_id, una volta sola come prima."""
+    write_features()
     ptr = pointer(cwd)
     try:
         d = json.loads(ptr.read_text())
     except (OSError, ValueError):
         return ""
-    ptr.unlink(missing_ok=True)
     if time.time() - int(d.get("at") or 0) > ANNOUNCE_H * 3600 or not Path(d.get("path") or "").is_file():
+        ptr.unlink(missing_ok=True)
         return ""
+    if d.get("by") == "fable-director":   # 05/11: lo scrive anche il --written di fable-director; l'annuncio e' suo
+        return ""
+    seen = [x for x in d.get("announced") or [] if isinstance(x, dict) and x.get("sid")]
+    if not sid or (seen and _prompted_since({x["sid"] for x in seen}, min(int(x.get("at") or 0) for x in seen))):
+        ptr.unlink(missing_ok=True)
+        if sid:
+            return ""
+    else:
+        d["announced"] = seen + [{"sid": sid, "at": int(time.time())}]
+        tmp = ptr.with_name(f"{ptr.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(d))
+        os.replace(tmp, ptr)
     hm = time.strftime("%H:%M", time.localtime(int(d["at"])))
     if lang() == "it":
         return f"HANDOFF: prima di tutto leggi {d['path']} (scritto alle {hm} da questa sessione prima di /clear) e riprendi da lì."
@@ -169,8 +218,249 @@ def snapshot(cwd, name):
     return 0
 
 
+# ------------------------------------------------------------------ 05/11: /clear dopo il passaggio di consegne
+WRITTEN_RE = re.compile(r"handoff(?:\.py)?[\"']?\s+(?:[^|;&\n]*?\s)?--written\s+(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
+AUTOCLEAR_WAIT_S = 120
+TAIL_BYTES = 3_000_000
+
+
+def _entries(transcript):
+    try:
+        with open(transcript, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - TAIL_BYTES))
+            raw = f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for ln in raw:
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            pass
+    return out
+
+
+def _is_prompt(e):
+    """Una riga della persona (o di un prompt dell'app): user con testo, non un tool_result, non meta."""
+    if e.get("type") != "user" or e.get("isMeta") or e.get("isSidechain"):
+        return False
+    c = (e.get("message") or {}).get("content")
+    if isinstance(c, str):
+        return bool(c.strip())
+    return isinstance(c, list) and any(isinstance(x, dict) and x.get("type") == "text" for x in c) \
+        and not any(isinstance(x, dict) and x.get("type") == "tool_result" for x in c)
+
+
+def _ts(e):
+    try:
+        return datetime.datetime.fromisoformat(str(e.get("timestamp") or "").replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def last_turn_handoff(transcript):
+    """(path, inizio del turno, testo finale) se nell'ultimo turno un comando Bash ha registrato un passaggio di consegne
+    (--written PATH di supervisor o di fable-director) e il file c'e', non vuoto e non piu' vecchio del turno; se no None."""
+    es = _entries(transcript)
+    start = next((i for i in range(len(es) - 1, -1, -1) if _is_prompt(es[i])), None)
+    if start is None:
+        return None
+    t0 = _ts(es[start])
+    path, final = None, ""
+    for e in es[start + 1:]:
+        if e.get("isSidechain"):
+            continue
+        for x in ((e.get("message") or {}).get("content") or []) if e.get("type") == "assistant" else []:
+            if not isinstance(x, dict):
+                continue
+            if x.get("type") == "tool_use" and x.get("name") == "Bash":
+                m = WRITTEN_RE.search(str((x.get("input") or {}).get("command") or ""))
+                if m:
+                    path = next(g for g in m.groups() if g)
+            elif x.get("type") == "text" and str(x.get("text") or "").strip():
+                final = str(x["text"])
+    if not path:
+        return None
+    p = Path(os.path.expanduser(path))
+    try:
+        ok = p.is_file() and p.stat().st_size > 0 and p.stat().st_mtime >= t0 - 5
+    except OSError:
+        ok = False
+    return (str(p), t0, final) if ok else None
+
+
+WAITS_RE = re.compile(r"(?im)^\s*[*_]*(?:tipo|type)[*_]*\s*:\s*[*_]*(?:aspetta|waiting)\b")
+
+
+def clear_blocked(name, final, waiting=False):
+    """Il motivo per non mandare /clear, o None: la sessione aspetta (stato, needs-you, «Tipo: aspetta»), un riavvio armato."""
+    if waiting:
+        return "waiting"
+    if WAITS_RE.search(final or ""):
+        return "asks"
+    for f in (STATE / "needs-you").glob("*.json") if (STATE / "needs-you").is_dir() else []:
+        try:
+            if json.loads(f.read_text()).get("name") == name:
+                return "needs_you"
+        except (OSError, ValueError):
+            continue
+    flag = os.environ.get("CM_RESTART_FLAG_FILE") or cm.expand((CFG.get("restart") or {}).get("flag_file") or "") or str(STATE / "restart.json")
+    if Path(f"{flag[:-5] if flag.endswith('.json') else flag}-{name}.json").exists():
+        return "restart_armed"
+    return None
+
+
+def _done_path():
+    return STATE / "handoffs" / "autoclear.json"
+
+
+def _log(text):
+    try:
+        (STATE / "handoffs").mkdir(parents=True, exist_ok=True)
+        with open(STATE / "handoffs" / "autoclear.log", "a") as f:
+            f.write(f"{datetime.datetime.now().isoformat(timespec='seconds')} {text}\n")
+    except OSError:
+        pass
+
+
+def claim(name, path):
+    """Un /clear per passaggio di consegne: True la prima volta per (sessione, file), poi False."""
+    d = {}
+    try:
+        d = json.loads(_done_path().read_text())
+    except (OSError, ValueError):
+        pass
+    key = f"{name}|{path}"
+    if key in d:
+        return False
+    d = {k: v for k, v in d.items() if time.time() - float(v) < 7 * 86400}
+    d[key] = int(time.time())
+    _done_path().parent.mkdir(parents=True, exist_ok=True)
+    tmp = _done_path().with_name(f"autoclear.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(d))
+    os.replace(tmp, _done_path())
+    return True
+
+
+def spawn_clear(name, path):
+    """Stacca l'esecutore (setsid): il turno e' finito ma la casella torna libera fra poco."""
+    import subprocess
+    if os.environ.get("CM_AUTOCLEAR_SPAWN"):   # i test: il comando si scrive, niente processo
+        with open(os.environ["CM_AUTOCLEAR_SPAWN"], "a") as f:
+            f.write(json.dumps([name, path]) + "\n")
+        return
+    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--clear-when-idle", name, path],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def features_path():
+    p = os.environ.get("CM_FEATURES_FILE")
+    return Path(p) if p else Path.home() / ".claude" / "supervisor" / "features.json"
+
+
+def write_features():
+    """05/11: il segnale per fable-director che il /clear dopo un passaggio di consegne parte da solo (valido 24 h:
+    riscritto a ogni SessionStart e Stop)."""
+    f = features_path()
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"autoclear_after_handoff": True, "updated_at": int(time.time())}))
+        os.replace(tmp, f)
+    except OSError:
+        pass
+
+
+def on_stop(name, transcript, waiting=False):
+    """Dallo Stop hook (o dal giro di win): (True, path) se il /clear e' partito, (False, motivo) se no."""
+    write_features()
+    if not name or not transcript:
+        return False, "no_session"
+    hit = last_turn_handoff(transcript)
+    if not hit:
+        return False, "no_handoff"
+    path, _, final = hit
+    why = clear_blocked(name, final, waiting)
+    if why:
+        _log(f"{name} {path}: no /clear ({why})")
+        return False, why
+    if not claim(name, path):
+        return False, "done"
+    _log(f"{name} {path}: /clear when idle")
+    spawn_clear(name, path)
+    return True, path
+
+
+def clear_when_idle(name, path, wait_s=AUTOCLEAR_WAIT_S):
+    """L'esecutore: aspetta la casella vuota (al piu' wait_s), ricontrolla le guardie, digita /clear come un prompt dell'app."""
+    import subprocess
+    tune = _load("cm-tune")
+    remote = None
+    if tune.tmux("has-session", "-t", f"={name}").returncode != 0:   # una sessione di win: la sua console, come cm-tune
+        hit = _load("cm-rsession").resolve(name)
+        a = _load("cm-hosts").adapter(hit[0]) if hit else None
+        if not hasattr(a, "session_console"):
+            _log(f"{name}: no session to reach, no /clear")
+            return 1
+        remote = (a, hit[1])
+        tune.REMOTE[name] = remote
+        tune.GLYPHS = ("❯", ">")
+        wait_s *= 3   # una lettura della console di la' costa qualche secondo
+    end = time.time() + wait_s
+    while time.time() < end:
+        ok, why = tune.prompt_ready(name)
+        if ok and getattr(tune, "pending_of", lambda n: {})(name):   # prima il cambio di modello o effort in attesa
+            ok, why = False, "pending"
+        if ok:
+            break
+        if why == "dialog":
+            _log(f"{name}: a dialog is open, no /clear")
+            return 1
+        time.sleep(2)
+    else:
+        _log(f"{name}: never idle in {wait_s} s, no /clear")
+        return 1
+    if clear_blocked(name, ""):
+        _log(f"{name}: blocked at the last check ({clear_blocked(name, '')}), no /clear")
+        return 1
+    if remote:
+        try:
+            remote[0].session_console(remote[1], ["text:/clear", "wait:200", "Enter"])
+            rc = 0
+        except Exception as e:   # noqa: BLE001 — la console di win non risponde: si dice nel log
+            _log(f"{name}: console failed ({str(e)[:120]})")
+            rc = 1
+    else:   # digitato nel riquadro come un prompt dell'app: la casella deve essere vuota (talk lo controlla)
+        rc = subprocess.run([str(HERE / "supervisor"), "talk", name, "/clear", "--via", "tmux", "--no-wait"], capture_output=True, text=True, timeout=60).returncode
+    _log(f"{name}: /clear sent (rc {rc}) after {path}")
+    return 0 if rc == 0 else 1
+
+
+def autoclear_remote():
+    """Le sessioni di win (gli hook li' non girano): una ferma, con la copia della trascrizione, il cui ultimo turno ha
+    scritto un passaggio di consegne."""
+    hm = _load("cm-hosts")
+    n = 0
+    for r in hm.remote_session_rows():
+        if r.get("status") not in ("idle",) or r.get("unreachable") or not r.get("session_id"):
+            continue
+        try:
+            hm.sync_transcript(r["host"], r["remote_name"], r["session_id"])
+        except Exception:   # noqa: BLE001 — una copia mancata: si riprova al giro dopo
+            continue
+        ok, _ = on_stop(r["name"], r.get("transcript") or "", waiting=bool(r.get("waiting")))
+        n += ok
+    return n
+
+
 def main(argv):
     cwd = os.getcwd()
+    if argv[:1] == ["--clear-when-idle"] and len(argv) > 2:
+        return clear_when_idle(argv[1], argv[2])
+    if argv[:1] == ["--autoclear-remote"]:
+        print(f"autoclear: {autoclear_remote()}")
+        return 0
     if argv[:1] == ["--snapshot"] and len(argv) > 2:
         return snapshot(argv[1], argv[2])
     if argv[:1] == ["--prepare"]:
@@ -178,7 +468,7 @@ def main(argv):
     if argv[:1] == ["--written"] and len(argv) > 1:
         return written(argv[1], cwd)
     if argv[:1] == ["--announce"]:
-        line = announce(argv[1] if len(argv) > 1 else cwd)
+        line = announce(argv[1] if len(argv) > 1 else cwd, argv[2] if len(argv) > 2 else None)
         if line:
             print(line)
         return 0

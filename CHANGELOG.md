@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.130 — 2026-11-05: after a handoff the session clears by itself; the model is shown from the start, and a change during a turn is kept (supervisor-clear-dopo-handoff-05-11, supervisor-modello-stato-05-11, contract 1.125).**
+  - When a session writes a handoff (supervisor's or fable-director's), supervisor sends `/clear` to it as soon as that turn ends, here and on win: you no longer send it by hand. It does not when the turn ends with a question for you, a request is open, or a restart is armed.
+  - After `/clear` the session is pointed to that handoff again at each `/clear`, until it gets its first prompt: two `/clear` in a row no longer lose it.
+  - The app's header shows the model and the effort right after a start, a `/clear` or a restart, before the first turn.
+  - Changing model or effort while the session is working no longer fails: the choice is kept, shown at once, and applied when the turn ends, before the next prompt.
 - **0.8.129 — 2026-11-05: a follow-up task keeps the ok you gave to the task it comes from (supervisor-ok-seguito-05-11).**
   - When a session registers the next part of an approved job as its own task (`task add --follows ID`), the task is approved with your ok of the first one, written as «approvato dal seguito di ID» with its time and text. You are no longer asked again just because more than an hour went by.
   - A choice you have to make, or the ok of a task cancelled or waiting on a new card, is never carried over.
