@@ -172,8 +172,8 @@ T.check("FA5 tech that is not an object refused", not ok and box() == [], t)
 ok, t = ex(op="feedback_app", kind="bug", text=BUG, tech=TECH, device="phone")
 d1 = json.loads(t) if ok else {}
 T.check("FA6 a touch: ok with the draft as JSON — hash, kind, label, title, body, screenshot, options; nothing sent",
-        ok and list(d1) == ["hash", "kind", "label", "title", "body", "screenshot", "screenshot_notice", "options"] and d1["kind"] == "bug"
-        and d1["screenshot"] is False and d1["screenshot_notice"] is None and POSTS == [] and REFUSED == [], t[:400])
+        ok and list(d1) == ["hash", "kind", "label", "title", "body", "screenshot", "screenshot_notice", "github_ok", "options"] and d1["kind"] == "bug"
+        and d1["screenshot"] is False and d1["screenshot_notice"] is None and d1["github_ok"] is False and POSTS == [] and REFUSED == [], t[:400])
 T.check("FA7 the three choices as buttons, in order: github «Invia dal mio GitHub», anonymous «Invia anonimo», later «Non ora»",
         [(o["id"], o["label"]) for o in d1.get("options", [])] == [("github", "Invia dal mio GitHub"), ("anonymous", "Invia anonimo"), ("later", "Non ora")]
         and all(o["description"] for o in d1["options"]), str(d1.get("options")))
@@ -307,6 +307,23 @@ d5 = json.loads(t) if ok else {}
 ocfg.write_text(json.dumps({"dir": str(store), "endpoint": "", "anonymizer": str(tmp / "none.py")}))
 ok, t = ex(op="feedback_app", hash=d5["hash"], choice="anonymous", device="phone")
 T.check("FN8 with no endpoint the anonymous send is refused and nothing goes", not ok and len(POSTS) == 4, t)
+
+# ------------------------------------------------------------------ FO 1.124 github_ok: il gh di questo computer legge il repo privato?
+GHLOG = tmp / "gh.log"
+(bin_ / "gh").write_text(f"#!/bin/sh\necho \"$*\" >> {GHLOG}\n[ \"$1 $2\" = \"api repos/frsorrentino/supervisor-feedback\" ] && exit 0\nexit 1\n")
+GHOK = tmp / "s" / "feedback-app" / "gh-ok.json"
+GHOK.unlink(missing_ok=True)
+ok, t = ex(op="feedback_app", kind="suggerimento", text="Una prova di github_ok", device="phone")
+T.check("FO1 a gh that reads frsorrentino/supervisor-feedback (exit 0): github_ok true, one call gh api repos/frsorrentino/supervisor-feedback",
+        ok and json.loads(t)["github_ok"] is True and GHLOG.read_text().split("\n")[0].startswith("api repos/frsorrentino/supervisor-feedback"), t[:200])
+(bin_ / "gh").write_text(f"#!/bin/sh\necho \"$*\" >> {GHLOG}\nexit 1\n")
+ok, t = ex(op="feedback_app", kind="suggerimento", text="Una prova di github_ok, ancora", device="phone")
+T.check("FO2 within 10 minutes the answer is remembered: github_ok still true, gh not called again",
+        ok and json.loads(t)["github_ok"] is True and len(GHLOG.read_text().splitlines()) == 1, GHLOG.read_text())
+_c = json.loads(GHOK.read_text()); _c["at"] -= 601; GHOK.write_text(json.dumps(_c))
+ok, t = ex(op="feedback_app", kind="suggerimento", text="Una prova di github_ok, dopo", device="phone")
+T.check("FO3 after 10 minutes gh is asked again: a gh that cannot read it (404, no login) → github_ok false",
+        ok and json.loads(t)["github_ok"] is False and len(GHLOG.read_text().splitlines()) == 2, GHLOG.read_text())
 
 # ------------------------------------------------------------------ FX il contratto
 F = [json.loads((T.ROOT / f"tests/fixtures/relay/{f}.json").read_text()) for f in ("state-1-question", "state-2-idle", "state-3-stale")]

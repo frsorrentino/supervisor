@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.127 — 2026-11-05: «Invia dal mio GitHub» shows up only for who can open the private feedback repository (supervisor-feedback-github-ok-05-11, contract 1.124).**
+  - The feedback draft now says whether the GitHub account of the computer running the relay can read frsorrentino/supervisor-feedback; the app hides the button when it cannot, instead of leading to GitHub's «page not found». The answer is checked again every 10 minutes.
 - **0.8.126 — 2026-11-05: the screenshot of the app's Feedback reaches the GitHub issue, whichever way you send it (supervisor-feedback-immagine-05-11, contract 1.123).**
   - The feedback and its screenshot now go to a private repository, frsorrentino/supervisor-feedback, that only the maintainer reads: nobody removes names or data from what a screenshot shows, so it is not published.
   - «Invia anonimo» now sends the screenshot too: observe's service removes its hidden data (place, camera), stores it in that repository and shows it in the issue, labelled app and bug or suggerimento.

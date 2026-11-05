@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.124 (05/11/2026, from the master for the app: with the private repository «Invia dal mio GitHub» works only for who can read it; task supervisor-feedback-github-ok-05-11). Additive, `v` stays 1.
+
+- **The draft of `feedback_app` gains `github_ok`** (bool, before `options`): true only when the GitHub account of the relay's computer can read frsorrentino/supervisor-feedback (`gh api repos/frsorrentino/supervisor-feedback` answers 200); false on 404, without gh or without its login. The answer is remembered 10 minutes; a gh that does not answer gives false and is asked again next time. The app shows «Invia dal mio GitHub» only with `github_ok: true`, and hides it when the key is missing (a relay before 1.124). `options` does not change.
+
+Fixture: `cmd-result-sample.json` (…1210 the draft with `github_ok: true`).
+
 Contract 1.123 (05/11/2026, the maintainer: «Nel Feedback l'immagine scelta probabilmente non arriva su GitHub: l'invio anonimo la scarta e da GitHub va aggiunta a mano. trova rimedio»; task supervisor-feedback-immagine-05-11). Additive, `v` stays 1.
 
 - **op `feedback_app`, no new field in the command**: the screenshot still comes as `share` with `screenshot_ok: true` (1.121), as a JPEG or PNG. It now reaches the issue on both roads. Over 1 MB it does not go: the app should send it already reduced (1600 px, JPEG at 85 %).

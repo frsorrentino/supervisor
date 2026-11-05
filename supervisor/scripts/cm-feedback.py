@@ -196,6 +196,32 @@ def app_dir():
     return Path(cm.expand(CFG["state_dir"])) / "feedback-app"
 
 
+APP_GH_TTL = 600   # 1.124: quanto vale la risposta di gh sul repo privato
+
+
+def github_ok(repo=None):
+    """1.124: «Invia dal mio GitHub» apre una issue nel repo privato: funziona solo per chi lo legge. True solo se il gh di
+    questo computer lo legge (gh api repos/<repo>: exit 0 = 200); 404, gh assente o senza login = False. La risposta resta
+    APP_GH_TTL secondi in feedback-app/gh-ok.json; un gh che non risponde (timeout) non si ricorda."""
+    repo = repo or APP_REPO
+    f = app_dir() / "gh-ok.json"
+    c = _json(f, None)
+    if isinstance(c, dict) and c.get("repo") == repo and isinstance(c.get("ok"), bool) and 0 <= time.time() - float(c.get("at") or 0) < APP_GH_TTL:
+        return c["ok"]
+    try:
+        ok = subprocess.run(["gh", "api", f"repos/{repo}", "--silent"], capture_output=True, timeout=15).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+    except OSError:
+        ok = False
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"repo": repo, "ok": ok, "at": int(time.time())}))
+    except OSError:
+        pass
+    return ok
+
+
 def _app_options(shot):
     return [{"id": "github", "label": msg("feedback.app_opt_github"), "description": msg("feedback.app_opt_github_desc_shot" if shot else "feedback.app_opt_github_desc", repo=APP_REPO)},
             {"id": "anonymous", "label": msg("feedback.app_opt_anon"), "description": msg("feedback.app_opt_anon_desc_shot" if shot else "feedback.app_opt_anon_desc")},
@@ -235,6 +261,7 @@ def app_draft(kind, body, tech=None, shot=None):
                                                    "screenshot": str(shot_path) if shot_path else None, "at": int(now)}, ensure_ascii=False), encoding="utf-8")
     return True, json.dumps({"hash": h, "kind": kind, "label": kind, "title": got["title"], "body": got["body"], "screenshot": bool(shot_path),
                              "screenshot_notice": msg("feedback.app_shot_public") if shot_path else None,   # 1.123
+                             "github_ok": github_ok(),   # 1.124: senza, l'app nasconde «Invia dal mio GitHub»
                              "options": _app_options(bool(shot_path))}, ensure_ascii=False)
 
 
