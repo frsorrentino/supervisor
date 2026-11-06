@@ -8,6 +8,8 @@
   supervisor host list [--json]
   supervisor host remove NOME
   supervisor host update NOME [--yes]
+  supervisor host login NOME ACCOUNT --email E | --code C   il login di un altro account la' (windows-native)
+  supervisor host profile NOME ACCOUNT [--marketplace DIR]... [--plugin P@M]... [--claude-md F]   il suo profilo la'
   supervisor host admit NOME <cartella>   la cartella puo' avere una sessione su NOME? (la regola, exit 0/1)
   supervisor host fetch NOME <sessione>   i commit fatti la' → ramo locale NOME/<cartella>
   supervisor host sessions               le sessioni lanciate su altri host (launch --host)
@@ -611,6 +613,97 @@ def cmd_update(argv):
     return 0 if ok else 4
 
 
+# ------------------------------------------------------------------ 06/11/2026: un altro account su un host (supervisor-win-altro-account-06-11)
+def _account_on_host(argv, usage):
+    """(nome host, adattatore, account, cartella base della config) o None dopo l'errore."""
+    if len(argv) < 2 or argv[0] == "local" or argv[0].startswith("-") or argv[1].startswith("-"):
+        print(M(usage), file=sys.stderr)
+        return None
+    name, account = argv[0], argv[1]
+    h = host(name)
+    if h.get("kind") != "windows-native":
+        print(M("host.account_windows_only", name=name, kind=h.get("kind") or "?"), file=sys.stderr)
+        return None
+    acc = (CFG.get("accounts") or {}).get(account)
+    if not acc:
+        print(M("host.account_unknown", account=account, known=", ".join(sorted(CFG.get("accounts") or {})) or "-"), file=sys.stderr)
+        return None
+    return name, adapter(name), account, os.path.basename(cm.expand(acc.get("config_dir") or "~/.claude").rstrip("/"))
+
+
+def _opt(argv, flag, many=False):
+    vals = [argv[i + 1] for i, x in enumerate(argv[:-1]) if x == flag]
+    return vals if many else (vals[-1] if vals else None)
+
+
+def cmd_login(argv):
+    """host login NOME ACCOUNT --email E     avvia il login la' e stampa l'indirizzo da aprire (in qualunque browser)
+       host login NOME ACCOUNT --code C      il codice che la pagina mostra dopo l'accesso: lo passa al login che aspetta"""
+    got = _account_on_host(argv, "host.login_usage")
+    if not got:
+        return 2
+    name, a, account, cn = got
+    email, code = _opt(argv, "--email"), _opt(argv, "--code")
+    if bool(email) == bool(code):
+        print(M("host.login_usage"), file=sys.stderr)
+        return 2
+    try:
+        if email:
+            d = a.login_start(cn, email)
+            if not d.get("url"):
+                print(M("host.login_failed", name=name, account=account, detail=str(d.get("error") or "?")[-400:]), file=sys.stderr)
+                return 3
+            print(M("host.login_url", name=name, account=account, url=d["url"], config=cn))
+            return 0
+        d = a.login_code(cn, code)
+    except ad.HostError as e:
+        print(M("host.err_" + e.code, name=name, detail=e.detail), file=sys.stderr)
+        return 3
+    st = d.get("status") or {}
+    if d.get("rc") == 0 and st.get("loggedIn"):
+        print(M("host.login_done", name=name, account=account, email=st.get("email") or "?", org=st.get("orgName") or "?", config=cn))
+        return 0
+    print(M("host.login_failed", name=name, account=account, detail=str(d.get("error") or d.get("out") or "?").strip()[-400:]), file=sys.stderr)
+    return 3
+
+
+def cmd_profile(argv):
+    """host profile NOME ACCOUNT [--claude-md F] [--marketplace DIR]... [--plugin P@M]...
+    Il profilo dell'account la' (%USERPROFILE%\\<config>): settings e plugin di .claude la', il CLAUDE.md (di default
+    quello dell'account qui), i marketplace dati copiati da qui e i loro plugin."""
+    got = _account_on_host(argv, "host.profile_usage")
+    if not got:
+        return 2
+    name, a, account, cn = got
+    if cn == ".claude":
+        print(M("host.profile_default", name=name, account=account), file=sys.stderr)
+        return 2
+    acc = CFG["accounts"][account]
+    md = _opt(argv, "--claude-md") or str(Path(cm.expand(acc.get("config_dir"))) / "CLAUDE.md")
+    mks = [str(Path(cm.expand(x)).resolve()) for x in _opt(argv, "--marketplace", many=True)]
+    for x in mks:
+        if not Path(x, ".claude-plugin", "marketplace.json").is_file():
+            print(M("host.profile_not_marketplace", path=x), file=sys.stderr)
+            return 2
+    try:
+        d = a.profile_make(cn, md if Path(md).is_file() else None, mks, _opt(argv, "--plugin", many=True))
+    except ad.HostError as e:
+        print(M("host.err_" + e.code, name=name, detail=e.detail), file=sys.stderr)
+        return 3
+    steps = d.get("steps") or []
+    steps = steps if isinstance(steps, list) else [steps]
+    bad = [x for x in steps if isinstance(x, dict) and x.get("rc") not in (0, None)]
+    for x in steps:
+        if isinstance(x, dict):
+            print(M("host.profile_step", what=x.get("what") or "?", rc=x.get("rc"), out=S_one(x.get("out"))))
+    print(M("host.profile_done", name=name, account=account, dir=d.get("dir") or cn, n=len(steps), bad=len(bad)))
+    return 0 if not bad else 4
+
+
+def S_one(t):
+    return " ".join(str(t or "").split())[:160]
+
+
 # ------------------------------------------------------------------ sondatore (2.3)
 def lively(snap):
     """Qualcosa di vivo nell'ultima lettura: lavori in corso o sessioni remote aperte."""
@@ -1067,7 +1160,7 @@ def main(argv):
     cmd, rest = argv[0], argv[1:]
     fn = {"add": cmd_add, "doctor": cmd_doctor, "confirm": cmd_confirm, "list": cmd_list, "ls": cmd_list,
           "remove": cmd_remove, "rm": cmd_remove, "update": cmd_update, "poll": cmd_poll, "install": cmd_install,
-          "uninstall": cmd_uninstall,
+          "uninstall": cmd_uninstall, "login": cmd_login, "profile": cmd_profile,
           # sessioni su un altro host (piano 4.2): il codice sta in cm-rsession.py
           "admit": lambda a: _load("cm-rsession").main(["admit"] + a),
           "fetch": lambda a: _load("cm-rsession").main(["fetch"] + a),

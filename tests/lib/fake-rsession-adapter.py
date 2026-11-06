@@ -97,12 +97,12 @@ class FakeWin:
         import shutil
         shutil.copyfile(local(path), dest)
 
-    def session_trust(self, rdir):
-        note("trust", rdir=rdir)
+    def session_trust(self, rdir, config_dir=".claude"):
+        note("trust", rdir=rdir, config=config_dir)
         return {"ok": True}
 
-    def session_start(self, name, rdir, args):
-        note("start", name=name, rdir=rdir, args=list(args))
+    def session_start(self, name, rdir, args, config_dir=".claude"):
+        note("start", name=name, rdir=rdir, args=list(args), config=config_dir)
         if not os.environ.get("FAKE_WIN_NOREG"):
             reg = registry()
             reg.append({"name": name, "sessionId": f"sid-{name}", "cwd": str(rdir), "bridgeSessionId": f"session_FAKE{len(reg)}"})

@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.135 — 2026-11-06: sessions on win can run with the professional account; an ok given to many tests at once closes every task (supervisor-win-altro-account-06-11, supervisor-settle-in-fila-06-11).**
+  - `launch --host win` starts a session with the account of its folder, in that account's own profile on win, so a client's folder works there with its account.
+  - `supervisor host profile win <account>` prepares that profile on win with the same settings and plugins, plus the private marketplace of that account copied from here.
+  - `supervisor host login win <account>` signs the account in on win from any browser: it prints the address, and the code the page shows after the email code goes back with `--code`.
+  - After an ok given to many tests at once, every task now gets its outcome: the checks run one at a time, and closing a task no longer keeps the registry locked while it reads the session's model, which made some of them stop without an outcome (supervisor-settle-in-fila-06-11).
+  - A check that runs out of time now stops its child processes too, such as a `git fetch` that hangs.
 - **0.8.134 — 2026-11-06: a search result opens the chat at that point, also before a /clear or a restart (supervisor-trascrizione-attorno-06-11, contract 1.127).**
   - The relay can give the chat the messages around a given one (`n:around=<id>`), even in an earlier conversation of the session, with the bars of the /clear and restarts in between: the app jumps to the result and scrolls from there both ways.
   - A result in the conversation before a /clear of a session still open is shown under that session's name.

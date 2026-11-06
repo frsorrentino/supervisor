@@ -74,6 +74,23 @@ supervisor offload ~/film --recipe render   # the exact commit, the declared ass
   through its native inbox (the named pipe, the text in base64) and read the
   reply from its transcript there; `close` refuses a session mid-turn without
   `--force` and leaves the folder for `host fetch`.
+- **Another account on a Windows host.** A session there runs with the account
+  of its folder: its config is `%USERPROFILE%\<same base name as here>`
+  (`.claude-pixel` for `~/.claude-pixel`), set as `CLAUDE_CONFIG_DIR` in the
+  session's start file, and the folder's trust goes in that config's
+  `.claude.json`; `talk`, `wait`, `close`, the console, the chat and the quota
+  look in every `.claude*` there. The account must be in the host's
+  `trust.accounts`. `host profile win <account>` builds the profile there:
+  `settings.json` from `.claude` there, the account's `CLAUDE.md` from here,
+  the plugins enabled in `.claude` there plus `--plugin P@M`, with their
+  marketplaces; a private marketplace goes as a folder copied from here
+  (`--marketplace DIR`), so the host needs no git credentials.
+  `host login win <account> --email E` starts `claude auth login` there (as a
+  scheduled task: a process born from sshd dies with the connection) and prints
+  the sign-in address, which opens in any browser; after the email code, the
+  page shows a code, and `host login win <account> --code C` hands it to the
+  login waiting there (15 minutes) and prints the account it signed in.
+  Then `host doctor win` sees the new login.
 
 Host kinds: `linux-tmux` (this machine or over ssh), `windows-native` (OpenSSH,
 PowerShell 5.1+), `macos-tmux` and `wsl` over ssh. ssh options always go on the

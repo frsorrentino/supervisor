@@ -114,6 +114,12 @@ def git(folder, *args, check=True):
 
 
 # ------------------------------------------------------------------ ammissione
+def account_config_name(account):
+    """La cartella base della config di un account (~/.claude-pixel -> .claude-pixel): sull'host sta nella sua home."""
+    a = (CFG.get("accounts") or {}).get(account or "") or {}
+    return os.path.basename(cm.expand(a.get("config_dir") or "~/.claude").rstrip("/")) or ".claude"
+
+
 def admit(name, h, folder):
     """Solleva Refused con la condizione mancata; restituisce (account, percorso relativo alla radice)."""
     if not h:
@@ -313,8 +319,10 @@ def cmd_launch(argv):
     if there.get("base") != sha:
         print(M("rsession.base_mismatch", host=hname, rdir=rdir, base=str(there.get("base") or "?")[:10], head=sha[:10]), file=sys.stderr)
         return 6
-    a.session_trust(rdir)
-    a.session_start(name, rdir, list(args) + ["--remote-control", name, "-n", name])
+    # 06/11/2026 (supervisor-win-altro-account-06-11): l'account della cartella con la sua config anche la' (stesso nome base)
+    cdir = account_config_name(account)
+    a.session_trust(rdir, cdir)
+    a.session_start(name, rdir, list(args) + ["--remote-control", name, "-n", name], cdir)
     deadline = time.time() + float(sess.get("start_timeout_s") or 90)
     entry = None
     while time.time() < deadline:

@@ -40,7 +40,11 @@ $r = @{}
 try {
   if ($Name -notmatch '^[A-Za-z0-9._-]+$') { throw "bad session name" }
   $best = $null
-  foreach ($f in Get-ChildItem (Join-Path $env:USERPROFILE '.claude\sessions') -Filter *.json -ErrorAction SilentlyContinue) {
+  # 06/11/2026: le sessioni di ogni account (.claude, .claude-pixel, ...)
+  $files = Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\.claude(-[A-Za-z0-9_]+)?$' } |
+    ForEach-Object { Get-ChildItem (Join-Path $_.FullName 'sessions') -Filter *.json -ErrorAction SilentlyContinue }
+  foreach ($f in $files) {
     try { $e = Get-Content $f.FullName -Raw | ConvertFrom-Json } catch { continue }
     if ($e.name -ne $Name -or -not (Get-Process -Id $e.pid -ErrorAction SilentlyContinue)) { continue }
     if (-not $best -or $e.startedAt -gt $best.startedAt) { $best = $e }

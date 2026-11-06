@@ -470,23 +470,42 @@ ConvertTo-Json -Compress @{{ ok = $true; root = $root }}""", timeout=600)
     # .claude.json ne cambierebbe la forma (profondita' 2 di default, array singoli); scrittura atomica con rename
     _TRUST_JS = (
         "const fs=require('fs'),p=require('path'),os=require('os');"
-        "const f=p.join(os.homedir(),'.claude.json');const d=JSON.parse(fs.readFileSync(f,'utf8'));"
+        "const c=process.argv[3]||'';const f=c&&c!=='.claude'?p.join(os.homedir(),c,'.claude.json'):p.join(os.homedir(),'.claude.json');"
+        "const d=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,'utf8')):{};"
         "const k=process.argv[2].replace(/\\\\/g,'/');d.projects=d.projects||{};"
         "d.projects[k]=Object.assign({},d.projects[k]||{},{hasTrustDialogAccepted:true});"
-        "if(!fs.existsSync(f+'.cm-bak'))fs.copyFileSync(f,f+'.cm-bak');"
-        "const t=f+'.cm-tmp';fs.writeFileSync(t,JSON.stringify(d,null,2));fs.renameSync(t,f);"
+        "if(fs.existsSync(f)&&!fs.existsSync(f+'.cm-bak'))fs.copyFileSync(f,f+'.cm-bak');"
+        "fs.mkdirSync(p.dirname(f),{recursive:true});const t=f+'.cm-tmp';fs.writeFileSync(t,JSON.stringify(d,null,2));fs.renameSync(t,f);"
         "console.log(JSON.stringify({ok:true,key:k}))")
 
-    def session_trust(self, rdir):
+    @staticmethod
+    def config_name(config_dir):
+        """06/11/2026 (supervisor-win-altro-account-06-11): la cartella base della config di un account (.claude,
+        .claude-pixel), la stessa che ha qui; sull'host sta in %USERPROFILE%. None per un nome non sicuro."""
+        c = str(config_dir or ".claude")
+        return c if re.fullmatch(r"\.claude(-[A-Za-z0-9_]+)?", c) else None
+
+    def session_trust(self, rdir, config_dir=".claude"):
+        """La fiducia nella cartella, nel .claude.json dell'account: %USERPROFILE%\\.claude.json per .claude, dentro la
+        sua cartella per un altro (con CLAUDE_CONFIG_DIR Claude Code lo legge da li')."""
+        cn = self.config_name(config_dir)
+        if not cn:
+            raise HostError("remote", f"bad config dir {config_dir}")
         js = base64.b64encode(self._TRUST_JS.encode()).decode()
         return self.ps_json(self._PS_DIR % self.q(rdir) + f"""
 $js = Join-Path $env:TEMP 'cm-trust.js'
 [IO.File]::WriteAllText($js, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{js}')))
-node $js $d""")
+node $js $d {self.q(cn)}""")
 
-    def session_start(self, name, rdir, args):
+    def session_start(self, name, rdir, args, config_dir=".claude"):
         """Un'attivita' Interactive sull'utente collegato al desktop: la console visibile su quel desktop e' il terminale
-        di Claude Code (come CCwincompat). Senza nessuno collegato non parte: lo si dice."""
+        di Claude Code (come CCwincompat). Senza nessuno collegato non parte: lo si dice. 06/11: un account diverso da
+        .claude parte con CLAUDE_CONFIG_DIR=%USERPROFILE%\\<config_dir> nel .cmd."""
+        cn = self.config_name(config_dir)
+        if not cn:
+            raise HostError("remote", f"bad config dir {config_dir}")
+        # dentro la stringa PowerShell fra virgolette doppie: le virgolette del set con l'apice inverso
+        env_line = "" if cn == ".claude" else "set `\"CLAUDE_CONFIG_DIR=%USERPROFILE%\\" + cn + "`\"`r`n"
         def cq(a):
             a = str(a)
             return '"' + a.replace('"', '""') + '"' if re.search(r'[\s&|<>^()"]', a) else a
@@ -499,7 +518,7 @@ if (-not $u) {{ ConvertTo-Json -Compress @{{ error = 'nobody is signed in to the
 $sd = Join-Path $env:USERPROFILE '{HELPER_DIR}\\sessions'
 New-Item -ItemType Directory -Force -Path $sd | Out-Null
 $cmdf = Join-Path $sd '{name}.cmd'
-[IO.File]::WriteAllText($cmdf, "@echo off`r`ntitle {name}`r`ncd /d `"$d`"`r`n" + {self.q(line)} + "`r`n")
+[IO.File]::WriteAllText($cmdf, "@echo off`r`ntitle {name}`r`n{env_line}cd /d `"$d`"`r`n" + {self.q(line)} + "`r`n")
 $a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdf`"" -WorkingDirectory $d
 $pr = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited
 $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
@@ -563,7 +582,7 @@ node $js {argv}""", timeout=timeout)
 
     def night_list(self, prefix, dirs, since):
         """21/10 (pagina «Notte»: le sessioni di win mancavano): {transcripts, docs}, ognuno [{path, size, mtime}],
-        dei file scritti da `since` (epoch). transcripts: i .jsonl di %USERPROFILE%\\.claude\\projects nelle cartelle
+        dei file scritti da `since` (epoch). transcripts: i .jsonl di %USERPROFILE%\\.claude*\\projects (ogni account, 06/11) nelle cartelle
         che cominciano con `prefix` (la radice delle sessioni come la scrive Claude Code), niente se prefix e' vuoto;
         docs: i .md di docs\\notte e docs\\proposte delle cartelle `dirs`."""
         ds = ",".join(self.q(d) for d in dirs) or "$null"
@@ -573,7 +592,7 @@ function row($f) {{ @{{ path = $f.FullName; size = $f.Length; mtime = [DateTimeO
 $t = @(); $d = @()
 $pre = {self.q(prefix or "")}
 if ($pre) {{
-  Get-ChildItem (Join-Path $env:USERPROFILE '.claude\\projects') -Directory -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like ($pre + '*') }} | ForEach-Object {{
+  Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue | ForEach-Object {{ Get-ChildItem (Join-Path $_.FullName 'projects') -Directory -ErrorAction SilentlyContinue }} | Where-Object {{ $_.Name -like ($pre + '*') }} | ForEach-Object {{
     Get-ChildItem $_.FullName -Filter *.jsonl -File | Where-Object {{ $_.LastWriteTimeUtc -ge $since }} | ForEach-Object {{ $t += (row $_) }} }}
 }}
 foreach ($x in @({ds})) {{ if ($x) {{ foreach ($s in 'notte','proposte') {{
@@ -632,6 +651,107 @@ Start-Sleep -Milliseconds 200
 Unregister-ScheduledTask -TaskPath '\claude-master\' -TaskName 'cm-console-{tag}' -Confirm:$false -ErrorAction SilentlyContinue
 if (Test-Path $o) {{ (Get-Content $o -Raw).Trim(); Remove-Item -Force $o }} else {{ ConvertTo-Json -Compress @{{ error = 'console: no answer in 60 s' }} }}""", timeout=timeout)
         return {"pid": d.get("pid"), "screen": base64.b64decode(d.get("screen_b64") or "").decode("utf-8", "replace")}
+
+    # --- 06/11/2026 (supervisor-win-altro-account-06-11): il login e il profilo di un altro account su questo host
+    def login_start(self, config_dir, email, wait_s=45):
+        """Avvia cm-login.js come attivita' Interactive (da sshd un processo staccato muore con la connessione) e aspetta
+        l'indirizzo da aprire. → {url} o {error}."""
+        cn = self.config_name(config_dir)
+        if not cn or not re.fullmatch(r"[^\s\"'&|<>^%]+@[^\s\"'&|<>^%]+", email or ""):
+            raise HostError("remote", f"bad login args {config_dir} {email}")
+        js = base64.b64encode((REMOTE / "cm-login.js").read_bytes()).decode()
+        return self.ps_json(f"""
+$R = Join-Path $env:USERPROFILE '{HELPER_DIR}'
+$L = Join-Path $R 'login\\{cn}'
+New-Item -ItemType Directory -Force -Path $L | Out-Null
+Remove-Item -Force (Join-Path $L '*') -ErrorAction SilentlyContinue
+$js = Join-Path $R 'cm-login.js'
+[IO.File]::WriteAllText($js, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{js}')))
+$u = (Get-CimInstance Win32_ComputerSystem).UserName
+if (-not $u) {{ ConvertTo-Json -Compress @{{ error = 'nobody is signed in to the desktop: the login cannot start' }}; exit 1 }}
+$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command node `"$js`" serve `"$L`" {cn} {email}"
+$pr = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited
+$st = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 20)
+Register-ScheduledTask -TaskName 'cm-login-{cn}' -TaskPath '\\claude-master\\' -Action $a -Principal $pr -Settings $st -Force -ErrorAction Stop | Out-Null
+Start-ScheduledTask -TaskPath '\\claude-master\\' -TaskName 'cm-login-{cn}' -ErrorAction Stop
+$o = Join-Path $L 'out.txt'; $url = $null
+for ($i = 0; $i -lt {int(wait_s) * 2} -and -not $url; $i++) {{
+  Start-Sleep -Milliseconds 500
+  if (Test-Path $o) {{ $m = [regex]::Match((Get-Content $o -Raw -Encoding UTF8), 'visit:\\s*(https://\\S+)'); if ($m.Success) {{ $url = $m.Groups[1].Value }} }}
+}}
+if ($url) {{ ConvertTo-Json -Compress @{{ url = $url }} }}
+else {{ $t = ''; if (Test-Path $o) {{ $t = (Get-Content $o -Raw) }}; ConvertTo-Json -Compress @{{ error = "no sign-in address in {int(wait_s)} s: $t" }} }}""", timeout=wait_s + 60)
+
+    def login_code(self, config_dir, code, wait_s=90):
+        """Il codice della pagina di login a claude, che aspetta; poi l'esito. → {rc, status, out} o {error}."""
+        cn = self.config_name(config_dir)
+        if not cn or not re.fullmatch(r"[A-Za-z0-9#_.~-]{8,600}", code or ""):
+            raise HostError("remote", "bad login code")
+        return self.ps_json(f"""
+$L = Join-Path $env:USERPROFILE '{HELPER_DIR}\\login\\{cn}'
+if (-not (Test-Path (Join-Path $L 'out.txt'))) {{ ConvertTo-Json -Compress @{{ error = 'no login waiting: start it first' }}; exit 1 }}
+$r = Join-Path $L 'result.json'
+if (Test-Path $r) {{ ConvertTo-Json -Compress @{{ error = 'the login waiting there is over: start it again'; result = (Get-Content $r -Raw | ConvertFrom-Json) }}; exit 1 }}
+[IO.File]::WriteAllText((Join-Path $L 'code.txt.tmp'), {self.q(code)}); Move-Item -Force (Join-Path $L 'code.txt.tmp') (Join-Path $L 'code.txt')
+for ($i = 0; $i -lt {int(wait_s) * 2} -and -not (Test-Path $r); $i++) {{ Start-Sleep -Milliseconds 500 }}
+$out = (Get-Content (Join-Path $L 'out.txt') -Raw -Encoding UTF8) -replace 'https://\\S+', '<url>'
+Unregister-ScheduledTask -TaskPath '\\claude-master\\' -TaskName 'cm-login-{cn}' -Confirm:$false -ErrorAction SilentlyContinue
+if (Test-Path $r) {{ $j = Get-Content $r -Raw | ConvertFrom-Json; ConvertTo-Json -Compress -Depth 4 @{{ rc = $j.rc; status = $j.status; out = $out }} }}
+else {{ ConvertTo-Json -Compress @{{ error = "no answer from claude in {int(wait_s)} s"; out = $out }} }}""", timeout=wait_s + 60)
+
+    def profile_make(self, config_dir, claude_md=None, marketplaces=(), plugins=()):
+        """Il profilo di un account la': settings.json come quello di .claude la' (se non c'e' gia'), il CLAUDE.md
+        globale dato, i marketplace di .claude la' piu' quelli dati (cartelle di qui, copiate: un marketplace privato
+        non chiede credenziali git la'), e i plugin abilitati in .claude la' piu' quelli dati, installati con la CLI di
+        Claude Code con CLAUDE_CONFIG_DIR. → {dir, steps: [{what, rc, out}]}."""
+        cn = self.config_name(config_dir)
+        if not cn or cn == ".claude":
+            raise HostError("remote", f"bad profile dir {config_dir}")
+        rc, _, err = self.exec(f"New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '{cn}\\supervisor-marketplaces') | Out-Null")
+        if rc != 0:
+            raise HostError("remote", err)
+        if claude_md:
+            self.put(claude_md, f"{cn}/CLAUDE.md")
+        mk_names = []
+        for d in marketplaces:
+            d = Path(d)
+            tar = Path(tempfile.mkdtemp(prefix="cm-mk-")) / "mk.tar"
+            subprocess.run(["tar", "-cf", str(tar), "-C", str(d), "--exclude=.git", "."], check=True, capture_output=True)
+            self.put(str(tar), f"{cn}/supervisor-marketplaces/{d.name}.tar")
+            shutil.rmtree(tar.parent, ignore_errors=True)
+            mk_names.append(d.name)
+        if not all(re.fullmatch(r"[A-Za-z0-9._-]+", x) for x in mk_names) or not all(re.fullmatch(r"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+", x) for x in plugins):
+            raise HostError("remote", "bad marketplace or plugin name")
+        mks = ",".join(self.q(x) for x in mk_names) or ""
+        pls = ",".join(self.q(x) for x in plugins) or ""
+        return self.ps_json(f"""
+$C = Join-Path $env:USERPROFILE '{cn}'; $P = Join-Path $env:USERPROFILE '.claude'
+$env:CLAUDE_CONFIG_DIR = $C; Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+$steps = New-Object System.Collections.ArrayList
+$mk = @({mks})
+function Step($what, [scriptblock]$b) {{ $o = (& $b 2>&1 | Out-String); [void]$steps.Add(@{{ what = $what; rc = $LASTEXITCODE; out = $o.Trim().Substring(0, [Math]::Min(400, $o.Trim().Length)) }}) }}
+if (-not (Test-Path (Join-Path $C 'settings.json')) -and (Test-Path (Join-Path $P 'settings.json'))) {{
+  Copy-Item (Join-Path $P 'settings.json') (Join-Path $C 'settings.json'); [void]$steps.Add(@{{ what = 'settings.json from .claude'; rc = 0; out = '' }}) }}
+$en = @()
+if (Test-Path (Join-Path $P 'settings.json')) {{ $s = Get-Content (Join-Path $P 'settings.json') -Raw | ConvertFrom-Json; if ($s.enabledPlugins) {{ $en = @($s.enabledPlugins.PSObject.Properties | Where-Object {{ $_.Value }} | ForEach-Object Name) }} }}
+$want = @(@($en) + @({pls}) | Where-Object {{ $_ }})
+$need = @($want | ForEach-Object {{ ($_ -split '@')[-1] }})
+$km = @{{}}; $kf = Join-Path $P 'plugins\\known_marketplaces.json'
+if (Test-Path $kf) {{ $km = Get-Content $kf -Raw | ConvertFrom-Json }}
+# solo i marketplace dei plugin da installare (06/11: uno dichiarato altrove con un'altra sorgente si rifiuta)
+foreach ($n in @($km.PSObject.Properties.Name | Where-Object {{ $need -contains $_ -and $mk -notcontains $_ }})) {{
+  $src = $km.$n.source; $arg = $null
+  if ($src.source -eq 'github') {{ $arg = $src.repo }} elseif ($src.source -eq 'directory') {{ $arg = $src.path }} elseif ($src.url) {{ $arg = $src.url }}
+  if ($arg) {{ Step "marketplace $n" {{ claude plugin marketplace add $arg }} }}
+}}
+foreach ($n in $mk) {{
+  $d = Join-Path $C "supervisor-marketplaces\\$n"; $t = "$d.tar"
+  if (Test-Path $d) {{ Remove-Item -Recurse -Force $d }}
+  New-Item -ItemType Directory -Force -Path $d | Out-Null; tar -xf $t -C $d; Remove-Item -Force $t
+  Step "marketplace $n (copied)" {{ claude plugin marketplace add $d }}
+}}
+foreach ($x in $want) {{ Step "plugin $x" {{ claude plugin install $x }} }}
+ConvertTo-Json -Compress -Depth 4 @{{ dir = $C; steps = @($steps) }}""", timeout=1800)
 
     def session_close(self, name, force=False):
         if not re.fullmatch(r"[A-Za-z0-9._-]+", name):

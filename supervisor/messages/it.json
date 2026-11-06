@@ -1318,5 +1318,16 @@
   "tasks.card_remote": "La carta di {task} (su questo host il registro non c'è): {title}. Esito atteso: {expected}. Piano: {plan}",
   "hook.answers_pending": "Aspettano una risposta della persona: {items}. Se questo messaggio risponde a una di queste voci, registralo una volta sola: `supervisor task ok ID… --by <nome> --inbox {id}` (prove: --prove 72-80, scelta: --choice C, «non va»: --ko \"motivo\"); vale ovunque (app, orologio, master). Se il messaggio può valere per voci diverse con effetti diversi, chiedi quale.",
   "relay.prova_told_ok": "{person} ha segnato ok le prove {nums} di {task} {device}; ne restano {left}. Vale ovunque: non chiederle di nuovo in chat.",
-  "relay.prova_told_ko": "{person} {device}: la prova {nums} di {task} non va: «{text}». Riparti da qui; la master lo sa."
+  "relay.prova_told_ko": "{person} {device}: la prova {nums} di {task} non va: «{text}». Riparti da qui; la master lo sa.",
+  "host.login_usage": "uso: supervisor host login NOME ACCOUNT --email EMAIL (avvia il login la' e stampa l'indirizzo) | --code CODICE (il codice che mostra la pagina dopo l'accesso)",
+  "host.profile_usage": "uso: supervisor host profile NOME ACCOUNT [--marketplace CARTELLA]... [--plugin PLUGIN@MARKETPLACE]... [--claude-md FILE]",
+  "host.account_windows_only": "{name} è un host {kind}: il login e il profilo di un altro account per ora solo su windows-native",
+  "host.account_unknown": "account «{account}» sconosciuto (account: {known})",
+  "host.login_url": "Login di {account} su {name} avviato (config %USERPROFILE%\\{config}). Apri questo indirizzo in un browser qualunque, accedi con l'email e il codice di 6 cifre, poi copia il codice che la pagina mostra e mandalo con: supervisor host login {name} {account} --code CODICE (entro 15 minuti)\n{url}",
+  "host.login_done": "Login di {account} su {name} fatto: {email} ({org}), in %USERPROFILE%\\{config}",
+  "host.login_failed": "Login di {account} su {name} non riuscito: {detail}",
+  "host.profile_default": "{account} usa .claude su {name}: il suo profilo è quello che c'è già",
+  "host.profile_not_marketplace": "{path} non è un marketplace (manca .claude-plugin/marketplace.json)",
+  "host.profile_step": "  {what}: rc {rc} {out}",
+  "host.profile_done": "Profilo di {account} su {name}: {dir}, {n} passi, {bad} non riusciti"
 }

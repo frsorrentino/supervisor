@@ -9,21 +9,24 @@
 // messaggio; letto dal vivo il 02/10/2026: dalla sessione 0 di sshd la pipe LOCAL\ della sessione 1 si apre.
 const fs = require('fs'), p = require('path'), os = require('os'), net = require('net'), crypto = require('crypto');
 const cp = require('child_process');
-const H = os.homedir(), SD = p.join(H, '.claude', 'sessions');
+const H = os.homedir();
+// 06/11/2026: le sessioni di ogni account (.claude, .claude-pixel, ...): ognuna nella cartella sessions della sua config
+const SDS = fs.readdirSync(H).filter(d => /^\.claude(-[A-Za-z0-9_]+)?$/.test(d)).map(d => p.join(H, d, 'sessions')).filter(d => fs.existsSync(d));
 const out = o => { process.stdout.write(JSON.stringify(o) + '\n'); };
 function alive(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }
 function entry(name) {
   let best = null;
-  for (const f of fs.readdirSync(SD)) {
+  for (const SD of SDS) for (const f of fs.readdirSync(SD)) {
     if (!f.endsWith('.json')) continue;
     let e; try { e = JSON.parse(fs.readFileSync(p.join(SD, f), 'utf8')); } catch (x) { continue; }
     if (e.name !== name) continue;
+    e._sd = SD;
     e._alive = alive(e.pid);
     if (!best || (e._alive && !best._alive) || (e._alive === best._alive && (e.startedAt || 0) > (best.startedAt || 0))) best = e;
   }
   return best;
 }
-function transcript(e) { return p.join(H, '.claude', 'projects', String(e.cwd).replace(/[^A-Za-z0-9]/g, '-'), e.sessionId + '.jsonl'); }
+function transcript(e) { return p.join(p.dirname(e._sd), 'projects', String(e.cwd).replace(/[^A-Za-z0-9]/g, '-'), e.sessionId + '.jsonl'); }
 function size(f) { try { return fs.statSync(f).size; } catch (x) { return 0; } }
 const [verb, name, ...rest] = process.argv.slice(2);
 if (!/^[A-Za-z0-9._-]+$/.test(name || '')) { out({ error: 'bad session name' }); process.exit(1); }
@@ -32,8 +35,8 @@ if (verb === 'post') {
   if (!e || !e._alive) { out({ error: 'not running' }); process.exit(1); }
   const [b64, fromName, fromAddr] = rest;
   const text = Buffer.from(b64 || '', 'base64').toString('utf8');
-  const key = fs.readdirSync(SD).find(f => f.startsWith(e.pid + '.') && f.endsWith('.key'));
-  const token = key ? (JSON.parse(fs.readFileSync(p.join(SD, key), 'utf8')).peerToken || '') : '';
+  const key = fs.readdirSync(e._sd).find(f => f.startsWith(e.pid + '.') && f.endsWith('.key'));
+  const token = key ? (JSON.parse(fs.readFileSync(p.join(e._sd, key), 'utf8')).peerToken || '') : '';
   const from = fromAddr || 'uds:';
   const content = `<cross-session-message from="${from}" from-name="${fromName || 'supervisor'}" from-mode="bypass">\n${text}\n</cross-session-message>`;
   const msg = { msgV: 1, msg_id: crypto.randomUUID(), type: 'user', message: { role: 'user', content }, priority: 'next', from };

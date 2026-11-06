@@ -176,7 +176,9 @@ function Cmd-Status {
         }
     }
     $quota = New-Object System.Collections.ArrayList
-    Get-ChildItem -Path "$env:USERPROFILE\.claude\fable-director" -Filter 'quota-*.json' -File -ErrorAction SilentlyContinue |
+    # 06/11/2026: la quota di ogni account, nella cartella fable-director della sua config (il nome del file dice quale)
+    Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ChildItem -Path (Join-Path $_.FullName 'fable-director') -Filter 'quota-*.json' -File -ErrorAction SilentlyContinue } |
         Where-Object { $_.Name -notlike '*history*' } | ForEach-Object {
             $e = ReadJson $_.FullName
             if ($e) { [void]$quota.Add(@{ file = $_.Name; mtime = [int][double]::Parse(($_.LastWriteTimeUtc - [datetime]'1970-01-01').TotalSeconds.ToString([Globalization.CultureInfo]::InvariantCulture), [Globalization.CultureInfo]::InvariantCulture); data = $e }) }

@@ -21,6 +21,8 @@ RS11 talk a una sessione chiusa: exit 5, il messaggio resta nella casella in att
 RS15 launch --host su una copia la' con una base vecchia: senza lavoro la' si mette da parte e se ne fa una nuova;
      con lavoro la' ci si ferma; prima di avviare la base la' deve essere la HEAD di qui
 RS16 (05/11) la storia la' riallineata a quella di qui: il fetch parte dal commit comune; storia divergente: lo dice
+RS17 (06/11) una cartella dell'account professionale su un host che lo ammette: fiducia e avvio con la sua config
+     (.claude-pixel, lo stesso nome base di qui); una personale resta su .claude
 RS7 proposta e scelta automatica: regia carica → riga di proposta (il lancio resta in locale); --host auto carica →
     remoto, scarica → locale; una cartella non ammessa non e' mai proposta
 """
@@ -537,6 +539,20 @@ r16b = rs("fetch", "win", "win-riallinea")
 T.check("RS16 a diverged history (neither the seed's base nor a commit of here): exit 4, says so with the manual way (format-patch -o, not a PowerShell >), no branch moved",
         r16b.returncode == 4 and "divergente" in r16b.stderr and "format-patch -o" in r16b.stderr and "UTF-16" in r16b.stderr
         and g(ra, "log", "-1", "--format=%s", "win/riallinea").strip() == "dopo il riallineamento", r16b.stdout + r16b.stderr)
+
+# RS17 (06/11/2026, supervisor-win-altro-account-06-11): l'account professionale su win
+base_cfg["hosts"]["win"] = dict(WIN, trust=dict(WIN["trust"], accounts=["personale", "professionale"]),
+                                sessions=dict(WIN["sessions"], allow=["personali/*", "pro/*"]))
+cfg.write_text(json.dumps(base_cfg))
+beta = ws / "pro" / "beta"
+repo(beta, {"index.php": "<?php\n"})
+n17 = len(calls())
+r17 = launch(str(beta), "--host", "win", "--no-window")
+c17 = [c for c in calls()[n17:] if c["verb"] in ("trust", "start")]
+c2 = [c for c in calls() if c["verb"] == "start"][0]
+T.check("RS17 a folder of the professional account on a host that admits it: trust and start with its config .claude-pixel; the personal one had .claude",
+        r17.returncode == 0 and [c["verb"] for c in c17] == ["trust", "start"] and all(c.get("config") == ".claude-pixel" for c in c17)
+        and c2.get("config") == ".claude", json.dumps(c17) + json.dumps(c2) + r17.stdout + r17.stderr)
 
 T.rm(tmp)
 T.finish()

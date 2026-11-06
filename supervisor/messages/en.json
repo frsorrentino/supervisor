@@ -1318,5 +1318,16 @@
   "tasks.card_remote": "The card of {task} (the registry is not on this host): {title}. Expected outcome: {expected}. Plan: {plan}",
   "hook.answers_pending": "Waiting for an answer of the person: {items}. If this message answers one of them, record it once: `supervisor task ok ID… --by <name> --inbox {id}` (tests: --prove 72-80, choice: --choice C, «does not work»: --ko \"why\"); it holds everywhere (app, watch, master). If the message could answer different items with different effects, ask which.",
   "relay.prova_told_ok": "{person} marked tests {nums} of {task} ok {device}; {left} left. It holds everywhere: do not ask for them again in chat.",
-  "relay.prova_told_ko": "{person} {device}: test {nums} of {task} does not work: «{text}». Start again from here; the master knows."
+  "relay.prova_told_ko": "{person} {device}: test {nums} of {task} does not work: «{text}». Start again from here; the master knows.",
+  "host.login_usage": "usage: supervisor host login NAME ACCOUNT --email EMAIL (starts the login there and prints the address) | --code CODE (the code the page shows after signing in)",
+  "host.profile_usage": "usage: supervisor host profile NAME ACCOUNT [--marketplace DIR]... [--plugin PLUGIN@MARKETPLACE]... [--claude-md FILE]",
+  "host.account_windows_only": "{name} is a {kind} host: the login and profile of another account are only on windows-native for now",
+  "host.account_unknown": "unknown account «{account}» (accounts: {known})",
+  "host.login_url": "Login of {account} on {name} started (config %USERPROFILE%\\{config}). Open this address in any browser, sign in with the email and the 6-digit code, then copy the code the page shows and send it with: supervisor host login {name} {account} --code CODE (within 15 minutes)\n{url}",
+  "host.login_done": "Login of {account} on {name} done: {email} ({org}), in %USERPROFILE%\\{config}",
+  "host.login_failed": "Login of {account} on {name} failed: {detail}",
+  "host.profile_default": "{account} uses .claude on {name}: its profile is the one already there",
+  "host.profile_not_marketplace": "{path} is not a marketplace (no .claude-plugin/marketplace.json)",
+  "host.profile_step": "  {what}: rc {rc} {out}",
+  "host.profile_done": "Profile of {account} on {name}: {dir}, {n} steps, {bad} failed"
 }

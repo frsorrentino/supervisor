@@ -429,14 +429,28 @@ def run_check(task):
     """(rc, coda dell'uscita): il controllo del contratto, nella sua cartella e col suo timeout."""
     chk = task["check"]
     cwd = chk.get("cwd") or task["where"]["project"]
+    # 06/11/2026 (supervisor-settle-in-fila-06-11): il controllo in un gruppo di processi suo, e allo scadere si ferma il
+    # gruppo intero. subprocess.run(shell=True, timeout) uccideva solo la shell: un `git fetch` figlio appeso teneva aperta
+    # la pipe e il controllo non tornava mai (08:57, otto compiti senza esito dopo un ok in blocco)
     try:
-        p = subprocess.run(chk["cmd"], shell=True, cwd=cwd, capture_output=True, text=True, timeout=chk["timeout_s"], env=check_env())
-        out = (p.stdout + p.stderr).rstrip().splitlines()
-        return p.returncode, "\n".join(out[-PROOF_TAIL:])
-    except subprocess.TimeoutExpired:
-        return 124, f"timeout after {chk['timeout_s']} s"
+        p = subprocess.Popen(chk["cmd"], shell=True, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             env=check_env(), start_new_session=True)
     except OSError as e:
         return 127, str(e)
+    try:
+        so, se = p.communicate(timeout=chk["timeout_s"])
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, 9)
+        except OSError:
+            pass
+        try:
+            p.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass   # un figlio uscito dal gruppo con la pipe aperta: non si aspetta oltre
+        return 124, f"timeout after {chk['timeout_s']} s"
+    out = (so + se).rstrip().splitlines()
+    return p.returncode, "\n".join(out[-PROOF_TAIL:])
 
 
 def plain_runtime(rt):
@@ -508,6 +522,10 @@ def done(con, tid, constraint=None, checked=None):
     rc, tail = checked or run_check(task)
     n = attempts(con, tid) + 1
     green = rc == 0
+    # 06/11/2026 (supervisor-settle-in-fila-06-11): modello ed effort prima di scrivere. Letti dopo l'INSERT, la scrittura
+    # restava aperta per tutto `sessions --json` (fino a 20 s) e gli altri settle dell'ok in blocco morivano su «database
+    # is locked» senza esito
+    model, effort = closing_runtime(row["session"]) if green else (None, None)
     last = (tail.splitlines() or [""])[-1][:300]
     res = {"task": tid, "attempt": min(n, 3), "outcome": "green" if green else "red",
            "reason": "check green" if green else f"check exit {rc}: {last or 'no output'}",
@@ -515,8 +533,7 @@ def done(con, tid, constraint=None, checked=None):
     con.execute("INSERT INTO results (task, attempt, outcome, reason, proof, perimeter, at, accepted) VALUES (?,?,?,?,?,?,?,1)",
                 (tid, res["attempt"], res["outcome"], res["reason"], json.dumps(res["proof"], ensure_ascii=False), None, res["at"]))
     if green:
-        set_state(con, tid, "done")
-        model, effort = closing_runtime(row["session"])   # 1.103: la pagella parte da qui, all'indietro solo dove il legame e' certo
+        set_state(con, tid, "done")   # 1.103: la pagella parte da qui (closures), all'indietro solo dove il legame e' certo
         con.execute("INSERT OR REPLACE INTO closures (task, at, model, effort, kind) VALUES (?,?,?,?,?)", (tid, res["at"], model, effort, task.get("type")))
     elif n >= task["attempts_max"]:
         set_state(con, tid, "failed")
@@ -2205,6 +2222,11 @@ def main(argv):
     if verb == "settle":
         if len(args) != 1:
             sys.exit("usage: task settle ID")
+        # 06/11/2026 (supervisor-settle-in-fila-06-11): dopo un ok in blocco arrivano decine di settle insieme, uno per
+        # compito; uno alla volta, cosi' i controlli sullo stesso repository non si pestano (25 git fetch verso GitHub)
+        import fcntl
+        lockf = open(str(db_path()) + ".settle.lock", "a")
+        fcntl.flock(lockf, fcntl.LOCK_EX)
         rc, text = settle(con, args[0])
         print(text, file=sys.stderr if rc == 3 else sys.stdout)
         return rc
