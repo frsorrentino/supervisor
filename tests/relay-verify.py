@@ -3835,7 +3835,7 @@ T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalle
 _ev62 = [e for e in EV if e["kind"] == "task_stalled"]
 T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
-_small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "approved"})   # small entries: the cut, not their size
+_small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "ok"})   # 06/11 (1.129): "ok", approval_close in ops   # small entries: the cut, not their size
 # 24/10: senza i ricorrenti — fit_state tiene il posto di published_at e il taglio a 10 non entrava piu'
 _big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], published_today=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",

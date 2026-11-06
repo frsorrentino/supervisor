@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.129 (06/11/2026, the maintainer at 15:06: the choice cards must always close and never stay stuck; task supervisor-approval-close-06-11). Additive, `v` stays 1.
+
+- **New op `approval_close`**, from a touch like `approve`: `arg` the task id (an entry of `approvals`), `text` the reason (optional, at most 300 characters). The relay withdraws the request for an ok without approving it: the registry records it as superseded («carta di ok chiusa da <by> senza ok (superata): <reason> (dal telefono)», in the task's steps and in the tidying log, never as an ok), the task goes back to `running` (or `assigned` when it has no session), and its session and the master get a `talk` saying the card was closed without an ok. The entry leaves `approvals` at the next push.
+- **Answer**: ok with `{task, closed, state, text}`. `closed` is false when the task no longer waited for an ok (already approved, done, cancelled, or the card already closed): still ok, so the app removes the card in every case. Only an unknown or invalid id is an error («<id>: compito sconosciuto»).
+- No fixture change: the answer is the JSON above in `text`, as for the other ops that answer an object.
+
 Contract 1.128 (06/11/2026, the maintainer: «dobbiamo migliorare la gestione dei riavvii improvvisi e gli allineamenti»; task supervisor-riavvii-allineamenti-06-11). Additive, `v` stays 1.
 
 - **New event kind `plugin_stale`**: an account's supervisor plugin cache is behind the checkout (what `supervisor doctor` calls `plugin_stale`: the sessions' hooks run the old version, the commands the new one). The guard checks every 10 minutes and sends it once per (account, cache version, checkout version), after the mismatch has lasted 30 minutes (a release moves the checkout a few minutes before it installs). `account` and `ref` are the account, `session` null, `title` «Plugin supervisor indietro: <account>», `body` the versions and the command that aligns them. The master gets the same text with a `talk`; Telegram is the fallback as for the other guard events. An app that does not know the kind can show it as a plain notice.

@@ -134,6 +134,7 @@
     "timeline",
     "pair_add",
     "approve",
+    "approval_close",
     "attention_done",
     "decision",
     "unpair",
@@ -265,7 +266,7 @@
     {
       "task": "orbit-docs-site",
       "title": "Publish the orbit docs site",
-      "short": "Publish the orbit docs site",
+      "short": "Orbit docs",
       "project": "work/own/orbit-docs",
       "session": "orbit-docs",
       "state": "approved",
@@ -281,7 +282,7 @@
         "text": "after the client's review"
       },
       "idle_s": 10000,
-      "next": "orbit-docs resumes and closes with task done orbit-docs-site",
+      "next": "orbit-docs resumes, then task done orbit-docs-site",
       "waits": {
         "who": "orbit-docs",
         "on": "person"

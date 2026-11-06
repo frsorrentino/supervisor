@@ -1348,5 +1348,10 @@
   "restart.bad_sid": "supervisor restart: --resume wants a conversation id (e.g. 007cb593-…), not “{sid}”",
   "restore.resume_prompt": "Restore after a machine restart, automatic prompt: the start listed the interrupted work for you. Check how far it got, resume what is still needed (supervisor bg for long commands) or say so, then go on from where you were. If nothing is left, say it in one line and stop.",
   "guard.plugin_stale_title": "supervisor plugin behind: {account}",
-  "guard.plugin_stale": "Guard: in the account “{account}” the supervisor plugin cache is at {cache}, the checkout at {checkout}, for at least {mins} min: the sessions' hooks run the old version, the commands the new one. To align: {fix}"
+  "guard.plugin_stale": "Guard: in the account “{account}” the supervisor plugin cache is at {cache}, the checkout at {checkout}, for at least {mins} min: the sessions' hooks run the old version, the commands the new one. To align: {fix}",
+  "tasks.withdrawn": "ok card closed by {by} without an ok (superseded){reason}",
+  "tasks.withdrawn_tell": "{by} closed the card of {task} at {when} without an ok{reason}: the request is gone. If a choice is still needed, ask again with task wait-ok; otherwise go on without it.",
+  "relay.cmd_close_unknown": "{task}: unknown task",
+  "relay.cmd_closed": "{task}: card closed, the task is back to {state}",
+  "relay.cmd_close_not_waiting": "{task}: it no longer waited for an ok ({state}), the card closes"
 }

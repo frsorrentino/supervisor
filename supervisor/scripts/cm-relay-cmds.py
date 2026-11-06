@@ -1682,6 +1682,29 @@ def from_device(cmd):
     return M(f"relay.from_{dev}") if dev in ("phone", "watch", "web") else M("relay.from_app")
 
 
+def approval_close(cmd, arg):
+    """1.129 (06/11/2026, supervisor-approval-close-06-11): la carta di un compito in «Da approvare» si chiude sempre.
+    `task withdraw` nel processo del relay: la richiesta esce come superata, il compito torna a lavorare, sessione e
+    master lo sanno. Un compito che non aspetta piu' risponde ok lo stesso (closed false): la carta non resta mai
+    bloccata. Solo un id sconosciuto e' un errore."""
+    tid = str(arg or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid):
+        return False, M("relay.cmd_close_unknown", task=tid[:80] or "?")
+    reason = S.one_line(str(cmd.get("text") or "").strip())[:300] if isinstance(cmd.get("text"), str) else ""
+    by = str(cmd.get("by") or "app")
+    tk = _load("cm-tasks")
+    con = tk.connect()
+    try:
+        if not con.execute("SELECT 1 FROM tasks WHERE id=?", (tid,)).fetchone():
+            return False, M("relay.cmd_close_unknown", task=tid)
+        res = tk.withdraw(con, tid, by, f"{reason} ({from_device(cmd)})" if reason else from_device(cmd))
+    except SystemExit as e:
+        return False, fail_line(str(e), "task withdraw failed")
+    finally:
+        con.close()
+    return True, json.dumps(dict(res, text=M("relay.cmd_closed" if res["closed"] else "relay.cmd_close_not_waiting", task=tid, state=res["state"])), ensure_ascii=False)
+
+
 def approve_task(cmd, arg):
     """1.37 (05/10, «Da approvare» nell'app): l'ok a un compito del registro in awaiting_ok, registrato come quello
     scritto a mano — `task approve <task> --by <chi> --text "<testo> (dal telefono)"`. Solo un compito che aspetta
@@ -2538,6 +2561,8 @@ def execute(cmd):
             return slash_send(cmd, session, tm, arg)
         if op == "approve":
             return approve_task(cmd, arg)
+        if op == "approval_close":   # 1.129
+            return approval_close(cmd, arg)
         if op == "elicit":   # 1.83
             return elicit_answer(cmd, arg)
         if op == "suggestion":   # 1.84

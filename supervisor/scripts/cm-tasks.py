@@ -15,6 +15,8 @@
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
   supervisor task wait-ok ID --what W --where D [--options "A|B"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3]
+  supervisor task withdraw ID --by B [--reason R]  1.129: la persona chiude la carta senza ok; la richiesta esce
+                                                «superata», il compito torna a running (o assigned), sessione e master lo sanno
                                                 attende ok; --also (1.99): i compiti a parte previsti dal piano, elencati nella
                                                 carta; l'ok della carta arriva a loro citandola, e una regola permanente non la
                                                 approva mai; 1.99 (ok informato): --untested cosa non e' provato, --undo se si
@@ -628,6 +630,26 @@ def approve(con, tid, by, text, what=None, where=None, choice=None, ok_at=None, 
         set_state(con, tid, "approved")
     also_approve(con, tid, also, by, text)
     con.commit()
+
+
+def withdraw(con, tid, by, reason=""):
+    """1.129 (06/11/2026, supervisor-approval-close-06-11; il maintainer alle 15:06: le carte di scelta devono potersi sempre
+    chiudere e non restare bloccate): la persona chiude la carta di un compito in awaiting_ok senza approvarlo. La
+    richiesta esce come «superata» (una riga in tidy, un passo nel registro, mai una riga in approvals: by_ li' vale
+    come ok), il compito torna a running se ha una sessione, altrimenti ad assigned, e la sessione e la master lo
+    sanno. Un compito che non aspetta piu' (gia' approvato, chiuso) resta com'e': closed False. {task, closed, state}"""
+    row = get_task(con, tid)
+    if row["state"] != "awaiting_ok":
+        return {"task": tid, "closed": False, "state": row["state"]}
+    back = "running" if row["session"] or (_contract_task(row).get("where") or {}).get("session") else "assigned"
+    t = now()
+    text = M("tasks.withdrawn", by=by, reason=f": {reason}" if reason else "")
+    con.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,?,?,?,NULL)", (t, tid, "approval", 0, text[:500]))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'step',?,NULL)", (tid, t, by, text[:500]))
+    set_state(con, tid, back)
+    con.commit()
+    _tell(row, M("tasks.withdrawn_tell", task=tid, by=by, when=time.strftime("%H:%M"), reason=f" ({reason})" if reason else ""))
+    return {"task": tid, "closed": True, "state": back}
 
 
 def confirm(con, tid, by, text):
@@ -2402,6 +2424,13 @@ def main(argv):
         green, res = done(con, args[0], constraint)
         print(json.dumps(res, ensure_ascii=False) if as_json else f"{args[0]}: {res['outcome']} — {res['reason']}")
         return 0 if green else 1
+    if verb in ("withdraw", "ritira"):   # 1.129: la carta chiusa dalla persona senza ok
+        by, reason = _opt(args, "--by"), _opt(args, "--reason") or ""
+        if not args or not by:
+            sys.exit("usage: task withdraw ID --by B [--reason R]")
+        res = withdraw(con, args[0], by, " ".join(reason.split())[:300])
+        print(json.dumps(res, ensure_ascii=False) if as_json else f"{args[0]}: " + (f"card closed, back to {res['state']}" if res["closed"] else f"not waiting for an ok ({res['state']}), nothing to close"))
+        return 0
     if verb == "wait-ok":
         what, where, options = _opt(args, "--what"), _opt(args, "--where"), _opt(args, "--options")
         untested, also = _opt(args, "--untested"), _opt(args, "--also")

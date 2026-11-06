@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.137 — 2026-11-06: an ok or choice card can always be closed from the app (supervisor-approval-close-06-11, contract 1.129).**
+  - New op `approval_close`: closing a card in «Da approvare» withdraws the request without an ok. The registry keeps it as superseded with who closed it and why, the task goes back to work, and its session and the master are told.
+  - A card whose task no longer waits for an ok closes too, so a card never stays stuck.
+  - The same from a session or a shell: `supervisor task withdraw ID --by B [--reason R]`.
 - **0.8.136 — 2026-11-06: a sudden restart no longer loses the work in progress nor the previous conversation, and a plugin left behind is reported by itself (supervisor-riavvii-allineamenti-06-11, contract 1.128).**
   - After a clean restart the start of the new conversation names the previous one of the same session, with `supervisor restart arm --resume ID` (or `/resume ID`) to go back to it: no more hunting its id among the transcripts.
   - `supervisor restart` now resumes the conversation by its id, not with `-c`, which opened the last conversation of the folder (a new empty one, or another session's).

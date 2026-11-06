@@ -350,6 +350,7 @@
     "timeline",
     "pair_add",
     "approve",
+    "approval_close",
     "attention_done",
     "decision",
     "unpair",

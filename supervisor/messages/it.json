@@ -1348,5 +1348,10 @@
   "restart.bad_sid": "supervisor restart: --resume vuole l'id di una conversazione (es. 007cb593-…), non «{sid}»",
   "restore.resume_prompt": "Ripristino dopo un riavvio della macchina, prompt automatico: l'avvio ti ha elencato il lavoro interrotto. Controlla fin dove è arrivato, riprendi quello che serve ancora (con supervisor bg per i comandi lunghi) o dillo, poi continua da dove eri. Se non resta niente, dillo in una riga e fermati.",
   "guard.plugin_stale_title": "Plugin supervisor indietro: {account}",
-  "guard.plugin_stale": "Guardia: nell'account «{account}» la cache del plugin supervisor è alla {cache}, il checkout alla {checkout}, da almeno {mins} min: gli hook delle sessioni girano dalla versione vecchia, i comandi dalla nuova. Per allineare: {fix}"
+  "guard.plugin_stale": "Guardia: nell'account «{account}» la cache del plugin supervisor è alla {cache}, il checkout alla {checkout}, da almeno {mins} min: gli hook delle sessioni girano dalla versione vecchia, i comandi dalla nuova. Per allineare: {fix}",
+  "tasks.withdrawn": "carta di ok chiusa da {by} senza ok (superata){reason}",
+  "tasks.withdrawn_tell": "{by} ha chiuso alle {when} la carta di {task} senza dare l'ok{reason}: la richiesta non c'è più. Se serve ancora una scelta, richiedila con task wait-ok; altrimenti prosegui senza.",
+  "relay.cmd_close_unknown": "{task}: compito sconosciuto",
+  "relay.cmd_closed": "{task}: carta chiusa, il compito torna a {state}",
+  "relay.cmd_close_not_waiting": "{task}: non aspettava più un ok ({state}), la carta si chiude"
 }
