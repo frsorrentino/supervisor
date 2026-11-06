@@ -20,6 +20,7 @@ R6  failed marca il flag
 R7  UN FLAG PER SESSIONE (13:10 dell'11/09: 8 arm in due minuti, 4 riavvii — l'ultimo arm sovrascriveva gli altri):
     due sessioni armano in sequenza, entrambe hanno il proprio file; `restart list` le elenca; l'hook della
     prima consuma SOLO il suo, l'altro resta
+R10 il rilancio riprende per id (prima, o --resume ID anche con --clean); senza trascrizione -c
 R8  DISPLAY (14/09: server tmux ripartito al boot senza display, 9 riavvii senza finestra): `restart exec` con
     un ambiente senza DISPLAY/WAYLAND_DISPLAY/XDG_RUNTIME_DIR e un socket wayland-0 vivo nella runtime dir
     → cm-terminal apre la scheda (backend gnome a secco); senza socket → salta (T57)
@@ -482,6 +483,28 @@ with T.PrivateTmux() as tm:
     o9 = r9.stdout + r9.stderr
     T.check("R9 the process never dies → «riavvio annullato», exit 1, and the user is told: «avviso: riavvio di beta non riuscito» (no emoji, 22/10) (app and Telegram tried)",
             r9.returncode == 1 and "pid " in o9 and "riavvio annullato" in o9 and "avviso: riavvio di beta non riuscito" in o9 and "riavvio completato" not in o9, o9[-800:])
+
+    # R10 (06/11, supervisor-riavvii-allineamenti-06-11): il rilancio riprende per id, non con -c (che apre l'ultima
+    # conversazione della cartella: alle 10:03 quella nuova e vuota). prima = la conversazione lasciata; riprendi = quella
+    # chiesta con arm --resume, anche con --clean; trascrizione assente → -c, e lo dice
+    slug10 = re.sub(r"[^A-Za-z0-9]", "-", str(home / "ws" / "personali" / "beta"))
+    (home / ".claude" / "projects" / slug10).mkdir(parents=True, exist_ok=True)
+    for s10 in ("sid-r10", "sid-r10b"):
+        (home / ".claude" / "projects" / slug10 / f"{s10}.jsonl").write_text("{}\n")
+
+    def exec10(tag, **kw):
+        f10 = state / f"restart-r10-{tag}.json"
+        f10.write_text(json.dumps(dict({"tmux": "beta", "pid": morto.pid, "cartella": str(home / "ws" / "personali" / "beta"), "gen": tag,
+                                        "conf_ora": str(home / ".claude")}, **kw)))
+        r = subprocess.run([str(T.SCRIPTS / "cm-restart.sh"), "exec", str(f10)], capture_output=True, text=True, env=e8, timeout=120)
+        return r.stdout + r.stderr, (tmp / "args.log").read_text().splitlines()[-1]
+
+    o1, a1 = exec10("prima", prima="sid-r10")
+    o2, a2 = exec10("riprendi", prima="sid-r10", riprendi="sid-r10b", pulita=True)
+    o3, a3 = exec10("manca", prima="sid-r10", riprendi="sid-assente")
+    T.check("R10 relaunch by id: the conversation left (--resume prima), the one asked with --resume even with --clean; a missing transcript → -c, said in the log",
+            "--resume sid-r10 " in a1 + " " and "--resume sid-r10b" in a2 and not re.search(r"(^| )-c( |$)", a1 + " " + a2)
+            and re.search(r"(^| )-c( |$)", a3) and "sid-assente non trovata" in o3 and all("riavvio completato" in o for o in (o1, o2, o3)), "\n".join([a1, a2, a3, o3[-400:]]))
 
 T.rm(str(tmp))
 T.finish()

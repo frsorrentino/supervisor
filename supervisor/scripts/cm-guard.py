@@ -382,6 +382,7 @@ def run():
         except (OSError, subprocess.TimeoutExpired):
             pass
     stalled_alerts(t)
+    plugin_alerts(t)
     if changed:
         save_state(st)
     return 0
@@ -432,6 +433,72 @@ def unproven_alerts(t):
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(sent))
+    except OSError:
+        pass
+
+
+PLUGIN_CHECK_S = 600
+PLUGIN_GRACE_S = 1800
+
+
+def plugin_alerts(t):
+    """06/11/2026 (supervisor-riavvii-allineamenti-06-11): la cache del plugin di un account indietro rispetto al
+    checkout (doctor.plugin_stale) lo diceva solo `supervisor doctor`, se qualcuno lo lanciava: gli hook girano dalla
+    cache, i comandi dal checkout. Ogni 10 minuti `claude plugin list` per account (plugin_row di cm-config); un
+    disallineamento visto da almeno 30 minuti (una release porta il checkout avanti qualche minuto prima di
+    installare) va alla master con talk e alla persona (evento plugin_stale, Telegram di scorta), una volta per
+    (account, cache, checkout). Stato in plugin-stale.json: {chiave: {first, sent}}."""
+    stamp = state_path().with_name("plugin-check.stamp")
+    try:
+        if t - stamp.stat().st_mtime < PLUGIN_CHECK_S:
+            return
+    except OSError:
+        pass
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+        os.utime(stamp, (t, t))
+    except OSError:
+        pass
+    try:
+        ver = json.loads((HERE.parent / ".claude-plugin" / "plugin.json").read_text()).get("version", "")
+    except (OSError, ValueError):
+        return
+    p = state_path().with_name("plugin-stale.json")
+    try:
+        seen = json.loads(p.read_text())
+        seen = seen if isinstance(seen, dict) else {}
+    except (OSError, ValueError):
+        seen = {}
+    now_stale = {}
+    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    for name, a in CFG["accounts"].items():
+        try:
+            level, key, kw, _fix = cm.plugin_row(name, a, ver)
+        except Exception as e:   # noqa: BLE001 — un account illeggibile non ferma la guardia
+            log(f"plugin: {name}: {e}")
+            continue
+        if key != "doctor.plugin_stale":
+            continue
+        k = f"{name}:{kw.get('cache')}:{kw.get('checkout')}"
+        row = seen.get(k) if isinstance(seen.get(k), dict) else {"first": t, "sent": False}
+        now_stale[k] = row
+        if row.get("sent") or t - float(row.get("first") or t) < PLUGIN_GRACE_S:
+            continue
+        mins = int((t - float(row["first"])) // 60)
+        text = M("guard.plugin_stale", account=name, cache=kw.get("cache"), checkout=kw.get("checkout"), mins=mins, fix=M("doctor.fix_plugin_stale"))
+        title = M("guard.plugin_stale_title", account=name)
+        try:
+            subprocess.run([CM_BIN, "talk", master, text, "--no-wait"], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        _load("cm-core").relay_event("plugin_stale", title, text, ref=name, account=name)
+        notify(title + "\n" + text)
+        row["sent"] = True
+        log(f"plugin_stale: {k} ({mins} min) → {master} + phone")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(now_stale))
     except OSError:
         pass
 

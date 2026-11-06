@@ -78,8 +78,16 @@ come_riprendere() {  # $1 cartella, $2 account, $3 session_id
   conf="$(cm_get "$a" CONFIG_DIR 2>/dev/null || true)"
   opz=(--continue); modo="continue"
   # lo stesso controllo di launch --resume (T10): la trascrizione nella cartella della sessione
-  if [ -n "$3" ] && [ -n "$conf" ] && [ -f "$conf/projects/$(readlink -f "$1" | sed 's|[^A-Za-z0-9]|-|g')/$3.jsonl" ]; then
+  local tr="$conf/projects/$(readlink -f "$1" | sed 's|[^A-Za-z0-9]|-|g')/$3.jsonl"
+  if [ -n "$3" ] && [ -n "$conf" ] && [ -f "$tr" ]; then
     opz=(--resume "$3"); modo="resume ${3:0:8}"
+    # 06/11 (supervisor-riavvii-allineamenti-06-11): alle 10:45 il container e' ripartito e la sessione ripresa e' rimasta
+    # ferma al prompt con un comando in background interrotto (la notifica di Claude Code non apre un turno). Se la
+    # conversazione ha lavoro interrotto mai detto, riparte con un primo prompt; il SessionStart le elenca cosa
+    local rotti; rotti="$(python3 "$CM_SCRIPTS/cm-jobs.py" interrupted "$tr" --unreported 2>/dev/null)"
+    if [ -n "$rotti" ] && [ "$rotti" != "[]" ]; then
+      opz+=(--prompt "$(cm_msg restore.resume_prompt)"); modo="$modo +interrotti"
+    fi
   fi
   [ -n "$2" ] && opz+=(--account "$2")
   return 0

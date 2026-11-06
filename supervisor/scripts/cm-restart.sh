@@ -3,6 +3,7 @@
 #
 #   supervisor restart arm                  arma il riavvio (da dentro la sessione da riavviare)
 #   supervisor restart arm --clean          riparte SENZA -c: contesto azzerato, memoria intatta  (it: --pulita)
+#   supervisor restart arm --resume ID      riparte sulla conversazione ID (06/11: quella «di prima»)  (it: --riprendi)
 #   supervisor restart arm --switch-account [NOME]
 #                                              riparte sull'ALTRO account riprendendo la STESSA conversazione:
 #                                              il transcript e' un file locale, viene copiato nella cartella
@@ -71,10 +72,13 @@ arm() {
   info=$(cm_tmux display-message -p -t "${TMUX_PANE:-}" '#S|#{pane_pid}' 2>/dev/null) || { cm_msg restart.no_tmux_id >&2; exit 3; }
   nome="${info%%|*}"; pid="${info##*|}"; cartella="$(pwd -P)"
   [ -n "$nome" ] && [ -n "$pid" ] || { cm_msg restart.no_tmux_id >&2; exit 3; }
-  local clean=false conf_da="" conf_a="" sid="" acc_da="" acc_a=""
+  local clean=false conf_da="" conf_a="" sid="" acc_da="" acc_a="" riprendi=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --clean|--pulita) clean=true ;;
+      --resume|--riprendi)   # 06/11: riparte su una conversazione data (la «conversazione di prima» del SessionStart)
+        riprendi="${2:-}"; shift
+        printf '%s' "$riprendi" | grep -Eq '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' || { cm_msg restart.bad_sid "sid=$riprendi" >&2; exit 2; } ;;
       --switch-account|--altro-account)
         conf_da="$(readlink -f "${CLAUDE_CONFIG_DIR:-$(eval echo ~)/.claude}")"
         sid="${CLAUDE_CODE_SESSION_ID:-}"
@@ -98,19 +102,21 @@ arm() {
     esac
     shift
   done
-  python3 - "$(flag_of "$nome")" "$nome" "$pid" "$cartella" "$clean" "$conf_da" "$conf_a" "$sid" "$acc_a" "${CLAUDE_CODE_SESSION_ID:-}" <<'PY'
+  python3 - "$(flag_of "$nome")" "$nome" "$pid" "$cartella" "$clean" "$conf_da" "$conf_a" "$sid" "$acc_a" "${CLAUDE_CODE_SESSION_ID:-}" \
+    "$riprendi" "$(readlink -f "${CLAUDE_CONFIG_DIR:-$(eval echo ~)/.claude}")" <<'PY'
 import json, sys, time, uuid
-f, nome, pid, cartella, clean, conf_da, conf_a, sid, acc_a, prima = sys.argv[1:]
+f, nome, pid, cartella, clean, conf_da, conf_a, sid, acc_a, prima, riprendi, conf_ora = sys.argv[1:]
 # 05/11 (supervisor-catena-trascrizioni-05-11): «prima» = la conversazione di adesso, per la catena della chat
 json.dump({"tmux": nome, "pid": int(pid), "cartella": cartella, "armato": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
            "gen": uuid.uuid4().hex[:8], "pulita": clean == "true", "conf_da": conf_da, "conf_a": conf_a,
-           "sessione": sid, "account_a": acc_a, "prima": prima}, open(f, "w"))
+           "sessione": sid, "account_a": acc_a, "prima": prima, "riprendi": riprendi, "conf_ora": conf_ora}, open(f, "w"))
 PY
   # P5 (22/10/2026): dalla master, la parte «impegni» del passaggio di consegne dal registro, prima del riavvio
   [ "$nome" = "${CM_WORKSPACE_ROOT_SESSION_NAME:-master}" ] && python3 "$CM_SCRIPTS/cm-handoff.py" --snapshot "$cartella" "$nome" >/dev/null 2>&1 || true
   cm_msg restart.armed "name=$nome" "pid=$pid" "dir=$cartella"
   [ -n "$conf_a" ] && cm_msg restart.armed_switch "account=$(cm_get "$acc_a" LABEL || true)" "sid=$sid"
   [ "$clean" = true ] && cm_msg restart.armed_clean
+  [ -n "$riprendi" ] && cm_msg restart.armed_resume "sid=$riprendi"
   cm_msg restart.armed_when "log=$LOG"
 }
 
@@ -183,6 +189,8 @@ esegui() {
   nome=$(json_get "$flag" tmux); pid=$(json_get "$flag" pid); cartella=$(json_get "$flag" cartella)
   conf_da=$(json_get "$flag" conf_da); conf_a=$(json_get "$flag" conf_a); sid=$(json_get "$flag" sessione)
   acc_a=$(json_get "$flag" account_a); pulita=$(json_get "$flag" pulita); gen=$(json_get "$flag" gen)
+  local prima riprendi conf_ora
+  prima=$(json_get "$flag" prima); riprendi=$(json_get "$flag" riprendi); conf_ora=$(json_get "$flag" conf_ora)
   # 05/11 (supervisor-catena-trascrizioni-05-11): il SessionStart dopo il riavvio legge da qui che e' un riavvio e da
   # quale conversazione viene, per la barra della chat
   mkdir -p "$(dirname "$FLAG")/restarted"
@@ -216,8 +224,15 @@ esegui() {
   for _ in $(seq 1 10); do cm_tmux has-session -t "=$nome" 2>/dev/null || break; sleep 1; done
 
   # 4. Rilancio. Un solo retry: se fallisce due volte il problema non e' transitorio.
+  # 06/11 (supervisor-riavvii-allineamenti-06-11): per id, non con -c, che apre l'ultima conversazione della cartella
+  # (un'altra sessione nella stessa cartella, o una nuova e vuota); -c solo se la trascrizione non si trova
   local -a OPZ=(--continue)
-  [ "$pulita" = true ] && OPZ=()
+  local slug0 conf0 voluta
+  slug0=$(printf '%s' "$cartella" | sed 's|[^A-Za-z0-9]|-|g'); conf0="$conf_ora"
+  voluta="$riprendi"; [ -n "$voluta" ] || voluta="$prima"
+  if [ -n "$voluta" ] && [ -n "$conf0" ] && [ -f "$conf0/projects/$slug0/$voluta.jsonl" ]; then OPZ=(--resume "$voluta")
+  elif [ -n "$riprendi" ]; then echo "trascrizione di $riprendi non trovata in $conf0/projects/$slug0: riprendo con -c"; fi
+  [ "$pulita" = true ] && [ -z "$riprendi" ] && OPZ=()
   if [ -n "$conf_a" ] && [ -n "$sid" ]; then
     # Cambio account (T51): il transcript (e la sua cartella di contorno) passa nella
     # projects dell'altro account, poi --resume per id: -c prenderebbe l'ultima

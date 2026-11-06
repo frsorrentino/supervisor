@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.128 (06/11/2026, the maintainer: «dobbiamo migliorare la gestione dei riavvii improvvisi e gli allineamenti»; task supervisor-riavvii-allineamenti-06-11). Additive, `v` stays 1.
+
+- **New event kind `plugin_stale`**: an account's supervisor plugin cache is behind the checkout (what `supervisor doctor` calls `plugin_stale`: the sessions' hooks run the old version, the commands the new one). The guard checks every 10 minutes and sends it once per (account, cache version, checkout version), after the mismatch has lasted 30 minutes (a release moves the checkout a few minutes before it installs). `account` and `ref` are the account, `session` null, `title` «Plugin supervisor indietro: <account>», `body` the versions and the command that aligns them. The master gets the same text with a `talk`; Telegram is the fallback as for the other guard events. An app that does not know the kind can show it as a plain notice.
+
+No fixture change: an event has the shape of the others in `events-sample.json`.
+
 Contract 1.127 (06/11/2026, the maintainer: «ho usato la ricerca, ma mi apre semplicemente la master sull'ultimo messaggio … la ricerca avrebbe dovuto riportarmi a quel punto del transcript della chat»; task supervisor-trascrizione-attorno-06-11). Additive, `v` stays 1.
 
 - **op `transcript` takes `n:around=<id>`**: the `n` entries around that entry (the `entry` of a `search` hit), about half before and half after; near the start or the end the page moves to the other side, so it still holds `n` entries when there are. The entry may be in an earlier conversation of the same session (1.126): the page then carries the separators it crosses. The answer adds `anchor` (the id asked for) and `more_after` (true when newer entries follow); `more` keeps its meaning (older entries before). From there the app scrolls with `before=<first id>` and `after=<last id>`, which follow the chain both ways. An id that is not there is refused with «no entry <id> in the transcript», as `before=` is; pages without `around` carry no new key.

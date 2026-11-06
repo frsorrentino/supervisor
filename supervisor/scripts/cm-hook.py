@@ -167,6 +167,55 @@ def chain_fields(p, handoff_line=""):
     return out
 
 
+CONV_KEEP = 8
+PREV_MAX_AGE_S = 3 * 86400
+
+
+def conv_prev(p, tm):
+    """06/11/2026 (supervisor-riavvii-allineamenti-06-11): la conversazione di prima di questa sessione, e si annota
+    questa. Alle 10:03 la master e' ripartita pulita: -c apriva la conversazione nuova e vuota, e l'id di quella di
+    prima (318k token) l'ha cercato a mano fra i .jsonl. In <state_dir>/conv/<nome tmux>.json le ultime conversazioni
+    della sessione (sid, trascrizione); la precedente e' la piu' recente diversa da questa con una trascrizione vera
+    (oltre 4 KB) scritta negli ultimi 3 giorni. {sid, transcript, mtime, size} o None."""
+    sid, tr = p.get("session_id") or "", p.get("transcript_path") or ""
+    if not sid:
+        return None
+    key = re.sub(r"[^A-Za-z0-9_.-]", "_", tm or ("cwd-" + (p.get("cwd") or "")))[:120]
+    f = STATE / "conv" / f"{key}.json"
+    try:
+        rows = json.loads(f.read_text())
+        rows = rows if isinstance(rows, list) else []
+    except (OSError, ValueError):
+        rows = []
+    prev = None
+    for r in reversed(rows):
+        if not isinstance(r, dict) or r.get("sid") == sid:
+            continue
+        try:
+            st = os.stat(r.get("transcript") or "")
+        except OSError:
+            continue
+        if st.st_size > 4096 and time.time() - st.st_mtime < PREV_MAX_AGE_S:
+            prev = {"sid": r["sid"], "transcript": r["transcript"], "mtime": st.st_mtime, "size": st.st_size}
+            break
+    rows = [r for r in rows if isinstance(r, dict) and r.get("sid") != sid] + [{"sid": sid, "transcript": tr, "at": time.time()}]
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(rows[-CONV_KEEP:]))
+        os.replace(tmp, f)
+    except OSError:
+        pass
+    return prev
+
+
+def jobs_mod():
+    spec = importlib.util.spec_from_file_location("cm_jobs", HERE / "cm-jobs.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def ledger(event, p, **extra):
     try:
         STATE.mkdir(parents=True, exist_ok=True)
@@ -567,8 +616,13 @@ def main(argv):
                 handoff_line = ho.announce(p.get("cwd") or os.getcwd(), sid or None) or ""
             except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
                 handoff_line = ""
+        src = p.get("source", "startup") or "startup"
+        prev = conv_prev(p, my_tmux_name()) if src in ("startup", "resume") else None
+        chain = chain_fields(p, handoff_line)
+        if src == "startup" and prev and not chain.get("prev_sid"):
+            chain["prev_sid"] = prev["sid"]   # la catena della chat anche dopo un avvio nuovo qualsiasi
         ledger("start", p, source=p.get("source", ""), model=p.get("model") or None,   # 05/11: il modello del payload, misurato
-               **chain_fields(p, handoff_line))
+               **chain)
         note_start_model(sid, p.get("model"))
         k = kernel_text(p)
         if k:
@@ -584,6 +638,17 @@ def main(argv):
             sys.stdout.write(c + "\n")
         if handoff_line:
             sys.stdout.write(handoff_line + "\n")
+        if src == "startup" and prev:   # 06/11: la conversazione di prima si riprende senza cercarne l'id
+            sys.stdout.write(M("hook.prev_conversation", name=my_tmux_name() or os.path.basename(p.get("cwd") or ""), sid=prev["sid"],
+                               at=datetime.datetime.fromtimestamp(prev["mtime"]).strftime("%d/%m %H:%M"),
+                               mb=f"{prev['size'] / 1e6:.1f}") + "\n")
+        try:   # 06/11: il lavoro interrotto dal riavvio (la conversazione ripresa, o quella di prima dopo un avvio nuovo)
+            tr = p.get("transcript_path") if src == "resume" else (prev or {}).get("transcript") if src == "startup" else ""
+            jb = jobs_mod().start_block(my_tmux_name(), tr) if src in ("startup", "resume") else ""
+            if jb:
+                sys.stdout.write(jb + "\n")
+        except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
+            pass
         try:   # 23/09: i messaggi arrivati mentre la sessione era chiusa (casella persistente)
             box = inbox().deliver_block(my_tmux_name(), p.get("cwd") or os.getcwd(), "session-start")
             if box:

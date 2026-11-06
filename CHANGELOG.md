@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.136 — 2026-11-06: a sudden restart no longer loses the work in progress nor the previous conversation, and a plugin left behind is reported by itself (supervisor-riavvii-allineamenti-06-11, contract 1.128).**
+  - After a clean restart the start of the new conversation names the previous one of the same session, with `supervisor restart arm --resume ID` (or `/resume ID`) to go back to it: no more hunting its id among the transcripts.
+  - `supervisor restart` now resumes the conversation by its id, not with `-c`, which opened the last conversation of the folder (a new empty one, or another session's).
+  - When a session resumes, or starts again after one that stopped, it is told which background commands never finished, once: Claude Code only leaves a note that does not start a turn, so a resumed session sat at the prompt.
+  - `supervisor restore` gives the sessions with interrupted work a first prompt to check it and go on.
+  - New `supervisor bg -- COMMAND` for long jobs such as a release or a suite: the job outlives the session, its log stays out of /tmp, the session that started it gets the outcome in its inbox, and one that died with the machine is named at the next start.
+  - When an account's plugin cache stays behind the checkout for 30 minutes, the guard tells the master and the phone once (event `plugin_stale`), with the command that aligns it.
 - **0.8.135 — 2026-11-06: sessions on win can run with the professional account; an ok given to many tests at once closes every task (supervisor-win-altro-account-06-11, supervisor-settle-in-fila-06-11).**
   - `launch --host win` starts a session with the account of its folder, in that account's own profile on win, so a client's folder works there with its account.
   - `supervisor host profile win <account>` prepares that profile on win with the same settings and plugins, plus the private marketplace of that account copied from here.

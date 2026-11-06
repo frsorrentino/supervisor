@@ -4,6 +4,7 @@
 X1  --dry-run: elenca le sessioni da rilanciare, salta la viva e la cartella sparita, non lancia
 X2  --yes: rilancia in parallelo (--resume <id> o --continue, X5) e --account, quella di `restore.last` per ultima; log per sessione
 X4  fotografia: solo le voci viste entro restore.snapshot_window_min dall'ultimo segno di vita prima dell'avvio
+X6  lavoro interrotto nella conversazione → «+interrotti» e il primo prompt della ripresa; senza, nessun prompt
 X3  registro assente → exit 1; registro vuoto → exit 1 (X3b: con la fotografia si propone da quella)
 K1  init --cron stampa la riga del crontab con la cadenza di config; --yes la installa (crontab finto via CM_CRONTAB_CMD)
 """
@@ -86,6 +87,29 @@ with T.PrivateTmux() as tm:
     # X4: la fotografia vale solo per l'ultima accensione (28/09/2026: rilanciava sessioni morte da giorni)
     for n in ("alfa", "pix-beta", "master"):
         tm("kill-session", "-t", f"={n}")
+    # X6 (06/11, supervisor-riavvii-allineamenti-06-11): una conversazione con un comando in background mai finito
+    # riparte con il primo prompt della ripresa (alle 10:45 la sessione ripresa e' rimasta ferma al prompt); senza, no
+    _bg = [{"type": "assistant", "timestamp": "2026-11-06T09:50:00Z", "message": {"content": [{"type": "tool_use", "id": "toolu_x6", "name": "Bash",
+            "input": {"command": "bash ./release.sh 9.9.9", "description": "Release 9.9.9", "run_in_background": True}}]}},
+           {"type": "user", "timestamp": "2026-11-06T09:50:01Z", "toolUseResult": {"backgroundTaskId": "bx6"},
+            "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_x6", "content": "Command running in background with ID: bx6."}]}}]
+    tr6 = home / ".claude" / "projects" / _slug / f"{SID_ALFA}.jsonl"
+    tr6.write_text("".join(json.dumps(x) + "\n" for x in _bg))
+    reg.write_text(json.dumps({"salvato": "2026-11-06T10:44:00+0100", "sessioni": [
+        {"nome": "alfa", "cartella": str(home / "ws" / "personali" / "alfa"), "account": "personale", "session_id": SID_ALFA}]}))
+    r6d = subprocess.run([str(T.SCRIPTS / "cm-restore.sh"), "--dry-run"], capture_output=True, text=True, env=env(), timeout=60)
+    r6 = subprocess.run([str(T.SCRIPTS / "cm-restore.sh"), "--yes"], capture_output=True, text=True, env=env(), timeout=120)
+    l6 = argslog.read_text().splitlines()[-1]
+    tm("kill-session", "-t", "=alfa")
+    tr6.write_text("{}\n")
+    reg.write_text(json.dumps({"salvato": "2026-11-06T10:44:00+0100", "sessioni": [   # il lancio riscrive il registro
+        {"nome": "alfa", "cartella": str(home / "ws" / "personali" / "alfa"), "account": "personale", "session_id": SID_ALFA}]}))
+    r6b = subprocess.run([str(T.SCRIPTS / "cm-restore.sh"), "--yes"], capture_output=True, text=True, env=env(), timeout=120)
+    l6b = argslog.read_text().splitlines()[-1]
+    tm("kill-session", "-t", "=alfa")
+    T.check("X6 interrupted background work in the conversation → the list says it and the relaunch carries the resume prompt; without it, no prompt",
+            "+interrotti" in r6d.stdout and f"--resume {SID_ALFA}" in l6 and "Ripristino dopo un riavvio della macchina" in l6
+            and f"--resume {SID_ALFA}" in l6b and "Ripristino dopo un riavvio" not in l6b, r6d.stdout + "\n" + l6 + "\n" + l6b)
     reg.write_text(json.dumps({"salvato": "2026-09-28T10:55:00+0200", "sessioni": [
         {"nome": "alfa", "cartella": str(home / "ws" / "personali" / "alfa"), "account": "personale"}]}))
     (tmp / "state" / "sessions-good.json").write_text(json.dumps({"salvato": "2026-09-28T10:55:00+0200", "sessioni": [
