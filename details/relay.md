@@ -644,6 +644,14 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.127 (06/11/2026, the maintainer: «ho usato la ricerca, ma mi apre semplicemente la master sull'ultimo messaggio … la ricerca avrebbe dovuto riportarmi a quel punto del transcript della chat»; task supervisor-trascrizione-attorno-06-11). Additive, `v` stays 1.
+
+- **op `transcript` takes `n:around=<id>`**: the `n` entries around that entry (the `entry` of a `search` hit), about half before and half after; near the start or the end the page moves to the other side, so it still holds `n` entries when there are. The entry may be in an earlier conversation of the same session (1.126): the page then carries the separators it crosses. The answer adds `anchor` (the id asked for) and `more_after` (true when newer entries follow); `more` keeps its meaning (older entries before). From there the app scrolls with `before=<first id>` and `after=<last id>`, which follow the chain both ways. An id that is not there is refused with «no entry <id> in the transcript», as `before=` is; pages without `around` carry no new key.
+- **`search` hits gain `sid`** (the conversation's id). A hit in an earlier conversation of a live session (before its `/clear`, a restart or a resume) now carries that session's name and `live: true`, so the app opens the session and asks `around`. For a hit with `live: false` the app asks `op transcript` with `sid` and `session: null` (1.82), also with `around`.
+- With `around` the page is trimmed to 60 KB from the end farther from the entry, which always stays.
+
+Fixture: `cmd-result-sample.json` (…1240 a search hit before a `/clear` of a live session, …1241 the page around it, with the separator; …0170 hits now carry `sid`).
+
 Contract 1.126 (05/11/2026, the maintainer: «con il clear automatico rimangono visibili solo i prompt inviati e non i transcript di risposta»; task supervisor-catena-trascrizioni-05-11). Additive, `v` stays 1.
 
 - **op `transcript` follows the session across its conversations.** After a `/clear` (also the automatic one after a handoff), a restart or a resume, a session writes a new transcript; until now the chat showed only that one. Now, when a page reaches the start of the current conversation, or the id asked for is in an earlier one, the relay goes on into the conversations before, of the same session, up to 7 days (at most 12). A chat open across a `/clear` that asks `after=<id of before>` gets the new entries, no `reset`.

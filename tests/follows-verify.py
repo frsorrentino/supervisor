@@ -63,14 +63,15 @@ def oks(tid):
 
 # OS1
 add("orig-a")
-person_ok("orig-a", "La persona 11:46: scelta A, procedi")
+AT1 = int(time.time()) - 3 * 3600
+person_ok("orig-a", "La persona 11:46: scelta A, procedi", at=AT1)
 r1 = add("seg-a", "--follows", "orig-a")
 o1 = oks("seg-a")
 c1 = json.loads(cm("show", "seg-a", "--json")[1])["contract"]["task"]
 imp1 = {x["task"]: x for x in json.loads(cm("impegni", "--json")[1])}
 T.check("OS1 --follows of an approved task: approved at once, by the same person, «approvato dal seguito di orig-a», the time and the text of the original ok",
         r1[0] == 0 and "approved as a follow-up of orig-a" in r1[1] and len(o1) == 1 and o1[0]["by_"] == "maintainer"
-        and "approvato dal seguito di orig-a" in o1[0]["text"] and "scelta A, procedi" in o1[0]["text"] and time.strftime("%d/%m") in o1[0]["text"], str(r1) + str(o1))
+        and "approvato dal seguito di orig-a" in o1[0]["text"] and "scelta A, procedi" in o1[0]["text"] and time.strftime("%d/%m %H:%M", time.localtime(AT1)) in o1[0]["text"], str(r1) + str(o1))
 T.check("OS1 the contract has task.follows; impegni says approved, by the person", c1.get("follows") == "orig-a" and imp1["seg-a"]["approved"] and imp1["seg-a"]["approved_by"] == "maintainer", str(c1.get("follows")))
 
 # OS2

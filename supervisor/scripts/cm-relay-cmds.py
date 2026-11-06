@@ -1160,6 +1160,7 @@ def search(arg):
     fq = _fold(q)
     t0 = time.monotonic()
     live, files, order = search_files()
+    earlier = search_chains(live)
     hits, more = [], False
     for p in order:
         if len(hits) >= SEARCH_MAX_HITS and os.path.getmtime(p) < (hits[SEARCH_MAX_HITS - 1]["at"] or 0):
@@ -1173,14 +1174,14 @@ def search(arg):
             c = _search_file(p)
         if not c:
             continue
-        row = live.get(p)
+        row = live.get(p) or earlier.get(p)
         cwd = (row or {}).get("cwd") or c["cwd"] or ""
         name = S.short_name(row.get("name") or row.get("tmux") or "", prefixes()) if row else (os.path.basename(cwd.rstrip("/")) or Path(p).parent.name)
         for eid, role, at, text, folded in c["entries"]:
             if fq in folded:
                 snip, span = _snippet(text, fq)
                 hits.append({"session": name, "live": bool(row), "project": cwd, "entry": eid, "role": role, "at": at,
-                             "snippet": snip, "match": span})
+                             "snippet": snip, "match": span, "sid": Path(p).stem})
         hits.sort(key=lambda h: (h["at"] is None, -(h["at"] or 0)))
     with _SEARCH_LOCK:
         for p in list(_SEARCH_CACHE):
@@ -1192,6 +1193,16 @@ def search(arg):
         hits.pop()
         more = True
     return True, json.dumps({"hits": hits, "more": more}, ensure_ascii=False)
+
+
+def search_chains(live):
+    """1.127: {trascrizione: riga viva} delle conversazioni di prima (catena 1.126) delle sessioni vive: un risultato in
+    una di loro porta il nome della sessione, e op transcript «around» lo trova seguendo la catena."""
+    out = {}
+    for r in live.values():
+        for c in chain_of(r, r.get("tmux") or ""):
+            out.setdefault(os.path.realpath(c["path"]), r)
+    return out
 
 
 HOME_ORDER_MAX = 16
@@ -1461,8 +1472,9 @@ def transcript_page(session, tm, arg, sid=None):
     """1.22 (30/09): la chat di una sessione per il telefono. arg «n» = le ultime n voci; «n:before=<id>» = le n
     prima di quella voce; «n:after=<id>» = le prime n dopo (il telefono lo ripete a scheda aperta, e costa poco:
     basta la coda del file). text = JSON {entries, more}. 1.82: con `sid` (session null) la conversazione di quell'id,
-    anche chiusa, in sola lettura."""
-    m = re.fullmatch(r"\s*(\d{1,4})\s*(?::\s*(before|after)=([A-Za-z0-9._-]{1,80}))?\s*", str(arg or "50"))
+    anche chiusa, in sola lettura. 1.127: «n:around=<id>» = n voci attorno a quella (il risultato di una ricerca), con
+    anchor, more (c'e' altro prima) e more_after (c'e' altro dopo)."""
+    m = re.fullmatch(r"\s*(\d{1,4})\s*(?::\s*(before|after|around)=([A-Za-z0-9._-]{1,80}))?\s*", str(arg or "50"))
     if not m or not int(m.group(1)):
         return False, M("relay.cmd_transcript_bad_arg", arg=str(arg or ""))
     n, mode, ref = min(int(m.group(1)), TRANSCRIPT_MAX_N), m.group(2), m.group(3)
@@ -1535,7 +1547,8 @@ def transcript_read(path, n, mode, ref, chain=None):
     # pagina dal fondo (o prima di una voce) arriva all'inizio di questo file
     while older:
         need = (ref and ref not in ids) or (not ref and len(entries) < n) or \
-               (mode == "before" and ref in ids and ids.index(ref) - n < 0)
+               (mode == "before" and ref in ids and ids.index(ref) - n < 0) or \
+               (mode == "around" and ref in ids and ids.index(ref) - (n - 1) // 2 < 0)
         if not need:
             break
         prev = older.pop(0)
@@ -1554,21 +1567,46 @@ def transcript_read(path, n, mode, ref, chain=None):
         # dopo l'ultima che ha; dopo un riavvio o un /clear quella voce non c'e' piu' e ogni giro falliva. Le ultime n
         # voci con reset true: l'app sostituisce la lista
         mode, ref, reset = None, None, True
+    more_after = None
     if mode == "after":
         i = ids.index(ref) + 1
         page, more = entries[i:i + n], len(entries) > i + n
+    elif mode == "around":
+        # 1.127 (06/11, il maintainer: «la ricerca avrebbe dovuto riportarmi a quel punto del transcript della chat»):
+        # meta' prima, la voce, il resto dopo; vicino a un capo la pagina si sposta dall'altra parte
+        k = ids.index(ref)
+        lo = max(0, k - (n - 1) // 2)
+        hi = min(len(entries), lo + n)
+        lo = max(0, hi - n)
+        page = entries[lo:hi]
+        more, more_after = lo > 0 or bool(start) or bool(older), hi < len(entries)
     else:
         end = ids.index(ref) if mode == "before" else len(entries)
         page = entries[max(0, end - n):end]
         more = end - n > 0 or bool(start) or bool(older)
     page = [dict(e, diff=DF.redact_diff(e["diff"])) if e.get("diff") else e for e in page]   # 1.72: solo le voci che escono
-    while page and len(json.dumps({"entries": page, "more": True}, ensure_ascii=False).encode()) > TRANSCRIPT_MAX_BYTES:
+    def body(pg):
+        b = {"entries": pg, "more": bool(more)}
+        if mode == "around":
+            b.update(more_after=bool(more_after), anchor=ref)
+        return b
+    while page and len(json.dumps(body(page), ensure_ascii=False).encode()) > TRANSCRIPT_MAX_BYTES:
         if mode == "after":
             page = page[:-1]
+        elif mode == "around":
+            # si toglie dal capo piu' lontano dalla voce, che resta sempre
+            k = next(i for i, e in enumerate(page) if e["id"] == ref)
+            if len(page) == 1:
+                break
+            if k < len(page) - 1 - k:
+                page, more_after = page[:-1], True
+            else:
+                page, more = page[1:], True
+            continue
         else:
             page = page[1:]
         more = True
-    return True, json.dumps({"entries": page, "more": bool(more), **({"reset": True} if reset else {})}, ensure_ascii=False)
+    return True, json.dumps({**body(page), **({"reset": True} if reset else {})}, ensure_ascii=False)
 
 
 def session_row(tm):

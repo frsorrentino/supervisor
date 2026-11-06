@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.134 — 2026-11-06: a search result opens the chat at that point, also before a /clear or a restart (supervisor-trascrizione-attorno-06-11, contract 1.127).**
+  - The relay can give the chat the messages around a given one (`n:around=<id>`), even in an earlier conversation of the session, with the bars of the /clear and restarts in between: the app jumps to the result and scrolls from there both ways.
+  - A result in the conversation before a /clear of a session still open is shown under that session's name.
 - **0.8.133 — 2026-11-05: an ok recorded from your message quotes your words, a session on win gets the card with it, and «Chiudi» closes a session on win (supervisor-ok-testo-relay-05-11, supervisor-chiudi-win-05-11).**
   - When a session records an ok you sent from the phone or the web app, the registry and the notice to the sessions now quote what you wrote, not the relay's «Dall'utente via telefono…» wrapper.
   - A session on win, which cannot read the registry, receives with the ok the task's title, expected outcome and plan.
