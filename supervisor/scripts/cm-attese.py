@@ -11,6 +11,7 @@ Un'attesa e' {id, type, kind, session, task, text, options, at, link, answer}:
   kind   ok | choice | pausa | prova | login | prossimi | needs_you | question
   answer {op, arg, ...}: l'op del relay che risponde, la stessa dei tasti della carta (approve, prova, decisione,
          prompt, attention_done, answer); null per il login, che rifa' la master
+  title  una riga per gli elenchi; card.deploy; actions [{label, style, cmd, text_field?, recommended?}] (1.131)
   msg    solo in `show` e nell'op attesa: {session_id, id, text, at}, la voce della trascrizione (l'id e' quello delle voci
          di transcript, «<uuid>.<i>»: l'app ci salta con transcript «n:around=<id>»); null se non si trova
 
@@ -85,12 +86,14 @@ def _from_registry(now_):
                          "text": it.get("what") or it.get("title"), "options": it.get("options") or None, "at": it.get("since"),
                          "answer": {"op": "approve", "arg": it["task"]}}
                     # la carta del registro: cosa esce e dove, cosa non e' provato, se e come si torna indietro (wait-ok)
+                    a["_short"] = it.get("short")
                     a["card"] = {k: it.get(f) for k, f in (("what", "what"), ("where", "where_to"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how"))
                                  if it.get(f)} or None
                     out.append(a)
                 elif k == "pause":
                     out.append({"id": wid("pausa", it["task"], it.get("since")), "type": "carta", "kind": "pausa", "session": it.get("session"), "task": it["task"],
-                                "text": it.get("reason"), "options": None, "at": it.get("since"), "answer": {"op": "decisione", "arg": g["key"]}})
+                                "text": it.get("reason"), "options": None, "at": it.get("since"), "answer": {"op": "decisione", "arg": g["key"]}, "_short": it.get("short"),
+                                "_prova": bool(it.get("prova"))})
                 elif k == "login":
                     out.append({"id": wid("login", it.get("account"), it.get("expires_at")), "type": "carta", "kind": "login", "session": it.get("session"), "task": None,
                                 "text": it.get("reason"), "options": None, "at": it.get("since"), "answer": None})
@@ -105,7 +108,7 @@ def _from_registry(now_):
                 by_task.setdefault(x["task"], []).append(x)
         for tid, xs in by_task.items():
             ids = sorted(x["id"] for x in xs)
-            out.append({"id": wid("prova", tid, ids[0]), "type": "carta", "kind": "prova", "session": xs[0].get("session"), "task": tid,
+            out.append({"id": wid("prova", tid, ids[0]), "type": "carta", "kind": "prova", "session": xs[0].get("session"), "task": tid, "_short": xs[0].get("short"),
                         "text": "; ".join(f"{x['dove']}: {x['fai']}" for x in xs)[:600], "options": None, "at": min(int(x.get("at") or 0) for x in xs),
                         "answer": {"op": "prova", "arg": ",".join(map(str, ids))}})
     finally:
@@ -135,7 +138,8 @@ def _from_state(state):
         if k == "question":
             q = s.get("question") or {}
             opts = [o if isinstance(o, dict) else {"label": str(o)} for o in (q.get("options") or []) if o]
-            a.update(options=opts or None, answer={"op": "answer", "arg": x.get("ref"), "session": x.get("session")})
+            # l'op answer vuole il numero dell'opzione in arg e l'id della domanda in question (contratto 1.55)
+            a.update(options=opts or None, answer={"op": "answer", "session": x.get("session"), "question": x.get("ref")})
         elif k == "prossimi":
             a.update(options=[st["text"] for st in s.get("next_steps") or [] if st.get("text")] or None,
                      answer={"op": "prompt", "arg": x.get("session"), "done": {"op": "attention_done", "arg": x.get("session"), "kind": "turn_blocking"}})
@@ -162,13 +166,72 @@ def _options(opts, cut=None):
     return out or None
 
 
+DEPLOY_RE = re.compile(r"\b(prod|production|produzione|deploy|live)\b", re.I)   # come cm-relay.DEPLOY_RE (approvals[].deploy)
+TITLE_MAX = 120
+
+
+def _act(label_key, cmd, style="secondary", text_field=None, **extra):
+    """Un tasto della scheda: {label, style, cmd, text_field?, ...}. cmd e' il comando del relay gia' pronto (op, session,
+    arg e i campi dell'op); l'app aggiunge id, issued, by e device. text_field: il campo di cmd che la persona scrive
+    (il motivo di un «Non va», la risposta libera); assente = il tasto manda cmd com'e'."""
+    out = {"label": M("attese.act_" + label_key) if label_key else extra.pop("label"), "style": style, "cmd": dict({"session": None}, **cmd)}
+    if text_field:
+        out["text_field"] = text_field
+    out.update(extra)
+    return out
+
+
+def _actions(a, prova=False):
+    """1.131 (07/11, supervisor-attese-campi-07-11, chiesto da supervisor-app): i tasti espliciti dell'attesa, nell'ordine
+    in cui la scheda li mostra; le opzioni prima, la consigliata col segno. [] per il login (lo rifa' la master)."""
+    k, an, opts = a["kind"], a.get("answer") or {}, a.get("options") or []
+    rec = lambda o: {"recommended": True} if o.get("recommended") else {}  # noqa: E731
+    if k == "ok":
+        return [_act("approve", {"op": "approve", "arg": a["task"], "text": "ok"}, "primary"),
+                _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
+    if k == "choice":
+        return [_act(None, {"op": "approve", "arg": a["task"], "text": "ok", "choice": o["value"]}, "primary" if o.get("recommended") else "option", label=o["label"], **rec(o))
+                for o in opts] + [_act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
+    if k == "prova":
+        ids = str(an.get("arg") or "")
+        return [_act("works", {"op": "prova", "arg": ids, "result": "ok"}, "primary"),
+                _act("fails", {"op": "prova", "arg": ids.split(",")[0], "result": "ko"}, text_field="text")]
+    if k == "pausa":
+        # una pausa che aspetta una prova: «Va» (la conferma della persona) e «Non va»; le altre (un accesso, una
+        # decisione a voce): la risposta alla sessione, «Non ora», «Lascia perdere» con il motivo
+        key = an.get("arg")
+        if prova:
+            return [_act("works", {"op": "decisione", "arg": key, "action": "provato"}, "primary"),
+                    _act("fails", {"op": "decisione", "arg": key, "action": "non_va"}, text_field="reason"),
+                    _act("not_now", {"op": "decisione", "arg": key, "action": "not_now"})]
+        return ([_act("reply", {"op": "prompt", "session": a.get("session")}, "primary", text_field="arg")] if a.get("session") else []) + \
+               [_act("not_now", {"op": "decisione", "arg": key, "action": "not_now"}),
+                _act("drop", {"op": "decisione", "arg": key, "action": "drop"}, text_field="reason")]
+    if k == "question":
+        return [_act(None, {"op": "answer", "session": a.get("session"), "arg": str(o["n"]), "question": an.get("question")}, "primary" if o.get("recommended") else "option",
+                     label=o["label"], **rec(o)) for o in opts]
+    if k in ("prossimi", "needs_you"):
+        done = {"op": "attention_done", "arg": a.get("session"), "kind": "turn_blocking" if k == "prossimi" else "needs_you"}
+        return [_act(None, {"op": "prompt", "session": a.get("session"), "arg": o["value"]}, "option", label=o["label"]) for o in opts] + \
+               [_act("reply", {"op": "prompt", "session": a.get("session")}, text_field="arg"), _act("done", done)]
+    return []
+
+
 def _finish(a):
     """L'etichetta del tipo (label: decide | choose | verify | reply, e label_text nella lingua della config, «Decidi»,
-    «Scegli», «Verifica», «Rispondi»), le opzioni come oggetti, card null fuori dalle carte di ok."""
+    «Scegli», «Verifica», «Rispondi»), le opzioni come oggetti, card null fuori dalle carte di ok. 1.131: `title`, una riga
+    per gli elenchi (il nome breve del compito per le carte, la domanda per la chat), card.deploy (la cosa o il posto
+    nominano la produzione, come approvals[].deploy) e `actions`."""
     a["label"] = LABELS.get(a["kind"], "decide")
     a["label_text"] = M("attese.label_" + a["label"])
     a["options"] = _options(a.get("options"), 24 if a["kind"] == "choice" else None)
     a.setdefault("card", None)
+    if a["card"] is not None:
+        a["card"]["deploy"] = bool(DEPLOY_RE.search(f"{a['card'].get('what') or ''} {a['card'].get('where') or ''}"))
+    short = a.pop("_short", None)
+    t = short if a["type"] == "carta" and short else a.get("text")
+    a["title"] = (" ".join(str(t or "").split())[:TITLE_MAX]) or None
+    a["actions"] = _actions(a, a.pop("_prova", False))
     return a
 
 

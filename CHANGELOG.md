@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.139 — 2026-11-07: the «Ti aspetta» card gets its buttons, its title and the production mark (supervisor-attese-campi-07-11, contract 1.131).**
+  - Every wait now lists its buttons with the command ready to send, so the app shows the same choices as the card it comes from.
+  - A one-line title for the lists, and the «production» mark when the card's release goes to production.
+  - Fix: answering a question with options from the card sent the question's id where the option's number was expected.
 - **0.8.138 — 2026-11-07: every question waiting for you has its own card and link (supervisor-attese-link-07-11, contract 1.130).**
   - A question waiting for you, a card of the registry or a question asked in chat, now has a stable id and a link that opens its «Ti aspetta» card in the app and on the web.
   - The card says what is asked, the options with the recommended one, what is not tested and how to undo, and the message of the transcript where the question was explained, with the key sentence.

@@ -12,6 +12,7 @@ AT3 da dove viene (origin_in): la risposta dopo `task wait-ok ID` (non un testo 
 AT4 op attesa da execute: la voce con msg {session, session_id, id, uuid, text, key (la frase chiave)} dalla trascrizione della sessione; id non
     valido o chiuso = errore; op attese = l'elenco; CLI `supervisor attese` stampa i link
 AT5 la riga «Ti aspettano» dell'hook della master (qui «tst-capo») porta il link di ogni voce, carte di ok comprese
+AT7 (1.131) title, card.deploy e actions: i tasti con il comando del relay gia' pronto, che passa da execute com'e'
 AT6 gli esempi di cmd-result-sample (…1300 attese, …1301 attesa, …1302 chiusa) hanno i campi delle risposte vere
 """
 import importlib.util
@@ -70,7 +71,7 @@ add("at-ok", "alfa")
 add("at-scelta", "beta")
 add("at-prova", "alfa")
 cm("task", "wait-ok", "at-ok", "--what", "pubblico la 1.0?", "--where", "web", "--untested", "il login su iOS", "--undo", "si", "--undo-how", "tolgo il tag")
-cm("task", "wait-ok", "at-scelta", "--what", "quale sfondo?", "--where", "app", "--options", "Scuro (consigliata)|Chiaro")
+cm("task", "wait-ok", "at-scelta", "--what", "quale sfondo?", "--where", "app in produzione", "--options", "Scuro (consigliata)|Chiaro")
 cm("task", "prova", "at-prova", "--build", "b1", "--dove", "home", "--fai", "apri la home", "--atteso", "si vede")
 NOW = int(time.time())
 state = {"sessions": [{"name": "gamma", "question": {"id": "q-17", "text": "Quale?", "options": [{"label": "Uno"}, {"label": "Due"}], "asked_at": NOW - 50}},
@@ -110,11 +111,11 @@ T.check("AT1 cards (ok, choice with options, prova) and chat waits (question, ne
 T.check("AT1 the type label (decide/choose/verify/reply, «Decidi», «Scegli», «Verifica», «Rispondi»); an ok card says what, what is untested and how to undo",
         [ok["label"], ch["label"], pv["label"], q["label"], px["label"], ny["label"]] == ["decide", "choose", "verify", "reply", "reply", "reply"]
         and [ok["label_text"], ch["label_text"], pv["label_text"], q["label_text"]] == ["Decidi", "Scegli", "Verifica", "Rispondi"]
-        and ok["card"] == {"what": "pubblico la 1.0?", "where": "web", "untested": "il login su iOS", "undo": "si", "undo_how": "tolgo il tag"}
+        and ok["card"] == {"what": "pubblico la 1.0?", "where": "web", "untested": "il login su iOS", "undo": "si", "undo_how": "tolgo il tag", "deploy": False}
         and q["card"] is None, json.dumps([ok.get("card"), ok.get("label_text")], ensure_ascii=False))
 T.check("AT1 link <web_app_url>/#/attesa/<id> and the answering op of each wait",
         all(a["link"] == f"{WEB}/#/attesa/{a['id']}" for a in w1) and ok["answer"] == {"op": "approve", "arg": "at-ok"} and pv["answer"]["op"] == "prova"
-        and q["answer"]["op"] == "answer" and q["answer"]["arg"] == "q-17" and px["answer"]["op"] == "prompt" and ny["answer"]["kind"] == "needs_you",
+        and q["answer"]["op"] == "answer" and q["answer"]["question"] == "q-17" and px["answer"]["op"] == "prompt" and ny["answer"]["kind"] == "needs_you",
         json.dumps([a["answer"] for a in w1]))
 
 # AT2
@@ -197,16 +198,35 @@ real_chat = next(a for a in json.loads(tl)["items"] if a["kind"] == "prossimi")
 opt_keys = {"n", "label", "value", "recommended", "description"}
 T.check("AT6 the cmd-result-sample examples (…1300 attese, …1301 attesa, …1302 closed) carry the fields of the real answers",
         set(s_list) == {"at", "items"} and set(s_list["items"][0]) == set(real_card) and set(s_list["items"][1]) == set(real_chat)
-        and set(s_one) == set(rx) and set(s_one["msg"]) == set(rx["msg"]) and set(s_one["card"]) <= {"what", "where", "untested", "undo", "undo_how"}
+        and set(s_one) == set(rx) and set(s_one["msg"]) == set(rx["msg"])
         and set(s_one["answer"]) == set(real_card["answer"]) and set(s_list["items"][1]["answer"]) == set(real_chat["answer"])
         and all(set(o) <= opt_keys and {"n", "label", "value"} <= set(o) for a in s_list["items"] for o in a["options"])
-        and all(set(o) <= opt_keys for o in real_card["options"]) and s_gone["ok"] is False and gone[1].startswith("w0000000000:")
+        and all(set(o) <= opt_keys for o in real_card["options"]) and s_gone["ok"] is False
+        and all(set(x) <= {"label", "style", "cmd", "text_field", "recommended"} and {"op", "session"} <= set(x["cmd"]) for a in s_list["items"] for x in a["actions"])
+        and set(s_one["card"]) <= {"what", "where", "untested", "undo", "undo_how", "deploy"} and "deploy" in s_one["card"] and gone[1].startswith("w0000000000:")
         and s_list["items"][0]["id"] == s_one["id"] and s_one["link"].endswith("/#/attesa/" + s_one["id"]),
         f"{sorted(set(s_one) ^ set(rx))} {sorted(set(s_one['msg']) ^ set(rx.get('msg') or {}))} {sorted(set(s_list['items'][0]) ^ set(real_card))}")
 
-okc, tc = RL.execute({"op": "approve", "arg": "at-scelta", "choice": ch["options"][0]["value"], "device": "phone", "by": "maintainer"})
+# AT7 (1.131): title, card.deploy, actions; i comandi dei tasti passano dall'execute vero
+def acts(a):
+    return [(x["label"], x["style"], x["cmd"]["op"], x.get("text_field")) for x in a["actions"]]
+
+
+answer_cmd = next(x["cmd"] for x in q["actions"] if x["label"] == "Due")
+T.check("AT7 title is one line (the task's short name for a card, the question for chat), card.deploy names production, actions are the card's buttons",
+        ok["title"] == "t at-ok" and q["title"] == "Quale?" and px["title"] == "Riga a sinistra" and ok["card"]["deploy"] is False and ch["card"]["deploy"] is True
+        and acts(ok) == [("Approva", "primary", "approve", None), ("Chiudi senza ok", "secondary", "approval_close", "text")]
+        and acts(ch)[0] == ("Scuro", "primary", "approve", None) and ch["actions"][0].get("recommended") is True and ch["actions"][0]["cmd"]["choice"] == "Scuro (consigliata)"
+        and acts(ch)[1] == ("Chiaro", "option", "approve", None) and acts(ch)[2][2] == "approval_close"
+        and acts(pv) == [("Va", "primary", "prova", None), ("Non va", "secondary", "prova", "text")] and pv["actions"][0]["cmd"]["result"] == "ok"
+        and answer_cmd == {"session": "gamma", "op": "answer", "arg": "2", "question": "q-17"}
+        and [x["label"] for x in px["actions"]] == ["Riga a sinistra", "Bordo leggero", "Rispondi", "Fatto"] and px["actions"][0]["cmd"] == {"session": "delta", "op": "prompt", "arg": "Riga a sinistra"}
+        and px["actions"][3]["cmd"] == {"session": None, "op": "attention_done", "arg": "delta", "kind": "turn_blocking"}
+        and [x["label"] for x in ny["actions"]] == ["Rispondi", "Fatto"], json.dumps([ok.get("title"), acts(ok), acts(ch), acts(pv), answer_cmd, acts(px)], ensure_ascii=False)[:900])
+cmd_c = dict(ch["actions"][0]["cmd"], device="phone", by="maintainer")
+okc, tc = RL.execute(cmd_c)
 time.sleep(0.5)
-T.check("AT6 the value of the recommended option is what approve accepts as the choice; its talk goes to the fake binary, never to a real session",
+T.check("AT7 the recommended option's command goes through execute as it is (approve with its choice); its talk goes to the fake binary, never to a real session",
         okc and "talk beta " in talklog.read_text(), f"{tc} {talklog.read_text()[-300:]!r}")
 
 T.rm(tmp)

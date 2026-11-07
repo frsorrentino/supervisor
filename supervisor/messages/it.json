@@ -1365,5 +1365,13 @@
   "attese.label_decide": "Decidi",
   "attese.label_choose": "Scegli",
   "attese.label_verify": "Verifica",
-  "attese.label_reply": "Rispondi"
+  "attese.label_reply": "Rispondi",
+  "attese.act_approve": "Approva",
+  "attese.act_close": "Chiudi senza ok",
+  "attese.act_works": "Va",
+  "attese.act_fails": "Non va",
+  "attese.act_not_now": "Non ora",
+  "attese.act_reply": "Rispondi",
+  "attese.act_done": "Fatto",
+  "attese.act_drop": "Lascia perdere"
 }

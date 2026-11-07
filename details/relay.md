@@ -644,6 +644,21 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.131 (07/11/2026, supervisor-app at 23:48: «actions espliciti, title, card.deploy»; task supervisor-attese-campi-07-11). Additive, `v` stays 1.
+
+- **`title`** on every item of `attese` and `attesa`: one line, at most 120 characters, for lists («Ti aspettano anche»): the task's short name for a card, the question's text for chat; null when there is none.
+- **`card.deploy`** on ok and choice cards: true when `what` or `where` names production (the same rule as `approvals[].deploy`): the card shows the «production» mark.
+- **`actions`**, the card's buttons in display order: `[{label, style, cmd, text_field?, recommended?}]`. `style` `primary | option | secondary`; `cmd` the relay command ready to send (`op`, `session`, `arg` and the op's own fields: `text`, `choice`, `result`, `action`, `kind`, `question`); the app adds `id`, `issued`, `by`, `device`. `text_field` names the field of `cmd` the person writes before sending (the reason of a «Does not work», a free reply, the reason of «Close without ok», optional there); absent = send `cmd` as it is. Per kind:
+  - ok: Approve (`approve`), Close without ok (`approval_close`, `text_field: text`).
+  - choice: one button per option (`approve` with `choice` = the option's `value`, the recommended one `primary` with `recommended: true`), then Close without ok.
+  - prova: Works (`prova`, every open id, `result: ok`), Does not work (`prova`, the first id, `result: ko`, `text_field: text`).
+  - pausa waiting for a proof: Works (`decisione` `provato`), Does not work (`non_va`, `text_field: reason`), Not now (`not_now`); any other pause: Reply (`prompt` to the session, `text_field: arg`), Not now, Drop it (`drop`, `text_field: reason`).
+  - question: one button per option (`answer` with `arg` the option's number and `question` the id).
+  - prossimi: one button per item (`prompt` with the item's text), Reply (`prompt`, `text_field: arg`), Done (`attention_done`, `kind: turn_blocking`); needs_you: Reply, Done (`kind: needs_you`).
+  - login: none (the master redoes it).
+- **Fix of 1.130**: `answer` of a `question` was `{op: answer, arg: <question id>}`; it is now `{op: answer, session, question: <question id>}`, the option's number goes in `arg` (see its `actions`).
+- No change to `/state` nor to `state-1/2/3`: the three fields live in the two ops. Fixture: `cmd-result-sample.json` …1300 and …1301 carry them.
+
 Contract 1.130 (07/11/2026, the maintainer at 20:16: «ok … ti aspetta (o decidi)», the mockup approved at 21:04; task supervisor-attese-link-07-11, the card is app-scheda-ti-aspetta-07-11). Additive, `v` stays 1.
 
 - **A «wait»** is any question waiting for the person, with a stable id: `w` and 10 hex digits from its key (task and time of the request, session and time of the turn, question id), the same in every read, a new one for a new request. `type` `carta` (from the registry: ok, choice, pause waiting for the person, proof, login) or `chat` (a turn closed with a «Next:» item marked «!», a `needs-you`, an AskUserQuestion).

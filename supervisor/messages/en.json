@@ -1365,5 +1365,13 @@
   "attese.label_decide": "Decide",
   "attese.label_choose": "Choose",
   "attese.label_verify": "Verify",
-  "attese.label_reply": "Reply"
+  "attese.label_reply": "Reply",
+  "attese.act_approve": "Approve",
+  "attese.act_close": "Close without ok",
+  "attese.act_works": "Works",
+  "attese.act_fails": "Does not work",
+  "attese.act_not_now": "Not now",
+  "attese.act_reply": "Reply",
+  "attese.act_done": "Done",
+  "attese.act_drop": "Drop it"
 }
