@@ -1327,6 +1327,61 @@
       "device": "phone",
       "id": "6f1c2d3e-1241-4000-8000-000000001241",
       "op": "transcript"
+    },
+    {
+      "id": "6f1c2d3e-1290-4000-8000-000000001290",
+      "op": "approval_close",
+      "session": null,
+      "arg": "atlas-pages-layout",
+      "text": "not needed any more",
+      "device": "phone",
+      "issued": 1789216100,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1291-4000-8000-000000001291",
+      "op": "approval_close",
+      "session": null,
+      "arg": "atlas-release-2-4",
+      "device": "phone",
+      "issued": 1789216110,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1292-4000-8000-000000001292",
+      "op": "approval_close",
+      "session": null,
+      "arg": "atlas-gone-task",
+      "device": "phone",
+      "issued": 1789216120,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1300-4000-8000-000000001300",
+      "op": "attese",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789216200,
+      "by": "web-chromebook"
+    },
+    {
+      "id": "6f1c2d3e-1301-4000-8000-000000001301",
+      "op": "attesa",
+      "session": null,
+      "arg": "wd2f87e85e2",
+      "device": "phone",
+      "issued": 1789216210,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1302-4000-8000-000000001302",
+      "op": "attesa",
+      "session": null,
+      "arg": "w0000000000",
+      "device": "phone",
+      "issued": 1789216220,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -1974,13 +2029,13 @@
     {
       "id": "6f1c2d3e-0900-4000-8000-000000000900",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}], \"archived\": [{\"task\": \"orbit-filter\", \"short\": \"Filter\", \"kind\": \"pause\", \"rule\": 4, \"text\": \"in archivio: nessun passo da 7 giorni e il compito non è in corso\", \"at\": 1789200000}]}",
+      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w672849311e\"}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w0309d64e51\"}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}], \"archived\": [{\"task\": \"orbit-filter\", \"short\": \"Filter\", \"kind\": \"pause\", \"rule\": 4, \"text\": \"in archivio: nessun passo da 7 giorni e il compito non è in corso\", \"at\": 1789200000}]}",
       "at": 1789214706
     },
     {
       "id": "6f1c2d3e-0901-4000-8000-000000000901",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"n\": 4, \"here\": 3, \"tasks\": 4, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"prova\": null, \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"Proposal: move the checkout to the new layout, with the old one kept behind a flag.\", \"asks\": \"ok\"}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"5be07a3c9e42\", \"title\": \"Try the new home on the phone\", \"cause\": null, \"items\": [{\"task\": \"orbit-home\", \"short\": \"New home\", \"title\": \"New home of orbit-app\", \"session\": \"orbit-app\", \"project\": \"personal/orbit-app\", \"kind\": \"pause\", \"prova\": {\"project\": \"personal/orbit-app\", \"release\": \"home-2026-09-12\", \"web\": \"0.2.1663\"}, \"reason\": \"Try the new home: pre-release home-2026-09-12, web 0.2.1663\", \"since\": 1789210000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"The home with the four categories, open or closed with a tap.\", \"asks\": \"other\"}], \"unblocks\": [\"orbit-home\"], \"weight\": 1, \"where\": \"here\", \"since\": 1789210000, \"note\": null, \"refs\": [\"orbit-home\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\", \"title\": null, \"plan_start\": null, \"asks\": \"other\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}, {\"key\": \"5b0e1f7c2a93\", \"title\": \"The login of work expires on 17/09 at 14:05: write to the master «redo the login of work» and keep ready the 6-digit code that arrives by email\", \"cause\": null, \"items\": [{\"kind\": \"login\", \"title\": null, \"plan_start\": null, \"asks\": \"other\", \"task\": null, \"session\": \"master\", \"reason\": \"The login of work expires on 17/09 at 14:05: write to the master «redo the login of work» and keep ready the 6-digit code that arrives by email\", \"account\": \"work\", \"label\": \"work\", \"expires_at\": 1789646700, \"since\": 1789041900, \"where\": \"here\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"here\", \"since\": 1789041900, \"note\": null, \"refs\": [\"login:work\"]}]}",
+      "text": "{\"at\": 1789214700, \"n\": 4, \"here\": 3, \"tasks\": 4, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"prova\": null, \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"Proposal: move the checkout to the new layout, with the old one kept behind a flag.\", \"asks\": \"ok\", \"wid\": \"w92198d0c3b\"}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"5be07a3c9e42\", \"title\": \"Try the new home on the phone\", \"cause\": null, \"items\": [{\"task\": \"orbit-home\", \"short\": \"New home\", \"title\": \"New home of orbit-app\", \"session\": \"orbit-app\", \"project\": \"personal/orbit-app\", \"kind\": \"pause\", \"prova\": {\"project\": \"personal/orbit-app\", \"release\": \"home-2026-09-12\", \"web\": \"0.2.1663\"}, \"reason\": \"Try the new home: pre-release home-2026-09-12, web 0.2.1663\", \"since\": 1789210000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"The home with the four categories, open or closed with a tap.\", \"asks\": \"other\", \"wid\": \"wacff9ad031\"}], \"unblocks\": [\"orbit-home\"], \"weight\": 1, \"where\": \"here\", \"since\": 1789210000, \"note\": null, \"refs\": [\"orbit-home\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\", \"title\": null, \"plan_start\": null, \"asks\": \"other\", \"wid\": \"wc02709c4c5\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}, {\"key\": \"5b0e1f7c2a93\", \"title\": \"The login of work expires on 17/09 at 14:05: write to the master «redo the login of work» and keep ready the 6-digit code that arrives by email\", \"cause\": null, \"items\": [{\"kind\": \"login\", \"title\": null, \"plan_start\": null, \"asks\": \"other\", \"task\": null, \"session\": \"master\", \"reason\": \"The login of work expires on 17/09 at 14:05: write to the master «redo the login of work» and keep ready the 6-digit code that arrives by email\", \"account\": \"work\", \"label\": \"work\", \"expires_at\": 1789646700, \"since\": 1789041900, \"where\": \"here\", \"wid\": \"w4e6378c154\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"here\", \"since\": 1789041900, \"note\": null, \"refs\": [\"login:work\"]}]}",
       "at": 1789214706
     },
     {
@@ -2175,6 +2230,42 @@
       "ok": true,
       "text": "{\"entries\": [{\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"u3.0\", \"role\": \"user\", \"text\": \"And the second listing?\", \"at\": 1789212400}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"a3.0\", \"role\": \"assistant\", \"text\": \"The second one ships in two days.\", \"at\": 1789212420}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"u4.0\", \"role\": \"user\", \"text\": \"Compare the prices\", \"at\": 1789212430}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"a4.0\", \"role\": \"assistant\", \"text\": \"The red jacket is 89 € on the first listing and 74 € on the second, same size and seller rating.\", \"at\": 1789212440}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"u5.0\", \"role\": \"user\", \"text\": \"Fine, now the shipping labels\", \"at\": 1789212500}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"a5.0\", \"role\": \"assistant\", \"text\": \"The handoff is in docs/handoff-2026-09-12.md: the session continues from it after /clear.\", \"at\": 1789212560}, {\"id\": \"sep-5e0c41aa-9b2f-1789212600\", \"role\": \"separator\", \"reason\": \"clear\", \"at\": 1789212600, \"memory\": \"handoff\", \"handoff\": \"/home/dev/storefront/docs/handoff-2026-09-12.md\", \"text\": \"/clear at 18:10: from here the session remembers only the handoff\"}], \"more\": true, \"more_after\": true, \"anchor\": \"a4.0\"}",
       "at": 1789216011
+    },
+    {
+      "id": "6f1c2d3e-1290-4000-8000-000000001290",
+      "ok": true,
+      "text": "{\"task\": \"atlas-pages-layout\", \"closed\": true, \"state\": \"running\", \"text\": \"atlas-pages-layout: card closed, the task is back to running\"}",
+      "at": 1789216101
+    },
+    {
+      "id": "6f1c2d3e-1291-4000-8000-000000001291",
+      "ok": true,
+      "text": "{\"task\": \"atlas-release-2-4\", \"closed\": false, \"state\": \"approved\", \"text\": \"atlas-release-2-4: it no longer waited for an ok (approved), the card closes\"}",
+      "at": 1789216111
+    },
+    {
+      "id": "6f1c2d3e-1292-4000-8000-000000001292",
+      "ok": false,
+      "text": "atlas-gone-task: unknown task",
+      "at": 1789216121
+    },
+    {
+      "id": "6f1c2d3e-1300-4000-8000-000000001300",
+      "ok": true,
+      "text": "{\"at\": 1789216200, \"items\": [{\"id\": \"wd2f87e85e2\", \"type\": \"carta\", \"kind\": \"choice\", \"session\": \"atlas-shop\", \"task\": \"atlas-release-2-4\", \"text\": \"tag v2.4 and push to origin main\", \"options\": [{\"n\": 1, \"label\": \"Release now\", \"recommended\": true, \"value\": \"Release now (recommended)\"}, {\"n\": 2, \"label\": \"Tomorrow morning\", \"value\": \"Tomorrow morning\"}], \"at\": 1789210600, \"answer\": {\"op\": \"approve\", \"arg\": \"atlas-release-2-4\"}, \"card\": {\"what\": \"tag v2.4 and push to origin main\", \"where\": \"production (shop.example.com)\", \"untested\": \"checkout on Safari\", \"undo\": \"si\", \"undo_how\": \"delete the tag and redeploy 2.3\"}, \"link\": \"https://supervisor.example.com/#/attesa/wd2f87e85e2\", \"label\": \"choose\", \"label_text\": \"Choose\"}, {\"id\": \"wb973ef3ed0\", \"type\": \"chat\", \"kind\": \"prossimi\", \"session\": \"atlas-shop\", \"task\": null, \"text\": \"Left rule\", \"options\": [{\"n\": 1, \"label\": \"Left rule\", \"value\": \"Left rule\"}, {\"n\": 2, \"label\": \"Light border\", \"value\": \"Light border\"}], \"at\": 1789215900, \"answer\": {\"op\": \"prompt\", \"arg\": \"atlas-shop\", \"done\": {\"op\": \"attention_done\", \"arg\": \"atlas-shop\", \"kind\": \"turn_blocking\"}}, \"card\": null, \"link\": \"https://supervisor.example.com/#/attesa/wb973ef3ed0\", \"label\": \"reply\", \"label_text\": \"Reply\"}]}",
+      "at": 1789216201
+    },
+    {
+      "id": "6f1c2d3e-1301-4000-8000-000000001301",
+      "ok": true,
+      "text": "{\"id\": \"wd2f87e85e2\", \"type\": \"carta\", \"kind\": \"choice\", \"session\": \"atlas-shop\", \"task\": \"atlas-release-2-4\", \"text\": \"tag v2.4 and push to origin main\", \"options\": [{\"n\": 1, \"label\": \"Release now\", \"recommended\": true, \"value\": \"Release now (recommended)\"}, {\"n\": 2, \"label\": \"Tomorrow morning\", \"value\": \"Tomorrow morning\"}], \"at\": 1789210600, \"answer\": {\"op\": \"approve\", \"arg\": \"atlas-release-2-4\"}, \"card\": {\"what\": \"tag v2.4 and push to origin main\", \"where\": \"production (shop.example.com)\", \"untested\": \"checkout on Safari\", \"undo\": \"si\", \"undo_how\": \"delete the tag and redeploy 2.3\"}, \"link\": \"https://supervisor.example.com/#/attesa/wd2f87e85e2\", \"label\": \"choose\", \"label_text\": \"Choose\", \"msg\": {\"session\": \"atlas-shop\", \"session_id\": \"0b6f3c2e-7d41-4a8e-9c55-2f1e8d7a6b30\", \"id\": \"5d2e8f1a-3c47-4b9e-8a61-7e0d9c4b2f18.0\", \"uuid\": \"5d2e8f1a-3c47-4b9e-8a61-7e0d9c4b2f18\", \"text\": \"Release 2.4 is ready: tests green, the changelog is written. Checkout on Safari is not tested.\\n\\nShould I release now or tomorrow morning?\\n\\nNext: ! Release now · ! Tomorrow morning\", \"key\": \"Should I release now or tomorrow morning?\", \"at\": 1789210590}}",
+      "at": 1789216211
+    },
+    {
+      "id": "6f1c2d3e-1302-4000-8000-000000001302",
+      "ok": false,
+      "text": "w0000000000: this question is no longer waiting (closed or already answered)",
+      "at": 1789216221
     }
   ]
 }

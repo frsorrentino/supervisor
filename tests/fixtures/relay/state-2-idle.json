@@ -222,6 +222,8 @@
     "pair_add",
     "approve",
     "approval_close",
+    "attese",
+    "attesa",
     "attention_done",
     "decision",
     "unpair",
@@ -331,14 +333,15 @@
           "task": "atlas-seo-pages",
           "short": "SEO pages"
         }
-      ]
+      ],
+      "wid": "w8188b13c9d"
     }
   ],
   "recurring": [
     {
       "id": "x-posts",
-      "label": "Review this week's posts on X",
-      "prompt": "Review this week's posts on X",
+      "label": "X posts",
+      "prompt": "X posts",
       "param": false
     },
     {
@@ -349,7 +352,7 @@
     },
     {
       "id": "plugin-rivals",
-      "label": "What competing plugins shipped",
+      "label": "Rival plugins",
       "prompt": "Competing plugins",
       "param": false
     }
@@ -497,14 +500,14 @@
           "key": "title",
           "title": "Title",
           "required": true,
-          "description": "One line for the issue list",
+          "description": "One line",
           "kind": "text",
           "min_length": 3,
           "max_length": 80
         },
         {
           "key": "estimate",
-          "title": "Estimate (points)",
+          "title": "Estimate",
           "required": false,
           "kind": "integer",
           "min": 1,
@@ -531,7 +534,8 @@
       "title": "Type the TV code",
       "since": 1789214200,
       "closes": "prompt",
-      "expires_at": 1789221400
+      "expires_at": 1789221400,
+      "wid": "we8b3d4c565"
     }
   ],
   "suggestions": [
@@ -549,7 +553,7 @@
       "id": "s-5d0e2f9c13",
       "kind": "cleanup",
       "key": "cleanup:paused:orbit-docs-*",
-      "text": "Two orbit-docs tasks paused: close them?",
+      "text": "Close the paused orbit-docs tasks?",
       "at": 1789207190,
       "expires_at": 1789250390,
       "rank": 5,
@@ -559,7 +563,7 @@
       "id": "s-a41c7e2b90",
       "kind": "recurring",
       "key": "recurring:night-report",
-      "text": "Last night's report is ready",
+      "text": "Night report ready",
       "at": 1789207200,
       "expires_at": 1789250400,
       "rank": 6,

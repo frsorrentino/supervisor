@@ -170,7 +170,7 @@
   "talk.no_tmux": "supervisor talk: «{name}» non è in tmux e non ha un socket: non è pilotabile da fuori",
   "talk.typed_text": "supervisor talk: nella casella di «{name}» c'è del testo digitato:\n    {text}\n  Mandare il prompt lo cancellerebbe (si svuota il campo con Escape). Invialo o cancellalo tu, oppure rilancia con --force.",
   "talk.sent": "supervisor talk: consegnato a «{name}» via {via}",
-  "hook.waiting_for_you": "Ti aspettano: {items}. Dillo all'utente, in breve, anche se si parla d'altro.",
+  "hook.waiting_for_you": "Ti aspettano: {items}. Dillo all'utente, in breve, anche se si parla d'altro; nei promemoria «ti aspetta X» metti il link della voce.",
   "hook.waiting_item": "{name} — {what}, da {min} min",
   "hook.waiting_more": " e altre {n}",
   "needs_you.saved": "{name} ora è ferma per te: {reason}",
@@ -1353,5 +1353,17 @@
   "tasks.withdrawn_tell": "{by} ha chiuso alle {when} la carta di {task} senza dare l'ok{reason}: la richiesta non c'è più. Se serve ancora una scelta, richiedila con task wait-ok; altrimenti prosegui senza.",
   "relay.cmd_close_unknown": "{task}: compito sconosciuto",
   "relay.cmd_closed": "{task}: carta chiusa, il compito torna a {state}",
-  "relay.cmd_close_not_waiting": "{task}: non aspettava più un ok ({state}), la carta si chiude"
+  "relay.cmd_close_not_waiting": "{task}: non aspettava più un ok ({state}), la carta si chiude",
+  "hook.waiting_item_link": "{name} — {what}, da {min} min, {link}",
+  "attese.usage": "uso: supervisor attese [--json] | supervisor attese show ID [--json]",
+  "attese.none": "Nessuna attesa aperta.",
+  "attese.gone": "{id}: nessuna attesa aperta con questo id (chiusa o mai esistita)",
+  "attese.line": "[{kind}] {session}: {text} — {link}",
+  "attese.msg": "Da dove viene ({id}): «{text}»",
+  "relay.cmd_attesa_bad_id": "id di attesa non valido: {id}",
+  "relay.cmd_attesa_gone": "{id}: questa domanda non aspetta più (chiusa o già risposta)",
+  "attese.label_decide": "Decidi",
+  "attese.label_choose": "Scegli",
+  "attese.label_verify": "Verifica",
+  "attese.label_reply": "Rispondi"
 }

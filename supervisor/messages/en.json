@@ -170,7 +170,7 @@
   "talk.no_tmux": "supervisor talk: “{name}” is not in tmux and has no socket: it cannot be driven from outside",
   "talk.typed_text": "supervisor talk: the input box of “{name}” holds typed text:\n    {text}\n  Sending the prompt would erase it (the box is cleared with Escape). Send or clear it yourself, or rerun with --force.",
   "talk.sent": "supervisor talk: delivered to “{name}” via {via}",
-  "hook.waiting_for_you": "Waiting for you: {items}. Tell the user, briefly, even if you are talking about something else.",
+  "hook.waiting_for_you": "Waiting for you: {items}. Tell the user, briefly, even if you are talking about something else; in «waiting for you X» reminders put the item's link.",
   "hook.waiting_item": "{name} — {what}, for {min} min",
   "hook.waiting_more": " and {n} more",
   "needs_you.saved": "{name} is now waiting for you: {reason}",
@@ -1353,5 +1353,17 @@
   "tasks.withdrawn_tell": "{by} closed the card of {task} at {when} without an ok{reason}: the request is gone. If a choice is still needed, ask again with task wait-ok; otherwise go on without it.",
   "relay.cmd_close_unknown": "{task}: unknown task",
   "relay.cmd_closed": "{task}: card closed, the task is back to {state}",
-  "relay.cmd_close_not_waiting": "{task}: it no longer waited for an ok ({state}), the card closes"
+  "relay.cmd_close_not_waiting": "{task}: it no longer waited for an ok ({state}), the card closes",
+  "hook.waiting_item_link": "{name} — {what}, for {min} min, {link}",
+  "attese.usage": "usage: supervisor attese [--json] | supervisor attese show ID [--json]",
+  "attese.none": "Nothing is waiting for you.",
+  "attese.gone": "{id}: no open wait with this id (closed or never existed)",
+  "attese.line": "[{kind}] {session}: {text} — {link}",
+  "attese.msg": "Where it comes from ({id}): «{text}»",
+  "relay.cmd_attesa_bad_id": "invalid wait id: {id}",
+  "relay.cmd_attesa_gone": "{id}: this question is no longer waiting (closed or already answered)",
+  "attese.label_decide": "Decide",
+  "attese.label_choose": "Choose",
+  "attese.label_verify": "Verify",
+  "attese.label_reply": "Reply"
 }

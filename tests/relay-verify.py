@@ -286,9 +286,10 @@ DEV_SRC = {"devices": {"phoneUid00000000000000000000": {"name": "Pixel 9", "pair
            "seen": {"phoneUid00000000000000000000": 1789210790.0, "watchUid0000000000000000000": 1789210500.4,
                     "tabletUid0000000000000000000": 1789209000.0, "crbookUid0000000000000000000": 1789190000.0}}
 # 1.33: le azioni ricorrenti della master, gia' in ordine (l'ultima usata in cima), una con param
-DEV_SRC["recurring"] = [{"id": "x-posts", "label": "Review this week's posts on X", "prompt": "Review this week's posts on X", "param": False},
+# 07/11 (1.130): short labels, so that wid and the attese ops stay under the 8 KB cap
+DEV_SRC["recurring"] = [{"id": "x-posts", "label": "X posts", "prompt": "X posts", "param": False},
                         {"id": "release-changelog", "label": "Changelog of a release", "prompt": "Write the changelog of release", "param": True},
-                        {"id": "plugin-rivals", "label": "What competing plugins shipped", "prompt": "Competing plugins", "param": False}]
+                        {"id": "plugin-rivals", "label": "Rival plugins", "prompt": "Competing plugins", "param": False}]
 SRC1.update(DEV_SRC)
 SRC1["suggestions"] = []   # 1.84: nessun suggerimento; orbit-docs chiusa dal PC porta closed {at, session_id}
 # 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
@@ -385,9 +386,9 @@ SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP pa
 SRC2["suggestions"] = [
     {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "ledger-api invoice due Friday",
      "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
-    {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Last night's report is ready",
+    {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Night report ready",
      "prompt": "Read me last night's report", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
-    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Two orbit-docs tasks paused: close them?",
+    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Close the paused orbit-docs tasks?",
      "prompt": "Close the two paused orbit-docs tasks", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
 SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
@@ -1613,8 +1614,8 @@ T.check("R31 (07/10) an advice with the base id («claude-opus-5») is kept when
 T.check("R31 (1.37) an advice older than advice_max_age_s (6 h) → no field",
         "advice" not in {x["name"]: x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"]}["field-notes"], "")
 T.check("R31 (1.37) approvals from the registry's tasks in awaiting_ok, the oldest first, deploy true when what or where names production",
-        d31["approvals"] == [{"task": "notes-pr", "title": "Open the PR of the notes", "what": "push the branch notes", "where": "github fork", "deploy": False, "requested_at": 1789210500},
-                             {"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main", "where": "production (shop.example.com)", "deploy": True, "requested_at": 1789210600}], str(d31["approvals"]))
+        d31["approvals"] == [{"task": "notes-pr", "title": "Open the PR of the notes", "what": "push the branch notes", "where": "github fork", "deploy": False, "requested_at": 1789210500, "wid": "w815c4806d7"},
+                             {"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main", "where": "production (shop.example.com)", "deploy": True, "requested_at": 1789210600, "wid": "wd2f87e85e2"}], str(d31["approvals"]))
 tasks31.unlink()
 T.check("R31 (1.37) without tasks waiting approvals is an empty list (always present); ops carries approve and decision",
         json.loads(relay("push", "--dry-run").stdout)["approvals"] == [] and {"approve", "decision"} <= set(d31["ops"]), "")
@@ -1625,7 +1626,7 @@ tasks31.write_text(json.dumps([{"id": "atlas-checkout-layout", "plan": None, "st
     "approvals": [{"what": "pick the checkout layout", "by_": None, "options": ["Strada A", "Strada B"], "choice": None}, {"what": None, "by_": "phone-pixel8", "options": None, "choice": "Strada B"}]}))
 d67 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R67 (1.81) approvals[] carries options (the labels, in order) for a task whose request has them; state-2 shows one",
-        d67["approvals"] == [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789211700, "options": ["Strada A", "Strada B"]}]
+        d67["approvals"] == [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789211700, "options": ["Strada A", "Strada B"], "wid": "w4b90c5f596"}]
         and (F2["approvals"] or [{}])[0].get("options") == ["Strada A", "Strada B"], str(d67["approvals"]))
 _t31("add", "-", input=json.dumps({"schema_version": 1, "task": dict(_c31["task"], id="atlas-checkout-layout")}))
 _t31("wait-ok", "atlas-checkout-layout", "--what", "pick", "--where", "branch", "--options", "Strada A|Strada B")

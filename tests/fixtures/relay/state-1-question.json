@@ -351,6 +351,8 @@
     "pair_add",
     "approve",
     "approval_close",
+    "attese",
+    "attesa",
     "attention_done",
     "decision",
     "unpair",
@@ -447,14 +449,15 @@
       "what": "tag v2.4 and push to origin main",
       "where": "production (shop.example.com)",
       "deploy": true,
-      "requested_at": 1789210600
+      "requested_at": 1789210600,
+      "wid": "wd2f87e85e2"
     }
   ],
   "recurring": [
     {
       "id": "x-posts",
-      "label": "Review this week's posts on X",
-      "prompt": "Review this week's posts on X",
+      "label": "X posts",
+      "prompt": "X posts",
       "param": false
     },
     {
@@ -465,7 +468,7 @@
     },
     {
       "id": "plugin-rivals",
-      "label": "What competing plugins shipped",
+      "label": "Rival plugins",
       "prompt": "Competing plugins",
       "param": false
     }
@@ -477,7 +480,8 @@
       "ref": "q-1789210500-1",
       "title": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?",
       "since": 1789210500,
-      "closes": "answer"
+      "closes": "answer",
+      "wid": "w3d202727cc"
     }
   ],
   "project_parents": [

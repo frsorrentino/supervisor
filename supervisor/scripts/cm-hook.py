@@ -209,6 +209,13 @@ def conv_prev(p, tm):
     return prev
 
 
+def attese_mod():
+    spec = importlib.util.spec_from_file_location("cm_attese", HERE / "cm-attese.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def jobs_mod():
     spec = importlib.util.spec_from_file_location("cm_jobs", HERE / "cm-jobs.py")
     mod = importlib.util.module_from_spec(spec)
@@ -369,12 +376,26 @@ def waiting_for_you(now=None):
         last = json.loads((Path(cm.expand(R.get("dir") or "~/.cc-supervisor/relay")) / "last-state.json").read_text())
     except (OSError, ValueError):
         return ""
-    items = [x for x in ((last.get("full") or last.get("state") or {}).get("attention") or []) if x.get("session") != master]
+    st = last.get("full") or last.get("state") or {}
+    items = [x for x in (st.get("attention") or []) if x.get("session") != master]
+    # 1.130 (07/11, supervisor-attese-link-07-11): anche le carte di ok e di scelta del registro, e ogni voce col link
+    # alla sua scheda «Ti aspetta» (cm-attese), che la master copia nei promemoria
+    items += [{"session": a.get("session") or a.get("task"), "title": a.get("what") or a.get("title"), "since": a.get("requested_at"), "wid": a.get("wid")}
+              for a in st.get("approvals") or []]
     if not items:
         return ""
+    items.sort(key=lambda x: float(x.get("since") or 0))
     now = now or time.time()
-    parts = [M("hook.waiting_item", name=x.get("session") or "?", what=str(x.get("title") or x.get("kind") or "")[:90],
-               min=max(0, int((now - float(x.get("since") or now)) // 60))) for x in items[:5]]
+    try:
+        AT = attese_mod()
+    except Exception:   # noqa: BLE001 — senza modulo la riga resta senza link
+        AT = None
+    def item(x):
+        i = x.get("wid") or (AT.wid_attention(x) if AT else None)
+        ln = AT.link(i) if AT and i else None
+        return M("hook.waiting_item_link" if ln else "hook.waiting_item", name=x.get("session") or "?", what=str(x.get("title") or x.get("kind") or "")[:90],
+                 min=max(0, int((now - float(x.get("since") or now)) // 60)), link=ln or "")
+    parts = [item(x) for x in items[:5]]
     more = M("hook.waiting_more", n=len(items) - 5) if len(items) > 5 else ""
     return M("hook.waiting_for_you", items="; ".join(parts) + more)
 

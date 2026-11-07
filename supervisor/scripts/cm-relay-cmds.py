@@ -1946,6 +1946,30 @@ def raccolta_azione(cmd):
     return True, M("raccolta.started")
 
 
+ATTESA_ID_RE = re.compile(r"w[0-9a-f]{10}")
+
+
+def attese_op():
+    """1.130 (07/11, supervisor-attese-link-07-11): op attese, una lettura: ogni domanda che aspetta la persona (carte del
+    registro e domande in chat), {at, items: [{id, type, kind, session, task, text, options, at, link, answer}]}."""
+    return True, json.dumps({"at": int(time.time()), "items": _load("cm-attese").collect()}, ensure_ascii=False)
+
+
+def attesa_op(arg):
+    """1.130: op attesa, la scheda «Ti aspetta»: arg = l'id (state.attention[].wid, approvals[].wid, il link
+    #/attesa/<id>). La voce di attese con `msg`, il pezzo di trascrizione dove la domanda e' stata spiegata
+    {session, session_id, id, text, at} (null se non si trova); errore se la domanda non aspetta piu'."""
+    i = str(arg or "").strip()
+    if not ATTESA_ID_RE.fullmatch(i):
+        return False, M("relay.cmd_attesa_bad_id", id=S.one_line(i)[:40])
+    AT = _load("cm-attese")
+    a = AT.find(i)
+    if a is None:
+        return False, M("relay.cmd_attesa_gone", id=i)
+    a["msg"] = AT.origin(a, live_rows())
+    return True, json.dumps(a, ensure_ascii=False)
+
+
 def prove_op():
     """1.99: op prove, una lettura: le prove da fare per build, quelle che non vanno, i compiti col controllo rosso."""
     p = _tasks_read(lambda tk, con: dict(tk.prove_list(con), archived=tk.tidy_rows(con, 0, 4, tk.TIDY_ARCHIVE_MAX)))   # 1.113: l'archivio
@@ -2581,6 +2605,10 @@ def execute(cmd):
             return kpi_op()
         if op == "home_order":   # 1.97
             return home_order_op(arg)
+        if op == "attese":   # 1.130
+            return attese_op()
+        if op == "attesa":   # 1.130
+            return attesa_op(arg)
         if op == "prove":   # 1.99
             return prove_op()
         if op == "prova":   # 1.99

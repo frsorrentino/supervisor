@@ -135,6 +135,8 @@
     "pair_add",
     "approve",
     "approval_close",
+    "attese",
+    "attesa",
     "attention_done",
     "decision",
     "unpair",
@@ -230,8 +232,8 @@
   "recurring": [
     {
       "id": "x-posts",
-      "label": "Review this week's posts on X",
-      "prompt": "Review this week's posts on X",
+      "label": "X posts",
+      "prompt": "X posts",
       "param": false
     },
     {
@@ -242,7 +244,7 @@
     },
     {
       "id": "plugin-rivals",
-      "label": "What competing plugins shipped",
+      "label": "Rival plugins",
       "prompt": "Competing plugins",
       "param": false
     }

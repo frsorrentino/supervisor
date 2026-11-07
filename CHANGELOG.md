@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.138 — 2026-11-07: every question waiting for you has its own card and link (supervisor-attese-link-07-11, contract 1.130).**
+  - A question waiting for you, a card of the registry or a question asked in chat, now has a stable id and a link that opens its «Ti aspetta» card in the app and on the web.
+  - The card says what is asked, the options with the recommended one, what is not tested and how to undo, and the message of the transcript where the question was explained, with the key sentence.
+  - The master's «Ti aspettano» line lists the ok cards too and gives each item's link; `supervisor attese` lists them from a shell.
 - **0.8.137 — 2026-11-06: an ok or choice card can always be closed from the app (supervisor-approval-close-06-11, contract 1.129).**
   - New op `approval_close`: closing a card in «Da approvare» withdraws the request without an ok. The registry keeps it as superseded with who closed it and why, the task goes back to work, and its session and the master are told.
   - A card whose task no longer waits for an ok closes too, so a card never stays stuck.

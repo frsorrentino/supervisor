@@ -644,11 +644,25 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.130 (07/11/2026, the maintainer at 20:16: «ok … ti aspetta (o decidi)», the mockup approved at 21:04; task supervisor-attese-link-07-11, the card is app-scheda-ti-aspetta-07-11). Additive, `v` stays 1.
+
+- **A «wait»** is any question waiting for the person, with a stable id: `w` and 10 hex digits from its key (task and time of the request, session and time of the turn, question id), the same in every read, a new one for a new request. `type` `carta` (from the registry: ok, choice, pause waiting for the person, proof, login) or `chat` (a turn closed with a «Next:» item marked «!», a `needs-you`, an AskUserQuestion).
+- **Link**: `<relay.web_app_url>/#/attesa/<id>`; the Android app opens the same address. `relay.web_app_url = ""` gives `link: null`. The master's «Ti aspettano» line (UserPromptSubmit hook) now lists the ok cards too and puts each item's link; the master copies it into its «ti aspetta X» reminders.
+- **`/state`**: `wid` on `attention[]` entries that are questions (`question`, `needs_you`, `turn_blocking`; absent on the others) and on every `approvals[]` entry. The `decisioni` items (ok, pause, needs_you, login) and the `prove` items carry `wid` too (one per task for the proofs).
+- **New op `attese`** (a passive read): `{at, items}`, the open waits from the oldest. Each item: `{id, type, kind, label, label_text, session, task, text, options, at, card, link, answer}`.
+  - `kind` `ok | choice | pausa | prova | login | prossimi | needs_you | question`; `label` `decide | choose | verify | reply` and `label_text` in the config's language («Decidi», «Scegli», «Verifica», «Rispondi»).
+  - `options` `[{n, label, value, recommended?, description?}]` or null: `label` clean, `recommended` true for «(Recommended)»/«(consigliata)» at the end, `value` what the answering op wants (the label as written in the request).
+  - `card` for ok and choice cards: `{what, where, untested, undo, undo_how}`, the fields wait-ok has (absent keys = not written), null otherwise.
+  - `at` the time of the question (how long it has waited = now − at).
+  - `answer` the op that answers, the same as the card's buttons: `{op: approve, arg: task}` (with `choice` for a choice), `{op: prova, arg: "n,n"}`, `{op: decisione, arg: group key}`, `{op: answer, arg: question id, session}`, `{op: prompt, arg: session, done: {op: attention_done, …}}` for a «Next:» (the chosen option is the prompt), `{op: attention_done, arg: session, kind: needs_you}`; null for a login (the master does it).
+- **New op `attesa`** (a passive read, slow lane): `arg` the id. The item as in `attese` plus `msg`, where the question was explained: `{session, session_id, id, uuid, text, key, at}`. `id` is the transcript entry id (`<uuid>.<i>`, the same as in `transcript`: «Open in the transcript» asks `transcript` with `n:around=<id>`, and `session_id` for a closed session), `uuid` the message's uuid, `text` up to 1500 characters, `key` the sentence to highlight (the one sharing most words with the question and its options). `msg` is null when the transcript has no trace of it (an old request, a session on another host without a local copy). An invalid id or a wait that is no longer open is an error («<id>: this question is no longer waiting …»).
+- Fixtures: `state-1/2/3` (`wid` on attention and approvals, `attese` and `attesa` in `ops` after `approval_close`; some test texts shorter to keep the 8 KB cap), `cmd-result-sample.json` (…1300 `attese`, …1301 `attesa` with `msg`, …1302 a wait no longer open).
+
 Contract 1.129 (06/11/2026, the maintainer at 15:06: the choice cards must always close and never stay stuck; task supervisor-approval-close-06-11). Additive, `v` stays 1.
 
 - **New op `approval_close`**, from a touch like `approve`: `arg` the task id (an entry of `approvals`), `text` the reason (optional, at most 300 characters). The relay withdraws the request for an ok without approving it: the registry records it as superseded («carta di ok chiusa da <by> senza ok (superata): <reason> (dal telefono)», in the task's steps and in the tidying log, never as an ok), the task goes back to `running` (or `assigned` when it has no session), and its session and the master get a `talk` saying the card was closed without an ok. The entry leaves `approvals` at the next push.
 - **Answer**: ok with `{task, closed, state, text}`. `closed` is false when the task no longer waited for an ok (already approved, done, cancelled, or the card already closed): still ok, so the app removes the card in every case. Only an unknown or invalid id is an error («<id>: compito sconosciuto»).
-- No fixture change: the answer is the JSON above in `text`, as for the other ops that answer an object.
+- Fixture: `cmd-result-sample.json` (…1290 a choice card closed, back to `running`; …1291 a task already approved, `closed: false`; …1292 an unknown task, the error). Added after 0.8.137 at the app's request.
 
 Contract 1.128 (06/11/2026, the maintainer: «dobbiamo migliorare la gestione dei riavvii improvvisi e gli allineamenti»; task supervisor-riavvii-allineamenti-06-11). Additive, `v` stays 1.
 

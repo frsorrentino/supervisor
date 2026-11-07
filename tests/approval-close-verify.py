@@ -8,6 +8,7 @@ AC1 op approval_close su un compito che chiede una scelta (wait-ok con --options
 AC2 lo stesso tocco su una carta gia' chiusa, o su un compito gia' approvato: ok con closed false, niente cambia
 AC3 un id sconosciuto o non valido: errore; un compito senza sessione torna ad assigned; `task withdraw` dalla CLI
 AC4 passa da execute (l'op e' nell'elenco del relay)
+AC5 gli esempi del contratto (cmd-result-sample …1290-1292) sono quello che il codice risponde
 """
 import importlib.util
 import json
@@ -111,6 +112,35 @@ T.check("AC3 unknown or invalid id: an error; a task with no session goes back t
 cm("wait-ok", "ac-scelta", "--what", "di nuovo", "--where", "app", "--options", "A|B")
 ok7, t7 = RL.execute({"op": "approval_close", "arg": "ac-scelta", "device": "phone", "by": "maintainer"})
 T.check("AC4 the op goes through the relay's execute", "approval_close" in RL.OPS and ok7 and json.loads(t7)["closed"] is True, f"{ok7} {t7}")
+
+# AC5: la fixture del contratto (cmd-result-sample, …1290-1292) e' quello che il codice risponde, in inglese
+FX = json.loads((T.ROOT / "tests" / "fixtures" / "relay" / "cmd-result-sample.json").read_text())
+fcmd = [c for c in FX["cmd"] if c.get("op") == "approval_close"]
+fres = {r["id"]: r for r in FX["result"]}
+cfg_en = json.loads(cfg.read_text()); cfg_en["language"] = "en"
+(tmp / "config-en.json").write_text(json.dumps(cfg_en))
+ENV5 = dict(ENV, CC_SUPERVISOR_CONFIG=str(tmp / "config-en.json"), CM_TASKS_DB=str(tmp / "t5.db"))
+os.environ.clear()
+os.environ.update(ENV5)
+ENV.update(ENV5)
+add("atlas-pages-layout", "atlas-shop")
+add("atlas-release-2-4", "atlas-shop")
+cm("wait-ok", "atlas-pages-layout", "--what", "layout", "--where", "web", "--options", "A|B")
+cm("wait-ok", "atlas-release-2-4", "--what", "release", "--where", "web")
+sp5 = importlib.util.spec_from_file_location("cm_relay_ac5", T.SCRIPTS / "cm-relay.py")
+RL5 = importlib.util.module_from_spec(sp5)
+sp5.loader.exec_module(RL5)
+con = RL5._load("cm-tasks").connect()
+RL5._load("cm-tasks").approve(con, "atlas-release-2-4", "maintainer", "ok (test)")
+con.close()
+got, want = [], []
+for c in fcmd:
+    ok, text = RL5.execute(dict(c))
+    got.append((ok, json.loads(text) if ok else text))
+    w = fres[c["id"]]
+    want.append((w["ok"], json.loads(w["text"]) if w["ok"] else w["text"]))
+T.check("AC5 the contract's samples (cmd-result-sample …1290-1292) are what the code answers: closed and back to running, already approved, unknown",
+        len(fcmd) == 3 and got == want, json.dumps(got, ensure_ascii=False) + " vs " + json.dumps(want, ensure_ascii=False))
 
 T.rm(tmp)
 T.finish()

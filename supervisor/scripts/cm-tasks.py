@@ -1609,6 +1609,15 @@ def prove_list(con, now_=None):
             st = con.execute("SELECT text, at FROM steps WHERE task=? AND kind='prova-red' AND at>=? ORDER BY n DESC LIMIT 1", (row["id"], max(r["result_at"] for r in live))).fetchone()
             red.append({"task": row["id"], "short": short, "reason": st["text"] if st else None, "at": st["at"] if st else None})
     groups = sorted(out.values(), key=lambda g: (-g["at"], g["build"]))
+    try:   # 1.130: una scheda «Ti aspetta» per compito, come in `supervisor attese`
+        S_ = _load("cm-relay-state")
+        first = {}
+        for x in (x for g in groups for x in g["prove"]):
+            first[x["task"]] = min(first.get(x["task"], x["id"]), x["id"])
+        for x in (x for g in groups for x in g["prove"]):
+            x["wid"] = S_.wid("prova", x["task"], first[x["task"]])
+    except Exception:   # noqa: BLE001 — senza id la voce resta com'era
+        pass
     return {"at": int(now_ or now()), "n": sum(g["n"] for g in groups), "builds": len(groups), "groups": groups, "ko": ko, "red": red}
 
 
@@ -1669,6 +1678,21 @@ def asks_of(where, text):
         return "pc"
     t = str(text or "")
     return "choice" if ASK_CHOICE.search(t) else "ok" if ASK_OK.search(t) else "other"
+
+
+def _wids(items):
+    """1.130 (07/11, supervisor-attese-link-07-11): `wid`, l'id della scheda «Ti aspetta» di ogni voce di decisions,
+    calcolato come in cm-attese (cm-relay-state.wid)."""
+    try:
+        S_ = _load("cm-relay-state")
+    except Exception:   # noqa: BLE001 — senza id le voci restano com'erano
+        return
+    for x in items:
+        k = x.get("kind")
+        i = (S_.wid_approval(x.get("task"), x.get("since")) if k == "ok" else S_.wid("pausa", x.get("task"), x.get("since")) if k == "pause"
+             else S_.wid("needs_you", int(x.get("since") or 0)) if k == "needs_you" else S_.wid("login", x.get("account"), x.get("expires_at")) if k == "login" else None)
+        if i:
+            x["wid"] = i
 
 
 def decisions(con, now_=None, snoozed=False):
@@ -1748,6 +1772,7 @@ def decisions(con, now_=None, snoozed=False):
                 continue
         out.append(g)
     out.sort(key=lambda g: (g["where"] != "here", -g["weight"], g["since"], g["key"]))
+    _wids(it for g in out for it in g["items"])
     return {"at": now_, "n": len(out), "here": sum(1 for g in out if g["where"] == "here"), "tasks": len({t for g in out for t in g["unblocks"]}), "snoozed": hidden, "groups": out}
 
 

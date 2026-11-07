@@ -25,6 +25,7 @@ Tempi di una sessione in `/state` (chiesto dall'app il 13/09/2026, qui perche' n
   next: {tmux: «→ prossimo» dal recap del progetto} · tools: {tmux: tool in corso}
 """
 import datetime as _dt
+import hashlib
 import json
 import re
 
@@ -261,6 +262,31 @@ def project_of(cwd, root):
     if r and c.startswith(r + "/"):
         return c[len(r) + 1:]
     return c.rsplit("/", 1)[-1] if c else ""
+
+
+def wid(kind, *parts):
+    """1.130 (07/11, supervisor-attese-link-07-11): l'id di un'attesa, «w» e 10 cifre esadecimali dalla chiave (kind e
+    le sue parti): la stessa domanda ha lo stesso id in ogni lettura. Qui perche' lo stato lo calcola senza config;
+    cm-attese, l'hook e la CLI usano queste."""
+    key = ":".join([str(kind)] + [str(p) for p in parts])
+    return "w" + hashlib.sha1(key.encode()).hexdigest()[:10]
+
+
+def wid_approval(task, at):
+    """Una carta di ok o di scelta: il compito e l'ora della richiesta (wait-ok)."""
+    return wid("ok", task, int(at or 0))
+
+
+def wid_attention(x):
+    """Una voce di attention che e' una domanda (question, needs_you, turn_blocking), o None per le altre."""
+    k = x.get("kind")
+    if k == "question":
+        return wid("question", x.get("ref"))
+    if k == "needs_you":
+        return wid("needs_you", int(x.get("since") or 0))
+    if k == "turn_blocking":
+        return wid("prossimi", x.get("session"), int(x.get("since") or 0))
+    return None
 
 
 def short_name(name, prefixes=()):
@@ -778,7 +804,8 @@ def build_state(src, now, fit=True):
         "devices": build_devices(src.get("devices"), src.get("seen"), src.get("activity")),
         # 1.37: i compiti del registro che aspettano un ok ({task, title, what, where, deploy, requested_at}), dal
         # piu' vecchio; l'app li approva con l'op approve
-        "approvals": [dict(a) for a in (src.get("approvals") or [])],
+        # 1.130: `wid`, l'id della scheda «Ti aspetta» della carta (compito e ora della richiesta)
+        "approvals": [dict(a, wid=wid_approval(a.get("task"), a.get("requested_at"))) for a in (src.get("approvals") or [])],
     }
     # 1.97: l'ordine unico delle sezioni della home; senza, il campo manca e l'app usa il suo predefinito
     if src.get("home_order"):
@@ -819,6 +846,12 @@ def build_state(src, now, fit=True):
     att += [{"kind": "turn_blocking", "session": s["name"], "ref": s["name"], "title": redact_preview(s["turn_blocking"]["text"]), "since": s["turn_blocking"]["at"], "closes": "prompt"}
             for s in sessions if s.get("turn_blocking") and not s.get("needs_you")]
     att += [dict(x, session=canon_session(x.get("session"), src.get("rows")), closes="check" if x.get("kind") == "task_red" else "prompt") for x in (src.get("attention") or [])]
+    # 1.130 (07/11): `wid`, l'id dell'attesa (cm-attese) per le domande — question, needs_you, turn_blocking — che
+    # l'app apre come scheda «Ti aspetta» (#/attesa/<wid>); assente sulle altre voci
+    for x in att:
+        i = wid_attention(x)
+        if i:
+            x["wid"] = i
     if att:
         state["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
     # 1.83 (24/10): le domande dei server MCP che aspettano il telefono ({id, session, server, message, mode, url |
