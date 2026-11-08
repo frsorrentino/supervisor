@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.141 — 2026-11-08: reading a session on another computer no longer gets stuck, and `wait` never ends with a traceback (supervisor-wait-win-lettura-08-11).**
+  - A read on the other computer now gives up after 45 s and is tried three times, so a read stuck there no longer holds `talk` or `wait` for two minutes.
+  - `supervisor wait HOST:name` used to stop with a traceback when a read timed out. Now it says so in one line, with the command to try again, and exits 7.
+  - Each read takes at most 8 MB of the transcript and continues from where it stopped. Getting the last reply reads only the end, not the whole transcript.
+  - The reading script is written on the other computer once per version, not again at every read.
 - **0.8.140 — 2026-11-08: a talk to a session on another computer no longer looks failed when the message arrived (supervisor-talk-win-consegnato-08-11).**
   - When the message reaches the session there but its reply cannot be read, `talk` says «consegnato, risposta non letta», tells you not to send it again and how to get the reply, and exits with its own code (7). It used to stop with «unreachable», so whoever called it sent the message a second time.
   - A failed delivery keeps its code (5) and the message waits in the inbox, as before.

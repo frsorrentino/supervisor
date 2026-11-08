@@ -7,7 +7,8 @@ supervisor wait — aspetta che una sessione torni ferma e stampa la sua ultima 
   supervisor wait <nome> [--timeout S]
 
 Verso una sessione di un altro host (`HOST:nome`): exit 5 se il messaggio non e' arrivato (resta in casella),
-7 se e' arrivato ma non si e' letta la risposta (non va rimandato; la risposta con `wait`).
+7 se e' arrivato ma non si e' letta la risposta (non va rimandato; la risposta con `wait`). `wait` esce 7 se la
+lettura non riesce dopo tre tentativi.
 
 Due vie, scelte dai dati del registro peer (1.6, E6):
 

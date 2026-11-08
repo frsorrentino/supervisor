@@ -10,6 +10,8 @@ WA3 cm-session.js trova una sessione registrata in .claude-pixel/sessions e legg
     .claude-pixel/projects; una di .claude come prima
 WA4 cm-login.js con un claude finto: stampa l'indirizzo in out.txt, passa a claude il codice di code.txt, scrive
     result.json con rc 0 e lo stato di auth status, con CLAUDE_CONFIG_DIR della config giusta; codice sbagliato: rc 1
+WA6 (08/11) cm-session.js read su una trascrizione grande: ogni chiamata legge al massimo 8 MB dall'offset e dice se
+    c'e' altro (more); a passi arriva tutto; «last» legge solo la coda; una riga piu' lunga del tetto si legge intera
 WA5 login_start e login_code rifiutano email e codici con caratteri da shell prima di toccare l'host
 """
 import base64
@@ -159,6 +161,35 @@ w.login_start(".claude-pixel", "info@example.com", wait_s=1)
 T.check("WA5 emails and codes with shell characters, and a config outside .claude*, are refused before anything is sent; a good one is sent as a scheduled task",
         all(refused) and len(w.sent) == 1 and "cm-login-.claude-pixel" in w.sent[0] and "serve" in w.sent[0] and "info@example.com" in w.sent[0],
         str(refused) + (w.sent[0][:300] if w.sent else ""))
+
+# WA6 (08/11/2026, supervisor-wait-win-lettura-08-11): la lettura su win rileggeva tutto quello che c'era dall'offset
+cwd6, sid6 = "D:\\cm\\grande", "sid-grande"
+(home / ".claude" / "sessions" / "6.json").write_text(json.dumps({"name": "grande", "pid": os.getpid(), "sessionId": sid6, "cwd": cwd6, "status": "idle", "startedAt": 2}))
+p6 = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", cwd6)
+p6.mkdir(parents=True, exist_ok=True)
+pad = "x" * 100000
+with open(p6 / f"{sid6}.jsonl", "w") as fh:
+    for i in range(200):   # ~20 MB: 200 testi assistant da ~100 KB
+        fh.write(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": f"T{i} " + pad}]}}) + "\n")
+    fh.write(json.dumps({"type": "user", "message": {"content": "y" * 9_000_000}}) + "\n")   # una riga oltre il tetto
+    fh.write(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "ULTIMA"}]}}) + "\n")
+total6 = (p6 / f"{sid6}.jsonl").stat().st_size
+def rd(*a):
+    r = subprocess.run(["node", str(REMOTE / "cm-session.js"), "read", "grande", *a], capture_output=True, text=True, env=nenv, timeout=60)
+    return json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {"err": r.stderr}
+first = rd("0")
+off6, got, calls6 = 0, [], 0
+while calls6 < 20:
+    d6 = rd(str(off6)); calls6 += 1
+    got += [t.split(" ")[0] for t in d6.get("texts") or []]
+    if d6.get("offset", off6) == off6 or not d6.get("more"):
+        off6 = d6.get("offset", off6); break
+    off6 = d6["offset"]
+last6 = rd("0", "last")
+T.check("WA6 a 29 MB transcript read from 0: at most 8 MB per call with more=true; step by step every text and the line over the cap arrive; «last» reads the tail only",
+        first.get("more") is True and 0 < first.get("offset", 0) <= 8 * 1024 * 1024 and len(first.get("texts") or []) < 200
+        and got == [f"T{i}" for i in range(200)] + ["ULTIMA"] and off6 == total6 and last6.get("texts") == ["ULTIMA"],
+        f"first off={first.get('offset')} more={first.get('more')} n={len(first.get('texts') or [])} got={len(got)} calls={calls6} off={off6}/{total6} last={str(last6)[:200]}")
 
 T.rm(tmp)
 T.finish()

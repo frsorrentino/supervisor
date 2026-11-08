@@ -562,19 +562,28 @@ ConvertTo-Json -Compress @{{ count = $n; dirty = $dirty }}""", timeout=300)
     # --- talk, wait e close verso le sessioni di questo host (fase 2.2): tutto in node (cm-session.js), passato in
     # base64 a ogni chiamata come il testo: niente da installare, nessuna virgoletta persa fra PowerShell e node
     def node_session(self, *args, timeout=120):
-        js = base64.b64encode((REMOTE / "cm-session.js").read_bytes()).decode()
+        # 08/11/2026 (supervisor-wait-win-lettura-08-11): un file per versione, scritto solo se manca. Prima ogni chiamata
+        # riscriveva lo stesso %TEMP%\\cm-session.js, anche mentre il poller del relay lo stava usando; ogni tanto una
+        # lettura la' restava ferma fino al timeout (56-120 s) mentre i comandi brevi rispondevano in meno di 1 s
+        raw = (REMOTE / "cm-session.js").read_bytes()
+        js = base64.b64encode(raw).decode()
+        fname = f"cm-session-{hashlib.sha1(raw).hexdigest()[:10]}.js"
         argv = " ".join(self.q(a) for a in args)
         return self.ps_json(f"""
-$js = Join-Path $env:TEMP 'cm-session.js'
-[IO.File]::WriteAllText($js, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{js}')))
+$js = Join-Path $env:TEMP '{fname}'
+if (-not (Test-Path -LiteralPath $js)) {{
+  $tmp = $js + '.' + $PID
+  [IO.File]::WriteAllText($tmp, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{js}')))
+  try {{ Move-Item -LiteralPath $tmp -Destination $js -ErrorAction Stop }} catch {{ Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue }}
+}}
 node $js {argv}""", timeout=timeout)
 
     def session_post(self, name, text, from_name, from_addr):
         b64 = base64.b64encode(text.encode()).decode()
         return self.node_session("post", name, b64, from_name, from_addr or "uds:")
 
-    def session_read(self, name, offset, last=False):
-        return self.node_session("read", name, str(offset), *(["last"] if last else []))
+    def session_read(self, name, offset, last=False, timeout=120):
+        return self.node_session("read", name, str(offset), *(["last"] if last else []), timeout=timeout)
 
     def session_tail(self, name, offset, max_bytes=2 * 1024 * 1024):
         """09/10: {sid, cwd, status, alive, size, offset, data} — i byte del transcript dall'offset, in base64."""

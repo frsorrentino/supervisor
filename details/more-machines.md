@@ -76,6 +76,8 @@ supervisor offload ~/film --recipe render   # the exact commit, the declared ass
   `--force` and leaves the folder for `host fetch`. `talk` exits 5 when the
   message did not arrive (it waits in the inbox) and 7 when it arrived but the
   reply could not be read: do not send it again, `wait win:<name>` gets the reply.
+  A read there gives up after 45 s and is tried three times; `wait` exits 7 in
+  one line when it still fails. Each read takes at most 8 MB of the transcript.
 - **Another account on a Windows host.** A session there runs with the account
   of its folder: its config is `%USERPROFILE%\<same base name as here>`
   (`.claude-pixel` for `~/.claude-pixel`), set as `CLAUDE_CONFIG_DIR` in the

@@ -1098,6 +1098,7 @@
   "rsession.not_remote": "«{target}» non è una sessione su un altro host (HOST:nome, o un nome lanciato con launch --host)",
   "rsession.post_failed": "{host}: consegna a {name} fallita ({error}); il messaggio {id} resta nella casella",
   "rsession.reply_unread": "{host}: messaggio {id} consegnato a {name}, risposta non letta ({error}): non rimandarlo; la risposta con `supervisor wait {host}:{name}`",
+  "rsession.wait_unread": "{host}: lettura di {name} non riuscita ({error}); riprova con `supervisor wait {host}:{name}`",
   "rsession.close_busy": "{host}: {name} è {status}: non la chiudo a turno aperto (--force per chiuderla lo stesso)",
   "rsession.close_failed": "{host}: chiusura di {name} fallita: {error}",
   "rsession.closed": "{host}: {name} chiusa (processo fermato, attività tolta; la cartella resta per host fetch)",

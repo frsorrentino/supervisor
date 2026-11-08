@@ -17,6 +17,8 @@ RS8 talk win:<nome> (e il solo nome registrato): il testo arriva intero (virgole
 RS8c (08/11) talk win:<nome> con il post riuscito e la lettura della risposta scaduta: exit 7, «consegnato, risposta non
     letta», il messaggio resta consegnato in casella, un solo post (prima: HostError unreachable, chi chiamava lo rimandava)
 RS9 wait win:<nome>: torna quando e' idle e stampa l'ultima risposta
+RS9b (08/11) wait win:<nome> con la lettura che scade sempre: una riga, exit 7, niente traceback; RS9c le prime due
+    letture scadute (talk e wait): si riprova e la risposta arriva, exit 0
 RS10 close win:<nome>: busy → rifiuto (exit 4) senza --force; con --force chiusa, record segnato; di nuovo: «non era
      in esecuzione»; close --dry-run non chiude
 RS11 talk a una sessione chiusa: exit 5, il messaggio resta nella casella in attesa
@@ -302,6 +304,21 @@ T.check("RS8c post delivered, reading the reply times out → exit 7, «consegna
 T.check("RS8c the message stays delivered in the inbox, posted once, and the error says not to send it again",
         len(_mine) == 1 and _mine[0]["status"] == "delivered" and sum(c["verb"] == "post" for c in calls()) == _np + 1
         and "non rimandarlo" in r.stderr and "supervisor wait win:win-alfa" in r.stderr, f"{_mine} {r.stderr}")
+# RS9b-RS9c (08/11/2026, supervisor-wait-win-lettura-08-11): wait usciva con un traceback sulla lettura scaduta
+WAIT = [sys.executable, str(T.SCRIPTS / "cm-talk.py"), "wait"]
+r = subprocess.run(WAIT + ["win:win-alfa", "--timeout", "30"], capture_output=True, text=True, env=env(FAKE_WIN_READ_FAIL="1"), timeout=120)
+T.check("RS9b wait with every read timing out → one line naming the error and how to retry, exit 7, no traceback",
+        r.returncode == 7 and "Traceback" not in r.stderr and "timeout 120s" in r.stderr and "supervisor wait win:win-alfa" in r.stderr
+        and len(r.stderr.strip().splitlines()) == 1, f"rc={r.returncode} {r.stdout} {r.stderr[-600:]}")
+(winroot / "read-fails").unlink(missing_ok=True)
+r = subprocess.run(WAIT + ["win:win-alfa", "--timeout", "30"], capture_output=True, text=True, env=env(FAKE_WIN_READ_FAIL_FIRST="2"), timeout=120)
+T.check("RS9c wait: the first two reads time out, the third works → back at idle with the last reply, exit 0",
+        r.returncode == 0 and "RISPOSTA:" in r.stdout and "Traceback" not in r.stderr, f"rc={r.returncode} {r.stdout} {r.stderr[-600:]}")
+(winroot / "read-fails").unlink(missing_ok=True)
+r = subprocess.run(TALK + ["win:win-alfa", "lettura ripresa", "--wait", "30"], capture_output=True, text=True, env=env(FAKE_WIN_READ_FAIL_FIRST="2"), timeout=120)
+T.check("RS9c talk: the first two reads of the reply time out, then it is read → exit 0 with the reply",
+        r.returncode == 0 and "RISPOSTA: lettura ripresa" in r.stdout, f"rc={r.returncode} {r.stdout} {r.stderr[-600:]}")
+(winroot / "read-fails").unlink(missing_ok=True)
 r = subprocess.run(CLOSE + ["win:win-alfa"], capture_output=True, text=True, env=env(FAKE_WIN_STATUS="win-alfa:busy"), timeout=60)
 T.check("RS10 close of a busy remote session without --force → exit 4, says why", r.returncode == 4 and "busy" in r.stderr and "--force" in r.stderr, r.stdout + r.stderr)
 nclose = sum(c["verb"] == "close" for c in calls())

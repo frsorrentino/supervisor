@@ -477,6 +477,35 @@ def _opt(argv, name, default):
     return type(default)(argv[argv.index(name) + 1]) if name in argv else default
 
 
+READ_TRIES, READ_TIMEOUT_S = 3, 45
+
+
+def _read(a, name, offset, last=False):
+    """08/11 (supervisor-wait-win-lettura-08-11): una lettura su win dura 2-3 s, ma ogni tanto lo script la' resta
+    fermo fino al timeout mentre ssh risponde: tetto di READ_TIMEOUT_S a chiamata e READ_TRIES tentativi, poi
+    l'errore sale a chi chiama."""
+    for i in range(READ_TRIES):
+        try:
+            return a.session_read(name, offset, last=last, timeout=READ_TIMEOUT_S)
+        except Exception as e:   # noqa: BLE001 — HostError dall'adattatore vero, altro dal finto
+            err = e
+            if i < READ_TRIES - 1:
+                time.sleep(2)
+    raise err
+
+
+def _drain(a, name, offset):
+    """I testi dall'offset fino in fondo: cm-session.js ne legge al massimo 8 MB a chiamata e dice more."""
+    texts = []
+    for _ in range(64):
+        d = _read(a, name, offset)
+        texts += d.get("texts") or []
+        if not d.get("more") or d.get("offset", offset) == offset:
+            break
+        offset = d["offset"]
+    return texts
+
+
 def read_reply(a, name, offset, max_wait, quiet):
     """Come wait_reply di cm-talk: si legge finche' la sessione torna idle dopo essere stata busy (o il transcript
     resta fermo `quiet` secondi con del testo, o se ne va); tetto max_wait. (testi, errore): l'errore e' la lettura
@@ -485,7 +514,7 @@ def read_reply(a, name, offset, max_wait, quiet):
     texts, seen_busy = [], False
     while True:
         try:
-            d = a.session_read(name, offset)
+            d = _read(a, name, offset)
         except Exception as e:   # noqa: BLE001 — HostError dall'adattatore vero, altro dal finto
             return texts, str(e)
         offset = d.get("offset", offset)
@@ -549,18 +578,22 @@ def cmd_wait(argv):
     hname, name = r
     timeout = _opt(argv, "--timeout", 12 * 3600)
     a = adapter_for(hname, hosts().get(hname))
-    d = a.session_read(name, "end")
-    offset, start = d.get("offset", 0), time.time()
-    while d.get("status") not in ("idle", "gone"):
-        if time.time() - start > timeout:
-            print(M("talk.timeout", s=timeout))
-            return 1
-        time.sleep(3)
-        d = a.session_read(name, offset)
-    print(M("wait.idle", name=f"{hname}:{name}", status=d.get("status")))
-    texts = a.session_read(name, offset).get("texts") or []
-    if not texts:
-        texts = a.session_read(name, 0, last=True).get("texts") or []
+    try:
+        d = _read(a, name, "end")
+        offset, start = d.get("offset", 0), time.time()
+        while d.get("status") not in ("idle", "gone"):
+            if time.time() - start > timeout:
+                print(M("talk.timeout", s=timeout))
+                return 1
+            time.sleep(3)
+            d = _read(a, name, offset)
+        print(M("wait.idle", name=f"{hname}:{name}", status=d.get("status")))
+        texts = _drain(a, name, offset)
+        if not texts:
+            texts = _read(a, name, 0, last=True).get("texts") or []
+    except Exception as e:   # noqa: BLE001 — 08/11: mai un traceback, una riga e un codice suo (7, come talk)
+        print(M("rsession.wait_unread", host=hname, name=name, error=str(e)[-300:]), file=sys.stderr)
+        return 7
     for t in texts:
         print(t)
     return 0

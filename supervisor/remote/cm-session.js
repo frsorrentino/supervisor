@@ -48,15 +48,25 @@ if (verb === 'post') {
   s.setTimeout(8000, () => { out({ error: 'pipe: timeout' }); process.exit(1); });
 } else if (verb === 'read') {
   if (!e) { out({ status: 'gone', alive: false, texts: [], offset: 0 }); process.exit(0); }
+  // 08/11/2026: al massimo READ_CAP byte per chiamata dall'offset, e more se ne resta (chi chiama riprende dall'offset
+  // restituito): una lettura da un offset vecchio rileggeva tutto il resto della trascrizione (227 MB su win). Con
+  // «last» solo gli ultimi READ_CAP byte, dalla prima riga intera. Una riga piu' lunga del tetto si legge intera.
+  const READ_CAP = 8388608;
   const f = transcript(e), total = size(f);
   let off = rest[0] === 'end' ? total : Math.min(Number(rest[0]) || 0, total);
+  let cut = false;
+  if (rest[1] === 'last' && total - off > READ_CAP) { off = total - READ_CAP; cut = true; }
   const texts = [];
   if (total > off) {
-    const fd = fs.openSync(f, 'r'), b = Buffer.alloc(total - off);
-    fs.readSync(fd, b, 0, b.length, off); fs.closeSync(fd);
-    const end = b.lastIndexOf(10);
+    const fd = fs.openSync(f, 'r');
+    let b = Buffer.alloc(Math.min(total - off, READ_CAP));
+    fs.readSync(fd, b, 0, b.length, off);
+    let end = b.lastIndexOf(10);
+    if (end < 0 && b.length < total - off) { b = Buffer.alloc(total - off); fs.readSync(fd, b, 0, b.length, off); end = b.lastIndexOf(10); }
+    fs.closeSync(fd);
     if (end >= 0) {
-      for (const l of b.slice(0, end + 1).toString('utf8').split('\n')) {
+      const from = cut ? b.indexOf(10) + 1 : 0;
+      for (const l of b.slice(from, end + 1).toString('utf8').split('\n')) {
         if (!l.trim()) continue;
         try {
           const d = JSON.parse(l);
@@ -66,7 +76,7 @@ if (verb === 'post') {
       off += end + 1;
     }
   }
-  out({ status: e._alive ? e.status : 'gone', alive: e._alive, texts: rest[1] === 'last' ? texts.slice(-1) : texts, offset: off, sid: e.sessionId });
+  out({ status: e._alive ? e.status : 'gone', alive: e._alive, texts: rest[1] === 'last' ? texts.slice(-1) : texts, offset: off, more: total > off, sid: e.sessionId });
 } else if (verb === 'tail') {
   if (!e) { out({ error: 'not found' }); process.exit(1); }
   const f = transcript(e), total = size(f);
