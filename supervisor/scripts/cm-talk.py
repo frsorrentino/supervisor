@@ -6,6 +6,9 @@ supervisor wait — aspetta che una sessione torni ferma e stampa la sua ultima 
                                      [--via auto|socket|tmux] [--no-native-hint]
   supervisor wait <nome> [--timeout S]
 
+Verso una sessione di un altro host (`HOST:nome`): exit 5 se il messaggio non e' arrivato (resta in casella),
+7 se e' arrivato ma non si e' letta la risposta (non va rimandato; la risposta con `wait`).
+
 Due vie, scelte dai dati del registro peer (1.6, E6):
 
 - **socket** (dal 09/09/2026, E6a/E6b): il registro `sessions/<pid>.json` dichiara

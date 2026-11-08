@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.140 — 2026-11-08: a talk to a session on another computer no longer looks failed when the message arrived (supervisor-talk-win-consegnato-08-11).**
+  - When the message reaches the session there but its reply cannot be read, `talk` says «consegnato, risposta non letta», tells you not to send it again and how to get the reply, and exits with its own code (7). It used to stop with «unreachable», so whoever called it sent the message a second time.
+  - A failed delivery keeps its code (5) and the message waits in the inbox, as before.
 - **0.8.139 — 2026-11-07: the «Ti aspetta» card gets its buttons, its title and the production mark (supervisor-attese-campi-07-11, contract 1.131).**
   - Every wait now lists its buttons with the command ready to send, so the app shows the same choices as the card it comes from.
   - A one-line title for the lists, and the «production» mark when the card's release goes to production.

@@ -7,7 +7,8 @@ talk: un messaggio rende la sessione busy; 1,5 s dopo la lettura successiva scri
 «RISPOSTA: <testo>» e la rimette idle. FAKE_WIN_STATUS=nome:stato forza lo stato di una sessione.
 09/10: session_tail legge i byte del transcript finto; session_console disegna il dialogo di FAKE_WIN_ROOT/
 dialog-<nome>.json come la console di Windows (cursore «>») e muove il cursore con i tasti; Invio scrive la
-scelta nel transcript (tool_result) e chiude il dialogo."""
+scelta nel transcript (tool_result) e chiude il dialogo.
+08/11: FAKE_WIN_READ_FAIL=1 la lettura scade come sull'host vero (HostError unreachable, timeout 120s), il post riesce."""
 import importlib.util
 import json
 import os
@@ -152,6 +153,9 @@ class FakeWin:
         return {"ok": True, "offset": off, "status": "idle"}
 
     def session_read(self, name, offset, last=False):
+        if os.environ.get("FAKE_WIN_READ_FAIL"):
+            note("read_fail", name=name)
+            raise _ad.HostError("unreachable", "timeout 120s")
         e = self._entry(name)
         if not e or e.get("closed"):
             return {"status": "gone", "alive": False, "texts": [], "offset": 0}

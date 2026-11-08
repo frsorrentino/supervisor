@@ -14,6 +14,8 @@ RS5 secondo lancio sulla stessa cartella: la cartella la' si riusa (niente nuova
 RS6 cartella gia' presente la' ma non nostra → rifiuto; sessione che non si registra → exit 5 con il messaggio
 RS8 talk win:<nome> (e il solo nome registrato): il testo arriva intero (virgolette, backtick, $, a capo, accenti),
     la risposta si legge dal transcript la'; la casella locale lo segna consegnato via pipe; --no-wait torna subito
+RS8c (08/11) talk win:<nome> con il post riuscito e la lettura della risposta scaduta: exit 7, «consegnato, risposta non
+    letta», il messaggio resta consegnato in casella, un solo post (prima: HostError unreachable, chi chiamava lo rimandava)
 RS9 wait win:<nome>: torna quando e' idle e stampa l'ultima risposta
 RS10 close win:<nome>: busy → rifiuto (exit 4) senza --force; con --force chiusa, record segnato; di nuovo: «non era
      in esecuzione»; close --dry-run non chiude
@@ -289,6 +291,17 @@ r = subprocess.run(TALK + ["win-alfa", "secondo", "--no-wait"], capture_output=T
 T.check("RS8 the bare registered name works too; --no-wait returns without the reply", r.returncode == 0 and "RISPOSTA" not in r.stdout and calls()[-1]["verb"] == "post", r.stdout + r.stderr)
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-talk.py"), "wait", "win:win-alfa", "--timeout", "30"], capture_output=True, text=True, env=env(), timeout=90)
 T.check("RS9 wait win:win-alfa: back at idle with the last reply", r.returncode == 0 and "RISPOSTA: secondo" in r.stdout, r.stdout + r.stderr)
+# RS8c (08/11/2026, supervisor-talk-win-consegnato-08-11): il messaggio e' arrivato, scade solo la lettura della risposta
+_np = sum(c["verb"] == "post" for c in calls())
+r = subprocess.run(TALK + ["win:win-alfa", "arrivato ma non letto", "--wait", "30"], capture_output=True, text=True, env=env(FAKE_WIN_READ_FAIL="1"), timeout=90)
+_ib = [json.loads(p.read_text()) for p in (tmp / "state" / "inbox" / "win-alfa").glob("*.json")]
+_mine = [x for x in _ib if x["text"] == "arrivato ma non letto"]
+T.check("RS8c post delivered, reading the reply times out → exit 7, «consegnato, risposta non letta» with the error, no traceback",
+        r.returncode == 7 and "consegnato" in r.stderr and "risposta non letta" in r.stderr and "timeout 120s" in r.stderr
+        and "Traceback" not in r.stderr, f"rc={r.returncode} {r.stdout} {r.stderr}")
+T.check("RS8c the message stays delivered in the inbox, posted once, and the error says not to send it again",
+        len(_mine) == 1 and _mine[0]["status"] == "delivered" and sum(c["verb"] == "post" for c in calls()) == _np + 1
+        and "non rimandarlo" in r.stderr and "supervisor wait win:win-alfa" in r.stderr, f"{_mine} {r.stderr}")
 r = subprocess.run(CLOSE + ["win:win-alfa"], capture_output=True, text=True, env=env(FAKE_WIN_STATUS="win-alfa:busy"), timeout=60)
 T.check("RS10 close of a busy remote session without --force → exit 4, says why", r.returncode == 4 and "busy" in r.stderr and "--force" in r.stderr, r.stdout + r.stderr)
 nclose = sum(c["verb"] == "close" for c in calls())

@@ -1097,6 +1097,7 @@
   "launch.host_conflict": "supervisor launch: --host does not combine with {opt}",
   "rsession.not_remote": "“{target}” is not a session on another host (HOST:name, or a name launched with launch --host)",
   "rsession.post_failed": "{host}: delivery to {name} failed ({error}); message {id} stays in the inbox",
+  "rsession.reply_unread": "{host}: message {id} delivered to {name}, reply not read ({error}): do not send it again; get the reply with `supervisor wait {host}:{name}`",
   "rsession.close_busy": "{host}: {name} is {status}: not closing it mid-turn (--force to close it anyway)",
   "rsession.close_failed": "{host}: closing {name} failed: {error}",
   "rsession.closed": "{host}: {name} closed (process stopped, task removed; the folder stays for host fetch)",

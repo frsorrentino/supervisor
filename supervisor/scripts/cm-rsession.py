@@ -479,11 +479,15 @@ def _opt(argv, name, default):
 
 def read_reply(a, name, offset, max_wait, quiet):
     """Come wait_reply di cm-talk: si legge finche' la sessione torna idle dopo essere stata busy (o il transcript
-    resta fermo `quiet` secondi con del testo, o se ne va); tetto max_wait."""
+    resta fermo `quiet` secondi con del testo, o se ne va); tetto max_wait. (testi, errore): l'errore e' la lettura
+    fallita (08/11: su win una lettura scadeva a 120 s dopo un post riuscito), i testi quelli letti fin li'."""
     start = last_change = time.time()
     texts, seen_busy = [], False
     while True:
-        d = a.session_read(name, offset)
+        try:
+            d = a.session_read(name, offset)
+        except Exception as e:   # noqa: BLE001 — HostError dall'adattatore vero, altro dal finto
+            return texts, str(e)
         offset = d.get("offset", offset)
         if d.get("texts"):
             texts += d["texts"]
@@ -498,7 +502,7 @@ def read_reply(a, name, offset, max_wait, quiet):
             print(M("talk.timeout", s=max_wait))
             break
         time.sleep(2)
-    return texts
+    return texts, None
 
 
 def cmd_talk(argv):
@@ -526,8 +530,14 @@ def cmd_talk(argv):
     print(M("talk.sent", name=f"{hname}:{name}", via=f"pipe ({hname})"), file=sys.stderr)
     if "--no-wait" in rest:
         return 0
-    for t in read_reply(a, name, d.get("offset", 0), max_wait, quiet):
+    texts, err = read_reply(a, name, d.get("offset", 0), max_wait, quiet)
+    for t in texts:
         print(t)
+    if err:
+        # 08/11 (supervisor-talk-win-consegnato-08-11): il messaggio e' arrivato, non si e' letta la risposta. Codice
+        # suo (7), distinto dall'invio fallito (5), cosi' chi chiama non lo rimanda: due talk a win uscivano «unreachable»
+        print(M("rsession.reply_unread", host=hname, name=name, error=err[-300:], id=rec["id"]), file=sys.stderr)
+        return 7
     return 0
 
 
