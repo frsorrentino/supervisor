@@ -76,7 +76,7 @@ R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
 STREAM_SILENCE_S = 45   # keep-alive di Firebase ogni 30 s, piu' 15 di margine
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "attese", "attesa", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "attese", "attesa", "monitors", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1303,6 +1303,7 @@ def collect_sources(now=None):
         "closing": closing_of(rows),   # 1.120
         "system": system_status(rows, runtime),   # 1.90
         "plugins": plugins_summary(),   # 1.95
+        "monitors": monitors_summary(),   # 1.132
         "home_order": home_order_read(),   # 1.97
         **decisions_summary(), "heads_up": heads_up_seen(rows, now),   # 1.99
         "prima_raccolta": raccolta_summary(),   # 1.100
@@ -1402,6 +1403,15 @@ def _plugins():
     if PL is None:
         PL = _load("cm-plugins")
     return PL
+
+
+def monitors_summary():
+    """1.132 (09/11): {n, watch, at} dei Monitoraggi per /state; None senza monitoraggi o se la lettura fallisce."""
+    try:
+        return _load("cm-monitor").summary()
+    except Exception as e:   # noqa: BLE001 — un'informazione in piu', mai la push persa
+        log(f"monitors: lettura fallita ({e})")
+        return None
 
 
 def plugins_summary(fresh=False):
@@ -3085,7 +3095,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results", "attese", "attesa")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results", "attese", "attesa", "monitors")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 # 03/11/2026, misura del relay dal 02/11 (p95 dell'esecuzione): done 39 s, timeline 34 s, file 13 s, plugins 9 s, kpi

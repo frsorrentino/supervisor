@@ -61,7 +61,8 @@ case "$cmd" in
   quota|quote)            exec python3 "$S/cm-quota.py" "$@" ;;
   statusline)             exec python3 "$S/cm-statusline.py" "$@" ;;   # 14/10: la quota senza fable-director
   needs-you|serve-te)     exec python3 "$S/cm-needsyou.py" "$@" ;;
-  attese|waits)          exec python3 "$S/cm-attese.py" "$@" ;;   # 07/11 (1.130): ogni domanda che aspetta, con id e link
+  attese|waits)          exec python3 "$S/cm-attese.py" "$@" ;;
+  monitor|monitors|monitora) exec python3 "$S/cm-monitor.py" "$@" ;;   # 09/11 (1.132): i Monitoraggi, valori da script   # 07/11 (1.130): ogni domanda che aspetta, con id e link
   bg|sfondo)              exec python3 "$S/cm-jobs.py" "$@" ;;   # 06/11: lavori lunghi che sopravvivono alla sessione   # 14/10 (1.68): la sessione e' ferma per l'utente
   talk|parla-con)         exec python3 "$S/cm-talk.py" talk "$@" ;;
   wait|aspetta)           exec python3 "$S/cm-talk.py" wait "$@" ;;

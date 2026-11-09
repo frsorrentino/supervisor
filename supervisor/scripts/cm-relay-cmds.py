@@ -1955,6 +1955,22 @@ def attese_op():
     return True, json.dumps({"at": int(time.time()), "items": _load("cm-attese").collect()}, ensure_ascii=False)
 
 
+def monitors_op(arg):
+    """1.132 (09/11, supervisor-monitoraggi-09-11): op monitors, una lettura. Senza arg {at, items: [scheda]}, ogni
+    monitoraggio con forma, stato, frase, valore e variazione gia' formattati, serie (al massimo 60 punti), soglie,
+    fonte, link; con arg = un id (il link #/monitor/<id>) la sua scheda, errore se non c'e'. Un'op sola: l'elenco delle
+    op sta in /state, dentro gli 8 KB."""
+    MO = _load("cm-monitor")
+    i = str(arg or "").strip()
+    if not i:
+        return True, json.dumps({"at": int(time.time()), "items": MO.cards()}, ensure_ascii=False)
+    if not MO.ID_RE.fullmatch(i):
+        return False, M("relay.cmd_monitor_bad_id", id=S.one_line(i)[:40])
+    if MO.read_def(i) is None:
+        return False, M("relay.cmd_monitor_gone", id=i)
+    return True, json.dumps(MO.card(i), ensure_ascii=False)
+
+
 def attesa_op(arg):
     """1.130: op attesa, la scheda «Ti aspetta»: arg = l'id (state.attention[].wid, approvals[].wid, il link
     #/attesa/<id>). La voce di attese con `msg`, il pezzo di trascrizione dove la domanda e' stata spiegata
@@ -2605,6 +2621,8 @@ def execute(cmd):
             return kpi_op()
         if op == "home_order":   # 1.97
             return home_order_op(arg)
+        if op == "monitors":   # 1.132
+            return monitors_op(arg)
         if op == "attese":   # 1.130
             return attese_op()
         if op == "attesa":   # 1.130

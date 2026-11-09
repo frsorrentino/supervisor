@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.142 — 2026-11-09: the Monitors — values collected by scripts, with no model, shown in the app with the right chart (supervisor-monitoraggi-09-11, contract 1.132).**
+  - `supervisor monitor` keeps each monitor in one format: its definition, its values and the sentence written by whoever collects them. A script adds a value with `monitor point` and never calls a model.
+  - Each monitor has one chart form from a closed catalog: a single value with its trend, a line, one small chart per series, bars per day, a gauge against a limit, a table or yes/no by day. The app gets the values and the change already formatted, at most 60 points per series.
+  - A threshold (below, above, a new low or a new high) opens one item in «Dalla master» with the monitor's link, and the item goes away when the value is back.
+  - `monitor line` prints one short line with the link, to replace the long reports that crons send to Telegram today.
+  - Fix: a long message to a session on the Windows computer arrives (supervisor-talk-win-testo-lungo-09-11). Above about 3.000 characters the command went past Windows' limit of 32.767 characters and `talk` said «unreachable». A long command now goes through standard input. A command that is still too long says so instead of «unreachable».
 - **0.8.141 — 2026-11-08: reading a session on another computer no longer gets stuck, and `wait` never ends with a traceback (supervisor-wait-win-lettura-08-11).**
   - A read on the other computer now gives up after 45 s and is tried three times, so a read stuck there no longer holds `talk` or `wait` for two minutes.
   - `supervisor wait HOST:name` used to stop with a traceback when a read timed out. Now it says so in one line, with the command to try again, and exits 7.

@@ -374,6 +374,8 @@ def suggestion_of(x):
     y["source"] = x.get("source") if x.get("source") in ("script", "master") else "master"
     if x.get("options"):
         y["options"] = list(x["options"])
+    if x.get("link"):   # 1.132: solo sulle voci di un monitoraggio
+        y["link"] = str(x["link"])
     return y
 
 
@@ -897,6 +899,11 @@ def build_state(src, now, fit=True):
         state["system"] = dict(sy, consumers=[dict(c) for c in sy.get("consumers") or []],
                                advice=[dict(a, action=dict(a["action"]) if a.get("action") else None) for a in sy.get("advice") or []][:SYSTEM_ADVICE_MAX])
     # 1.95 (29/10): plugin e skill — {checked_at, accounts: [{account, updates: [id]}]}; l'elenco intero e' l'op plugins
+    # 1.132 (09/11): i Monitoraggi — {n, watch, at}: quanti, quanti da guardare, l'ora dell'ultimo valore; le schede
+    # intere sono l'op monitors (non stanno negli 8 KB). Assente senza monitoraggi o con un relay vecchio
+    if src.get("monitors"):
+        mo = src["monitors"]
+        state["monitors"] = {"n": int(mo.get("n") or 0), "watch": int(mo.get("watch") or 0), "at": mo.get("at")}
     if src.get("plugins"):
         state["plugins"] = {"checked_at": src["plugins"].get("checked_at"),
                             "accounts": [{"account": a["account"], "updates": list(a.get("updates") or [])} for a in src["plugins"].get("accounts") or []]}

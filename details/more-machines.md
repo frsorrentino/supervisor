@@ -78,6 +78,9 @@ supervisor offload ~/film --recipe render   # the exact commit, the declared ass
   reply could not be read: do not send it again, `wait win:<name>` gets the reply.
   A read there gives up after 45 s and is tried three times; `wait` exits 7 in
   one line when it still fails. Each read takes at most 8 MB of the transcript.
+  On Windows a script longer than the command line allows (32.767 characters,
+  the script in UTF-16 base64) goes to PowerShell through standard input, so
+  a long `talk` text arrives.
 - **Another account on a Windows host.** A session there runs with the account
   of its folder: its config is `%USERPROFILE%\<same base name as here>`
   (`.claude-pixel` for `~/.claude-pixel`), set as `CLAUDE_CONFIG_DIR` in the

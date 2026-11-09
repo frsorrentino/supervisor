@@ -126,7 +126,11 @@ class SSH:
             if UNREACHABLE.search(err) or not err.strip():
                 raise HostError("unreachable", err.strip().splitlines()[-1] if err.strip() else "")
 
+    cmdline_max = None   # 09/11: WindowsNative mette quello di CreateProcess; oltre, sshd di Windows chiude senza dire niente
+
     def run(self, remote_cmd, timeout=60, input=None):
+        if self.cmdline_max and len(remote_cmd) > self.cmdline_max:
+            raise HostError("remote", f"comando di {len(remote_cmd)} caratteri, oltre i {self.cmdline_max} della riga di comando di Windows")
         argv = [self.ssh_bin] + self.opts() + [self.alias, remote_cmd]
         try:
             # senza input, stdin chiuso: ereditato, ssh passava al comando remoto le risposte che `host doctor`
@@ -342,15 +346,31 @@ class WindowsNative(Adapter):
     kind = "windows-native"
     family = "windows"
 
+    # 09/11/2026 (supervisor-talk-win-testo-lungo-09-11): la riga di CreateProcess tiene 32.767 caratteri; lo script in
+    # -EncodedCommand (UTF-16LE in base64) ne occupa quasi tre per carattere, con cm-session.js incorporato (8.928) e il
+    # testo di un talk sopra. Oltre CMDLINE_SCRIPT_MAX lo script va per stdin a un avviatore breve, che lo legge in UTF-8
+    CMDLINE_MAX = 32767
+    CMDLINE_SCRIPT_MAX = 30000
+    STDIN_BOOT = ("[Console]::InputEncoding=New-Object Text.UTF8Encoding($false);"
+                  "$cmScript=[Console]::In.ReadToEnd();& ([scriptblock]::Create($cmScript))")
+    PS_PRE = "$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=New-Object Text.UTF8Encoding($false);"
+
     def __init__(self, name, host, cfg, first_contact=False):
         super().__init__(name, host, cfg)
         self.ssh = SSH((host.get("transport") or {}).get("ssh") or name, self.state_dir, self.timeout, first_contact)
+        self.ssh.cmdline_max = self.CMDLINE_MAX
 
-    @staticmethod
-    def encoded(script):
-        pre = "$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=New-Object Text.UTF8Encoding($false);"
-        b = base64.b64encode((pre + script).encode("utf-16-le")).decode()
+    @classmethod
+    def encoded(cls, script):
+        b = base64.b64encode((cls.PS_PRE + script).encode("utf-16-le")).decode()
         return f"powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {b}"
+
+    def run_ps(self, script, timeout):
+        """Lo script sulla riga di comando se ci sta, altrimenti per stdin (stessa uscita, stessi codici)."""
+        cmd = self.encoded(script)
+        if len(cmd) <= self.CMDLINE_SCRIPT_MAX:
+            return self.ssh.run(cmd, timeout=timeout)
+        return self.ssh.run(self.encoded(self.STDIN_BOOT), timeout=timeout, input=self.PS_PRE + script)
 
     @staticmethod
     def q(s):
@@ -359,7 +379,7 @@ class WindowsNative(Adapter):
     def helper(self, verb, *args, timeout=120):
         script = "& (Join-Path $env:USERPROFILE %s) %s" % (self.q(HELPER_DIR + "\\cm-remote.ps1"),
                                                          " ".join(self.q(a) for a in (self.root, verb, *args)))
-        p = self.ssh.run(self.encoded(script), timeout=timeout)
+        p = self.run_ps(script, timeout)
         d = parse_helper(p.stdout)
         if d is None:
             raise HostError("helper", clixml_text(p.stderr)[-300:] or p.stdout.strip()[-300:])
@@ -376,7 +396,7 @@ class WindowsNative(Adapter):
         self.ssh.get(self.scp_path(remote_abs), local)
 
     def exec(self, cmd, timeout=30):
-        p = self.ssh.run(self.encoded(cmd), timeout=timeout)
+        p = self.run_ps(cmd, timeout)
         return p.returncode, p.stdout, clixml_text(p.stderr)
 
     def install_helper(self):

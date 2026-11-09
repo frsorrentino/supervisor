@@ -11,7 +11,8 @@
   supervisor suggest digest                 il riassunto per il giro della master
 
 La master li prepara due volte al giorno (alle 8 e alle 19), lo script `fill` ogni ora. kind: recurring | cleanup |
-deadline | quota (1.84), choice | followup | unsaved | waiting | idea | proposal (1.88). key: stabile per lo stesso
+deadline | quota (1.84), choice | followup | unsaved | waiting | idea | proposal (1.88), monitor (1.132: una soglia di
+`supervisor monitor` superata, con link; la apre e la chiude cm-monitor). key: stabile per lo stesso
 suggerimento, serve per «Mai». text: la frase per la persona, una riga, mai con «…». prompt: quello che riceve la master
 se la persona accetta. --ttl (s, m, h, d; senza: 12 h): poi scade da solo. --rank: 0 in cima, 9 in fondo (senza: dal
 tipo; una voce di prima vale 5). --options: da 2 a 4 etichette, solo per choice (il prompt puo' avere {choice}).
@@ -46,9 +47,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-KINDS = ("recurring", "cleanup", "deadline", "quota", "choice", "followup", "unsaved", "waiting", "idea", "proposal", "observe", "reminder")
+KINDS = ("recurring", "cleanup", "deadline", "quota", "choice", "followup", "unsaved", "waiting", "idea", "proposal", "observe", "reminder", "monitor")
 SCRIPT_KINDS = ("followup", "unsaved", "waiting", "observe")   # 1.88: i tipi che scrive `fill`; 1.94: observe
-RANK_OF = {"reminder": 1, "deadline": 2, "choice": 2, "followup": 4, "unsaved": 4, "quota": 5, "waiting": 5, "observe": 5,
+RANK_OF = {"reminder": 1, "deadline": 2, "choice": 2, "monitor": 3, "followup": 4, "unsaved": 4, "quota": 5, "waiting": 5, "observe": 5,
            "proposal": 6, "idea": 6, "recurring": 6, "cleanup": 6}
 RANK_NONE = 5   # una voce senza rank (scritta prima della 1.88)
 SOURCES = ("script", "master")
@@ -229,6 +230,8 @@ def for_state(now=None):
         y["rank"], y["source"] = rank_of(x), source_of(x)
         if x.get("options"):
             y["options"] = list(x["options"])
+        if x.get("link"):   # 1.132: la voce di un monitoraggio porta il suo link
+            y["link"] = x["link"]
         out.append(y)
     return out
 
@@ -466,7 +469,7 @@ def fill(now=None, state=None, commitments=None):
     keys = {w[1] for w in want}
     untouched = set() if commitments is not None else {"waiting"}
     for x in [x for x in d["items"] if source_of(x) == "script" and x.get("key") not in keys and x.get("kind") not in untouched
-              and not str(x.get("key") or "").startswith(("raccolta:", "remind:"))]:   # 02/11: i seguiti della prima raccolta scadono da soli
+              and not str(x.get("key") or "").startswith(("raccolta:", "remind:", "monitor:"))]:   # 02/11: i seguiti della prima raccolta scadono da soli; 09/11: le soglie dei monitoraggi le apre e chiude cm-monitor
         d["items"].remove(x)
         close(d, x, "resolved", now, rows)
         stats["resolved"] += 1
