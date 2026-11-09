@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.143 — 2026-11-09: a new low or a new high only counts when the value really goes past the earlier ones (supervisor-monitor-minimo-stretto-09-11).**
+  - The «new low» and «new high» thresholds also fired when the last value only matched the earlier low or high. A price that did not move stayed «da guardare» in «Dalla master» until it went up.
+  - Now the last value has to be strictly lower, or strictly higher, than every earlier value of the same series. When the next value does not go further, the item leaves «Dalla master».
 - **0.8.142 — 2026-11-09: the Monitors — values collected by scripts, with no model, shown in the app with the right chart (supervisor-monitoraggi-09-11, contract 1.132).**
   - `supervisor monitor` keeps each monitor in one format: its definition, its values and the sentence written by whoever collects them. A script adds a value with `monitor point` and never calls a model.
   - Each monitor has one chart form from a closed catalog: a single value with its trend, a line, one small chart per series, bars per day, a gauge against a limit, a table or yes/no by day. The app gets the values and the change already formatted, at most 60 points per series.

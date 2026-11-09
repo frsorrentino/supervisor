@@ -25,9 +25,9 @@ Le forme, un catalogo chiuso (dalla skill dataviz, references/choosing-a-form.md
   table     righe: l'ultimo valore di ogni serie
   status    si'/no, con i giorni (1 o 0, si'/no, ok/ko)
 
-Le soglie (alert): --below/--above N sull'ultimo valore, --new-min/--new-max quando l'ultimo valore e' il minimo (o il
-massimo) di tutta la storia; --series S le lega a una serie, senza vale per ognuna. Quando scattano, una sola voce in
-«Dalla master» (state.suggestions, kind monitor, key monitor:<id>) col link al monitoraggio; esce quando il valore
+Le soglie (alert): --below/--above N sull'ultimo valore, --new-min/--new-max quando l'ultimo valore e' sotto (o sopra)
+tutti i precedenti della serie, in senso stretto: un valore fermo non scatta; --series S le lega a una serie, senza
+vale per ognuna. Quando scattano, una sola voce in «Dalla master» (state.suggestions, kind monitor, key monitor:<id>) col link al monitoraggio; esce quando il valore
 rientra. `line` stampa una riga breve col link, per i cron che oggi mandano report lunghi su Telegram.
 Il link: <relay.web_app_url>/#/monitor/<id>.
 """
@@ -223,7 +223,7 @@ def _hits(d, series):
             last = pts[-1][1]
             prev = [v for _, v in pts[:-1]]
             hit = (a["kind"] == "below" and last < a["value"]) or (a["kind"] == "above" and last > a["value"]) or \
-                  (a["kind"] == "new_min" and prev and last <= min(prev)) or (a["kind"] == "new_max" and prev and last >= max(prev))
+                  (a["kind"] == "new_min" and prev and last < min(prev)) or (a["kind"] == "new_max" and prev and last > max(prev))
             if hit:
                 out.append(dict(alert_view(a, d.get("unit") or ""), series=name or None))
     return out

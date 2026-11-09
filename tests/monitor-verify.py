@@ -15,6 +15,8 @@ MO5 il relay: /state.monitors {n, watch, at} (assente senza monitoraggi); op mon
     sconosciuto o non valido = errore; la voce in state.suggestions porta link
 MO6 remove: cartella tolta e voce chiusa; un id non valido e' rifiutato prima di toccare il disco
 MO7 gli esempi di cmd-result-sample (…1310 monitors, …1311 monitors con arg, …1312 sconosciuto) hanno i campi delle risposte vere
+MO8 --new-min e --new-max sono stretti (supervisor-monitor-minimo-stretto-09-11): un solo valore non scatta; un prezzo fermo
+    (1.936,95 due volte) non scatta; 1.899 scatta e apre la voce; di nuovo 1.899 non scatta e la voce esce; idem --new-max
 """
 import datetime as dt
 import importlib.util
@@ -232,6 +234,38 @@ T.check("MO7 the samples …1310 monitors, …1311 monitor, …1312 unknown: ok/
         and s12.get("ok") is False and "non c'è più" in (s12.get("text") or "")
         and [cmds.get(k, {}).get("op") for k in ("1310", "1311", "1312")] == ["monitors", "monitors", "monitors"] and all(isinstance(x.get("at"), int) for x in (s10, s11, s12)),
         f"{sorted(set(b11) ^ set(real))} {s10.get('ok')} {s12}")
+
+# MO8
+def items_of(mid):
+    return [x for x in sug().get("items") or [] if x.get("key") == f"monitor:{mid}"]
+
+
+mo("add", "fermo", "--title", "Fermo", "--form", "multiples", "--unit", "€", "--series", "yoga,zen")
+mo("alert", "fermo", "--new-min", "--series", "yoga")
+mo("point", "fermo", "--series", "yoga", "1936.95", "--ts", ts(9, 8))
+m_one = show("fermo")["status"]
+mo("point", "fermo", "--series", "yoga", "1936.95", "--ts", ts(9, 12))
+m_same, i_same = show("fermo"), items_of("fermo")
+mo("point", "fermo", "--series", "yoga", "1899", "--ts", ts(9, 13))
+m_low, i_low = show("fermo"), items_of("fermo")
+mo("point", "fermo", "--series", "yoga", "1899", "--ts", ts(9, 14))
+m_again, i_again = show("fermo"), items_of("fermo")
+T.check("MO8 --new-min strict: one value no hit; 1936.95 twice no hit, no item; 1899 hit with one item; 1899 again no hit, item gone",
+        m_one == "ok" and m_same["status"] == "ok" and not m_same["hits"] and not i_same
+        and m_low["status"] == "watch" and m_low["hits"][0]["kind"] == "new_min" and len(i_low) == 1
+        and m_again["status"] == "ok" and not i_again,
+        f"{m_one} {m_same.get('hits')} {i_same} {m_low.get('hits')} {i_low} {m_again.get('hits')} {i_again}")
+mo("add", "tetto", "--title", "Tetto", "--form", "line", "--unit", "utenti")
+mo("alert", "tetto", "--new-max")
+mo("point", "tetto", "130", "--ts", ts(9, 8))
+x_one = show("tetto")["status"]
+mo("point", "tetto", "130", "--ts", ts(9, 12))
+x_same = show("tetto")
+mo("point", "tetto", "131", "--ts", ts(9, 13))
+x_high = show("tetto")
+T.check("MO8 --new-max strict: one value no hit; the same value again no hit; a higher one hit",
+        x_one == "ok" and x_same["status"] == "ok" and not x_same["hits"] and x_high["status"] == "watch" and x_high["hits"][0]["kind"] == "new_max",
+        f"{x_one} {x_same.get('hits')} {x_high.get('hits')}")
 
 T.check("no talk left the test", not talklog.exists() or talklog.read_text() == "", talklog.read_text() if talklog.exists() else "")
 T.rm(tmp)
