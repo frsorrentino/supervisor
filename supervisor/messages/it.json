@@ -1168,6 +1168,8 @@
   "relay.cmd_prova_bad_arg": "prova: servono gli id delle prove, separati da virgola",
   "relay.cmd_prova_ko_needs_text": "prova: «Non va» vale per una prova sola e vuole le parole",
   "relay.cmd_prova_gone": "prova {n}: non c'è più o è già confermata",
+  "relay.cmd_prova_bad_number": "prova: «{arg}» non è il numero di una prova",
+  "relay.cmd_prova_unknown": "prova {n}: non esiste",
   "relay.cmd_prova_ok": "prove ok: {n}; compiti che passano al controllo: {closing}",
   "relay.cmd_prova_ko": "prova {n}: segnalata alla master",
   "relay.prova_ko_to_master": "Dall'utente {device}, Banco prova: «Non va» su {task}, build {build}, schermata {dove}. Doveva fare: {fai}. Atteso: {atteso}. Dice: {text}\nApri un compito legato con `supervisor task add FILE --defect-of {task}` e passalo alla sessione giusta. Non è un ok.",

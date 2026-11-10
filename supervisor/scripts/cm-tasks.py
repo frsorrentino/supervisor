@@ -1621,6 +1621,31 @@ def prove_list(con, now_=None):
     return {"at": int(now_ or now()), "n": sum(g["n"] for g in groups), "builds": len(groups), "groups": groups, "ko": ko, "red": red}
 
 
+def prova_one(con, n):
+    """1.134 (10/11, supervisor-prova-numero-10-11): una prova per numero, anche confermata, ritirata o di un compito
+    chiuso — {id, task, short, title, session, project, build, dove, fai, atteso, state, text, at}; None se il numero non
+    esiste. state: todo (nessun esito), ok, ko (text = le parole di chi ha detto «Non va»), red (confermata, ma il
+    controllo del compito e' rosso: text = il motivo). at: l'ora dell'esito, o di quando e' stata scritta se e' da fare."""
+    r = con.execute("SELECT * FROM prove WHERE n=?", (n,)).fetchone()
+    if r is None:
+        return None
+    row = con.execute("SELECT * FROM tasks WHERE id=?", (r["task"],)).fetchone()
+    task = _contract_task(row) if row else {}
+    state = r["result"] if r["result"] in ("ok", "ko") else "todo"
+    text, at = (r["result_text"] or None) if state == "ko" else None, r["result_at"] or r["at"]
+    if state == "ok" and r["superseded_at"] is None and row and row["state"] in OPEN_STATES:
+        live = _live_prove(con, r["task"])
+        if all(x["result"] == "ok" for x in live):   # come `red` di prove_list: tutte ok, compito aperto, controllo rosso
+            st = con.execute("SELECT text, at FROM steps WHERE task=? AND kind='prova-red' AND at>=? ORDER BY n DESC LIMIT 1",
+                             (r["task"], max(x["result_at"] for x in live))).fetchone()
+            if st:
+                state, text, at = "red", st["text"], st["at"]
+    return {"id": r["n"], "task": r["task"], "short": short_of(task) if row else None, "title": row["title"] if row else None,
+            "session": (row["session"] or (task.get("where") or {}).get("session")) if row else None,
+            "project": row["project"] if row else None, "build": r["build"], "dove": r["dove"], "fai": r["fai"],
+            "atteso": r["atteso"], "state": state, "text": text, "at": at}
+
+
 def precedent_of(con, tid):
     """Il precedente di una card: solo un difetto vero collegato (--defect-of), citato per nome; mai una somiglianza."""
     r = con.execute("SELECT defect_of FROM defects WHERE task=?", (tid,)).fetchone()

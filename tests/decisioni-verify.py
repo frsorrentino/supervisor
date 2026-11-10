@@ -336,7 +336,7 @@ T.check("cinque_minuti CM6 prove and decisioni are passive reads; prova and deci
 T.check("cinque_minuti CM6 the two reads answer the same JSON as the CLI", json.loads(RL.prove_op()[1])["n"] == prove()["n"] and json.loads(RL.decisioni_op()[1])["n"] == decisioni()["n"], "")
 _crs = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())
 _res = {r["id"]: r for r in _crs["result"]}
-_fx = {c["op"]: json.loads(_res[c["id"]]["text"]) for c in _crs["cmd"] if c["op"] in ("prove", "decisioni")}
+_fx = {c["op"]: json.loads(_res[c["id"]]["text"]) for c in _crs["cmd"] if c["op"] in ("prove", "decisioni") and not c.get("arg")}   # con arg: una prova sola (1.134)
 _rp, _rd = json.loads(RL.prove_op()[1]), json.loads(RL.decisioni_op()[1])
 _rg = _rd["groups"][0]
 T.check("cinque_minuti CM6 the contract's samples have the keys the code sends", set(_fx["prove"]) == set(_rp) and set(_fx["decisioni"]) == set(_rd) and set(_fx["decisioni"]["groups"][0]) == set(_rg)
@@ -869,5 +869,91 @@ T.check("UP3 a web published today by the project (a deploy seen by the relay) a
         _unp.get("up-web", {}).get("kind") == "web" and _unp["up-web"]["build"] is None and "up-late" not in _unp, str(_unp.get("up-web")))
 cm("prova", "up-run", "--build", "menu-pre", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
 T.check("UP4 once the test is registered the task is no longer listed", "up-run" not in {x["task"] for x in json.loads(cm("unproven", "--json")[1])}, "")
+
+
+# ------------------------------------------------------------------ una prova per numero (supervisor-prova-numero-10-11, contratto 1.134)
+PN_KEYS = ["id", "task", "short", "title", "session", "project", "build", "dove", "fai", "atteso", "state", "text", "at"]
+
+
+def one(n):
+    ok_, txt_ = RL.execute(dict(PHONE, op="prove", arg=n))
+    return ok_, (json.loads(txt_) if ok_ else txt_)
+
+
+add("pn1", title="Numero uno")
+prova("pn1", build="pn-b1", dove="casa", fai="apri la prova", atteso="si vede")
+_n1 = ids_of("pn1")[0]
+_ok1, _o1 = one(str(_n1))
+_listed = next(x for g in prove()["groups"] for x in g["prove"] if x["id"] == _n1)
+T.check("PN1 op prove with arg = a number answers that test alone: the thirteen keys in order, state todo, text null, at = when it was written",
+        _ok1 and list(_o1) == PN_KEYS and _o1["id"] == _n1 and _o1["task"] == "pn1" and _o1["title"] == "Numero uno" and _o1["short"] == _listed["short"]
+        and (_o1["build"], _o1["dove"], _o1["fai"], _o1["atteso"]) == ("pn-b1", "casa", "apri la prova", "si vede")
+        and _o1["state"] == "todo" and _o1["text"] is None and _o1["at"] == _listed["at"] and _o1["session"] == "sess", str(_o1))
+_lp = json.loads(RL.prove_op()[1])
+_lp_one = next(x for g in _lp["groups"] for x in g["prove"] if x["id"] == _n1)
+T.check("PN1 project is the same name as in the list; a number sent as a number works too",
+        _o1["project"] == _lp_one["project"] and one(_n1) == (_ok1, _o1), f"{_o1['project']} {_lp_one['project']}")
+
+add("pn2")
+prova("pn2", build="pn-b2")
+_n2 = ids_of("pn2")[0]
+tap(str(_n2), result="ko", text="il tasto non risponde")
+_ok2, _o2 = one(str(_n2))
+T.check("PN2 a test marked «Non va»: state ko, text = the person's words, at = when it was said",
+        _ok2 and _o2["state"] == "ko" and _o2["text"] == "il tasto non risponde" and _o2["at"] >= _o1["at"] and list(_o2) == PN_KEYS, str(_o2))
+
+add("pn3")
+prova("pn3", build="pn-b3")
+_n3 = ids_of("pn3")[0]
+tap(str(_n3))
+settle("pn3")
+_ok3, _o3 = one(str(_n3))
+T.check("PN3 a confirmed test of a closed task is out of the list and still answers by number: state ok, text null",
+        show("pn3")["state"] == "done" and not ids_of("pn3") and _ok3 and _o3["state"] == "ok" and _o3["text"] is None and _o3["task"] == "pn3"
+        and isinstance(_o3["at"], int), f"{show('pn3')['state']} {_o3}")
+
+add("pn4", check=f"test -f {proj}/pn4.txt")
+prova("pn4", build="pn-b4")
+_n4 = ids_of("pn4")[0]
+tap(str(_n4))
+_ok4a, _o4a = one(str(_n4))
+settle("pn4")
+_ok4, _o4 = one(str(_n4))
+_red4 = next((x for x in prove()["red"] if x["task"] == "pn4"), {})
+T.check("PN4 confirmed, then the task's check is red: state red, text = the reason of the list's red entry, its at",
+        _ok4 and _o4["state"] == "red" and _o4["text"] and _o4["text"] == _red4.get("reason") and _o4["at"] == _red4.get("at")
+        and _o4a["state"] in ("ok", "red"), f"{_o4a} {_o4} {_red4}")
+
+add("pn5")
+prova("pn5", build="pn-b5")
+_n5 = ids_of("pn5")[0]
+prova("pn5", build="pn-b6", fai="nuova")
+_ok5, _o5 = one(str(_n5))
+T.check("PN5 a test retired by a newer build still answers by number, with its own build",
+        _n5 not in ids_of("pn5") and _ok5 and _o5["build"] == "pn-b5" and _o5["state"] == "todo", str(_o5))
+
+_oku, _tu = one("987654")
+_okb, _tb = one("12; rm -rf x")
+_okm, _tm = one("-1")
+T.check("PN6 a number that does not exist, or an arg that is not a number: an error on one line",
+        _oku is False and _tu == "prova 987654: non esiste" and _okb is False and "non è il numero di una prova" in _tb and _okm is False
+        and all("\n" not in x for x in (_tu, _tb, _tm)), f"{_tu} | {_tb} | {_tm}")
+_ok0, _t0 = RL.execute(dict(PHONE, op="prove"))
+_ok00, _t00 = RL.execute(dict(PHONE, op="prove", arg=""))
+T.check("PN7 with no arg (or an empty one) the answer is today's list",
+        _ok0 and _ok00 and set(json.loads(_t0)) == set(json.loads(_t00)) == {"at", "n", "builds", "groups", "ko", "red", "archived"}
+        and "prove" in RL.PASSIVE_OPS, _t0[:200])
+
+_pc = {c["id"].split("-")[1]: c for c in _fp["cmd"]}
+_pr = {r["id"].split("-")[1]: r for r in _fp["result"]}
+_en = json.loads((T.SCRIPTS.parent / "messages" / "en.json").read_text())
+_px = [json.loads(_pr[k]["text"]) for k in ("1330", "1331", "1332", "1333")]
+T.check("PN8 the samples …1330 (todo), …1331 (ok, closed), …1332 (ko), …1333 (red), …1334 (unknown): op prove with arg, the code's keys in order, "
+        "text only on ko and red, the error is the code's sentence",
+        [(_pc[k]["op"], _pc[k]["arg"]) for k in ("1330", "1331", "1332", "1333", "1334")] == [("prove", "41"), ("prove", "35"), ("prove", "38"), ("prove", "36"), ("prove", "999")]
+        and all(list(x) == PN_KEYS for x in _px) and [x["state"] for x in _px] == ["todo", "ok", "ko", "red"]
+        and [x["text"] is None for x in _px] == [True, True, False, False] and [x["id"] for x in _px] == [41, 35, 38, 36]
+        and _pr["1334"]["ok"] is False and _pr["1334"]["text"] == _en["relay.cmd_prova_unknown"].format(n=999)
+        and all(_pr[k]["ok"] is True and isinstance(_pr[k]["at"], int) for k in ("1330", "1331", "1332", "1333")), str([x["state"] for x in _px]))
 
 T.finish()

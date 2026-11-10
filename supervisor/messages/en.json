@@ -1168,6 +1168,8 @@
   "relay.cmd_prova_bad_arg": "prova: the ids of the tests, separated by commas",
   "relay.cmd_prova_ko_needs_text": "prova: «Not working» takes one test and wants the words",
   "relay.cmd_prova_gone": "test {n}: gone or already confirmed",
+  "relay.cmd_prova_bad_number": "test: «{arg}» is not a test number",
+  "relay.cmd_prova_unknown": "test {n}: it does not exist",
   "relay.cmd_prova_ok": "tests ok: {n}; tasks going to their check: {closing}",
   "relay.cmd_prova_ko": "test {n}: reported to the master",
   "relay.prova_ko_to_master": "From the user {device}, test bench: «Not working» on {task}, build {build}, screen {dove}. To do: {fai}. Expected: {atteso}. They say: {text}\nOpen a linked task with `supervisor task add FILE --defect-of {task}` and pass it to the right session. This is not an ok.",

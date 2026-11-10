@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.145 — 2026-11-10: a test can be read by its number, also when it is closed (supervisor-prova-numero-10-11, contract 1.134).**
+  - The app can ask for one test by its number and gets that test alone, with its outcome: to do, ok, «Non va» with the words written, or confirmed with the task's check red and the reason.
+  - It works for a test already confirmed, for one replaced by a newer build and for one whose task is closed. These are no longer in the list, so a link to «prova #N» could not open them.
+  - A number that does not exist answers with a one-line error. Without a number the list is the same as before.
 - **0.8.144 — 2026-11-10: a monitor can be refreshed now, from the app or from a shell (supervisor-monitor-aggiorna-10-11, contract 1.133).**
   - A monitor can declare its refresh command: `supervisor monitor set ID --refresh "CMD"`, and `--no-refresh` removes it. The command is written only from this computer.
   - `supervisor monitor refresh ID` runs it at once, in the background or with `--wait`. Only one run per monitor at a time: a second request answers «già in corso». A run that takes too long is stopped (180 s unless you set another limit), and a new run is refused for 60 s after the last one.

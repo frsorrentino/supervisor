@@ -1430,6 +1430,51 @@
       "arg": "prezzi-portatili",
       "issued": 1789805090,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1330-4000-8000-000000001330",
+      "op": "prove",
+      "session": null,
+      "arg": "41",
+      "device": "phone",
+      "issued": 1789806000,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1331-4000-8000-000000001331",
+      "op": "prove",
+      "session": null,
+      "arg": "35",
+      "device": "phone",
+      "issued": 1789806001,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1332-4000-8000-000000001332",
+      "op": "prove",
+      "session": null,
+      "arg": "38",
+      "device": "phone",
+      "issued": 1789806002,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1333-4000-8000-000000001333",
+      "op": "prove",
+      "session": null,
+      "arg": "36",
+      "device": "phone",
+      "issued": 1789806003,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1334-4000-8000-000000001334",
+      "op": "prove",
+      "session": null,
+      "arg": "999",
+      "device": "phone",
+      "issued": 1789806004,
+      "by": "phone-pixel7"
     }
   ],
   "result": [
@@ -2350,6 +2395,36 @@
       "ok": false,
       "text": "prezzi-portatili: aggiornato da poco, riprova fra 42 s",
       "at": 1789805091
+    },
+    {
+      "id": "6f1c2d3e-1330-4000-8000-000000001330",
+      "ok": true,
+      "text": "{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"state\": \"todo\", \"text\": null, \"at\": 1789214100}",
+      "at": 1789806001
+    },
+    {
+      "id": "6f1c2d3e-1331-4000-8000-000000001331",
+      "ok": true,
+      "text": "{\"id\": 35, \"task\": \"atlas-login-focus\", \"short\": \"Login focus\", \"title\": \"Login focus of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"login\", \"fai\": \"Open the login page\", \"atteso\": \"The cursor is in the email field\", \"state\": \"ok\", \"text\": null, \"at\": 1789128300}",
+      "at": 1789806002
+    },
+    {
+      "id": "6f1c2d3e-1332-4000-8000-000000001332",
+      "ok": true,
+      "text": "{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"title\": \"Search filters of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"state\": \"ko\", \"text\": \"The filter closes at once\", \"at\": 1789213000}",
+      "at": 1789806003
+    },
+    {
+      "id": "6f1c2d3e-1333-4000-8000-000000001333",
+      "ok": true,
+      "text": "{\"id\": 36, \"task\": \"atlas-order-mail\", \"short\": \"Order mail\", \"title\": \"Order mail of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"checkout\", \"fai\": \"Place a test order\", \"atteso\": \"The confirmation mail arrives\", \"state\": \"red\", \"text\": \"check red: exit 1 — 2 tests failed\", \"at\": 1789129000}",
+      "at": 1789806004
+    },
+    {
+      "id": "6f1c2d3e-1334-4000-8000-000000001334",
+      "ok": false,
+      "text": "test 999: it does not exist",
+      "at": 1789806005
     }
   ]
 }

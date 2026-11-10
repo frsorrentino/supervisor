@@ -644,6 +644,15 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.134 (10/11/2026, supervisor-app's proposal for the links `#/prova/<n>`, task app-prova-link-10-11 approved by the maintainer; task supervisor-prova-numero-10-11). Additive, `v` stays 1.
+
+- **Op `prove` with `arg`** (still a read): `arg` = the number of a test (the `id` of the list, the `<n>` of the link `#/prova/<n>`), as a string or a number. The answer is that test alone, also when it is confirmed, retired by a newer build, or its task is closed, so no longer in the list: `{id, task, short, title, session, project, build, dove, fai, atteso, state, text, at}`, in this order.
+- **`state`**: `todo` (no outcome yet), `ok` (confirmed), `ko` («Non va»), `red` (confirmed, the task is still open and its check came back red: the same condition as an entry of the list's `red`). **`text`**: the person's words for `ko`, the reason of the red check for `red`, null otherwise. **`at`**: the epoch of the outcome (for `red`, of the red check); for `todo`, when the test was written.
+- `short`, `title`, `session`, `project` are the task's, as in the list (`project` is the same name as `state.sessions[].project`); null when the task is no longer in the registry.
+- Not ok, one line: a number that does not exist («prova 999: non esiste»), an `arg` that is not a number. With no `arg`, or an empty one, the answer is the list as before (`{at, n, builds, groups, ko, red, archived}`).
+- No new op: `ops` in `/state` does not change, so an older relay cannot be told apart from the list of ops; it ignores `arg` and answers the whole list, which has no `id` at the top: the app treats that as «not supported».
+- Fixture: `cmd-result-sample.json` …1330 (`todo`), …1331 (`ok`, task closed), …1332 (`ko` with its text), …1333 (`red` with the reason), …1334 (a number that does not exist).
+
 Contract 1.133 (10/11/2026, the maintainer from the web app at 13:03: «nella sezione monitoraggio vorrei che aggiungessimo un tasto per ogni monitoraggio che effettui l'aggiornamento immediato»; task supervisor-monitor-aggiorna-10-11). Additive, `v` stays 1.
 
 - **A refresh on request.** A monitor may declare a refresh command in its `def.json`: `refresh {cmd, timeout_s (default 180), min_interval_s (default 60)}`. It is written only from the CLI of the relay's machine (`supervisor monitor set ID --refresh "CMD" [--refresh-timeout S] [--refresh-min-interval S]`, `--no-refresh` to remove it; the same options on `monitor add`). The command's text never travels: not in the card, not in `/state`, and nothing the app sends is ever run or written.

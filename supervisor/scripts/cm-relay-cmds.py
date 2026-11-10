@@ -2006,8 +2006,21 @@ def attesa_op(arg):
     return True, json.dumps(a, ensure_ascii=False)
 
 
-def prove_op():
-    """1.99: op prove, una lettura: le prove da fare per build, quelle che non vanno, i compiti col controllo rosso."""
+def prove_op(arg=None):
+    """1.99: op prove, una lettura: le prove da fare per build, quelle che non vanno, i compiti col controllo rosso.
+    1.134 (10/11, supervisor-prova-numero-10-11): con arg = il numero di una prova (il link #/prova/<n>) risponde quella
+    prova sola, anche confermata, ritirata o di un compito chiuso: {id, task, short, title, session, project, build, dove,
+    fai, atteso, state: todo|ok|ko|red, text, at}; un numero che non esiste, o un arg che non e' un numero, e' un errore."""
+    a = str(arg).strip() if arg is not None else ""
+    if a:
+        if not re.fullmatch(r"\d{1,12}", a):
+            return False, M("relay.cmd_prova_bad_number", arg=S.one_line(a)[:40])
+        one = _tasks_read(lambda tk, con: tk.prova_one(con, int(a)))
+        if not one:
+            return False, M("relay.cmd_prova_unknown", n=int(a))
+        if one.get("project"):
+            one["project"] = S.project_of(one["project"], cm.expand(CFG["workspace"]["root"]))   # come nell'elenco
+        return True, json.dumps(one, ensure_ascii=False)
     p = _tasks_read(lambda tk, con: dict(tk.prove_list(con), archived=tk.tidy_rows(con, 0, 4, tk.TIDY_ARCHIVE_MAX)))   # 1.113: l'archivio
     root = cm.expand(CFG["workspace"]["root"])
     for x in (x for g in (p or {}).get("groups", []) for x in g["prove"]):
@@ -2650,7 +2663,7 @@ def execute(cmd):
         if op == "attesa":   # 1.130
             return attesa_op(arg)
         if op == "prove":   # 1.99
-            return prove_op()
+            return prove_op(arg)   # 1.134: con arg, una prova sola
         if op == "prova":   # 1.99
             return prova_op(cmd, arg)
         if op == "decisioni":   # 1.99
