@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.144 — 2026-11-10: a monitor can be refreshed now, from the app or from a shell (supervisor-monitor-aggiorna-10-11, contract 1.133).**
+  - A monitor can declare its refresh command: `supervisor monitor set ID --refresh "CMD"`, and `--no-refresh` removes it. The command is written only from this computer.
+  - `supervisor monitor refresh ID` runs it at once, in the background or with `--wait`. Only one run per monitor at a time: a second request answers «già in corso». A run that takes too long is stopped (180 s unless you set another limit), and a new run is refused for 60 s after the last one.
+  - The app can ask for a refresh by sending the monitor's id and nothing else. A command text sent by the app is never run. A monitor with no declared command refuses the request.
+  - Each monitor's card now says whether it can be refreshed and how the last run went: running, done or failed, when, and the last line the command printed.
 - **0.8.143 — 2026-11-09: a new low or a new high only counts when the value really goes past the earlier ones (supervisor-monitor-minimo-stretto-09-11).**
   - The «new low» and «new high» thresholds also fired when the last value only matched the earlier low or high. A price that did not move stayed «da guardare» in «Dalla master» until it went up.
   - Now the last value has to be strictly lower, or strictly higher, than every earlier value of the same series. When the next value does not go further, the item leaves «Dalla master».

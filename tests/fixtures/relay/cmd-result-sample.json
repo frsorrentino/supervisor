@@ -1406,6 +1406,30 @@
       "arg": "vecchio",
       "issued": 1789805020,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1320-4000-8000-000000001320",
+      "op": "monitor_refresh",
+      "session": null,
+      "arg": "prezzi-portatili",
+      "issued": 1789805030,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1321-4000-8000-000000001321",
+      "op": "monitor_refresh",
+      "session": null,
+      "arg": "adozione",
+      "issued": 1789805040,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1322-4000-8000-000000001322",
+      "op": "monitor_refresh",
+      "session": null,
+      "arg": "prezzi-portatili",
+      "issued": 1789805090,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -2294,13 +2318,13 @@
     {
       "id": "6f1c2d3e-1310-4000-8000-000000001310",
       "ok": true,
-      "text": "{\"at\": 1789805000, \"items\": [{\"id\": \"adozione\", \"title\": \"Adozione dei plugin\", \"form\": \"tile\", \"unit\": \"utenti\", \"status\": \"ok\", \"verdict\": null, \"verdict_at\": null, \"value\": \"130 utenti\", \"delta\": \"−1 in 7 giorni\", \"delta_pct\": -0.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"Chrome Web Store\", \"every\": \"1d\", \"example\": true, \"alerts\": [], \"hits\": [], \"series\": [{\"name\": null, \"points\": [[1789200000, 131.0], [1789804800, 130.0]], \"n\": 2, \"last\": 130.0, \"last_text\": \"130 utenti\", \"min\": 130.0, \"max\": 131.0}], \"link\": \"https://supervisor.example.com/#/monitor/adozione\"}, {\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\"}]}",
+      "text": "{\"at\": 1789805000, \"items\": [{\"id\": \"adozione\", \"title\": \"Adozione dei plugin\", \"form\": \"tile\", \"unit\": \"utenti\", \"status\": \"ok\", \"verdict\": null, \"verdict_at\": null, \"value\": \"130 utenti\", \"delta\": \"−1 in 7 giorni\", \"delta_pct\": -0.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"Chrome Web Store\", \"every\": \"1d\", \"example\": true, \"alerts\": [], \"hits\": [], \"series\": [{\"name\": null, \"points\": [[1789200000, 131.0], [1789804800, 130.0]], \"n\": 2, \"last\": 130.0, \"last_text\": \"130 utenti\", \"min\": 130.0, \"max\": 131.0}], \"link\": \"https://supervisor.example.com/#/monitor/adozione\", \"refresh\": null, \"refreshable\": false}, {\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"ok\", \"started\": 1789804788, \"ended\": 1789804800, \"rc\": 0, \"message\": \"2 prezzi letti da 3 negozi\", \"retry_at\": 1789804860, \"timeout_s\": 180}, \"refreshable\": true}]}",
       "at": 1789805002
     },
     {
       "id": "6f1c2d3e-1311-4000-8000-000000001311",
       "ok": true,
-      "text": "{\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\"}",
+      "text": "{\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"ok\", \"started\": 1789804788, \"ended\": 1789804800, \"rc\": 0, \"message\": \"2 prezzi letti da 3 negozi\", \"retry_at\": 1789804860, \"timeout_s\": 180}, \"refreshable\": true}",
       "at": 1789805012
     },
     {
@@ -2308,6 +2332,24 @@
       "ok": false,
       "text": "vecchio: questo monitoraggio non c'è più",
       "at": 1789805022
+    },
+    {
+      "id": "6f1c2d3e-1320-4000-8000-000000001320",
+      "ok": true,
+      "text": "{\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"running\", \"started\": 1789805031, \"ended\": null, \"rc\": null, \"message\": null, \"retry_at\": null, \"timeout_s\": 180}, \"refreshable\": true}",
+      "at": 1789805031
+    },
+    {
+      "id": "6f1c2d3e-1321-4000-8000-000000001321",
+      "ok": false,
+      "text": "adozione: questo monitoraggio non ha un comando di aggiornamento",
+      "at": 1789805041
+    },
+    {
+      "id": "6f1c2d3e-1322-4000-8000-000000001322",
+      "ok": false,
+      "text": "prezzi-portatili: aggiornato da poco, riprova fra 42 s",
+      "at": 1789805091
     }
   ]
 }

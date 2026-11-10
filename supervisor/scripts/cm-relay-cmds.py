@@ -1971,6 +1971,26 @@ def monitors_op(arg):
     return True, json.dumps(MO.card(i), ensure_ascii=False)
 
 
+def monitor_refresh_op(arg):
+    """1.133 (10/11, supervisor-monitor-aggiorna-10-11): op monitor_refresh, «aggiorna adesso». arg = l'id e basta: il
+    comando e' quello dichiarato in def.json da questa macchina (`monitor set ID --refresh`), ogni altro campo del Cmd
+    non viene letto. Il giro parte in sottofondo; risponde la scheda (come monitors con arg) con refresh.state running,
+    anche se un giro era gia' in corso. Errore: id non valido, monitoraggio sparito, senza comando, troppo presto."""
+    MO = _load("cm-monitor")
+    i = str(arg or "").strip()
+    if not MO.ID_RE.fullmatch(i):
+        return False, M("relay.cmd_monitor_bad_id", id=S.one_line(i)[:40])
+    d = MO.read_def(i)
+    if d is None:
+        return False, M("relay.cmd_monitor_gone", id=i)
+    if not MO.refresh_of(d):
+        return False, M("relay.cmd_monitor_no_refresh", id=i)
+    what, info = MO.start_refresh(i)
+    if what == "soon":
+        return False, M("relay.cmd_monitor_soon", id=i, n=info)
+    return True, json.dumps(MO.card(i), ensure_ascii=False)
+
+
 def attesa_op(arg):
     """1.130: op attesa, la scheda «Ti aspetta»: arg = l'id (state.attention[].wid, approvals[].wid, il link
     #/attesa/<id>). La voce di attese con `msg`, il pezzo di trascrizione dove la domanda e' stata spiegata
@@ -2623,6 +2643,8 @@ def execute(cmd):
             return home_order_op(arg)
         if op == "monitors":   # 1.132
             return monitors_op(arg)
+        if op == "monitor_refresh":   # 1.133
+            return monitor_refresh_op(arg)
         if op == "attese":   # 1.130
             return attese_op()
         if op == "attesa":   # 1.130

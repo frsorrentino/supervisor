@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """supervisor monitor — i Monitoraggi: valori raccolti da script, senza modello, in un formato unico (contratto 1.132,
-09/11/2026, supervisor-monitoraggi-09-11).
+09/11/2026, supervisor-monitoraggi-09-11; l'aggiornamento a richiesta: contratto 1.133, 10/11, supervisor-monitor-aggiorna-10-11).
 
   supervisor monitor add ID --title T --form F [--unit U] [--series a,b] [--source S] [--every 1h] [--max N] [--example]
+                            [--refresh "CMD" [--refresh-timeout S] [--refresh-min-interval S]]
+  supervisor monitor set ID --refresh "CMD" [--refresh-timeout S] [--refresh-min-interval S] | --no-refresh
+  supervisor monitor refresh ID [--wait]
   supervisor monitor alert ID (--below N | --above N | --new-min | --new-max) [--series S]
   supervisor monitor alert ID --clear
   supervisor monitor point ID [--series S] VALORE [--ts EPOCA|AAAA-MM-GG[THH:MM]]
@@ -30,13 +33,25 @@ tutti i precedenti della serie, in senso stretto: un valore fermo non scatta; --
 vale per ognuna. Quando scattano, una sola voce in «Dalla master» (state.suggestions, kind monitor, key monitor:<id>) col link al monitoraggio; esce quando il valore
 rientra. `line` stampa una riga breve col link, per i cron che oggi mandano report lunghi su Telegram.
 Il link: <relay.web_app_url>/#/monitor/<id>.
+
+L'aggiornamento a richiesta (1.133): def.json puo' dichiarare `refresh` {cmd, timeout_s (180), min_interval_s (60)}, e
+si scrive solo da questa CLI (`add`/`set --refresh`): l'app manda l'id, mai il testo di un comando. `refresh ID` lo
+esegue con `nice -n 19 sh -c CMD` nella home, con SUPERVISOR_MONITOR_ID nell'ambiente: senza --wait in sottofondo, con
+--wait aspetta. Un blocco per monitoraggio (refresh.lock, flock tenuto da chi esegue: una seconda richiesta risponde
+«già in corso», uscita 3), un tempo massimo (allo scadere tutto il gruppo del comando e' ucciso, rc 124), un
+intervallo minimo dalla fine dell'ultimo giro (uscita 4). Lo stato sta in refresh.json {state: idle|running|ok|error,
+started, ended, rc, message}; `running` senza nessuno che tiene il blocco = giro interrotto, letto come errore. Ogni
+giro scrive una riga `monitor-refresh` nel registro (ledger.jsonl). Il comando scrive i valori con `monitor point`.
 """
 import datetime as dt
+import fcntl
 import importlib.util
 import json
 import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -54,6 +69,13 @@ SOURCE_MAX = 120
 POINTS_MAX = 60          # punti per serie nel contratto
 DELTA_DAYS = 7           # la variazione: contro il valore di 7 giorni prima (o il primo, se la storia e' piu' corta)
 SUGGEST_TTL_S = 7 * 24 * 3600
+REFRESH_TIMEOUT_S = 180       # 1.133: tempo massimo di un giro, se def.json non lo dice
+REFRESH_MIN_INTERVAL_S = 60   # e l'intervallo minimo dalla fine del giro prima
+REFRESH_TIMEOUT_MAX = 3600
+REFRESH_INTERVAL_MAX = 86400
+REFRESH_CMD_MAX = 1000
+REFRESH_MESSAGE_MAX = 200
+REFRESH_STATES = ("idle", "running", "ok", "error")
 CURRENCY = ("€", "$", "£", "EUR", "USD")
 YES = ("1", "si", "sì", "yes", "true", "ok", "y")
 NO = ("0", "no", "false", "ko", "n")
@@ -278,6 +300,8 @@ def card(mid, d=None, pts=None):
          "at": max((p["ts"] for p in pts), default=None), "source": d.get("source") or None, "every": d.get("every") or None,
          "example": bool(d.get("example")), "alerts": [alert_view(a, unit) for a in d.get("alerts") or []], "hits": hits,
          "series": [], "link": link(mid)}
+    c["refresh"] = refresh_view(mid, d)   # 1.133: mai il comando, solo lo stato dell'ultimo giro
+    c["refreshable"] = c["refresh"] is not None
     if form == "status":
         if last:
             c["value"] = M("monitor.yes") if last[1] else M("monitor.no")
@@ -325,6 +349,137 @@ def summary():
 def line_of(c):
     body = c["verdict"] or " ".join(x for x in (c["value"], f"({c['delta']})" if c["delta"] else None) if x) or M("monitor.no_value")
     return f"{c['title']}: {body}" + (f" {c['link']}" if c["link"] else "")
+
+
+# ------------------------------------------------------------------ l'aggiornamento a richiesta (1.133)
+def refresh_of(d):
+    """Il comando di aggiornamento dichiarato: {cmd, timeout_s, min_interval_s} coi default, o None."""
+    r = (d or {}).get("refresh")
+    if not isinstance(r, dict) or not str(r.get("cmd") or "").strip():
+        return None
+
+    def n(k, default, top):
+        try:
+            return min(top, max(0, int(r.get(k)))) if r.get(k) is not None else default
+        except (TypeError, ValueError):
+            return default
+    return {"cmd": str(r["cmd"]), "timeout_s": n("timeout_s", REFRESH_TIMEOUT_S, REFRESH_TIMEOUT_MAX) or REFRESH_TIMEOUT_S,
+            "min_interval_s": n("min_interval_s", REFRESH_MIN_INTERVAL_S, REFRESH_INTERVAL_MAX)}
+
+
+def read_refresh(mid):
+    try:
+        st = json.loads((_dir(mid) / "refresh.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return st if isinstance(st, dict) else {}
+
+
+def write_refresh(mid, st):
+    tmp = _dir(mid) / "refresh.json.tmp"
+    tmp.write_text(json.dumps(st, ensure_ascii=False) + "\n")
+    os.replace(tmp, _dir(mid) / "refresh.json")
+
+
+def _lock(mid):
+    """Il blocco del monitoraggio: il file aperto se e' libero (ora lo tiene chi chiama), None se un giro lo tiene."""
+    f = open(_dir(mid) / "refresh.lock", "a")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+def refresh_view(mid, d):
+    """Lo stato dell'ultimo giro per la scheda; None se il monitoraggio non dichiara un comando."""
+    r = refresh_of(d)
+    if not r:
+        return None
+    st = read_refresh(mid)
+    state = st.get("state") if st.get("state") in REFRESH_STATES else "idle"
+    v = {"state": state, "started": st.get("started"), "ended": st.get("ended"), "rc": st.get("rc"),
+         "message": st.get("message") or None, "retry_at": None, "timeout_s": r["timeout_s"]}
+    if state == "running":
+        f = _lock(mid)
+        if f is not None:   # nessuno tiene il blocco: chi eseguiva e' morto senza scrivere l'esito
+            f.close()
+            v.update(state="error", message=M("monitor.refresh_interrupted"))
+    if v["state"] != "running" and isinstance(v["ended"], int) and r["min_interval_s"]:
+        v["retry_at"] = v["ended"] + r["min_interval_s"]
+    return v
+
+
+def _last_line(out):
+    lines = [" ".join(x.split()) for x in (out or "").splitlines() if x.strip()]
+    return lines[-1][:REFRESH_MESSAGE_MAX] if lines else None
+
+
+def _run_refresh(mid, r, lock, started):
+    """Esegue il comando tenendo il blocco, scrive l'esito e la riga di registro. Ritorna lo stato scritto."""
+    rc, out, timed = None, "", False
+    try:
+        p = subprocess.Popen(["nice", "-n", "19", "sh", "-c", r["cmd"]], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, errors="replace", cwd=str(Path.home()),
+                             env=dict(os.environ, SUPERVISOR_MONITOR_ID=mid), start_new_session=True)
+        try:
+            out, _ = p.communicate(timeout=r["timeout_s"])
+            rc = p.returncode
+        except subprocess.TimeoutExpired:
+            timed = True
+            try:
+                os.killpg(p.pid, signal.SIGKILL)   # tutto il gruppo: sh e i figli che ha lanciato
+            except OSError:
+                pass
+            try:
+                out, _ = p.communicate(timeout=5)
+            except subprocess.TimeoutExpired:   # un nipote uscito dal gruppo tiene aperta la pipe: non lo si aspetta
+                out = ""
+            rc = 124
+        message = M("monitor.refresh_timeout", n=r["timeout_s"]) if timed else _last_line(out)
+    except OSError as e:
+        rc, message = 127, " ".join(str(e).split())[:REFRESH_MESSAGE_MAX]
+    st = {"state": "ok" if rc == 0 else "error", "started": started, "ended": int(time.time()), "rc": rc, "message": message}
+    try:
+        write_refresh(mid, st)
+    finally:
+        lock.close()
+    try:
+        _load("cm-suggest").ledger_write([{"event": "monitor-refresh", "monitor": mid, "ok": rc == 0, "rc": rc,
+                                           "seconds": st["ended"] - started, "text": message or ""}])
+    except Exception:   # noqa: BLE001 — il registro e' un'informazione in piu'
+        pass
+    return st
+
+
+def start_refresh(mid, wait=False):
+    """Chiede un giro: ("started", stato) partito in sottofondo, ("done", stato) finito (wait), ("running", stato) uno e'
+    gia' in corso, ("soon", secondi) troppo presto. Bad se il monitoraggio non dichiara un comando. Il blocco lo prende
+    chi chiede e passa al figlio staccato col descrittore: fra la richiesta e l'avvio non c'e' un istante scoperto."""
+    d = need(mid)
+    r = refresh_of(d)
+    if not r:
+        raise Bad(M("monitor.refresh_none", id=mid))
+    lock = _lock(mid)
+    if lock is None:
+        return "running", read_refresh(mid)
+    now = int(time.time())
+    old = read_refresh(mid)
+    if old.get("state") in ("ok", "error") and isinstance(old.get("ended"), int) and now < old["ended"] + r["min_interval_s"]:
+        lock.close()
+        return "soon", old["ended"] + r["min_interval_s"] - now
+    st = {"state": "running", "started": now, "ended": None, "rc": None, "message": None}
+    write_refresh(mid, st)
+    if wait:
+        return "done", _run_refresh(mid, r, lock, now)
+    try:
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "refresh", mid, "--run-fd", str(lock.fileno())],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, pass_fds=[lock.fileno()])
+    finally:
+        lock.close()   # il blocco resta al figlio: e' della descrizione del file aperto, non di questo descrittore
+    return "started", st
 
 
 # ------------------------------------------------------------------ «Dalla master»
@@ -403,6 +558,8 @@ def cmd_add(argv):
     series, source, every, mx = _opt(argv, "--series"), _opt(argv, "--source"), _opt(argv, "--every"), _opt(argv, "--max")
     example = _flag(argv, "--example")
     real = _flag(argv, "--real")
+    refresh, r_timeout, r_interval = _opt(argv, "--refresh"), _opt(argv, "--refresh-timeout"), _opt(argv, "--refresh-min-interval")
+    no_refresh = _flag(argv, "--no-refresh")
     if argv:
         raise Bad(M("monitor.unknown_option", opt=argv[0]))
     d = read_def(mid)
@@ -432,6 +589,27 @@ def cmd_add(argv):
         d["max"] = _num(mx, "--max")
     if example or real:
         d["example"] = example
+    if no_refresh:
+        if refresh is not None or r_timeout is not None or r_interval is not None:
+            raise Bad(M("monitor.refresh_either"))
+        d.pop("refresh", None)
+    elif refresh is not None or r_timeout is not None or r_interval is not None:
+        r = dict(d.get("refresh") or {}) if isinstance(d.get("refresh"), dict) else {}
+        if refresh is not None:
+            if not refresh.strip() or len(refresh) > REFRESH_CMD_MAX or "\n" in refresh or "\x00" in refresh:
+                raise Bad(M("monitor.refresh_bad_cmd", max=REFRESH_CMD_MAX))
+            r["cmd"] = refresh.strip()
+        if not str(r.get("cmd") or "").strip():
+            raise Bad(M("monitor.refresh_needs_cmd"))
+        for opt, key, raw, low, top in (("--refresh-timeout", "timeout_s", r_timeout, 1, REFRESH_TIMEOUT_MAX),
+                                        ("--refresh-min-interval", "min_interval_s", r_interval, 0, REFRESH_INTERVAL_MAX)):
+            if raw is not None:
+                if not re.fullmatch(r"\d{1,6}", raw) or not low <= int(raw) <= top:
+                    raise Bad(M("monitor.refresh_bad_seconds", opt=opt, min=low, max=top))
+                r[key] = int(raw)
+        r.setdefault("timeout_s", REFRESH_TIMEOUT_S)
+        r.setdefault("min_interval_s", REFRESH_MIN_INTERVAL_S)
+        d["refresh"] = r
     if d["form"] == "meter" and d.get("max") is None:
         raise Bad(M("monitor.meter_needs_max"))
     write_def(d)
@@ -536,9 +714,53 @@ def cmd_show(argv):
         print(f"  {s['name'] or '-'}: {s['n']} {M('monitor.points')}, {M('monitor.last')} {s['last_text'] or '-'}")
     for a in c["alerts"]:
         print(f"  {M('monitor.alert')}: {a['text']}{'  ←' if any(h['kind'] == a['kind'] and h['series'] == a['series'] for h in c['hits']) else ''}")
+    r = refresh_of(read_def(c["id"]))
+    if r:   # il comando si vede solo qui, su questa macchina: nella scheda dell'app non entra
+        v = c["refresh"]
+        when = dt.datetime.fromtimestamp(v["ended"] or v["started"]).strftime("%d/%m %H:%M") if (v["ended"] or v["started"]) else "-"
+        print(f"  {M('monitor.refresh_label')}: {r['cmd']}  ({r['timeout_s']} s, {M('monitor.refresh_every')} {r['min_interval_s']} s)")
+        print(f"  {M('monitor.refresh_last')}: {M('monitor.refresh_state_' + v['state'])} {when}{' · ' + v['message'] if v['message'] else ''}")
     if c["link"]:
         print(f"  {c['link']}")
     return 0
+
+
+def cmd_set(argv):
+    """`set ID --refresh CMD | --no-refresh`: come add su un monitoraggio che c'e' gia'; mai uno nuovo."""
+    need(argv[0] if argv else "")
+    return cmd_add(argv)
+
+
+def cmd_refresh(argv):
+    mid = check_id(argv.pop(0) if argv else "")
+    wait, fd = _flag(argv, "--wait"), _opt(argv, "--run-fd")
+    if argv:
+        raise Bad(M("monitor.unknown_option", opt=argv[0]))
+    if fd is not None:   # interno: il figlio staccato di start_refresh, col blocco ereditato
+        r = refresh_of(need(mid))
+        st = read_refresh(mid)
+        try:
+            lock = os.fdopen(int(fd), "a")
+        except (ValueError, OSError):
+            raise Bad(M("monitor.unknown_option", opt="--run-fd"))
+        if not r or st.get("state") != "running":
+            lock.close()
+            raise Bad(M("monitor.unknown_option", opt="--run-fd"))
+        return 0 if _run_refresh(mid, r, lock, st.get("started") or int(time.time()))["rc"] == 0 else 1
+    what, info = start_refresh(mid, wait=wait)
+    if what == "running":
+        print(M("monitor.refresh_running", id=mid))
+        return 3
+    if what == "soon":
+        print(M("monitor.refresh_soon", id=mid, n=info))
+        return 4
+    if what == "started":
+        print(M("monitor.refresh_started", id=mid))
+        return 0
+    ok = info["rc"] == 0
+    print(M("monitor.refresh_done" if ok else "monitor.refresh_failed", id=mid, rc=info["rc"], message=info["message"] or "-"),
+          file=sys.stdout if ok else sys.stderr)
+    return 0 if ok else 1
 
 
 def cmd_line(argv):
@@ -556,7 +778,7 @@ def cmd_remove(argv):
 
 def main(argv):
     fn = {"add": cmd_add, "alert": cmd_alert, "point": cmd_point, "verdict": cmd_verdict, "list": cmd_list,
-          "show": cmd_show, "line": cmd_line, "remove": cmd_remove}.get(argv[0] if argv else "")
+          "show": cmd_show, "line": cmd_line, "remove": cmd_remove, "set": cmd_set, "refresh": cmd_refresh}.get(argv[0] if argv else "")
     if not fn:
         print(__doc__)
         return 2

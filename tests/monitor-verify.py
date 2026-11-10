@@ -17,6 +17,20 @@ MO6 remove: cartella tolta e voce chiusa; un id non valido e' rifiutato prima di
 MO7 gli esempi di cmd-result-sample (…1310 monitors, …1311 monitors con arg, …1312 sconosciuto) hanno i campi delle risposte vere
 MO8 --new-min e --new-max sono stretti (supervisor-monitor-minimo-stretto-09-11): un solo valore non scatta; un prezzo fermo
     (1.936,95 due volte) non scatta; 1.899 scatta e apre la voce; di nuovo 1.899 non scatta e la voce esce; idem --new-max
+MO9 l'aggiornamento a richiesta (supervisor-monitor-aggiorna-10-11, contratto 1.133): `set ID --refresh CMD` scrive
+    def.json.refresh {cmd, timeout_s 180, min_interval_s 60}; la scheda ha refreshable e refresh (idle) e MAI il comando;
+    set su un id che non c'e', secondi fuori misura, --no-refresh insieme a --refresh: rifiutati; --no-refresh lo toglie
+MO10 `refresh ID --wait`: il comando finto scrive un punto con la CLI (SUPERVISOR_MONITOR_ID); stato ok, rc 0, l'ultima
+    riga come message, il punto nella scheda, una riga monitor-refresh nel registro; subito dopo: troppo presto (uscita 4)
+MO11 il blocco: un giro in sottofondo torna subito con stato running; la seconda richiesta risponde «già in corso»
+    (uscita 3) e il comando gira UNA volta; a fine giro stato ok
+MO12 tempo scaduto: rc 124, stato error, la frase di supervisor, e il processo del comando non c'e' piu'
+MO13 errore: uscita 3 del comando = stato error, rc 3, l'ultima riga di stderr; un `running` senza nessuno sul blocco e'
+    letto come giro interrotto; un monitoraggio senza comando: `refresh` rifiutato (uscita 2)
+MO14 il relay: op monitor_refresh in OPS e non fra le letture; senza comando dichiarato = errore e niente parte; il testo
+    di un comando mandato dall'app (text, cmd, refresh) non viene mai eseguito, gira solo quello di def.json; risponde la
+    scheda con running; una seconda richiesta durante il giro = ok, sempre running, un solo giro; troppo presto = errore
+MO15 gli esempi …1320 (avviato), …1321 (senza comando), …1322 (troppo presto) hanno i campi e i testi delle risposte vere
 """
 import datetime as dt
 import importlib.util
@@ -266,6 +280,196 @@ x_high = show("tetto")
 T.check("MO8 --new-max strict: one value no hit; the same value again no hit; a higher one hit",
         x_one == "ok" and x_same["status"] == "ok" and not x_same["hits"] and x_high["status"] == "watch" and x_high["hits"][0]["kind"] == "new_max",
         f"{x_one} {x_same.get('hits')} {x_high.get('hits')}")
+
+# MO9 — l'aggiornamento a richiesta (contratto 1.133)
+MON = tmp / "monitors"
+ledger = tmp / "state" / "ledger.jsonl"
+
+
+def refresh_rows(mid):
+    try:
+        rows = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
+    except OSError:
+        return []
+    return [r for r in rows if r.get("event") == "monitor-refresh" and r.get("monitor") == mid]
+
+
+def wait_refresh(mid, t=20):
+    end = time.time() + t
+    while time.time() < end:
+        v = show(mid).get("refresh") or {}
+        if v.get("state") in ("ok", "error"):
+            return v
+        time.sleep(0.2)
+    return show(mid).get("refresh") or {}
+
+
+def lines_of(path):
+    try:
+        return path.read_text().splitlines()
+    except OSError:
+        return []
+
+
+mo("add", "giro", "--title", "Giro", "--form", "line", "--unit", "€")
+mo("point", "giro", "10", "--ts", ts(8))
+c9a = show("giro")
+CMD9 = f'{CLI} monitor point "$SUPERVISOR_MONITOR_ID" 42 >/dev/null && echo "letto 1 prezzo"'
+r_set = mo("set", "giro", "--refresh", CMD9)
+d9 = json.loads((MON / "giro" / "def.json").read_text())
+c9 = show("giro")
+T.check("MO9 set --refresh: def.json.refresh {cmd, timeout_s 180, min_interval_s 60}; before it the card is not refreshable (refresh null)",
+        r_set.returncode == 0 and d9.get("refresh") == {"cmd": CMD9, "timeout_s": 180, "min_interval_s": 60}
+        and c9a.get("refreshable") is False and c9a.get("refresh") is None and "refresh" in c9a, f"{r_set.stdout}{r_set.stderr} {d9.get('refresh')} {c9a.get('refresh')}")
+T.check("MO9 the card: refreshable true, refresh idle with the seven fields, and the command's text nowhere in it (nor in the list)",
+        c9.get("refreshable") is True and c9.get("refresh") == {"state": "idle", "started": None, "ended": None, "rc": None, "message": None,
+                                                                 "retry_at": None, "timeout_s": 180}
+        and "letto 1 prezzo" not in json.dumps(c9, ensure_ascii=False) and "letto 1 prezzo" not in mo("list", "--json").stdout
+        and "letto 1 prezzo" in mo("show", "giro").stdout, json.dumps(c9.get("refresh")))
+r_set_u = mo("set", "non-esiste", "--refresh", "true")
+r_set_s = mo("set", "giro", "--refresh-timeout", "0")
+r_set_b = mo("set", "giro", "--refresh", "true", "--no-refresh")
+r_set_n = mo("set", "giro", "--refresh", "echo a\necho b")
+same9 = json.loads((MON / "giro" / "def.json").read_text()).get("refresh") == d9["refresh"]
+mo("add", "nuovo", "--title", "Nuovo", "--form", "tile", "--refresh", "true", "--refresh-timeout", "5", "--refresh-min-interval", "0")
+d9n = json.loads((MON / "nuovo" / "def.json").read_text()).get("refresh")
+r_no = mo("set", "nuovo", "--no-refresh")
+T.check("MO9 refused, nothing written: set on an unknown id (no folder made), --refresh-timeout 0, --refresh with --no-refresh, a two-line command; "
+        "add --refresh with its seconds; --no-refresh removes it",
+        r_set_u.returncode == 2 and not (MON / "non-esiste").exists() and r_set_s.returncode == 2 and r_set_b.returncode == 2
+        and r_set_n.returncode == 2 and same9 and d9n == {"cmd": "true", "timeout_s": 5, "min_interval_s": 0} and r_no.returncode == 0
+        and "refresh" not in json.loads((MON / "nuovo" / "def.json").read_text()) and show("nuovo").get("refreshable") is False,
+        f"{r_set_u.returncode} {r_set_s.returncode} {r_set_b.returncode} {r_set_n.returncode} {same9} {d9n} {r_no.stderr}")
+
+# MO10
+t10 = int(time.time())
+r_w = mo("refresh", "giro", "--wait")
+c10 = show("giro")
+v10 = c10.get("refresh") or {}
+rows10 = refresh_rows("giro")
+T.check("MO10 refresh --wait: the command ran with SUPERVISOR_MONITOR_ID and wrote a point through the CLI; state ok, rc 0, message = its last line",
+        r_w.returncode == 0 and "letto 1 prezzo" in r_w.stdout and c10.get("value") == "42 €" and c10["series"][0]["n"] == 2
+        and v10.get("state") == "ok" and v10.get("rc") == 0 and v10.get("message") == "letto 1 prezzo"
+        and isinstance(v10.get("started"), int) and t10 <= v10["started"] <= v10.get("ended", 0) and v10.get("retry_at") == v10["ended"] + 60,
+        f"{r_w.returncode} {r_w.stdout}{r_w.stderr} {c10.get('value')} {v10}")
+T.check("MO10 every run leaves one monitor-refresh row in the ledger (monitor, ok, rc, seconds, text)",
+        len(rows10) == 1 and rows10[0]["ok"] is True and rows10[0]["rc"] == 0 and rows10[0]["text"] == "letto 1 prezzo"
+        and isinstance(rows10[0].get("seconds"), int), str(rows10))
+r_soon = mo("refresh", "giro", "--wait")
+T.check("MO10 again at once: too soon (exit 4, «riprova fra N s»), the command not run again, the state untouched",
+        r_soon.returncode == 4 and "riprova fra" in r_soon.stdout and show("giro")["series"][0]["n"] == 2 and len(refresh_rows("giro")) == 1
+        and show("giro").get("refresh") == v10, f"{r_soon.returncode} {r_soon.stdout}{r_soon.stderr}")
+
+# MO11
+mark11 = tmp / "mark11"
+mo("add", "lento", "--title", "Lento", "--form", "tile", "--refresh", f"echo giro >> {mark11}; sleep 2; echo finito",
+   "--refresh-min-interval", "0")
+t11 = time.time()
+r_bg = mo("refresh", "lento")
+took11 = time.time() - t11
+v11 = show("lento").get("refresh") or {}
+r_bg2 = mo("refresh", "lento")
+r_bg3 = mo("refresh", "lento", "--wait")
+end11 = wait_refresh("lento")
+T.check("MO11 a background refresh returns at once with state running (ended and rc null)",
+        r_bg.returncode == 0 and took11 < 1.9 and v11.get("state") == "running" and v11.get("ended") is None and v11.get("rc") is None
+        and v11.get("retry_at") is None and isinstance(v11.get("started"), int), f"{r_bg.returncode} {took11:.1f} {v11} {r_bg.stderr}")
+T.check("MO11 the lock: a second and a third request while it runs answer «già in corso» (exit 3); the command ran ONCE; at the end state ok",
+        r_bg2.returncode == 3 and "già in corso" in r_bg2.stdout and r_bg3.returncode == 3 and end11.get("state") == "ok"
+        and end11.get("message") == "finito" and lines_of(mark11) == ["giro"] and len(refresh_rows("lento")) == 1,
+        f"{r_bg2.returncode} {r_bg2.stdout} {r_bg3.returncode} {end11} {lines_of(mark11)}")
+r_again = mo("refresh", "lento", "--wait")
+T.check("MO11 with --refresh-min-interval 0 the next request runs (the lock was released)",
+        r_again.returncode == 0 and lines_of(mark11) == ["giro", "giro"] and show("lento")["refresh"].get("retry_at") is None,
+        f"{r_again.returncode} {r_again.stderr} {lines_of(mark11)}")
+
+# MO12
+pid12 = tmp / "pid12"
+mo("add", "fermo-li", "--title", "Fermo lì", "--form", "tile", "--refresh", f"echo $$ > {pid12}; sleep 30; echo mai",
+   "--refresh-timeout", "1", "--refresh-min-interval", "0")
+t12 = time.time()
+r_to = mo("refresh", "fermo-li", "--wait")
+took12 = time.time() - t12
+v12 = show("fermo-li").get("refresh") or {}
+time.sleep(0.3)
+pid = (lines_of(pid12) or ["0"])[0]
+T.check("MO12 timeout: after 1 s the run ends with rc 124, state error and supervisor's own sentence; the command's process is gone",
+        r_to.returncode == 1 and took12 < 8 and v12.get("state") == "error" and v12.get("rc") == 124
+        and v12.get("message") == "tempo scaduto dopo 1 s: comando fermato" and v12.get("timeout_s") == 1
+        and pid.isdigit() and int(pid) > 1 and not Path(f"/proc/{pid}").exists(), f"{r_to.returncode} {took12:.1f} {v12} pid {pid}")
+
+# MO13
+mo("add", "rotto", "--title", "Rotto", "--form", "tile", "--refresh", "echo prima; echo 'negozio irraggiungibile' >&2; exit 3",
+   "--refresh-min-interval", "0")
+r_er = mo("refresh", "rotto", "--wait")
+v13 = show("rotto").get("refresh") or {}
+T.check("MO13 a command that exits 3: refresh --wait exits 1, state error, rc 3, message = its last line (stderr too), one ledger row with ok false",
+        r_er.returncode == 1 and "negozio irraggiungibile" in r_er.stderr and v13.get("state") == "error" and v13.get("rc") == 3
+        and v13.get("message") == "negozio irraggiungibile" and [r["ok"] for r in refresh_rows("rotto")] == [False], f"{r_er.returncode} {r_er.stderr} {v13}")
+(MON / "rotto" / "refresh.json").write_text(json.dumps({"state": "running", "started": int(time.time()) - 5, "ended": None, "rc": None, "message": None}))
+v13b = show("rotto").get("refresh") or {}
+r_er2 = mo("refresh", "rotto", "--wait")
+T.check("MO13 «running» with nobody holding the lock is read as an interrupted run (error), and the next request runs",
+        v13b.get("state") == "error" and v13b.get("message") == "aggiornamento interrotto prima della fine" and r_er2.returncode == 1
+        and show("rotto")["refresh"].get("rc") == 3, f"{v13b} {r_er2.returncode}")
+r_none = mo("refresh", "adozione")
+r_fd = mo("refresh", "rotto", "--run-fd", "0")
+T.check("MO13 a monitor with no command: refresh refused (exit 2) naming `monitor set`; the internal --run-fd by hand runs nothing",
+        r_none.returncode == 2 and "monitor set adozione --refresh" in r_none.stderr and not (MON / "adozione" / "refresh.json").exists()
+        and r_fd.returncode == 2 and len(refresh_rows("rotto")) == 2, f"{r_none.returncode} {r_none.stderr} {r_fd.returncode} {len(refresh_rows('rotto'))}")
+
+# MO14
+mark14, evil14 = tmp / "mark14", tmp / "evil14"
+mo("add", "da-app", "--title", "Da app", "--form", "tile", "--refresh", f"echo giro >> {mark14}; sleep 2; echo fatto",
+   "--refresh-min-interval", "30")
+EVIL = f"echo x >> {evil14}"
+ok_n, t_n = RL.execute({"op": "monitor_refresh", "arg": "adozione", "device": "phone", "by": "maintainer"})
+ok_g, t_g = RL.execute({"op": "monitor_refresh", "arg": "non-esiste", "device": "phone", "by": "maintainer"})
+ok_x, t_x = RL.execute({"op": "monitor_refresh", "arg": f"da-app; {EVIL}", "device": "phone", "by": "maintainer"})
+ok_e, t_e = RL.execute({"op": "monitor_refresh", "arg": "adozione", "text": EVIL, "cmd": EVIL, "refresh": {"cmd": EVIL}, "device": "phone", "by": "maintainer"})
+T.check("MO14 op monitor_refresh is in OPS and is not a read; a monitor with no declared command, an unknown id, a bad id: error, nothing starts",
+        "monitor_refresh" in RL.OPS and "monitor_refresh" not in RL.PASSIVE_OPS and not ok_n and "non ha un comando di aggiornamento" in t_n
+        and not ok_g and "non c'è più" in t_g and not ok_x and not ok_e and not (MON / "adozione" / "refresh.json").exists()
+        and not evil14.exists(), f"{t_n} | {t_g} | {t_x} | {t_e}")
+t14 = time.time()
+ok_r, t_r = RL.execute({"op": "monitor_refresh", "arg": "da-app", "text": EVIL, "cmd": EVIL, "refresh": {"cmd": EVIL}, "timeout_s": 1,
+                        "device": "phone", "by": "maintainer"})
+took14 = time.time() - t14
+card14 = json.loads(t_r) if ok_r else {}
+ok_r2, t_r2 = RL.execute({"op": "monitor_refresh", "arg": "da-app", "device": "phone", "by": "maintainer"})
+card14b = json.loads(t_r2) if ok_r2 else {}
+end14 = wait_refresh("da-app")
+d14 = json.loads((MON / "da-app" / "def.json").read_text())["refresh"]
+T.check("MO14 from the app: starts in the background and answers the card with refresh running (the keys of op monitors); a second request "
+        "while it runs is ok and still running",
+        ok_r and took14 < 1.9 and card14.get("id") == "da-app" and card14.get("refreshable") is True and card14["refresh"]["state"] == "running"
+        and set(card14) == set(json.loads(t_o)) and ok_r2 and card14b["refresh"]["state"] == "running"
+        and card14b["refresh"]["started"] == card14["refresh"]["started"], f"{ok_r} {took14:.1f} {t_r[:200]} {ok_r2} {t_r2[:120]}")
+T.check("MO14 a command text sent by the app (text, cmd, refresh.cmd, timeout_s) is never run and never written: only def.json's command ran, once",
+        end14.get("state") == "ok" and end14.get("message") == "fatto" and lines_of(mark14) == ["giro"] and not evil14.exists()
+        and d14 == {"cmd": f"echo giro >> {mark14}; sleep 2; echo fatto", "timeout_s": 180, "min_interval_s": 30}
+        and end14.get("timeout_s") == 180 and len(refresh_rows("da-app")) == 1, f"{end14} {lines_of(mark14)} {evil14.exists()} {d14}")
+ok_s, t_s = RL.execute({"op": "monitor_refresh", "arg": "da-app", "device": "phone", "by": "maintainer"})
+T.check("MO14 right after the end: too soon is an error with the seconds to wait, nothing starts",
+        not ok_s and t_s.startswith("da-app: aggiornato da poco, riprova fra ") and lines_of(mark14) == ["giro"], t_s)
+
+# MO15
+s20, s21, s22 = smp.get("1320") or {}, smp.get("1321") or {}, smp.get("1322") or {}
+try:
+    b20 = json.loads(s20.get("text") or "{}")
+except ValueError:
+    b20 = {}
+T.check("MO15 the samples …1320 (started: the card, refresh running), …1321 (no command), …1322 (too soon): the keys and the texts of the real answers; "
+        "…1310/…1311 carry refreshable and refresh",
+        [cmds.get(k, {}).get("op") for k in ("1320", "1321", "1322")] == ["monitor_refresh"] * 3 and s20.get("ok") is True
+        and set(b20) == set(card14) and set(b20["refresh"]) == set(card14["refresh"]) and b20["refresh"]["state"] == "running" and b20["refreshable"] is True
+        and s21.get("ok") is False and s21.get("text") == t_n and s22.get("ok") is False
+        and s22.get("text", "").rsplit(" ", 2)[0] == t_s.replace("da-app", "prezzi-portatili").rsplit(" ", 2)[0]
+        and set(b11["refresh"]) == set(end14) and b11["refreshable"] is True
+        and {i["id"]: i["refreshable"] for i in b10["items"]} == {"prezzi-portatili": True, "adozione": False}
+        and all((i["refresh"] is None) == (not i["refreshable"]) for i in b10["items"])
+        and all(set(c) == {"id", "op", "session", "arg", "issued", "by"} for c in (cmds["1320"], cmds["1321"], cmds["1322"])),
+        f"{s21.get('text')} | {t_n} | {s22.get('text')} | {t_s} | {sorted(set(b20) ^ set(card14))}")
 
 T.check("no talk left the test", not talklog.exists() or talklog.read_text() == "", talklog.read_text() if talklog.exists() else "")
 T.rm(tmp)
