@@ -304,7 +304,7 @@ with T.PrivateTmux() as tm:
     _ids = sorted((state_dir / "inbox" / "sess").glob("*.json"), key=lambda p: p.stat().st_mtime)
     _id = json.loads(_ids[-1].read_text())["id"] if _ids else "?"
     T.check("OH1 a message of the person in a session with items waiting: the line names them and the one command with this message's id",
-            "h1 (ok)" in out and f"--inbox {_id}" in out and "task ok" in out and "t15" in out and "a2" not in out, out)
+            "h1 (ok)" in out and f"--inbox {_id}" in out and "task ok" in out and "t15" in out and "a2 (" not in out, out)   # «a2 (»: l'id casuale della casella puo' contenere «a2» (0a2719, 10/11)
     out = hook("master", "come va?")
     _all = TK.awaiting_person(TK.connect())
     _shown = [t for t, _w in _all[:6]]

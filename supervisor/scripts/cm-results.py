@@ -21,6 +21,20 @@ didascalia, altrimenti quello prima + 1; versions = il piu' alto del gruppo. cha
 «versione N» (la frase della sessione), solo da N > 1. Le sessioni riscrivono spesso lo stesso file a ogni versione:
 `replaced` (in `results`) dice che il file sul disco non e' piu' quello consegnato.
 
+VISTO DA FEEDBACK (10/11/2026, supervisor-verifica-feedback-10-11): una consegna e' vista anche quando la persona scrive
+nella stessa sessione dopo di lei — dal terminale o dal relay (telefono, orologio, web), non i messaggi di altre sessioni,
+le notifiche o i promemoria: le stesse voci `user` della chat (cm-core.transcript_entries). seen_by = «feedback» (il
+tocco: «touch»), feedback_at = l'ora del primo messaggio dopo la consegna. Lo scan legge quei messaggi dagli stessi byte
+nuovi che gia' scorre, solo per le sessioni che hanno consegne.
+
+VERSIONE NUOVA DOPO UNA CORREZIONE: una consegna della stessa sessione e dello stesso tipo, arrivata dopo che la persona
+ha scritto su quella prima (feedback_at), entra nel suo gruppo anche con un nome di file diverso, se la radice del nome e'
+la stessa tolti i suffissi (_sintetica, _corretta, _v2, -2, una data…): pec_difensore.txt → pec_difensore_sintetica.txt.
+
+RULES: la prima scansione con regole nuove ripassa l'indice — rilegge per intero le trascrizioni locali delle sessioni
+con consegne non viste (la loro e quelle della stessa cartella scritte dopo: la sessione continuata), segna i feedback
+e riunisce i gruppi (d["rules"]).
+
 VISTO: si segna su una consegna e vale anche per le versioni prima di lei. /state porta solo l'ultima versione di ogni
 lavoro non visto, al piu' STATE_MAX, la piu' recente per prima; n_unseen le conta tutte.
 
@@ -56,6 +70,11 @@ STATE_MAX = 10
 TITLE_MAX, CHANGED_MAX, CAPTION_MAX = 80, 300, 500
 NOTE_MAX = 2000
 NOTES_KEEP = 50
+RULES = 2                    # la versione delle regole dell'indice: diversa = lo scan lo ripassa una volta
+ROOT_MIN = 4                 # una radice di nome piu' corta non lega due consegne
+_SUFFIX = re.compile(r"(?:[\s._-]+(?:sintetic[ao]|corrett[aoie]|brev[ei]|estes[ao]|definitiv[ao]|final[ei]?|nuov[ao]|bis|rev\d*|v\d+|"
+                     r"solo[\s._-]testo|aggiornat[aoie]|rivist[aoie]|modificat[aoie]|ridott[aoie]|complet[aoie]|"
+                     r"\d{4}[-_.]?\d{2}[-_.]?\d{2}|\d{1,2}[-_.]\d{1,2}[-_.]\d{2,4}|\d)|\s*\(\d+\))$", re.I)
 VIDEO_EXT = {"mp4", "webm", "mov", "m4v", "mkv"}
 DOC_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "csv", "md", "txt", "rtf"}
 _ERR = re.compile(rb'"is_error":\s*true')
@@ -133,6 +152,20 @@ def _ext(p):
 def _stem(p):
     name = re.split(r"[\\/]", str(p))[-1]
     return " ".join(re.sub(r"[-_]+", " ", name.rsplit(".", 1)[0]).split()) or name
+
+
+def _root(p):
+    """La radice del nome di un file: senza cartella ed estensione, tolti in coda i suffissi di una versione nuova
+    (_sintetica, _corretta, _v2, -2, _2026-11-10, (1)…), normalizzata. Un numero nudo si toglie solo se di una cifra:
+    «taglio-40» e «taglio-30» sono due cose, non due versioni."""
+    name = re.split(r"[\\/]", str(p))[-1]
+    s = name.rsplit(".", 1)[0] if "." in name else name
+    while True:
+        t = _SUFFIX.sub("", s)
+        if t == s or not t:
+            break
+        s = t
+    return _norm(s)
 
 
 def kind_of(refs):
@@ -249,7 +282,72 @@ def _deliveries(lines, core, cwd_default):
     return found, failed
 
 
-def _group_key(items, project, title, declared, path):
+def _person_times(core, path, start, end):
+    """Le ore dei messaggi della persona fra due byte di una trascrizione (end None = fino in fondo): le voci `user` della
+    chat, cioe' terminale e relay; mai un'altra sessione, una notifica, un promemoria."""
+    try:
+        entries = core.transcript_entries(path, offset=max(0, start - 1), limit=end, chat_only=True)   # -1: start e' un inizio riga
+    except Exception:   # noqa: BLE001 — una trascrizione che non si legge non ferma la scansione
+        return []
+    return sorted(e["at"] for e in entries if e.get("role") == "user" and e.get("at"))
+
+
+def _feedback(items, sid, at, session=None):
+    """La persona ha scritto all'ora `at` nella trascrizione `sid` della sessione `session`: le consegne di prima di
+    quella sessione sono viste — anche quelle di una trascrizione precedente (dopo /clear o una ripresa l'id cambia,
+    la sessione e' la stessa)."""
+    for x in items.values():
+        same = x.get("sid") == sid or (session and x.get("session") == session and x.get("host") in (None, "local"))
+        if same and x["at"] < at:
+            if not x.get("feedback_at"):
+                x["feedback_at"] = int(at)
+            if x.get("seen_at") is None:
+                x["seen_at"], x["seen_by"] = int(at), "feedback"
+
+
+def _after_feedback(latest, sid, kind, path, at):
+    """Il gruppo di cui una consegna e' la versione nuova dopo una correzione: stessa sessione e tipo, la persona ha
+    scritto dopo l'ultima consegna di quel gruppo e prima di questa, stessa radice del nome. None se non c'e'."""
+    root = _root(path)
+    if len(root) < ROOT_MIN:
+        return None
+    hits = [x for x in latest if x.get("sid") == sid and x.get("kind") == kind and x["at"] < at
+            and x.get("feedback_at") and x["feedback_at"] <= at and _root(x["path"]) == root]
+    return max(hits, key=lambda x: x["at"])["key"] if hits else None
+
+
+def _regroup(items):
+    """Ripassa i gruppi con la regola della versione nuova: un gruppo la cui prima consegna e' la versione nuova di
+    un altro (_after_feedback) ci entra, col suo titolo e i numeri di versione in fila."""
+    moved = 0
+    for x in sorted(items.values(), key=lambda v: (v["at"], v["version"])):
+        grp = sorted((y for y in items.values() if y["key"] == x["key"]), key=lambda v: (v["at"], v["version"]))
+        if grp[0] is not x:
+            continue
+        latest = {}
+        for y in items.values():
+            if y.get("project") == x.get("project") and y["key"] != x["key"] and y["at"] < x["at"] \
+                    and (y["key"] not in latest or y["at"] > latest[y["key"]]["at"]):
+                latest[y["key"]] = y
+        key = _after_feedback(latest.values(), x.get("sid"), x.get("kind"), x["path"], x["at"])
+        if not key:
+            continue
+        head = latest[key]
+        base = max(y["version"] for y in items.values() if y["key"] == key and y["at"] < x["at"])
+        for i, m in enumerate(grp, 1):
+            m["key"], m["title"], m["title_key"], m["version"] = key, head["title"], head.get("title_key"), base + i
+        moved += 1
+    return moved
+
+
+def _transcript_of_sid(sid):
+    for acc in (CFG.get("accounts") or {}).values():
+        for f in (Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "projects").glob(f"*/{sid}.jsonl"):
+            return str(f)
+    return None
+
+
+def _group_key(items, project, title, declared, path, sid=None, kind=None, at=None):
     same = [x for x in items.values() if x.get("project") == project]
     if declared is not None and title:
         for x in same:
@@ -261,6 +359,10 @@ def _group_key(items, project, title, declared, path):
             latest[x["key"]] = x
     for k, x in latest.items():
         if x.get("path") == path:
+            return k
+    if sid and at is not None:
+        k = _after_feedback(latest.values(), sid, kind, path, at)
+        if k:
             return k
     return f"{project}|{_norm(title) if declared is not None and title else path}"
 
@@ -275,7 +377,7 @@ def _add(items, sid, sess, dl, root, S):
     prim = refs[i]
     project = S.project_of(dl["cwd"] or sess["cwd"], root)
     title, declared, rest = caption_parts(dl["caption"], prim["path"])
-    key = _group_key(items, project, title, declared, prim["path"])
+    key = _group_key(items, project, title, declared, prim["path"], sid=sid, kind=kind, at=dl["at"])
     group = sorted((x for x in items.values() if x["key"] == key), key=lambda x: x["at"])
     if declared is None and group:
         title = group[-1]["title"]   # senza «versione N» il titolo resta quello del lavoro
@@ -318,15 +420,42 @@ def scan(live=None, now=None):
     offs = dict(snap.get("files") or {})
     since = min(float(snap.get("scan_at") or now - BACKFILL_S), now - SCAN_EVERY_S) - 120
     found = []
+    known = {v.get("sid") for v in (snap.get("items") or {}).values()}
+    waiting = {v.get("session") for v in (snap.get("items") or {}).values() if v.get("seen_at") is None and v.get("host") in (None, "local")}
     for name, _alive, cwd, path in TL.sessions_in(max(since, now - BACKFILL_S), live=live):
         rec = offs.get(path) or {}
-        lines, pos = _read_new(path, int(rec.get("off") or 0))
+        off0 = int(rec.get("off") or 0)
+        lines, pos = _read_new(path, off0)
         offs[path] = {"off": pos, "at": int(now)}
-        if not lines:
+        start = off0 if pos >= off0 else 0   # trascrizione riscritta: _read_new e' ripartito da capo
+        if pos == start:
             continue
+        sid = Path(path).stem
         sess = by_tr.get(path) or {"name": name, "tmux": None, "host": "local", "cwd": cwd}
-        dls, failed = _deliveries(lines, core, cwd)
-        found.append((Path(path).stem, sess, [x for x in dls if x["tool_id"] not in failed and x["at"]], failed))
+        dls, failed = _deliveries(lines, core, cwd) if lines else ([], set())
+        dls = [x for x in dls if x["tool_id"] not in failed and x["at"]]
+        # i messaggi della persona servono solo dove c'e' una consegna: gia' nell'indice, in questi byte, o non vista
+        # in una trascrizione di prima della stessa sessione
+        msgs = _person_times(core, path, start, pos) if (sid in known or dls or sess["name"] in waiting) else []
+        if dls or failed or msgs:
+            found.append((sid, sess, dls, failed, msgs))
+    backfill = []
+    if snap.get("items") and snap.get("rules") != RULES:   # regole nuove: una volta, le trascrizioni intere
+        want = {}   # (cartella delle trascrizioni, sessione) → la consegna non vista piu' vecchia
+        for v in snap["items"].values():
+            if v.get("seen_at") is None and v.get("host") in (None, "local"):
+                tp = _transcript_of_sid(v["sid"])
+                if tp:
+                    k = (str(Path(tp).parent), v.get("session"))
+                    want[k] = min(want.get(k, v["at"]), v["at"])
+        for (folder, session), oldest in want.items():
+            for f in Path(folder).glob("*.jsonl"):
+                try:
+                    if f.stat().st_mtime < oldest:
+                        continue
+                except OSError:
+                    continue
+                backfill.append((f.stem, session, _person_times(core, str(f), 0, None)))
     with _locked():
         d = _read()
         d.setdefault("v", 1)
@@ -334,10 +463,22 @@ def scan(live=None, now=None):
         d["created"] = created
         items = d.setdefault("items", {})
         new = 0
-        for sid, sess, dls, failed in found:
+        if d.get("rules") != RULES:
+            for sid, session, times in backfill:
+                for t in times:
+                    _feedback(items, sid, t, session)
+            if items:
+                _regroup(items)
+            d["rules"] = RULES
+        for sid, sess, dls, failed, msgs in found:
             for x in [k for k, v in items.items() if v.get("sid") == sid and v.get("tool_id") in failed]:
                 items.pop(x, None)
-            for dl in sorted(dls, key=lambda x: x["at"]):
+            # consegne e messaggi della persona nell'ordine in cui sono avvenuti (alla stessa ora, prima la consegna)
+            events = sorted([(dl["at"], 0, dl) for dl in dls] + [(t, 1, None) for t in msgs], key=lambda e: (e[0], e[1]))
+            for at, what, dl in events:
+                if what == 1:
+                    _feedback(items, sid, at, sess.get("name") if sess.get("host") in (None, "local") else None)
+                    continue
                 if dl["at"] < created - BACKFILL_S:
                     continue
                 rid = _add(items, sid, sess, dl, root, S)
@@ -457,7 +598,7 @@ def seen(rid, now=None):
             return False
         for y in items.values():
             if y["key"] == x["key"] and (y["at"], y["version"]) <= (x["at"], x["version"]) and y.get("seen_at") is None:
-                y["seen_at"] = now
+                y["seen_at"], y["seen_by"] = now, "touch"
         _write(d)
     return True
 

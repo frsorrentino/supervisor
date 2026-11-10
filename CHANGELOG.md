@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.146 — 2026-11-10: a result you already commented on in chat leaves «Verifica», and a corrected file replaces the one before (supervisor-verifica-feedback-10-11).**
+  - A result now counts as seen when you write in that session after it arrived, from the terminal or from the app. Before, only a touch on the result marked it seen, so the list kept everything you had already answered in chat.
+  - Messages from other sessions, notifications and automatic reminders do not count. If the session went on after a `/clear`, your message there counts too.
+  - When you ask for a correction and the session sends a new file, the new one takes the place of the old one also when its name is different, for example `…_solo-testo.txt` and then `…_sintetica.txt`. The list shows the last version only.
+  - The results already in the list are gone over once with the new rules.
 - **0.8.145 — 2026-11-10: a test can be read by its number, also when it is closed (supervisor-prova-numero-10-11, contract 1.134).**
   - The app can ask for one test by its number and gets that test alone, with its outcome: to do, ok, «Non va» with the words written, or confirmed with the task's check red and the reason.
   - It works for a test already confirmed, for one replaced by a newer build and for one whose task is closed. These are no longer in the list, so a link to «prova #N» could not open them.

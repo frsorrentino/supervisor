@@ -273,4 +273,136 @@ view_res = [json.loads(r["text"]) for r in cs["result"] if r["text"].startswith(
 T.check("results FX2 cmd-result-sample has the three ops and a results page with the code's keys",
         {"results", "result_seen", "result_note"} <= ops and view_res and list(view_res[0]) == ["groups", "n_unseen", "more"]
         and list(view_res[0]["groups"][0]) == list(fg) and list(view_res[0]["groups"][0]["items"][0]) == list(fg["items"][0]), "")
+
+# ------------------------------------------------------------------ FB visto da feedback, versione nuova dopo una correzione
+# (supervisor-verifica-feedback-10-11, 10/11/2026)
+(tmp / "r" / "results.json").unlink()
+legale, altro = ws / "legale", ws / "altro"
+for d in (legale, altro):
+    d.mkdir()
+b = now + 5000
+PHONE_PREFIX = json.loads((T.SCRIPTS.parent / "messages" / "it.json").read_text())["relay.prompt_prefix_phone"]
+
+
+def doc(folder, name):
+    f = folder / name
+    f.write_text("testo " + name)
+    return str(f)
+
+
+def human(t, text, uid):
+    return {"type": "user", "uuid": uid, "timestamp": iso(t), "origin": {"kind": "human"}, "message": {"role": "user", "content": text}}
+
+
+def peer(t, body, uid):
+    return {"type": "user", "uuid": uid, "timestamp": iso(t), "origin": {"kind": "peer", "body": body, "msg_id": uid},
+            "message": {"role": "user", "content": f'<cross-session-message from="uds:/x" from-name="master">\n{body}\n</cross-session-message>'}}
+
+
+def idx():
+    return json.loads((tmp / "r" / "results.json").read_text())
+
+
+def by_tool(tid):
+    return next((x for x in idx()["items"].values() if x["tool_id"] == tid), {})
+
+
+SID_L, SID_L2, SID_A, SID_R, SID_N = (f"{c * 8}-9999-2222-3333-444444444444" for c in "defgh")
+TL_, TA, TR, TN = tr_path(legale, SID_L), tr_path(altro, SID_A), tr_path(altro / "..", SID_R), None
+pec = doc(legale, "PEC-DIFENSORE-2026-11-05_solo-testo.txt")
+pec2 = doc(legale, "PEC-DIFENSORE-2026-11-05_sintetica.txt")
+nota = doc(legale, "nota-spese.txt")
+put(TL_, [
+    human(b - 1000, "prepara la pec per il difensore", "u-l0"),
+    send("toolu_fbpec1aaaaaaaa", b - 900, legale, [pec], "PEC al difensore, solo testo"),
+    send("toolu_fbnotaaaaaaaaa", b - 890, legale, [nota], "Nota spese"),
+    human(b - 800, "troppo lunga, fammela sintetica", "u-l1"),
+    send("toolu_fbpec2aaaaaaaa", b - 700, legale, [pec2], "Ecco la sintetica"),
+])
+a1, a2 = doc(altro, "relazione.txt"), doc(altro, "relazione_sintetica.txt")
+put(TA, [
+    human(b - 950, "scrivi la relazione", "u-a0"),
+    send("toolu_fbrel1aaaaaaaa", b - 900, altro, [a1], "Relazione"),
+    peer(b - 850, "Dalla master: come procede? rispondi quando puoi", "u-a1"),
+    {"type": "user", "uuid": "u-a2", "timestamp": iso(b - 840), "isMeta": True, "message": {"role": "user", "content": "<system-reminder>ricorda il piano</system-reminder>"}},
+    {"type": "user", "uuid": "u-a3", "timestamp": iso(b - 830), "origin": {"kind": "task_notification"},
+     "message": {"role": "user", "content": "<task-notification><status>completed</status></task-notification>"}},
+    send("toolu_fbrel2aaaaaaaa", b - 700, altro, [a2], "Relazione sintetica"),
+])
+RS.scan([], b)
+x1, xn, x2, r1, r2 = (by_tool(t) for t in ("toolu_fbpec1aaaaaaaa", "toolu_fbnotaaaaaaaaa", "toolu_fbpec2aaaaaaaa", "toolu_fbrel1aaaaaaaa", "toolu_fbrel2aaaaaaaa"))
+T.check("results FB1 a delivery followed by the person's message in that session is seen: seen_at = the message's time, seen_by feedback; "
+        "the message before the delivery does not count",
+        x1.get("seen_at") == int(b - 800) and x1.get("seen_by") == "feedback" and x1.get("feedback_at") == int(b - 800)
+        and xn.get("seen_by") == "feedback" and x2.get("seen_at") is None and "seen_by" not in x2, f"{x1.get('seen_at')} {x1.get('seen_by')} {x2.get('seen_at')}")
+T.check("results FB2 a message from another session, a reminder and a task notification are not the person: the delivery stays unseen",
+        r1.get("seen_at") is None and r2.get("seen_at") is None and "feedback_at" not in r1, f"{r1.get('seen_at')} {r1.get('feedback_at')}")
+T.check("results FB3 the new delivery after the correction takes the place of the first one although the file name differs "
+        "(…_solo-testo.txt → …_sintetica.txt): same group, version 2, the work's title",
+        x2.get("key") == x1.get("key") and x2.get("version") == 2 and x1.get("version") == 1 and x2.get("title") == x1.get("title")
+        and xn.get("key") != x1.get("key"), f"{x1.get('key')} | {x2.get('key')} v{x2.get('version')} {x2.get('title')}")
+T.check("results FB3 without the person's message in between the two files stay two works (relazione.txt, relazione_sintetica.txt)",
+        r1.get("key") != r2.get("key") and r2.get("version") == 1, f"{r1.get('key')} | {r2.get('key')}")
+st_fb = RS.summary()
+mine = [i for i in st_fb["items"] if i["session"] in ("legale", "altro")]
+T.check("results FB4 /state: only the last version of the corrected work (versions 2) and the two not commented; the keys of an item unchanged",
+        sorted((i["path"].split("/")[-1], i["versions"]) for i in mine) == [("PEC-DIFENSORE-2026-11-05_sintetica.txt", 2), ("relazione.txt", 1), ("relazione_sintetica.txt", 1)]
+        and all(list(i) == KEYS for i in mine), str([(i["path"].split("/")[-1], i["versions"]) for i in mine]))
+
+# il messaggio arriva dopo, in byte nuovi; dal telefono (relay); e la sessione continuata in una trascrizione nuova
+put(TA, [peer(b + 10, PHONE_PREFIX + " va bene la relazione, grazie", "u-a4")], append=True)
+RS.scan([], b + 40)
+r1b, r2b = by_tool("toolu_fbrel1aaaaaaaa"), by_tool("toolu_fbrel2aaaaaaaa")
+T.check("results FB5 a message read in a later scan, sent from the phone through the relay, marks both deliveries of the session",
+        r1b.get("seen_by") == "feedback" and r2b.get("seen_by") == "feedback" and r2b.get("seen_at") == int(b + 10), f"{r1b.get('seen_by')} {r2b.get('seen_at')}")
+put(tr_path(legale, SID_L2), [dict(human(b + 50, "ok la sintetica, mandala", "u-l2"), cwd=str(legale))])   # cwd: come le righe vere
+RS.scan([], b + 80)
+x2b = by_tool("toolu_fbpec2aaaaaaaa")
+T.check("results FB6 the session went on in a new transcript (after /clear): the person's message there marks the delivery of the one before",
+        x2b.get("seen_by") == "feedback" and x2b.get("seen_at") == int(b + 50) and not [i for i in RS.summary()["items"] if i["session"] in ("legale", "altro")],
+        f"{x2b.get('seen_by')} {x2b.get('seen_at')}")
+
+# il tocco resta distinto, e un numero a due cifre o un nome diverso non legano
+v40, v30, v2n = doc(altro, "taglio-40.txt"), doc(altro, "taglio-30.txt"), doc(altro, "taglio-30-2.txt")
+put(TA, [send("toolu_fbt40aaaaaaaaa", b + 90, altro, [v40], "Taglio a 40"), human(b + 92, "prova a 30", "u-a5"),
+         send("toolu_fbt30aaaaaaaaa", b + 94, altro, [v30], "Taglio a 30"), human(b + 96, "stringi ancora", "u-a6"),
+         send("toolu_fbt32aaaaaaaaa", b + 98, altro, [v2n], "Taglio a 30, più stretto")], append=True)
+RS.scan([], b + 120)
+t40, t30, t32 = (by_tool(t) for t in ("toolu_fbt40aaaaaaaaa", "toolu_fbt30aaaaaaaaa", "toolu_fbt32aaaaaaaaa"))
+ok_touch = RS.seen(t32["id"], b + 130)
+T.check("results FB7 taglio-40 and taglio-30 are two works (a two-digit number is not a version); taglio-30-2 after a correction is version 2 of taglio-30; "
+        "a touch is seen_by touch",
+        t40.get("key") != t30.get("key") and t32.get("key") == t30.get("key") and t32.get("version") == 2 and ok_touch
+        and by_tool("toolu_fbt32aaaaaaaaa").get("seen_by") == "touch" and by_tool("toolu_fbt30aaaaaaaaa").get("seen_by") == "feedback",
+        f"{t40.get('key')} | {t30.get('key')} | {t32.get('key')} v{t32.get('version')} {by_tool('toolu_fbt32aaaaaaaaa').get('seen_by')}")
+T.check("results FB7 the root of a name drops version suffixes only",
+        RS._root("a/PEC_DIFENSORE_sintetica.txt") == RS._root("PEC_DIFENSORE.txt") == RS._root("PEC_DIFENSORE_2026-11-10_corretta_v2.docx")
+        and RS._root("taglio-40.mp4") != RS._root("taglio-30.mp4") and RS._root("relazione (1).pdf") == RS._root("relazione-2.pdf"), RS._root("taglio-40.mp4"))
+
+# un indice scritto con le regole di prima viene ripassato una volta
+old = idx()
+old.pop("rules", None)
+for v in old["items"].values():
+    for k in ("seen_by", "feedback_at"):
+        v.pop(k, None)
+    if v["session"] in ("legale", "altro"):
+        v["seen_at"] = None
+o2 = next(v for v in old["items"].values() if v["tool_id"] == "toolu_fbpec2aaaaaaaa")
+o2.update(key=f"legale|{pec2}", version=1, title="Ecco la sintetica", title_key="ecco la sintetica")
+(tmp / "r" / "results.json").write_text(json.dumps(old))
+n_before = RS.summary()["n_unseen"]
+RS.scan([], b + 160)
+m1, m2, mr = by_tool("toolu_fbpec1aaaaaaaa"), by_tool("toolu_fbpec2aaaaaaaa"), by_tool("toolu_fbrel1aaaaaaaa")
+n_after = RS.summary()["n_unseen"]
+T.check("results FB8 an index of the old rules is gone over once, with no new byte to read: the commented deliveries are seen by feedback, "
+        "the corrected file joins its work as version 2, rules is written",
+        idx().get("rules") == RS.RULES and m1.get("seen_by") == "feedback" and m1.get("seen_at") == int(b - 800) and m2.get("key") == m1.get("key")
+        and m2.get("version") == 2 and m2.get("title") == m1.get("title") and m2.get("seen_by") == "feedback" and mr.get("seen_by") == "feedback"
+        and n_after < n_before, f"{idx().get('rules')} {m1.get('seen_by')} {m2.get('key')} v{m2.get('version')} {n_before}→{n_after}")
+ix = idx()
+ix["items"][m1["id"]]["seen_at"] = None
+(tmp / "r" / "results.json").write_text(json.dumps(ix))
+RS.scan([], b + 200)
+T.check("results FB8 once only: with rules written the next scan does not read the whole transcripts again",
+        by_tool("toolu_fbpec1aaaaaaaa").get("seen_at") is None, str(by_tool("toolu_fbpec1aaaaaaaa").get("seen_at")))
 T.finish()
