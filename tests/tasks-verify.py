@@ -662,6 +662,27 @@ cm("wait-ok", "ch2", "--what", "release", "--where", "github")
 rc4, _, err4 = cm("approve", "ch2", "--by", "maintainer (phone)", "--text", "ok", "--choice", "Strada A")
 T.check("T25 --choice on a task without options → refused, state unchanged", rc4 != 0 and "no options to choose from" in err4 and show("ch2")["state"] == "awaiting_ok", err4)
 
+# T25b (11/11, supervisor-carta-scelta-sparita-11-11): una scelta chiesta mentre la sessione lavora al compito resta aperta
+# anche se la sessione fa task start; task ok --choice la accetta ancora
+add(contract("ch3", lane="closed"))
+cm("start", "ch3")
+cm("wait-ok", "ch3", "--what", "one step: which cache", "--where", "atlas-shop", "--options", "Redis | Memoria")
+rc5, out5, err5 = cm("start", "ch3")
+s5 = show("ch3")
+_l5 = json.loads(cm("list", "--state", "awaiting_ok", "--json")[1])
+T.check("T25b task start on a task waiting for a choice keeps it: still awaiting_ok, still in the list with its options, the start written as a step, the session told",
+        rc5 == 0 and s5["state"] == "awaiting_ok" and next((x["request"].get("options") for x in _l5 if x["id"] == "ch3"), None) == ["Redis", "Memoria"]
+        and s5["steps"][-1]["kind"] == "start" and ("resta aperta" in out5 or "stays open" in out5), out5 + err5 + json.dumps(s5)[:300])
+rc6, _, err6 = cm("approve", "ch3", "--by", "maintainer (phone)", "--text", "Memoria", "--choice", "Memoria")
+T.check("T25b after that start the person's choice is still accepted", rc6 == 0 and show("ch3")["state"] == "approved" and show("ch3")["approvals"][-1]["choice"] == "Memoria", err6)
+add(contract("ch4", lane="closed"))
+cm("wait-ok", "ch4", "--what", "release", "--where", "github")
+cm("start", "ch4")
+T.check("T25b the same for a plain ok request: start keeps awaiting_ok", show("ch4")["state"] == "awaiting_ok", show("ch4")["state"])
+cm("approve", "ch4", "--by", "maintainer (phone)", "--text", "ok")
+cm("start", "ch4")
+T.check("T25b once approved, start moves to running as before", show("ch4")["state"] == "running", show("ch4")["state"])
+
 # T24 (23/10/2026 20:00, the maintainer from the phone at 19:58: «Quando ci sono aggiornamenti di supervisor, effettuali
 # direttamente»): l'ok permanente — task standing add, approvazione automatica al wait-ok, list, remove
 with T.PrivateTmux() as tm:

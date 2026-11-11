@@ -26,7 +26,7 @@ mkdir -p "$(dirname "$REG")"
 ACC="$(cm_account_of_name "$NOME")"
 SHAPE="$(cm_get "$ACC" SHAPE)"
 PFX="$(cm_get "$ACC" TMUX_PREFIX)"
-palette_var="CM_TABS_COLORS_${SHAPE^^}"
+palette_var="CM_TABS_COLORS_$(cm_upper "$SHAPE")"
 FORME="${!palette_var:-}"
 [ -n "$FORME" ] || FORME="$CM_TABS_COLORS_CIRCLE"
 # conteggio con un array bash, non con `wc -w`: in locale C le emoji non

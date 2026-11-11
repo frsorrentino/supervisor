@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import sys
 from pathlib import Path
 
@@ -673,26 +674,20 @@ class Machine:
                 panes[p.strip()] = s
         except (OSError, subprocess.SubprocessError):
             pass
-        for d in glob.glob("/proc/[0-9]*"):
-            try:
-                cmd = Path(d, "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
-                if not re.search(r"(^|/)claude( |$)", cmd) or "shell-snapshots" in cmd:
-                    continue
-                env = {}
-                for kv in Path(d, "environ").read_bytes().split(b"\0"):
-                    k, _, v = kv.partition(b"=")
-                    if k in (b"CLAUDE_CONFIG_DIR",):
-                        env[k.decode()] = v.decode(errors="replace")
-                cwd = os.readlink(Path(d, "cwd"))
-                pid = int(Path(d).name)
-                ppid = ""
-                for line in Path(d, "status").read_text().splitlines():
-                    if line.startswith("PPid:"):
-                        ppid = line.split()[1]
-                tm = panes.get(str(pid)) or panes.get(ppid) or ""
-                out.append({"pid": pid, "cmdline": cmd, "environ": env, "cwd": cwd, "tmux": tm})
-            except (OSError, ValueError):
+        spec = importlib.util.spec_from_file_location("cm_proc_cfg", HERE / "cm-proc.py")   # 11/11: Linux e macOS
+        P = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(P)
+        for pid in P.pids():
+            cmd = P.cmdline(pid)
+            if not re.search(r"(^|/)claude( |$)", cmd) or "shell-snapshots" in cmd:
                 continue
+            env = {k: v for k, v in P.environ(pid).items() if k == "CLAUDE_CONFIG_DIR"}
+            cwd = P.cwd(pid)
+            if not cwd:
+                continue
+            ppid = str(P.ppid(pid) or "")
+            tm = panes.get(str(pid)) or panes.get(ppid) or ""
+            out.append({"pid": pid, "cmdline": cmd, "environ": env, "cwd": cwd, "tmux": tm})
         return out
 
     def version(self, cmd):
@@ -1371,6 +1366,40 @@ def plugin_row(name, a, checkout_ver):
     return ("PASS", "doctor.plugin_ok", {"account": name, "version": ver, "note": f" · {note}" if note else ""}, None)
 
 
+def processes_row(pid=None):
+    """Una riga di doctor: supervisor riconosce i processi su questa piattaforma? Su Linux da /proc, su macOS da ps e
+    lsof; senza, nessuna sessione risulta mai viva (il caso del Mac dell'11/11)."""
+    spec = importlib.util.spec_from_file_location("cm_proc_doc", HERE / "cm-proc.py")
+    P = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(P)
+    pid = pid or os.getpid()
+    miss = [k for k, ok in (("vivo", P.alive(pid)), ("avvio", bool(P.start_token(pid))), ("comando", bool(P.cmdline(pid))),
+                            ("cartella", bool(P.cwd(pid))), ("padre", bool(P.ppid(pid)))) if not ok]
+    plat = "macOS" if P.mac() else "Linux"
+    if miss:
+        return ("FAIL", "doctor.processes_bad", {"platform": plat, "missing": ", ".join(miss)}, "doctor.fix_processes")
+    return ("PASS", "doctor.processes_ok", {"platform": plat}, None)
+
+
+FIREBASE_DAY_MB = 330   # 10 GB al mese del piano gratuito, diviso 30
+
+
+def firebase_usage_row(cfg, now=None):
+    rd = expand(cfg["relay"].get("dir") or "~/.cc-supervisor/relay")
+    day = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
+    row = (read_json(os.path.join(rd, "usage-firebase.json")) or {}).get(day) or {}
+    devices = len(read_json(os.path.join(rd, "devices.json")) or {}) or 1
+    mb = (row.get("result_bytes", 0) + row.get("state_bytes", 0) * devices) / 1e6
+    # la proiezione sul giorno intero: quello di oggi diviso le ore passate
+    t = time.localtime(now or time.time())
+    hours = max(1.0, t.tm_hour + t.tm_min / 60)
+    proj = mb * 24 / hours
+    kw = {"mb": round(mb, 1), "proj": round(proj), "limit": FIREBASE_DAY_MB, "results": row.get("results", 0),
+          "unchanged": row.get("unchanged", 0), "deleted": row.get("results_deleted", 0), "pubs": row.get("state_pubs", 0),
+          "skipped": row.get("state_skipped", 0)}
+    return ("WARN" if proj > FIREBASE_DAY_MB else "PASS", "doctor.firebase_usage", kw, "doctor.fix_firebase_usage" if proj > FIREBASE_DAY_MB else None)
+
+
 def cmd_doctor():
     m = Machine()
     p = config_path()
@@ -1388,11 +1417,21 @@ def cmd_doctor():
     # prerequisiti: strumenti, terminale, dipendenze del relay, con il comando per installarli (13/10)
     rows += prereq_rows(m, cfg)
 
+    # 11/11 (supervisor-macos-11-11): il riconoscimento delle sessioni passa da cm-proc; si prova sul pid di doctor
+    if m.fake is None:
+        rows.append(processes_row())
+
     if cfg["relay"]["enabled"] and str(cfg["relay"].get("firebase_url") or "").strip():
         # 1.15: i dati dell'app Firebase nel QR di `relay pair` — senza, il QR non compare e resta il codice a 6 cifre
         app, why = relay_firebase_app(cfg)
         rows.append(("PASS", "doctor.firebase_app_ok", {"project": app["project_id"], "source": why}, None) if app
                     else ("WARN", "doctor.firebase_app_missing", {"why": msg(cfg, why, path=expand(cfg["relay"].get("google_services") or ""), package=cfg["relay"].get("app_package") or "")}, "doctor.fix_firebase_app"))
+
+    # 11/11 (supervisor-relay-peso-firebase-11-11): quanto il relay scrive su Firebase oggi, dai suoi conti
+    # (<relay.dir>/usage-firebase.json). Una stima del download: ogni esito lo scarica chi l'ha chiesto, ogni stato ogni
+    # dispositivo abbinato; la soglia gratuita e' 10 GB al mese (~330 MB al giorno). I numeri veri: Cloud Monitoring
+    if cfg["relay"]["enabled"] and str(cfg["relay"].get("firebase_url") or "").strip():
+        rows.append(firebase_usage_row(cfg))
 
     # 09/10: un host confermato senza il sondatore nel crontab → le sue sessioni non compaiono in sessions ne' nell'app
     if any(n != "local" and h.get("confirmed_at") for n, h in (cfg.get("hosts") or {}).items()):

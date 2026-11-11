@@ -21,6 +21,15 @@ import threading
 import time
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 # 22/10/2026 (relay-filtro-api-request, chiesto dal maintainer il 19/10 dalla web app): dalla 2.1.300 la trascrizione porta i
 # record api-request (la richiesta intera: strumenti, sistema, messaggi), il 6-17 % dei byte, e ogni filtro a
@@ -433,11 +442,8 @@ def permission_bypass(row, mode=None):
     pid = (row or {}).get("pid")
     if not pid or (row or {}).get("host"):   # il pid di una sessione su un altro host non e' un processo di qui
         return False
-    try:
-        cmd = Path(f"/proc/{int(pid)}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
-    except (OSError, ValueError):
-        return False
-    return bool(BYPASS_FLAGS.search(cmd))
+    cmd = _cm_proc().cmdline(pid)
+    return bool(cmd) and bool(BYPASS_FLAGS.search(cmd))
 
 
 def _tuned(row, out, last_turn):

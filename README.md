@@ -29,15 +29,12 @@ It is an independent plugin, not made by Anthropic.
 ## Try it in 60 seconds
 
 ```bash
-claude plugin install supervisor --marketplace frsorrentino/supervisor
-~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor init --yes --shim --shell
-supervisor relay web
+curl -fsSL https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh | bash
 ```
 
-The first line installs the plugin ([requirements](#requirements)). The second
-writes the configuration from what it finds on your machine and puts `supervisor`
-in `~/.local/bin`. The third opens every session on one screen in this computer's
-browser: no Firebase, no account, nothing leaves the computer.
+It asks two things: your projects folder, and whether you want the app on your phone.
+Every step prints ✓ or ✗ with the command that fixes it; run the same line again and it picks up where it stopped.
+At the end the master is open, the web app on this computer shows it, and three lines say what to do next.
 
 ## What you get
 
@@ -90,13 +87,11 @@ Inside a session the same things are slash commands (`/supervisor:sessions`,
 ## On your phone and watch
 
 **The web app**, on any phone or tablet. Your own Firebase project carries the
-traffic encrypted end to end: Firebase sees only blobs. On the PC:
+traffic encrypted end to end: Firebase sees only blobs. On the PC, answer yes to the
+phone question, or later:
 
 ```bash
-npm install -g firebase-tools && firebase login
-supervisor relay setup     # your own Firebase project, guided; --dry-run shows the steps
-supervisor relay install   # keeps the relay running
-supervisor relay pair      # a QR for the first device; later ones: relay pair --add
+supervisor setup --phone yes   # the Firebase CLI, its sign-in, your project, the QR; more devices: relay pair --add
 ```
 
 On the phone, open [supervisor.francescosorrentino.com](https://supervisor.francescosorrentino.com)
@@ -142,7 +137,7 @@ In full: [details/trust.md](details/trust.md) and [PRIVACY.md](PRIVACY.md).
 | `tmux` | everything | on the PATH |
 | `python3` | everything | 3.8+ |
 | `bash` | everything | on the PATH |
-| A system | everything | Linux, macOS, ChromeOS or WSL2; not native Windows ([details/windows.md](details/windows.md)) |
+| A system | everything | Linux, ChromeOS or WSL2; not native Windows ([details/windows.md](details/windows.md)); macOS not yet: sessions are not recognised there, a fix is in progress |
 | Firebase project, `firebase-tools` | phone and watch away from this computer | your own, set up by `relay setup` |
 | A browser | web app | any phone or tablet; on iPhone and iPad, add it to the Home Screen and open it from there |
 | Android, Wear OS | native apps | Android 13+ phone, Wear OS 4+ watch |
@@ -150,15 +145,14 @@ In full: [details/trust.md](details/trust.md) and [PRIVACY.md](PRIVACY.md).
 ## Install
 
 ```bash
-claude plugin marketplace add frsorrentino/supervisor
-claude plugin install supervisor@supervisor-dev --scope user
-S=~/.claude/plugins/marketplaces/supervisor-dev/supervisor/bin/supervisor
-$S init --dry-run              # every value it would write, with its source, and what is missing
-$S init --yes --shim --shell --cron --tmux   # the config; `supervisor` in ~/.local/bin; `claude` opens a named tab
-supervisor doctor              # PASS, INFO, WARN or FAIL, with the fix on each line
-supervisor launch ~/projects   # the master: one session on your main folder, left open
-supervisor prima-raccolta      # fills every section now, with real data; no model call, no cost
+curl -fsSL https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh | bash
 ```
+
+The script checks bash, python3, tmux, git, cron and Claude Code, and installs what is missing after asking
+(showing the exact line, with `sudo` only where the package manager needs it); then it installs the plugin and runs
+`supervisor setup`. Already inside Claude Code: `/supervisor:setup` does the same and reads the errors for you.
+`supervisor setup --dry-run` shows every step without doing it; `--root DIR --phone no --yes` asks nothing.
+If something fails, the last lines are a block to send to whoever helps you.
 
 **The master** receives the phone's messages, the sessions' questions, the night's
 work and the recap, so leave it open. `supervisor prima-raccolta` gathers once what
@@ -173,16 +167,14 @@ The master takes you through five levels, one at a time. Stop at any of them;
 | Level | You get | About |
 |---|---|---|
 | 1. From the computer | The master opens and instructs a session | 5 min |
-| 2. From the phone, at home | The web app on your Wi-Fi, no Firebase | 5 min |
+| 2. In this computer's browser | The web app on the PC, no Firebase | 1 min |
 | 3. From the phone, anywhere | Your own Firebase project, notifications, the app | 30 min |
 | 4. From the wrist | The Wear OS app, tile and complications | 10 min |
 | 5. While you sleep | The night queue, the morning report | 5 min |
 
-Claude Code 2.1.275 or newer can also do the install from inside a session:
-`/plugin install supervisor --marketplace frsorrentino/supervisor`. To undo
-everything: `claude plugin uninstall supervisor`, remove the line `init --shell`
-added to your `.bashrc` or `.zshrc`, and `supervisor recap uninstall` /
-`night uninstall` / `guard uninstall` if you turned those on.
+To undo everything: `supervisor relay uninstall`, `claude plugin uninstall supervisor`, remove the block
+`# supervisor (supervisor setup)` from your `.bashrc` or `.zshrc` and the `supervisor` lines from `crontab -e`, and
+`supervisor recap uninstall` / `night uninstall` / `guard uninstall` if you turned those on.
 
 It runs every day on one workstation (ChromeOS, two accounts, up to eight
 sessions) and was tried on a clean WSL2 install with Windows Terminal. The other
@@ -195,12 +187,8 @@ every configuration key: [details/configuration.md](details/configuration.md).
 `supervisor doctor` is the first thing to run: each line that is not PASS says
 what to do. These are the problems seen on clean installs.
 
-- **`supervisor: command not found` right after `claude plugin install`.** The
-  plugin's `bin/` is on the PATH only inside Claude Code. Run the first `init`
-  by its full path, as above; `--shim` then writes `~/.local/bin/supervisor`.
-- **`supervisor: command not found` after `init --shim`.** `~/.local/bin` is not
-  on the PATH of this terminal: open a new one, or add
-  `export PATH="$HOME/.local/bin:$PATH"` to `.bashrc` / `.zshrc`.
+- **`supervisor: command not found` right after the install.** `~/.local/bin` is on
+  the PATH of new terminals only (setup adds it to `.bashrc` or `.zshrc`): open a new one.
 - **In WSL2, `claude` answers before you installed it.** That is the Windows
   Claude Code, reached through the Windows PATH; sessions need the one inside
   the distro. Install it with the Windows folders out of the PATH:

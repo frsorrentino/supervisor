@@ -84,43 +84,31 @@ def tmux(*args):
     return r.stdout if r.returncode == 0 else None
 
 
+# 11/11 (supervisor-macos-11-11): i processi da cm-proc, con un ramo Linux (/proc) e uno macOS (ps, lsof): su un Mac
+# nessuna sessione risultava viva
+_pspec = importlib.util.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+P = importlib.util.module_from_spec(_pspec)
+_pspec.loader.exec_module(P)
+
+
 def proc_start(pid):
-    """Campo 22 di /proc/<pid>/stat: istante di avvio in tick. Distingue un pid riusato."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
-    except OSError:
-        return None
-    # il nome del processo sta fra parentesi e puo' contenere spazi: si taglia dopo l'ultima ')'
-    return stat[stat.rindex(")") + 2:].split()[19]
+    """Un segno dell'avvio del processo (Linux: campo 22 di /proc/<pid>/stat, come procStart). Distingue un pid riusato."""
+    return P.start_token(pid)
 
 
 def proc_environ(pid):
-    env = {}
-    try:
-        for kv in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0"):
-            k, _, v = kv.partition(b"=")
-            if k:
-                env[k.decode(errors="replace")] = v.decode(errors="replace")
-    except OSError:
-        pass
-    return env
+    return P.environ(pid)
 
 
 def proc_cmdline(pid):
-    try:
-        return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
-    except OSError:
-        return ""
+    return P.cmdline(pid)
 
 
 def is_tmux(pid, cmd):
     """Il server o un client tmux: primo argomento o comm che comincia con «tmux». Il server porta nella sua riga di
     comando quella della prima sessione (`tmux new-session … /claude …`) e CLAUDE_CMD da solo lo prendeva per un
     Claude fuori registro (14/09/2026: «(fuori registro)» col pid del server)."""
-    try:
-        comm = Path(f"/proc/{pid}/comm").read_text().strip()
-    except OSError:
-        comm = ""
+    comm = P.comm(pid)
     return os.path.basename(cmd.split(" ", 1)[0]).startswith("tmux") or comm.startswith("tmux")
 
 
@@ -154,11 +142,8 @@ def version_of(path):
 
 
 def proc_version(pid, registered=""):
-    """La versione che il processo esegue (/proc/<pid>/exe); se non si legge, quella del registro."""
-    try:
-        exe = os.readlink(f"/proc/{pid}/exe")
-    except OSError:
-        exe = ""
+    """La versione che il processo esegue (il suo eseguibile); se non si legge, quella del registro."""
+    exe = P.exe(pid)
     return version_of(exe) or (registered if isinstance(registered, str) and VERSION.fullmatch(registered) else "")
 
 
@@ -172,20 +157,11 @@ def older(v, than):
 
 
 def proc_cwd(pid):
-    try:
-        return os.readlink(f"/proc/{pid}/cwd")
-    except OSError:
-        return ""
+    return P.cwd(pid)
 
 
 def proc_ppid(pid):
-    try:
-        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
-            if line.startswith("PPid:"):
-                return int(line.split()[1])
-    except (OSError, ValueError):
-        pass
-    return None
+    return P.ppid(pid)
 
 
 def is_ancestor(pid):
@@ -244,7 +220,10 @@ def registry_entries():
                 continue
             # T62: file stantio (pid morto) o pid riusato (procStart diverso)
             ps = proc_start(pid)
-            if ps is None or (d.get("procStart") and str(d["procStart"]) != ps):
+            if ps is None or not alive(pid):
+                continue
+            # il confronto con procStart solo dove il segno e' lo stesso numero (Linux); su macOS basta che sia vivo
+            if P.comparable_start() and d.get("procStart") and str(d["procStart"]) != ps:
                 continue
             d["_registry"] = rp
             d["_hint"] = hint
@@ -279,11 +258,8 @@ def ancestors(pid):
 
 
 def alive(pid):
-    """Vivo = /proc/<pid> esiste e non e' uno zombie (stessa regola di `vivo` in cm-restart.sh)."""
-    try:
-        return "\nState:\tZ" not in Path(f"/proc/{pid}/status").read_text()
-    except OSError:
-        return False
+    """Vivo = il processo c'e' e non e' uno zombie (stessa regola di `vivo` in cm-restart.sh)."""
+    return P.alive(pid)
 
 
 NAME_ARG = re.compile(r"(?:^| )(?:-n|--name|--remote-control) (\S+)")
@@ -304,8 +280,7 @@ def orphans(server=None, panes=None):
         return []
     cands = [(d["pid"], d.get("name") or "") for d in registry_entries()]
     scan = os.environ.get("CM_PROC_SCAN_PIDS")
-    for pid in ([int(x) for x in scan.split() if x.isdigit()] if scan is not None else
-                [int(os.path.basename(d)) for d in glob.glob("/proc/[0-9]*")]):
+    for pid in ([int(x) for x in scan.split() if x.isdigit()] if scan is not None else P.pids()):
         cmd = proc_cmdline(pid)
         if CLAUDE_CMD.search(cmd) and not CLAUDE_HELPER.search(cmd) and not is_tmux(pid, cmd):
             cands.append((pid, ""))
@@ -703,8 +678,7 @@ def collect(read_screen=True):
     # CM_PROC_SCAN_PIDS (test) limita la scansione a pid noti: i test non devono
     # vedere le sessioni vere della macchina.
     scan = os.environ.get("CM_PROC_SCAN_PIDS")
-    candidates = [int(x) for x in scan.split() if x.isdigit()] if scan is not None else \
-        [int(os.path.basename(d)) for d in glob.glob("/proc/[0-9]*")]
+    candidates = [int(x) for x in scan.split() if x.isdigit()] if scan is not None else P.pids()
     for pid in candidates:
         if pid in seen_pids:
             continue
@@ -876,7 +850,8 @@ def render(rows):
     if any(r.get("outdated") for r in rows):
         lines += ["", "  " + m("sessions.outdated", version=disk_version())]
     if tmux("list-sessions") is None:
-        lines += ["", "  " + m("sessions.tmux_dead")]
+        # 11/11 (supervisor-macos-11-11): al primo uso tmux non e' ancora partito, non e' un guasto
+        lines += ["", "  " + m("sessions.tmux_dead" if any(r.get("tmux") for r in rows) else "sessions.tmux_not_started")]
     # 2.3 quota a soglia: consiglio, mai automatismo
     for acc, q in quota_warnings():
         lines += ["", "  " + m("sessions.quota_warn", account=acc, pct=q, threshold=CFG["quota"]["warn_pct"])]

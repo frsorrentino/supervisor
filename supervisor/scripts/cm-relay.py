@@ -54,6 +54,15 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -1745,30 +1754,13 @@ def git_dirty(cwd):
 
 
 def _children(pid):
-    """I processi figli di pid: [(pid, nome del comando)]; [] se /proc non risponde."""
-    out = []
-    try:
-        for d in os.listdir("/proc"):
-            if not d.isdigit():
-                continue
-            try:
-                stat = Path(f"/proc/{d}/stat").read_text()
-            except OSError:
-                continue
-            rest = stat[stat.rfind(")") + 2:].split()
-            if len(rest) > 1 and rest[1] == str(pid):
-                out.append((int(d), stat[stat.find("(") + 1:stat.rfind(")")]))
-    except OSError:
-        pass
-    return out
+    """I processi figli di pid: [(pid, nome del comando)]; [] se non si leggono (Linux e macOS: cm-proc)."""
+    return _cm_proc().children(pid)
 
 
 def _cmdline(pid):
-    """Gli argomenti del processo pid; [] se /proc non risponde."""
-    try:
-        return [a for a in Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace").split("\0") if a]
-    except OSError:
-        return []
+    """Gli argomenti del processo pid; [] se non si leggono."""
+    return _cm_proc().argv(pid)
 
 
 def statusline_cmds(cwd=None):
@@ -2147,7 +2139,8 @@ def push(dry_run=False, now=None, origin="diretta", requested=None, stamp=None, 
     # 07/10 (piano prestazioni, fase 0): una riga di misura per push, letta da `relay stats`
     end, cpu1 = time.time(), _cpu()
     wait = t0 - requested if requested else 0.0
-    log(f"push: {len(st['sessions'])} sessioni, {m.get('events', 0)} eventi · origine {origin} · attesa {_s(wait)} s"
+    log(f"push: {len(st['sessions'])} sessioni, {m.get('events', 0)} eventi · origine {origin}"
+        f"{' · uguale, non ripubblicato' if m.get('skipped') else ''} · attesa {_s(wait)} s"
         f" · lock {_s(m['locked'] - t0)} s · raccolta {_s(m['collected'] - m['locked'])} s"
         f" · pubblicazione {_s(m['published'] - m['collected'])} s · contorno {_s(end - m['published'])} s"
         f" · ts→put {_s(m['put_at'] - m['ts'])} s · cpu {_s(cpu1[0] - cpu0[0])}+{_s(cpu1[1] - cpu0[1])} s")
@@ -2157,6 +2150,25 @@ def push(dry_run=False, now=None, origin="diretta", requested=None, stamp=None, 
         except Exception as e:   # noqa: BLE001 — una chiusura non deve far cadere la push
             log(f"chiusure armate FAILED: {str(e)[:200]}")
     return st
+
+
+# 11/11 (supervisor-relay-peso-firebase-11-11: 12,3 GB scaricati in 11 giorni su 10 al mese): uno stato uguale a quello
+# gia' su Firebase non si ripubblica prima di STATE_REPUBLISH_S. Ogni pubblicazione la scarica ogni dispositivo in ascolto
+# (26 KB cifrati), e la web app a ogni stato rilegge anche gli ultimi 200 eventi (82 KB). Le app dicono «fermo» dopo
+# 180 s senza pubblicazioni (STALE_AFTER_S): 150 s lasciano margine. In locale (relay web) si scrive sempre: non costa.
+STATE_REPUBLISH_S = 150
+_STAMPS = ("ts", "published_at")
+
+
+def _same_state(a, b):
+    """Lo stesso stato a meno degli istanti di raccolta e pubblicazione."""
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return False
+    return {k: v for k, v in a.items() if k not in _STAMPS} == {k: v for k, v in b.items() if k not in _STAMPS}
+
+
+def _republish_due(prev_state, now=None):
+    return (now or time.time()) - float((prev_state or {}).get("published_at") or 0) >= STATE_REPUBLISH_S
 
 
 BEAT_FULL_IDLE_S = 300   # 08/10 (battito leggero): una raccolta completa almeno ogni 5 minuti a sessioni ferme,
@@ -2181,6 +2193,9 @@ def sources_print():
              Path(cm.expand(reg.get("good_file") or "~/.claude/sessions-good.json")),
              Path(cm.expand((CFG.get("night") or {}).get("queue_file") or "~/.claude/night-queue.jsonl")), night_report_dir(),
              rdir() / "follow.json", rdir() / "awaiting.json", rdir() / "devices.json"]
+    # 11/11 (supervisor-installazione-semplice-11-11): le cartelle sessions/ degli account, dove Claude Code registra
+    # ogni sessione viva: una sessione nata o finita senza che un hook abbia visto la sua voce cambia l'impronta
+    paths += [Path(cm.expand(a.get("config_dir") or "~/.claude")) / "sessions" for a in (CFG.get("accounts") or {}).values()]
     global _SG
     try:   # 1.87 (27/10): i suggerimenti — il file per add, clear e i tasti, gli id vivi per quelli che scadono
         sg = _SG = _SG or _load("cm-suggest")   # 29/10: caricato una volta, non a ogni battito
@@ -2221,13 +2236,22 @@ def _light(m):
     m["ts"] = float(state.get("ts") or time.time())
     m["collected"] = time.time()
     m["put_at"] = time.time()
-    state["published_at"] = full["published_at"] = round(m["put_at"], 3)
+    remote = not local_only() and _republish_due(state, m["put_at"])   # 11/11: niente ripubblicazione di uno stato uguale
+    full["published_at"] = round(m["put_at"], 3)
+    if remote or local_only():
+        state["published_at"] = full["published_at"]
+    else:
+        m["skipped"] = True
     try:
         local_state_write(full)
     except OSError as ex:
         log(f"stato locale non scritto: {ex}")
-    if not local_only():
-        rtdb("PUT", "state", C.encrypt(state, key()), {"print": "silent"})
+    if remote:
+        sealed = C.encrypt(state, key())
+        rtdb("PUT", "state", sealed, {"print": "silent"})
+        usage_add(state_pubs=1, state_bytes=len(json.dumps(sealed)))
+    elif m.get("skipped"):
+        usage_add(state_skipped=1)
     m["published"] = time.time()
     m["events"] = 0
     pub_history_add(m["put_at"])
@@ -2265,6 +2289,11 @@ def _push(dry_run=False, now=None, m=None):
     # calcolano la freschezza e, con published_at - ts, la lentezza del PC
     m["put_at"] = time.time()
     state["published_at"] = full["published_at"] = round(m["put_at"], 3)
+    prev = last.get("state")
+    if not events and not local_only() and _same_state(state, prev) and not _republish_due(prev, m["put_at"]):
+        # 11/11: uguale a quello gia' su Firebase e pubblicato da meno di STATE_REPUBLISH_S: resta quello (col suo published_at)
+        state["published_at"] = prev.get("published_at")
+        m["skipped"] = True
     try:
         local_state_write(full)   # 06/10: in locale lo stato intero, senza i tagli degli 8 KB (non esce dalla macchina)
     except OSError as ex:
@@ -2272,8 +2301,12 @@ def _push(dry_run=False, now=None, m=None):
     k = None if local_only() else key()
     m["collected"] = time.time()
     try:
-        if k:
-            rtdb("PUT", "state", C.encrypt(state, k), {"print": "silent"})
+        if k and not m.get("skipped"):
+            sealed = C.encrypt(state, k)
+            rtdb("PUT", "state", sealed, {"print": "silent"})
+            usage_add(state_pubs=1, state_bytes=len(json.dumps(sealed)))
+        elif k:
+            usage_add(state_skipped=1)
         if events and k:
             rtdb("PATCH", "events", {e["key"]: C.encrypt(e, k) for e in events}, {"print": "silent"})
         local_events_add(events, now)   # anche senza eventi nuovi: toglie i vecchi
@@ -2519,6 +2552,7 @@ def push_request(origin):
 
 
 PUSH_MAX_WAIT_S = 10
+SELF_BEAT_ORIGIN = "beat"   # 11/11: il battito del demone stesso, come quello del cron (push leggera)
 PUSH_RETRY_S = (5, 15, 30)
 
 
@@ -2570,11 +2604,18 @@ class PushWorker(threading.Thread):
     def run(self):
         handled, first, fails = 0.0, None, 0
         debounce = float(R.get("debounce_s") or 2)
+        beat = max(5.0, float(R.get("heartbeat_s") or 60))
         trimmed = time.monotonic()
         while not self.stop.wait(0.25):
             if time.monotonic() - trimmed >= TRIM_EVERY_S:   # 30/10: la memoria liberata da push e letture torna al sistema
                 _trim()
                 trimmed = time.monotonic()
+            # 11/11 (supervisor-installazione-semplice-11-11, il collega con la master «chiusa» ma aperta): senza il cron
+            # il demone pubblicava solo quando un hook o un comando chiedeva; la push dell'avvio della master partiva prima
+            # che la sessione fosse registrata e nessuno la rifaceva. Il demone batte da se' ogni heartbeat_s, come il cron:
+            # con il cron acceso le due richieste si sommano in una
+            if handled and time.time() - max(handled, self.pending(0.0)[0]) >= beat:
+                push_request(SELF_BEAT_ORIGIN)
             newest, origin, since = self.pending(handled)
             if newest <= handled:
                 continue
@@ -2586,7 +2627,7 @@ class PushWorker(threading.Thread):
             try:
                 # 08/10 (battito leggero): se nel frattempo ha chiesto solo il cron, la push prova prima a ripubblicare
                 # lo stato gia' pronto
-                push(origin=origin or "?", requested=min(first, newest), light=since <= {"cron"})
+                push(origin=origin or "?", requested=min(first, newest), light=since <= {"cron", SELF_BEAT_ORIGIN})
             except Exception as e:   # noqa: BLE001 — il worker non deve morire: la richiesta resta, si riprova
                 log(f"push (worker) FAILED: {str(e)[:200]}")
                 self.stop.wait(PUSH_RETRY_S[min(fails, len(PUSH_RETRY_S) - 1)])
@@ -3149,6 +3190,7 @@ def superseded(cid, k):
         # invece di mostrarlo come un errore; ok resta false (la lettura non e' stata fatta)
         rtdb("PUT", f"result/{cid}", C.encrypt({"id": cid, "ok": False, "text": M("relay.cmd_superseded"), "superseded": True, "at": int(time.time())}, k), {"print": "silent"})
         rtdb("DELETE", f"cmd/{cid}")
+        result_written(cid)
     except (urllib.error.URLError, OSError, ValueError) as e:
         log(f"cmd {cid}: superseded non scritto ({e})")
 
@@ -3172,6 +3214,150 @@ def ledger_write(event, **fields):
 # esito: il telefono non lo riceveva mai, e Riprova (stesso id) finiva uguale. L'esito resta qui finche' non e' scritto.
 _UNWRITTEN = {}
 UNWRITTEN_MAX = 50
+
+# 11/11 (supervisor-relay-peso-firebase-11-11): /result non lo cancellava nessuno (288.812 voci da 13-39 KB, 5,88 GB su 1
+# gratuito). Ogni esito scritto dal relay esce da Firebase RESULT_TTL_S dopo, in blocchi (un PATCH con i null toglie molte
+# voci in una richiesta). 6 ore e non 10 minuti (il maintainer: «niente che peggiori l'app»): un telefono che torna
+# in linea dopo ore ritrova l'esito di un comando mandato prima; con ~1.000 esiti l'ora da ~14 KB restano ~85 MB. Le voci scritte
+# prima di questa versione restano: la loro pulizia e' `relay results-prune`, solo su scelta del maintainer.
+RESULT_TTL_S = 6 * 3600
+RESULT_SWEEP_S = 60
+RESULT_SWEEP_BATCH = 500
+PRUNE_SETTLE_S = 120   # results-prune: solo le voci che c'erano gia' due minuti prima (l'app ha letto il suo esito)
+_SWEEP_LOCK = threading.Lock()
+
+
+def sweep_path():
+    return rdir() / "results-written.json"
+
+
+def result_written(cid, now=None):
+    with _SWEEP_LOCK:
+        d = read_json(sweep_path(), {})
+        d[cid] = int(now or time.time())
+        write_json(sweep_path(), d)
+
+
+def sweep_results(now=None):
+    """Toglie da Firebase gli esiti scritti piu' di RESULT_TTL_S fa. Torna quanti; quelli non tolti (rete) restano in lista."""
+    now = now or time.time()
+    with _SWEEP_LOCK:
+        d = read_json(sweep_path(), {})
+        old = sorted((t, c) for c, t in d.items() if now - float(t or 0) >= RESULT_TTL_S)
+    gone = 0
+    for i in range(0, len(old), RESULT_SWEEP_BATCH):
+        part = [c for _, c in old[i:i + RESULT_SWEEP_BATCH]]
+        try:
+            rtdb("PATCH", "result", {c: None for c in part}, {"print": "silent"})
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            log(f"esiti: pulizia fallita ({str(e)[:120]}), riprovo al giro dopo")
+            break
+        with _SWEEP_LOCK:
+            d = read_json(sweep_path(), {})
+            for c in part:
+                d.pop(c, None)
+            write_json(sweep_path(), d)
+        gone += len(part)
+    if gone:
+        usage_add(now, results_deleted=gone)
+    return gone
+
+
+class ResultSweeper(threading.Thread):
+    def __init__(self):
+        super().__init__(name="relay-result-sweep", daemon=True)
+        self.stop = threading.Event()
+
+    def run(self):
+        while not self.stop.wait(RESULT_SWEEP_S):
+            try:
+                sweep_results()
+            except Exception as e:   # noqa: BLE001 — la pulizia non deve far cadere il demone
+                log(f"esiti: pulizia FAILED {str(e)[:160]}")
+
+
+
+def usage_path():
+    return rdir() / "usage-firebase.json"
+
+
+def usage_add(now=None, **kw):
+    """I conti del relay su Firebase, per giorno (ora locale): byte scritti in /result e /state, esiti scritti e tolti,
+    pubblicazioni dello stato fatte e saltate. Sono quello che il relay scrive: i download veri li conta Cloud Monitoring."""
+    day = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
+    with _SWEEP_LOCK:
+        d = read_json(usage_path(), {})
+        row = d.setdefault(day, {})
+        for k, v in kw.items():
+            row[k] = row.get(k, 0) + v
+        for k in sorted(d)[:-35]:
+            d.pop(k, None)
+        write_json(usage_path(), d)
+
+
+def results_prune(rest):
+    """`relay results-prune [--dry-run|--yes]`: le voci di /result che nessuno toglie piu' (scritte prima della 0.8.147:
+    la chiave e' l'id del comando, senza data). Tiene quelle in lista per la pulizia normale (scritte negli ultimi
+    RESULT_TTL_S). --dry-run conta voci e byte stimati (un campione) e non tocca niente; --yes cancella a blocchi."""
+    if local_only():
+        print(M("relay.prune_local")); return 0
+    dry, yes = "--dry-run" in rest, "--yes" in rest
+    if dry == yes:
+        print(M("relay.prune_usage"), file=sys.stderr); return 2
+    keys = list((rtdb("GET", "result", None, {"shallow": "true"}) or {}).keys())
+    keep = set(read_json(sweep_path(), {}))
+    old = [c for c in keys if c not in keep]
+    sample = old[:: max(1, len(old) // 40)][:40]
+    sizes = [len(json.dumps(rtdb("GET", f"result/{c}") or "")) for c in sample]
+    avg = (sum(sizes) / len(sizes)) if sizes else 0
+    print(M("relay.prune_count", n=len(old), total=len(keys), keep=len(keys) - len(old), mb=round(len(old) * avg / 1e6, 1), avg=round(avg / 1000, 1)))
+    if dry:
+        return 0
+    # un esito appena scritto puo' essere ancora atteso dall'app: si toglie solo cio' che c'era gia' PRUNE_SETTLE_S prima
+    time.sleep(float(os.environ.get("CM_PRUNE_SETTLE_S") or PRUNE_SETTLE_S))
+    still = set((rtdb("GET", "result", None, {"shallow": "true"}) or {}).keys())
+    keep = set(read_json(sweep_path(), {}))
+    old = [c for c in old if c in still and c not in keep]
+    gone = 0
+    for i in range(0, len(old), RESULT_SWEEP_BATCH):
+        part = old[i:i + RESULT_SWEEP_BATCH]
+        rtdb("PATCH", "result", {c: None for c in part}, {"print": "silent"})
+        gone += len(part)
+        if gone % 20000 < RESULT_SWEEP_BATCH:
+            print(M("relay.prune_progress", n=gone, total=len(old)), flush=True)
+    usage_add(results_pruned=gone)
+    log(f"esiti: tolte {gone} voci vecchie da /result (results-prune)")
+    print(M("relay.prune_done", n=gone))
+    return 0
+
+
+FIREBASE_DAY_MB = 330   # 10 GB al mese del piano gratuito, diviso 30 (come doctor)
+
+
+def fb_usage_today(now=None):
+    """(MB scaricabili oggi stimati, la proiezione a fine giornata, la riga dei conti). Ogni esito lo scarica chi l'ha
+    chiesto; ogni stato pubblicato lo scarica ogni dispositivo abbinato."""
+    now = now or time.time()
+    row = read_json(usage_path(), {}).get(time.strftime("%Y-%m-%d", time.localtime(now))) or {}
+    devices = len(read_json(rdir() / "devices.json", {})) or 1
+    mb = (row.get("result_bytes", 0) + row.get("state_bytes", 0) * devices) / 1e6
+    t = time.localtime(now)
+    return mb, mb * 24 / max(1.0, t.tm_hour + t.tm_min / 60), row
+
+
+def usage_cmd(rest):
+    """`relay usage [--json]`: la stima di oggi dai conti del relay (la fonte per il monitoraggio della master); i numeri
+    veri sono in Cloud Monitoring."""
+    mb, proj, row = fb_usage_today()
+    print(M("relay.usage_line", mb=round(mb, 1), proj=round(proj), limit=FIREBASE_DAY_MB, results=row.get("results", 0),
+            unchanged=row.get("unchanged", 0), deleted=row.get("results_deleted", 0), pubs=row.get("state_pubs", 0), skipped=row.get("state_skipped", 0)))
+    if "--json" in rest:
+        print(json.dumps({"mb": round(mb, 2), "proj_mb": round(proj, 1), "limit_mb": FIREBASE_DAY_MB, **row}))
+    return 0
+
+
+def etag_of(text):
+    return hashlib.sha1(str(text).encode()).hexdigest()[:16]
 _PENDING = {"cid": None, "done": None}   # il comando del bus in esecuzione, per mark_done_now
 
 
@@ -3206,6 +3392,7 @@ def handle_cmd(cid, doc, done, arrived=None):
             if cid in _UNWRITTEN:
                 rtdb("PUT", f"result/{cid}", C.encrypt(_UNWRITTEN[cid], key()), {"print": "silent"})
                 _UNWRITTEN.pop(cid, None)
+                result_written(cid)
                 log(f"cmd {cid}: result scritto al ritorno di /cmd")
             rtdb("DELETE", f"cmd/{cid}")
         except (urllib.error.URLError, OSError, ValueError):
@@ -3234,8 +3421,11 @@ def handle_cmd(cid, doc, done, arrived=None):
             _PENDING.update(cid=None, done=None)
     t_put = time.time()
     try:
-        rtdb("PUT", f"result/{cid}", C.encrypt(result, k), {"print": "silent"})
+        sealed = C.encrypt(result, k)
+        rtdb("PUT", f"result/{cid}", sealed, {"print": "silent"})
         rtdb("DELETE", f"cmd/{cid}")
+        result_written(cid)
+        usage_add(results=1, result_bytes=len(json.dumps(sealed)), **({"unchanged": 1} if result.get("unchanged") else {}))
     except (urllib.error.URLError, OSError, ValueError) as e:
         log(f"cmd {cid}: result non scritto ({e})")
         _UNWRITTEN[cid] = result
@@ -3481,6 +3671,15 @@ def run_cmd(cmd, arrived=None):
             push_async()
         except OSError as e:
             log(f"push dopo il comando FAILED: {e}")
+    if not active and ok and not cmd.get("_local") and str(text).lstrip()[:1] in ("{", "["):
+        # 1.135 (11/11, supervisor-relay-peso-firebase-11-11): ogni lettura riuscita porta `etag`, l'impronta del suo testo;
+        # (solo sul bus, solo le pagine JSON: in locale non costa niente, e un testo come «file ready» non e' una pagina);
+        # un Cmd che rimanda l'etag dell'ultima risposta avuta riceve, se il testo e' lo stesso, `unchanged: true` e un
+        # testo vuoto: l'app tiene quello che ha. Le letture dell'app ogni 30 s sono il grosso del traffico di Firebase
+        tag = etag_of(text)
+        extra = dict(extra, etag=tag)
+        if str(cmd.get("etag") or "") == tag:
+            text, extra["unchanged"] = "", True
     return {"id": cid, "ok": bool(ok), "text": str(text), **extra, "at": int(time.time())}
 
 
@@ -3650,6 +3849,8 @@ def serve():
     push_request("serve")   # all'avvio una push, poi quelle chieste da hook, cron e comandi
     worker = PushWorker()
     worker.start()
+    if not local_only():
+        ResultSweeper().start()   # 11/11: gli esiti escono da Firebase RESULT_TTL_S dopo
     web_srv = web_start()   # 1.35: la web app e l'API locale, se relay.web.enabled
     done = list(read_json(rdir() / "done-cmds.json", []))
     lanes = None
@@ -3908,7 +4109,7 @@ def status():
 
 # ------------------------------------------------------------------ misure (fase 0, 07/10)
 _NUM = r"(-?[0-9]+,[0-9])"
-STATS_PUSH = re.compile(r"^(\S+) push: \d+ sessioni, (\d+) eventi · origine (\S+) · attesa " + _NUM + r" s · lock " + _NUM
+STATS_PUSH = re.compile(r"^(\S+) push: \d+ sessioni, (\d+) eventi · origine (\S+)(?: · uguale, non ripubblicato)? · attesa " + _NUM + r" s · lock " + _NUM
                         + r" s · raccolta " + _NUM + r" s · pubblicazione " + _NUM + r" s · contorno " + _NUM
                         + r" s · ts→put " + _NUM + r" s · cpu " + _NUM + r"\+" + _NUM + r" s")
 STATS_CMD = re.compile(r"^(\S+) cmd \S+: (\S+) .*· fila " + _NUM + r" s · esecuzione " + _NUM + r" s")
@@ -4564,6 +4765,8 @@ def main(argv):
         if not R.get("enabled"):
             print(M("relay.disabled")); return 2
         missing = cm.relay_deps_missing(cm.Machine(), os.environ.get("CM_CRONTAB_CMD", "crontab"))
+        if cmd == "install" and local_only():   # 11/11: la web app locale non cifra niente: basta crontab
+            missing = [d for d in missing if d != "crypto"]
         if missing:
             for dep in missing:
                 print(M(f"relay.dep_{dep}_missing"), file=sys.stderr)
@@ -4589,6 +4792,10 @@ def main(argv):
         return rc
     if cmd == "status":
         return status()
+    if cmd == "usage":   # 11/11: quanto il relay pesa su Firebase oggi (--json per il monitoraggio della master)
+        return usage_cmd(rest)
+    if cmd == "results-prune":   # 11/11: le voci vecchie di /result, solo su scelta del maintainer
+        return results_prune(rest)
     if cmd == "install":
         return install()
     if cmd == "uninstall":

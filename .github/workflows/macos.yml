@@ -1,0 +1,69 @@
+# supervisor on macOS (11/11/2026, supervisor-macos-11-11): a colleague's Mac could not use supervisor 0.8.146 — the scripts
+# needed bash 4 and live sessions were read from /proc. This runs the suites that touch processes and shell scripts with the
+# Mac's own bash (3.2, /bin/bash first in PATH: the runner's `bash` is Homebrew's 5.x), Python 3.9 (the colleague's) and
+# tmux from Homebrew; the shell file is checked under zsh; install.sh runs end to end with a fake Claude Code.
+name: macos
+on:
+  push:
+    branches: [main, "ci/**"]
+  workflow_dispatch:
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: tmux
+        run: brew install tmux
+      - name: the system bash first in PATH
+        run: |
+          mkdir -p "$RUNNER_TEMP/sysbash" && ln -sf /bin/bash "$RUNNER_TEMP/sysbash/bash"
+          echo "$RUNNER_TEMP/sysbash" >> "$GITHUB_PATH"
+      - name: versions
+        run: |
+          bash --version | head -1
+          python3 --version
+          tmux -V
+          sw_vers
+      - name: syntax under bash 3.2 and zsh
+        run: |
+          for f in supervisor/scripts/*.sh supervisor/shell/supervisor.sh supervisor/bin/supervisor install.sh; do bash -n "$f"; done
+          zsh -n supervisor/shell/supervisor.sh
+          zsh -c 'CM_SHELL_RESTORE_PROMPT=false source supervisor/shell/supervisor.sh; typeset -f _cm_get >/dev/null && echo "zsh: shell file loaded"'
+      - name: the process layer reads this Mac
+        run: python3 supervisor/scripts/cm-proc.py
+      - name: suites
+        env:
+          LANG: en_US.UTF-8
+        run: |
+          fail=0
+          for t in proc launch restart sessions shell restore registry-close color-attach talk-report setup system; do
+            echo "-- $t"
+            python3 "tests/$t-verify.py" || fail=1
+          done
+          exit $fail
+      - name: install.sh end to end (fake Claude Code; the plugin from this checkout)
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakeclaude" "$HOME/progetti"
+          cat > "$RUNNER_TEMP/fakeclaude/claude" <<EOF
+          #!/bin/sh
+          case "\$1" in
+            --version) echo "2.1.322 (Claude Code)" ;;
+            auth) echo '{"loggedIn": true}' ;;
+            plugin)
+              case "\$2" in
+                list) [ -e "\$HOME/.claude/plugins/marketplaces/supervisor-dev" ] && echo "supervisor@supervisor-dev" ;;
+                install) mkdir -p "\$HOME/.claude/plugins/marketplaces" && ln -sfn "$GITHUB_WORKSPACE" "\$HOME/.claude/plugins/marketplaces/supervisor-dev" ;;
+              esac ;;
+            *) exec "$GITHUB_WORKSPACE/tests/lib/fake-claude.sh" "\$@" ;;
+          esac
+          EOF
+          chmod +x "$RUNNER_TEMP/fakeclaude/claude"
+          export PATH="$RUNNER_TEMP/fakeclaude:$PATH" SUPERVISOR_INSTALL_YES=1 SUPERVISOR_INSTALL_MACOS=1 SUPERVISOR_INSTALL_SOURCE="$GITHUB_WORKSPACE"
+          export CM_CLAUDE_BIN="$GITHUB_WORKSPACE/tests/lib/fake-claude.sh" CM_SETUP_CLAUDE="$RUNNER_TEMP/fakeclaude/claude"
+          bash install.sh --root "$HOME/progetti" --phone no --no-window
+          "$HOME/.local/bin/supervisor" sessions
+          "$HOME/.local/bin/supervisor" doctor | grep -E "processes_ok|FAIL" || true

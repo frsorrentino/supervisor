@@ -1123,7 +1123,8 @@ res = send_cmd(reopen_cmd(3))
 T.check("R6 reopen with an id whose transcript is missing and another live session in the folder → ok false, no launch (-c would take the other one's conversation)", res and res["ok"] is False and res["text"] == "orbit-docs: conversation unknown and 1 live session(s) in its folder: use launch" and len(launches()) == n_l, str(res))
 rows_alive("ledger-api", "atlas-shop", "field-notes")
 res = send_cmd(reopen_cmd(4, "atlas-shop"))
-T.check("R6 reopen of a live name → ok false «atlas-shop is already running», no launch", res and res["ok"] is False and res["text"] == "atlas-shop is already running" and len(launches()) == n_l, str(res))
+T.check("R6 reopen of a live name → ok true «atlas-shop is already running» with its session, no launch (1.135: the app saw it closed from an old state)",
+        res and res["ok"] is True and res["text"] == "atlas-shop is already running" and res.get("session") == "atlas-shop" and len(launches()) == n_l, str(res))
 res = send_cmd(reopen_cmd(5, "nope"))
 T.check("R6 reopen of a name outside the registry snapshot → ok false «nope is not a closed session»", res and res["ok"] is False and res["text"] == "nope is not a closed session" and len(launches()) == n_l, str(res))
 good_json.write_text(json.dumps({"sessioni": [GOOD_ORBIT]}))
@@ -4229,7 +4230,7 @@ _calls93 = []
 _fake93 = type("PLfake", (), {
     "collect": staticmethod(lambda: _full93), "summary": staticmethod(lambda st: {"checked_at": st["checked_at"], "accounts": []}),
     "update": staticmethod(lambda acc, pid: (_calls93.append(("u", acc, pid)), (pid != "needs-command@some-market",
-        f"{pid} updated: it applies to new sessions" if pid != "needs-command@some-market" else
+        f"{pid} updated" if pid != "needs-command@some-market" else
         f"{pid}: the marketplace asks to confirm a command, to confirm at the PC (claude plugin update {pid})"))[1]),
     "update_all": staticmethod(lambda acc: (_calls93.append(("a", acc)), (True, "nothing to update"))[1])})
 _sv93 = dict(pl=RL.PL, sp=RL.plugins_check_spawn, pa=RL.push_async, lang=RL.CFG.get("language"))

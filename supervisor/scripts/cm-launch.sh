@@ -173,7 +173,7 @@ nome_preso() {
     for f in "$(cm_get "$acc" CONFIG_DIR)"/sessions/*.json; do
       grep -qF "\"name\":\"$1\"" "$f" 2>/dev/null || continue
       pid="${f##*/}"; pid="${pid%%.*}"
-      [ -d "/proc/$pid" ] && ! grep -q '^State:.*Z' "/proc/$pid/status" 2>/dev/null && return 0
+      cm_pid_alive "$pid" && return 0
     done
   done
   return 1
@@ -210,20 +210,20 @@ fi
 PROF_ARGS=(); PROF_ENV=()
 if [ -n "$PROFILO" ]; then
   case " ${CM_PROFILES_KEYS:-} " in *" $PROFILO "*) ;; *) cm_msg launch.unknown_profile "profile=$PROFILO" "known=${CM_PROFILES_KEYS:-}" >&2; exit 2 ;; esac
-  pv="CM_PROFILES_${PROFILO^^}"; pv="${pv//-/_}"
+  pv="CM_PROFILES_$(cm_upper "$PROFILO")"; pv="${pv//-/_}"
   a="${pv}_ARGS"; [ -n "${!a:-}" ] && read -ra PROF_ARGS <<<"${!a}"
   a="${pv}_MODEL"; [ -z "$MODEL" ] && MODEL="${!a:-}"
   a="${pv}_EFFORT"; [ -z "$EFFORT" ] && EFFORT="${!a:-}"
   a="${pv}_BG"; [ "${!a:-}" = true ] && BG=si
   a="${pv}_WINDOW"; [ "${!a:-}" = false ] && FINESTRA=false
   a="${pv}_ENV_KEYS"
-  for k in ${!a:-}; do v="${pv}_ENV_${k^^}"; PROF_ENV+=("$k=${!v:-}"); done
+  for k in ${!a:-}; do v="${pv}_ENV_$(cm_upper "$k")"; PROF_ENV+=("$k=${!v:-}"); done
 fi
-for k in ${CM_SESSION_ENV_KEYS:-}; do v="CM_SESSION_ENV_${k^^}"; PROF_ENV+=("$k=${!v:-}"); done
+for k in ${CM_SESSION_ENV_KEYS:-}; do v="CM_SESSION_ENV_$(cm_upper "$k")"; PROF_ENV+=("$k=${!v:-}"); done
 
 ARGS=()
 [ -n "${CM_SESSION_CLAUDE_ARGS:-}" ] && read -ra ARGS <<<"$CM_SESSION_CLAUDE_ARGS"
-ARGS+=("${PROF_ARGS[@]}")
+ARGS+=(${PROF_ARGS[@]+"${PROF_ARGS[@]}"})
 [ -n "$MODEL" ] && ARGS+=(--model "$MODEL")
 [ -n "$EFFORT" ] && ARGS+=(--effort "$EFFORT")
 [ "$CONTINUA" = si ] && ARGS+=(-c)
@@ -233,23 +233,23 @@ ARGS+=("${PROF_ARGS[@]}")
 # che vive nella cartella di default (~/.claude). Con la variabile presente Claude
 # Code legge lo stato in $CLAUDE_CONFIG_DIR/.claude.json invece di ~/.claude.json:
 # la sessione parte «nuova», chiede il login e nel frattempo non si registra.
-ENVARGS=("${PROF_ENV[@]}")
+ENVARGS=(${PROF_ENV[@]+"${PROF_ENV[@]}"})
 if [ "$(readlink -f "$CONF_DIR")" != "$(readlink -f "$(eval echo ~)/.claude")" ]; then
-  ENVARGS=(CLAUDE_CONFIG_DIR="$CONF_DIR" "${PROF_ENV[@]}")
+  ENVARGS=(CLAUDE_CONFIG_DIR="$CONF_DIR" ${PROF_ENV[@]+"${PROF_ENV[@]}"})
 fi
 [ "${#ENVARGS[@]}" -eq 0 ] && ENVARGS=(CM_LAUNCHED=1)   # `env` vuole almeno un argomento prima del comando
 LABEL="$(cm_get "$ACCOUNT" LABEL)"
 
 # --- --host: la sessione parte su un altro host (cm-rsession.py: ammissione, fotografia, avvio, link) ---------
 if [ -n "$HOST" ]; then
-  exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" -- "${ARGS[@]}"
+  exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" -- ${ARGS[@]+"${ARGS[@]}"}
 fi
 
 # --- --bg: nel gestore di background di Claude Code, non in tmux (T47) --------------
 if [ "$BG" = si ]; then
-  BGARGS=(--bg -n "$NOME" "${ARGS[@]}")
+  BGARGS=(--bg -n "$NOME" ${ARGS[@]+"${ARGS[@]}"})
   [ "$CM_SESSION_BG_REMOTE_CONTROL" = true ] && BGARGS+=(--remote-control "$NOME")
-  ESITO=$(cd "$CARTELLA" && env "${ENVARGS[@]}" "$CLAUDE" "${BGARGS[@]}" 2>&1) || RC=$?
+  ESITO=$(cd "$CARTELLA" && env ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${BGARGS[@]+"${BGARGS[@]}"} 2>&1) || RC=$?
   if [ "${RC:-0}" -ne 0 ]; then
     cm_msg launch.bg_failed "rc=$RC" >&2; printf '%s\n' "$ESITO" | sed 's/^/  /' >&2; exit 7
   fi
@@ -272,7 +272,7 @@ ARGS+=(-n "$NOME")
 if [ "$AGENT" = codex ]; then   # S09: Codex CLI nudo, senza gli argomenti di Claude Code (-n, remote control, profili)
   cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env CM_LAUNCHED=1 CM_AGENT=codex "$CODEX"
 else
-  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env "${ENVARGS[@]}" "$CLAUDE" "${ARGS[@]}"
+  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${ARGS[@]+"${ARGS[@]}"}
 fi
 cm_orphan_hook   # 28/10/2026: alla morte del tmux di una sessione il suo claude si chiude (HUP, TERM, KILL)
 # Il file di registro NON e' <pane_pid>.json: il binario `claude` si rilancia
@@ -286,7 +286,7 @@ reg_file() {
   for f in $(ls -t "$CONF_DIR"/sessions/*.json 2>/dev/null); do
     grep -q "\"tmux\":\"$NOME:" "$f" 2>/dev/null || continue
     pid="${f##*/}"; pid="${pid%%.*}"
-    [ -d "/proc/$pid" ] && { printf '%s\n' "$f"; return 0; }
+    cm_pid_alive "$pid" && { printf '%s\n' "$f"; return 0; }
   done
   return 1
 }
@@ -395,7 +395,12 @@ fi
 
 "$CM_SCRIPTS/cm-registry.sh" >/dev/null 2>&1   # T52: per il ripristino dopo un riavvio
 
-cm_msg launch.started
+# 11/11 (supervisor-macos-11-11): una sessione partita ma mai registrata da Claude Code non e' «avviata» per supervisor
+# (su un Mac /proc non c'era, launch aspettava tutto il tempo e diceva «sessione avviata» con 0): lo si dice al posto
+# della riga d'avvio, e alla fine si esce con 8. La sessione tmux resta.
+NON_REGISTRATA=no
+[ "$AGENT" = claude ] && [ "$REGISTRATA" = no ] && [ "$ASPETTA_PERSONA" = no ] && NON_REGISTRATA=si
+if [ "$NON_REGISTRATA" = si ]; then cm_msg launch.not_registered "name=$NOME" "s=$CM_SESSION_STARTUP_TIMEOUT_S"; else cm_msg launch.started; fi
 echo "  nome tmux: $NOME"
 echo "  account:   $LABEL${DEDUZIONE:+ ($(cm_msg launch.deduced))}"
 echo "  cartella:  $CARTELLA"
@@ -430,3 +435,5 @@ while :; do
 done
 [ -n "$LINK" ] || LINK=$(grep -oE 'https://claude\.ai/code/session_[A-Za-z0-9]+' <<<"$SCHERMO" | head -1)
 if [ -n "$LINK" ]; then echo "  link:      $LINK"; else echo "  telefono:  $(cm_msg launch.no_link)"; fi
+[ "$NON_REGISTRATA" = si ] && exit 8
+exit 0

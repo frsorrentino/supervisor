@@ -96,7 +96,9 @@ def clients(name):
 
 with T.PrivateTmux() as tm:
     for s in ("alfa", "beta", "gamma"):
-        tm("new-session", "-d", "-s", s, "bash", "--norc")
+        # 11/11: il server nasce con l'HOME del test, non con quello vero: il claude finto lanciato poi in O6 scriveva il suo
+        # registro in ~/.claude/sessions della macchina, launch non lo trovava (e usciva 0 lo stesso, fino alla 0.8.147)
+        tm("new-session", "-d", "-s", s, "bash", "--norc", env=env())
     # O1: finestra 5 (app) con #home + shell duplicabile; finestra 8 (app) solo shell → si preferisce la 8
     world([{"id": 5, "type": "app", "state": "normal", "left": 0, "top": 0, "width": 1536, "height": 864},
            {"id": 8, "type": "app", "state": "normal", "left": 100, "top": 100, "width": 900, "height": 600}],

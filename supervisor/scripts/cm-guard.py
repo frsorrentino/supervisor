@@ -25,6 +25,15 @@ import sys
 import time
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -225,7 +234,7 @@ def live_sessions():
                 pid = int(r.get("pid") or f.stem.split(".")[0])
             except (ValueError, OSError):
                 continue
-            if not os.path.exists(f"/proc/{pid}") and not os.environ.get("CM_GUARD_FAKE_PROC"):
+            if not _cm_proc().exists(pid) and not os.environ.get("CM_GUARD_FAKE_PROC"):
                 continue
             if r.get("name") and r.get("sessionId"):
                 out[r["name"]] = r["sessionId"]

@@ -155,7 +155,7 @@ PY
 vivo() {
   # prove: CM_RESTART_TEST_ALIVE_UNTIL = epoch fino a cui il pid «non muore» (un processo che SIGKILL non chiude subito)
   [ -n "${CM_RESTART_TEST_ALIVE_UNTIL:-}" ] && [ "$(date +%s)" -lt "$CM_RESTART_TEST_ALIVE_UNTIL" ] && return 0
-  kill -0 "$1" 2>/dev/null && ! grep -q '^State:.*Z' "/proc/$1/status" 2>/dev/null
+  cm_pid_alive "$1"
 }
 
 # 05/10/2026 (claude-master-phone alle 22:46: «pid 20537 non muore», poi il processo e' morto da solo e la sessione
@@ -255,9 +255,9 @@ esegui() {
   # prima la sessione ripartita restava ferma finche' qualcuno non le scriveva. Ora parte da sola con un primo
   # prompt, con --clean e senza; il passaggio di consegne lo annuncia il SessionStart (handoff --announce)
   OPZ+=(--prompt "$(cm_msg restart.first_prompt)")
-  out=$("$CM_SCRIPTS/cm-launch.sh" "$cartella" "${OPZ[@]}" 2>&1); rc=$?
+  out=$("$CM_SCRIPTS/cm-launch.sh" "$cartella" ${OPZ[@]+"${OPZ[@]}"} 2>&1); rc=$?
   if [ $rc -ne 0 ]; then echo "primo rilancio fallito (rc=$rc):"; echo "$out"; sleep 5
-    out=$("$CM_SCRIPTS/cm-launch.sh" "$cartella" "${OPZ[@]}" 2>&1); rc=$?; fi
+    out=$("$CM_SCRIPTS/cm-launch.sh" "$cartella" ${OPZ[@]+"${OPZ[@]}"} 2>&1); rc=$?; fi
   echo "$out"
   if [ $rc -ne 0 ]; then echo "!!! RIAVVIO FALLITO — nessuna sessione attiva su $cartella"; echo "!!! a mano: cd $cartella && claude -c"
     avvisa "$nome" "il rilancio e' fallito due volte (rc=$rc)"; exit 1; fi

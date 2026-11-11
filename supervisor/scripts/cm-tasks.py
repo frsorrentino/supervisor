@@ -2441,10 +2441,18 @@ def main(argv):
             sys.exit(f"task {args[0]}: already {row['state']}")
         if sess:
             con.execute("UPDATE tasks SET session=? WHERE id=?", (sess, args[0]))
-        set_state(con, args[0], "running")
+        # 11/11 (supervisor-carta-scelta-sparita-11-11): una scelta o un ok chiesti con wait-ok restano aperti finche' la
+        # persona risponde o qualcuno li ritira, anche se la sessione intanto lavora al compito: start su awaiting_ok non
+        # cambia lo stato (lo faceva running, e la carta spariva dall'app e da `task ok --choice`)
+        req = con.execute("SELECT options FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (args[0],)).fetchone() \
+            if row["state"] == "awaiting_ok" else None
+        if req is None:
+            set_state(con, args[0], "running")
         # 02/11: lo stato cambia dopo (wait-ok, approve): che sia partito deve restare scritto
         con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (args[0], now(), sess, "start", "started"))
         con.commit()
+        if req is not None:
+            print(M("tasks.start_keeps_card", task=args[0], what=M("tasks.card_choice" if req["options"] else "tasks.card_ok")))
         return 0
     if verb == "result":
         # 03/11 (observe supervisor-6753df0c e altre 4): la forma del JSON con ogni errore, anche con stdin vuoto; prima

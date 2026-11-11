@@ -31,39 +31,8 @@ LOGDIR="$CM_STATE_DIR/restore"; mkdir -p "$LOGDIR"
 # morte da giorni (28/09/2026: due sessioni chiuse il 19/09 e il 20/09). Se ne prendono solo
 # le voci viste nell'ultima accensione prima di questa, entro `restore.snapshot_window_min`
 # dall'ultimo segno di vita; quelle viste dopo l'avvio chiuse a mano restano chiuse.
-mapfile -t RIGHE < <(python3 - "$REG" "$GOOD" "$MSG_RESTORE_SRC_REGISTRY" "$MSG_RESTORE_SRC_SNAPSHOT" "${CM_RESTORE_SNAPSHOT_WINDOW_MIN:-60}" "${CM_UPTIME_FILE:-/proc/uptime}" <<'PY'
-import json, sys, time
-from datetime import datetime
-def load(p):
-    try:
-        return json.load(open(p))
-    except (OSError, ValueError):
-        return {}
-reg, good = load(sys.argv[1]), load(sys.argv[2])
-seen = set()
-for s in reg.get("sessioni", []):
-    seen.add(s["nome"])
-    print(f'{s["nome"]}\t{s["cartella"]}\t{s.get("account", "")}\t' + sys.argv[3].format(t=str(reg.get("salvato", ""))[:16].replace("T", " ")) + f'\t{s.get("session_id") or ""}')
-def ts(v):
-    try:
-        return datetime.strptime(str(v), "%Y-%m-%dT%H:%M:%S%z").timestamp()
-    except ValueError:
-        return None
-try:
-    boot = time.time() - float(open(sys.argv[6]).read().split()[0])
-except (OSError, ValueError, IndexError):
-    boot = time.time()
-prima = [t for t in (ts(s.get("visto")) for s in good.get("sessioni", [])) if t is not None and t < boot]
-ultimo = max(prima) if prima else None
-for s in good.get("sessioni", []):
-    if s["nome"] in seen:
-        continue
-    t = ts(s.get("visto"))
-    if t is None or ultimo is None or t >= boot or t < ultimo - float(sys.argv[5]) * 60:
-        continue
-    print(f'{s["nome"]}\t{s["cartella"]}\t{s.get("account", "")}\t' + sys.argv[4].format(t=str(s.get("visto", ""))[:16].replace("T", " ")) + f'\t{s.get("session_id") or ""}')
-PY
-)
+RIGHE=()   # 11/11: un ciclo e non mapfile, e lo script Python in un file suo (bash 3.2 su macOS)
+while IFS= read -r _riga; do RIGHE+=("$_riga"); done < <(python3 "$CM_SCRIPTS/cm-restore-list.py" "$REG" "$GOOD" "$MSG_RESTORE_SRC_REGISTRY" "$MSG_RESTORE_SRC_SNAPSHOT" "${CM_RESTORE_SNAPSHOT_WINDOW_MIN:-60}" "${CM_UPTIME_FILE:-/proc/uptime}")
 [ "${#RIGHE[@]}" -gt 0 ] || { cm_msg restore.empty; exit 1; }
 SALVATO=$(python3 -c "import json,sys
 for p in sys.argv[1:]:
@@ -94,7 +63,7 @@ come_riprendere() {  # $1 cartella, $2 account, $3 session_id
 }
 
 DA_FARE=()
-for r in "${RIGHE[@]}"; do
+for r in ${RIGHE[@]+"${RIGHE[@]}"}; do
   IFS=$'\t' read -r nome cartella acct fonte sid <<<"$r"
   if cm_tmux has-session -t "=$nome" 2>/dev/null; then echo "  $(cm_msg restore.alive "name=$nome")"; continue; fi
   [ -d "$cartella" ] || { echo "  $(cm_msg restore.gone "name=$nome" "dir=$cartella")"; continue; }
@@ -103,7 +72,7 @@ done
 [ "${#DA_FARE[@]}" -gt 0 ] || { cm_msg restore.nothing; exit 0; }
 
 cm_msg restore.todo "n=${#DA_FARE[@]}" "saved=$SALVATO"
-for r in "${DA_FARE[@]}"; do
+for r in ${DA_FARE[@]+"${DA_FARE[@]}"}; do
   IFS=$'\t' read -r nome cartella acct fonte sid <<<"$r"; come_riprendere "$cartella" "$acct" "$sid"
   printf '  %-28s %-13s %-40s %-24s %s\n' "$nome" "$acct" "$cartella" "$fonte" "$modo"
   [ "$modo" = continue ] && echo "    $(cm_msg restore.continue_no_id "name=$nome")"
@@ -132,15 +101,15 @@ fi
 
 # tutte in parallelo tranne l'ultima (restore.last), che va per ultima
 ULTIMA=""
-for r in "${DA_FARE[@]}"; do
+for r in ${DA_FARE[@]+"${DA_FARE[@]}"}; do
   IFS=$'\t' read -r nome cartella acct fonte sid <<<"$r"
   if [ "$nome" = "$CM_RESTORE_LAST" ]; then ULTIMA="$r"; continue; fi
   come_riprendere "$cartella" "$acct" "$sid"
   if [ "$A_SCHEDE" = si ]; then
-    "$CM_SCRIPTS/cm-launch.sh" "$cartella" "${opz[@]}" >"$LOGDIR/$nome.log" 2>&1 \
+    "$CM_SCRIPTS/cm-launch.sh" "$cartella" ${opz[@]+"${opz[@]}"} >"$LOGDIR/$nome.log" 2>&1 \
       && echo "  $(cm_msg restore.ok "name=$nome")" || echo "  $(cm_msg restore.failed "name=$nome" "log=$LOGDIR/$nome.log")"
   else
-    ( "$CM_SCRIPTS/cm-launch.sh" "$cartella" "${opz[@]}" >"$LOGDIR/$nome.log" 2>&1 \
+    ( "$CM_SCRIPTS/cm-launch.sh" "$cartella" ${opz[@]+"${opz[@]}"} >"$LOGDIR/$nome.log" 2>&1 \
         && echo "  $(cm_msg restore.ok "name=$nome")" || echo "  $(cm_msg restore.failed "name=$nome" "log=$LOGDIR/$nome.log")" ) &
   fi
 done
@@ -148,7 +117,7 @@ wait
 if [ -n "$ULTIMA" ]; then
   IFS=$'\t' read -r nome cartella acct fonte sid <<<"$ULTIMA"
   come_riprendere "$cartella" "$acct" "$sid"
-  "$CM_SCRIPTS/cm-launch.sh" "$cartella" "${opz[@]}" >"$LOGDIR/$nome.log" 2>&1 \
+  "$CM_SCRIPTS/cm-launch.sh" "$cartella" ${opz[@]+"${opz[@]}"} >"$LOGDIR/$nome.log" 2>&1 \
     && echo "  $(cm_msg restore.ok "name=$nome")" || echo "  $(cm_msg restore.failed "name=$nome" "log=$LOGDIR/$nome.log")"
 fi
 cm_msg restore.done; cm_tmux list-sessions -F '  #{session_name}' 2>/dev/null

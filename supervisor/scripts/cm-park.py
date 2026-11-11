@@ -25,6 +25,15 @@ import sys
 import time
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -72,7 +81,9 @@ def idle_min(row):
 
 
 def mem_available_mb():
-    src = os.environ.get("CM_MEMINFO_FILE", "/proc/meminfo")
+    src = os.environ.get("CM_MEMINFO_FILE")
+    if not src:   # 11/11: Linux e macOS da cm-proc; CM_MEMINFO_FILE resta per le prove
+        return _cm_proc().memory()[1]
     try:
         for line in open(src):
             if line.startswith("MemAvailable:"):

@@ -80,17 +80,32 @@ def level_of(value, yellow, red, higher_is_worse=True):
     return "red" if value < red else "yellow" if value < yellow else "green"
 
 
+def _proc_mod():
+    spec = importlib.util.spec_from_file_location("cm_proc_sys", HERE / "cm-proc.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+P = _proc_mod()   # 11/11 (supervisor-macos-11-11): su macOS niente /proc: carico, memoria e processi da ps e sysctl
+
+
 def measure(proc="/proc", cores=None, stuck=None):
     """Carico, memoria e livello. `stuck` (stuck_of): i processi bloccati sul ponte grafico non colorano il carico."""
     c = conf()
     cores = cores or os.cpu_count() or 1
-    load1 = float(Path(proc, "loadavg").read_text().split()[0])
-    mem = {}
-    for line in Path(proc, "meminfo").read_text().splitlines():
-        k, _, v = line.partition(":")
-        if v.strip().split() and v.strip().split()[0].isdigit():
-            mem[k] = int(v.split()[0])
-    total, avail = round(mem.get("MemTotal", 0) / 1024), round(mem.get("MemAvailable", mem.get("MemFree", 0)) / 1024)
+    if P.mac() and proc == "/proc":
+        load1 = P.loadavg() or 0.0
+        total, avail = P.memory()
+        total, avail = total or 0, avail if avail is not None else 0
+    else:
+        load1 = float(Path(proc, "loadavg").read_text().split()[0])
+        mem = {}
+        for line in Path(proc, "meminfo").read_text().splitlines():
+            k, _, v = line.partition(":")
+            if v.strip().split() and v.strip().split()[0].isdigit():
+                mem[k] = int(v.split()[0])
+        total, avail = round(mem.get("MemTotal", 0) / 1024), round(mem.get("MemAvailable", mem.get("MemFree", 0)) / 1024)
     lpc = round(max(load1 - (stuck or {}).get("count", 0), 0) / cores, 2)
     ll = level_of(lpc, c["load_yellow"], c["load_red"])
     ml = level_of(avail, c["mem_yellow_mb"], c["mem_red_mb"], higher_is_worse=False)
@@ -103,6 +118,8 @@ def proc_rows(proc="/proc"):
     """[{pid, ppid, start, age_s, cpu, rss_mb, rss_kb, args, state}] per ogni processo con una riga di comando (non i
     thread del kernel). Un processo in D porta anche wchan, unit (dal cgroup) e started_at, e per args il suo comm: la
     cmdline di un processo in D non si legge (1.91)."""
+    if P.mac() and proc == "/proc":
+        return _mac_rows()
     uptime = float(Path(proc, "uptime").read_text().split()[0])
     now = time.time()
     rows, seen = [], {}
@@ -136,6 +153,36 @@ def proc_rows(proc="/proc"):
                      "rss_mb": round(int(f[21]) * PAGE_KB / 1024), "rss_kb": int(f[21]) * PAGE_KB, "args": args, "state": f[0], **extra})
     _PREV.clear()
     _PREV.update(seen)
+    return rows
+
+
+def _etime_s(t):
+    """`ps -o etime`: [[gg-]hh:]mm:ss → secondi."""
+    days, _, rest = t.rpartition("-")
+    parts = [int(x) for x in rest.split(":")]
+    while len(parts) < 3:
+        parts.insert(0, 0)
+    return (int(days) if days else 0) * 86400 + parts[0] * 3600 + parts[1] * 60 + parts[2]
+
+
+def _mac_rows():
+    """Le stesse righe di proc_rows da `ps` (macOS): la CPU e' quella che ps calcola (%cpu), la memoria rss in KB."""
+    now = time.time()
+    rows = []
+    out = P._run("ps", "-axww", "-o", "pid=,ppid=,etime=,%cpu=,rss=,stat=,command=", timeout=20)
+    for line in out.splitlines():
+        f = line.split(None, 6)
+        if len(f) < 7 or not f[0].isdigit():
+            continue
+        try:
+            age = max(_etime_s(f[2]), 1)
+            cpu, rss = float(f[3].replace(",", ".")), int(f[4])
+        except ValueError:
+            continue
+        if f[5].startswith("Z"):
+            continue
+        rows.append({"pid": int(f[0]), "ppid": int(f[1]), "start": str(int(now - age)), "age_s": age, "cpu": round(cpu, 1),
+                     "rss_mb": round(rss / 1024), "rss_kb": rss, "args": f[6], "state": f[5][:1]})
     return rows
 
 
@@ -388,10 +435,7 @@ def me_pids():
     out, pid = set(), os.getpid()
     while pid and pid > 1 and len(out) < 64:
         out.add(pid)
-        try:
-            pid = int(next(x for x in Path(f"/proc/{pid}/status").read_text().splitlines() if x.startswith("PPid:")).split()[1])
-        except (OSError, StopIteration, ValueError):
-            break
+        pid = P.ppid(pid)
     return out
 
 

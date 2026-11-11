@@ -46,6 +46,15 @@ import time
 import uuid
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -197,13 +206,8 @@ def clear():
 def free_mb():
     if os.environ.get("CM_NIGHT_FREE_MB"):
         return int(os.environ["CM_NIGHT_FREE_MB"])
-    try:
-        for line in open("/proc/meminfo"):
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) // 1024
-    except OSError:
-        pass
-    return 10 ** 6
+    avail = _cm_proc().memory()[1]
+    return avail if avail is not None else 10 ** 6
 
 
 def quota_pct(account):

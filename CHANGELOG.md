@@ -2,6 +2,20 @@
 
 ## 0.3.x
 
+- **0.8.147 — 2026-11-11: the relay weighs much less on Firebase, install with one line, and the app no longer shows the master closed when it is open (supervisor-relay-peso-firebase-11-11, supervisor-installazione-semplice-11-11, supervisor-plugin-frase-doppia-11-11, supervisor-carta-scelta-sparita-11-11, contract 1.135).**
+  - Firebase was over its free limits: 5.9 GB stored on 1, and 12.3 GB downloaded in 11 days on 10 a month. The answers to the app's commands were never removed: now each one leaves Firebase 6 hours after it is written. The old ones are removed with `supervisor relay results-prune`, when you choose to.
+  - The relay no longer publishes the same state again before 150 seconds. Every publication is downloaded by every device, and the web app also reloads the events each time.
+  - Every read now carries a fingerprint. An app that sends it back gets a short «unchanged» answer instead of the whole page. The apps need an update to use it.
+  - `supervisor doctor` shows how much the relay sends to Firebase today, against the free limit.
+  - One line installs everything: `curl -fsSL https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh | bash`. It checks bash, python3, tmux, git, cron and Claude Code and installs what is missing after asking, with the exact line. Then it installs the plugin and runs `supervisor setup`.
+  - macOS is not supported yet: sessions are not recognised there, and the install line stops with a clear message. The groundwork is in this version: processes are read through one layer with a Linux and a macOS branch, and the scripts no longer need bash 4; the Mac itself is tested next.
+  - `supervisor setup` asks only two things: your projects folder, and whether you want the app on your phone. Before the steps it checks that Claude Code is signed in and, for the phone, the Firebase CLI and its sign-in.
+  - Then it writes the configuration and the shell line, lets the master receive the phone's messages, keeps the relay alive with cron, opens the master and waits until the web app sees it open. It also fills the sections and checks everything with doctor.
+  - Every step says ✓ or ✗ with the command that fixes it. Running it again picks up where it stopped. With no errors the end is three lines; with errors, a block to send to whoever helps you. Inside Claude Code, `/supervisor:setup` does the same.
+  - Fix: without cron the relay published the sessions only when something asked, so the app could show the master closed while it was open. The relay now refreshes them every minute by itself. Reopening a session that is already open now succeeds and refreshes the app; it no longer says «already running» as an error or opens a second master.
+  - The phone goes through Firebase only. Level 2 of the first steps is now the web app in this computer's browser; the README promised it «on your Wi-Fi», which never worked.
+  - Fix: a choice asked on a task disappeared from the app when the session went on working on that task (`task start`). It now stays until you answer or it is withdrawn.
+  - Fix: after a plugin update the app said «vale dalle sessioni nuove» twice, and once more for every plugin updated together. Several plugins updated together are now one line.
 - **0.8.146 — 2026-11-10: a result you already commented on in chat leaves «Verifica», and a corrected file replaces the one before (supervisor-verifica-feedback-10-11).**
   - A result now counts as seen when you write in that session after it arrived, from the terminal or from the app. Before, only a touch on the result marked it seen, so the list kept everything you had already answered in chat.
   - Messages from other sessions, notifications and automatic reminders do not count. If the session went on after a `/clear`, your message there counts too.

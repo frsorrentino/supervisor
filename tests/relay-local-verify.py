@@ -11,6 +11,8 @@ LW3 /api/state risponde con lo stato pubblicato in locale; nel log niente Fireba
     fallita)
 LW4 un relay spento con relay.firebase_url impostato resta spento: `relay web` esce 2 e non tocca il config
 LW5 doctor col relay solo locale: INFO relay_local, nessun FAIL per cryptography o crontab
+LW6 (11/11) senza cron il demone ripubblica lo stato da se' ogni relay.heartbeat_s; una sessione nuova nella cartella
+    sessions/ di un account rende completa la raccolta del battito dopo
 """
 import json
 import os
@@ -139,6 +141,60 @@ fake = T.fake_machine(tmp, home, chromeos=False, procs=[], which=["tmux", "claud
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-config.py"), "doctor"], capture_output=True, text=True, env=dict(ENV, CM_FAKE_MACHINE=str(fake)), timeout=60)
 T.check("LW5 doctor with the relay in local mode: INFO relay_local, no FAIL for cryptography or crontab",
         "INFO relay_local" in r.stdout and "FAIL crypto" not in r.stdout and "FAIL crontab" not in r.stdout, r.stdout[-1200:])
+stop_daemon()
+
+# LW6 (11/11, supervisor-installazione-semplice-11-11): senza cron il demone batte da se'. Un collega senza `relay install`
+# vedeva la master chiusa: la push del suo avvio era partita prima che la sessione si registrasse e nessuno la rifaceva.
+write_cfg(enabled=True, heartbeat_s=5, web={"port": port, "enabled": True})
+(rdir / "push-req").mkdir(parents=True, exist_ok=True)
+for f in (rdir / "push-req").iterdir():
+    f.unlink()
+n0 = None
+lst = rdir / "local" / "state.json"
+
+
+def published():
+    try:
+        return float(json.loads(lst.read_text()).get("published_at") or 0)
+    except (OSError, ValueError):
+        return 0.0
+
+
+def pushes():
+    try:
+        return [x for x in (rdir / "relay.log").read_text().splitlines() if "push: " in x and " · origine " in x]
+    except OSError:
+        return []
+
+
+n0 = len(pushes())
+relay("ensure")
+T.wait_until(lambda: any("origine serve" in x for x in pushes()[n0:]), 90)   # la push dell'avvio, poi nessuna richiesta
+t1 = published()
+n1 = len(pushes())
+beat_ok = T.wait_until(lambda: published() > t1 + 0.5, 40)
+after = pushes()[n1:]
+T.check("LW6 no cron, no hook, no command: the daemon republishes the state by itself every heartbeat_s (origin beat)",
+        t1 and beat_ok and any("origine beat" in x or "origine battito" in x for x in after) and ENV["CM_CRONTAB_CMD"] == "false",
+        f"{t1} → {published()} | {after[-3:]}")
+def _fp_sessions():
+    try:
+        fp = json.loads((rdir / "beat.json").read_text()).get("fp") or ""
+    except (OSError, ValueError):
+        fp = "?"
+    return [x for x in fp.split(";") if x.startswith("sessions:")]
+
+
+n2 = len(pushes())
+(home / ".claude" / "sessions").mkdir(parents=True, exist_ok=True)
+(home / ".claude" / "sessions" / "4242.json").write_text(json.dumps({"pid": 4242, "sessionId": "s", "name": "master"}))
+# la raccolta completa si riconosce dall'impronta del battito (beat.json) che riporta la cartella cambiata: il suo nome
+# d'origine dipende da chi l'ha chiesta per primo (nel WSL la web app, «web»), il fatto no
+_sess_now = lambda: f"sessions:{os.stat(home / '.claude' / 'sessions').st_size}:{os.stat(home / '.claude' / 'sessions').st_mtime_ns}"  # noqa: E731
+full_ok = T.wait_until(lambda: _sess_now() in _fp_sessions(), 40)
+T.check("LW6 a session registered by Claude Code (a new file in the account's sessions/) changes the sources: the next beat is a full collection, not the light republish",
+        full_ok, str(pushes()[n2:][-3:]) + f" | beat.json {_fp_sessions()} | dir {os.stat(home / '.claude' / 'sessions').st_mtime_ns}"
+        + f" | cfg accounts {json.loads(cfg.read_text()).get('accounts')}")
 stop_daemon()
 T.rm(tmp)
 T.finish()

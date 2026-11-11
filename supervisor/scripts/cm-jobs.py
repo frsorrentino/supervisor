@@ -30,6 +30,15 @@ import time
 import uuid
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("cm_config", HERE / "cm-config.py")
 cm = importlib.util.module_from_spec(_spec)
@@ -45,10 +54,7 @@ SHOW_MAX = 6
 
 
 def boot_id():
-    try:
-        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-    except OSError:
-        return ""
+    return _cm_proc().boot_id()   # 11/11: Linux il boot_id del kernel, macOS l'istante dell'avvio
 
 
 def my_tmux_name():

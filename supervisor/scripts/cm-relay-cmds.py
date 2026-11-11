@@ -2522,7 +2522,15 @@ def execute(cmd):
             # che non conosce `text` lo ignora e lancia senza messaggio: mai un prompt a meta'
             prompt = " ".join(str(cmd.get("text") or "").split())
             here = os.path.realpath(proj["path"])
-            before = {r.get("tmux") or r.get("name") for r in (_json_cmd("sessions", "--json", "--no-screen") or [])}
+            rows = _json_cmd("sessions", "--json", "--no-screen") or []
+            before = {r.get("tmux") or r.get("name") for r in rows}
+            # 11/11 (supervisor-installazione-semplice-11-11): la cartella della master con la master gia' viva e' la
+            # master, non una «master-2» accanto: l'app la chiedeva da uno stato vecchio. Ok senza lanciare, con la push
+            master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+            if not prompt and here == os.path.realpath(cm.expand(CFG["workspace"]["root"])) and any(
+                    (r.get("tmux") or r.get("name")) == master and r.get("status") != "dead" for r in rows):
+                push_async()
+                return True, M("relay.cmd_reopen_alive", name=master), {"session": S.short_name(master, prefixes())}
             # 1.9.2 (15/09, decisione dell'utente): la scheda sul desktop come reopen; senza desktop, senza finestra
             rc, out = run_cm("launch", proj["path"], "--window")
             if rc != 0:
@@ -2565,6 +2573,11 @@ def execute(cmd):
             ok, code, f = core.reopen(tm, run_cm, saved=saved)
             if ok and saved:
                 closed_file(tm).unlink(missing_ok=True)
+            if code == "alive":
+                # 11/11 (supervisor-installazione-semplice-11-11): l'app la vedeva chiusa perche' il suo stato era vecchio;
+                # e' viva, quindi la richiesta e' soddisfatta: ok, e una push subito, cosi' l'app la mostra aperta
+                push_async()
+                return True, M("relay.cmd_reopen_alive", name=session), {"session": session}
             return ok, M(f"relay.cmd_reopen_{code}", name=session, **f)
         if op in ("model", "effort"):
             # 1.12 (16/09): dal selettore della sessione, SOLO per quella sessione — mai il default delle sessioni nuove.

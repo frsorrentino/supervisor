@@ -59,8 +59,19 @@ cm_recover_display() {  # esporta il display del desktop se manca: 0 = recuperat
   [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]
 }
 
+# 11/11 (supervisor-macos-11-11): niente sintassi di bash 4 (${x^^}, ${x,,}, mapfile): macOS ha bash 3.2
+cm_upper() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]'; }
+cm_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Vivo = il processo c'e' e non e' uno zombie, su Linux e su macOS (dove /proc non c'e'): kill -0, poi lo stato di ps
+cm_pid_alive() {
+  kill -0 "$1" 2>/dev/null || return 1
+  case "$(ps -o stat= -p "$1" 2>/dev/null)" in Z*) return 1 ;; esac
+  return 0
+}
+
 cm_get() {  # cm_get personale TMUX_PREFIX
-  local v="CM_ACCOUNTS_${1^^}_${2}"
+  local v="CM_ACCOUNTS_$(cm_upper "$1")_${2}"
   v="${v//-/_}"
   printf '%s' "${!v:-}"
 }

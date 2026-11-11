@@ -58,7 +58,10 @@ def facts():
     except (ValueError, TypeError, AttributeError):
         pass
     cron = _out([os.environ.get("CM_CRONTAB_CMD", "crontab"), "-l"])
-    return {"1": master in names and len(names) > 1, "2": bool(devices), "3": bool(devices) and bool(str(relay.get("firebase_url") or "").strip()),
+    # 11/11 (supervisor-installazione-semplice-11-11, scelta A del maintainer): il telefono passa solo da Firebase; il livello 2
+    # e' la web app nel browser di questo computer (relay web), senza Firebase. Un dispositivo abbinato lo copre comunque
+    web_local = bool(relay.get("enabled")) and bool((relay.get("web") or {}).get("enabled"))
+    return {"1": master in names and len(names) > 1, "2": bool(devices) or web_local, "3": bool(devices) and bool(str(relay.get("firebase_url") or "").strip()),
             "4": any(d.get("kind") == "watch" or "watch" in str(d.get("name") or "").lower() for d in devices.values() if isinstance(d, dict)),
             "5": "night run" in cron}, master in names
 

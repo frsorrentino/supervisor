@@ -31,7 +31,7 @@ SCEN=",${SCEN},"
 DELAY="${FAKE_CLAUDE_DELAY:-4}"
 case "${1:-}" in agents|attach|logs|stop) exit 1 ;; esac
 case " $* " in *" --cloud "*|*" -p "*)
-  ev=""; IFS=, read -ra _evs <<< "${FAKE_CLAUDE_ECHO_ENV:-}"; for _e in "${_evs[@]}"; do ev="$ev ENV $_e=${!_e:-}"; done
+  ev=""; IFS=, read -ra _evs <<< "${FAKE_CLAUDE_ECHO_ENV:-}"; for _e in ${_evs[@]+"${_evs[@]}"}; do ev="$ev ENV $_e=${!_e:-}"; done
   [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ] && printf '%s%s\n' "$*" "$ev" >> "$FAKE_CLAUDE_ARGS_LOG"
   # 16/10/2026: la coda notturna chiede stream-json: l'avvio, la risposta e l'evento result, una riga JSON ciascuno
   case " $* " in *" --output-format stream-json "*)
@@ -44,7 +44,7 @@ case " $* " in *" --cloud "*|*" -p "*)
 esac
 if [ "${1:-}" = remote-control ]; then [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ] && printf '%s\n' "$*" >> "$FAKE_CLAUDE_ARGS_LOG"; echo "Remote Control server (fake) https://claude.ai/code/session_01FAKEDESK"; sleep 600; exit 0; fi
 if [ -n "${FAKE_CLAUDE_ARGS_LOG:-}" ]; then
-  ev=""; IFS=, read -ra _evs <<< "${FAKE_CLAUDE_ECHO_ENV:-}"; for _e in "${_evs[@]}"; do ev="$ev ENV $_e=${!_e:-}"; done
+  ev=""; IFS=, read -ra _evs <<< "${FAKE_CLAUDE_ECHO_ENV:-}"; for _e in ${_evs[@]+"${_evs[@]}"}; do ev="$ev ENV $_e=${!_e:-}"; done
   printf '%s%s\n' "$*" "$ev" >> "$FAKE_CLAUDE_ARGS_LOG"
 fi
 NAME=""; RC=""; BG=no; args=("$@")
@@ -72,7 +72,7 @@ register() {
   ps=$(awk '{print $22}' /proc/$$/stat)
   tm=$(tmux display-message -p '#S:@#{window_index}.%#{pane_index}' 2>/dev/null || echo "")
   printf '{"pid":%s,"sessionId":"fake-%s","cwd":"%s","startedAt":%s,"procStart":"%s","version":"2.1.265","kind":"interactive","tmux":"%s","messagingSocketPath":"/tmp/fake-%s.sock","name":"%s","status":"idle","bridgeSessionId":"%s"}\n' \
-    "$$" "$$" "$PWD" "$(date +%s)000" "$ps" "$tm" "$$" "${NAME:-$(basename "$PWD")}" "$(case "$SCEN" in *,bridge-late,*) ;; *) printf '%s' "${RC:+session_01FAKE$$}";; esac)" > "$dir/$$.json"
+    "$$" "$$" "$PWD" "$(date +%s)000" "$ps" "$tm" "$$" "${NAME:-$(basename "$PWD")}" "$(case "$SCEN" in (*,bridge-late,*) ;; (*) printf '%s' "${RC:+session_01FAKE$$}";; esac)" > "$dir/$$.json"
   case "$SCEN" in *,bridge-late,*)
     ( sleep "$DELAY"; sed -i "s/\"bridgeSessionId\":\"\"/\"bridgeSessionId\":\"session_01FAKE$$\"/" "$dir/$$.json" ) & ;;
   esac
@@ -89,7 +89,7 @@ dialog() {  # $1 = testo della domanda, $2 = voce si'
   local sel=0 k
   while IFS= read -rsn1 k; do
     case "$k" in
-      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+      $'\x1b') read -rsn2 -t 1 k2 2>/dev/null || true
                case "${k2:-}" in '[B') sel=1 ;; '[A') sel=0 ;; esac
                [ "$sel" = 1 ] && printf '\n   No, exit\n ❯ %s\n' "$2" || printf '\n ❯ No, exit\n   %s\n' "$2" ;;
       "")      if [ "$sel" = 1 ]; then return 0; else echo "exit (No)"; exit 0; fi ;;
@@ -129,7 +129,7 @@ resume_quota() {  # 21/10/2026: l'avviso sul costo della ripresa; Invio su «Res
   rqdraw
   while IFS= read -rsn1 k; do
     case "$k" in
-      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+      $'\x1b') read -rsn2 -t 1 k2 2>/dev/null || true
                case "${k2:-}" in '[B') sel=1 ;; '[A') sel=0 ;; *) [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "resume-quota: dismiss" >> "$FAKE_CLAUDE_KEYS_LOG"; break ;; esac
                rqdraw ;;
       "") [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "resume-quota: ${labs[$sel]}" >> "$FAKE_CLAUDE_KEYS_LOG"; break ;;
@@ -168,7 +168,7 @@ menu() {  # $1 = domanda, poi le opzioni: come AskUserQuestion di Claude Code (c
   draw
   while IFS= read -rsn1 k; do
     case "$k" in
-      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+      $'\x1b') read -rsn2 -t 1 k2 2>/dev/null || true
                case "${k2:-}" in '[B') [ "$sel" -lt "$n" ] && sel=$((sel+1)) ;; '[A') [ "$sel" -gt 0 ] && sel=$((sel-1)) ;; esac
                draw ;;
       "") if [ "$sel" = "$n" ]; then printf '\033[2J\033[H  ⎿  · %s → (chat)\n' "$q"; return; fi
@@ -225,7 +225,7 @@ model_picker() {
   draw
   while IFS= read -rsn1 k; do
     case "$k" in
-      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+      $'\x1b') read -rsn2 -t 1 k2 2>/dev/null || true
                case "${k2:-}" in
                  '[B') sel=$(( (sel+1) % n )); draw ;;
                  '[A') sel=$(( (sel-1+n) % n )); draw ;;
@@ -276,7 +276,7 @@ effort_picker() {
   draw
   while IFS= read -rsn1 k; do
     case "$k" in
-      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+      $'\x1b') read -rsn2 -t 1 k2 2>/dev/null || true
                case "${k2:-}" in
                  '[C') [ "$sel" -lt 5 ] && sel=$((sel+1)); draw ;;
                  '[D') [ "$sel" -gt 0 ] && sel=$((sel-1)); draw ;;
@@ -319,7 +319,7 @@ case "$SCEN" in *,perm,*|*,perm-bypass,*|*,perm-old,*|*,perm-lag,*|*,perm-stuck,
   pdraw
   while IFS= read -rsn1 k; do
     case "$k" in
-      $'\x1b') read -rsn2 -t 0.2 k2 2>/dev/null || true
+      $'\x1b') read -rsn2 -t 1 k2 2>/dev/null || true
                if [ "${k2:-}" = "[Z" ]; then
                  [ -n "${FAKE_CLAUDE_KEYS_LOG:-}" ] && echo "BTab" >> "$FAKE_CLAUDE_KEYS_LOG"
                  case "$SCEN" in *,perm-stuck,*) continue;; *,perm-lag,*) sleep "$DELAY";; esac

@@ -51,7 +51,7 @@ NOME_CARTELLA=$(basename "$CARTELLA")
 PERCORSO_IMG=""
 if [ "$IMG" != "-" ]; then
   [ -f "$IMG" ] || { cm_msg report.no_image "path=$IMG" >&2; exit 4; }
-  EXT="${IMG##*.}"; EXT="${EXT,,}"
+  EXT="${IMG##*.}"; EXT="$(cm_lower "$EXT")"
   case " $CM_REPORT_IMAGE_EXTS " in *" $EXT "*) ;; *) EXT=png ;; esac
   # 16/10/2026: per caratteri, non per byte (cut -c e tr di GNU contano i byte: «più» spezzata a meta' dava un nome
   # non UTF-8, e la riga col percorso spariva dal messaggio)

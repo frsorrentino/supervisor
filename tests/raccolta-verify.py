@@ -232,6 +232,13 @@ def levels():
 
 _l = levels()
 T.check("avvio AV1 fresh: nothing done, level 0, next 1", _l.get("reached") == 0 and _l.get("next") == 1 and _l.get("mode") == "new", str(_l))
+_c0 = json.loads(cfg.read_text())
+cfg.write_text(json.dumps(dict(_c0, relay=dict(_c0.get("relay") or {}, enabled=True, web={"enabled": True}))))
+OB.unlink()
+_l = levels()
+T.check("avvio AV1 (11/11) the web app in this computer's browser, with no Firebase and no device, is level 2; the phone (3) stays open",
+        _l["levels"]["2"]["state"] == "done" and _l["levels"]["3"]["state"] == "open", str(_l))
+cfg.write_text(json.dumps(_c0))
 (relay_dir / "devices.json").write_text(json.dumps({"u1": {"name": "p", "paired_at": 1}}))
 OB.unlink()
 _l = levels()

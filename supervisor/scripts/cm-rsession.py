@@ -48,6 +48,15 @@ import tempfile
 import time
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -188,13 +197,8 @@ def pressure():
     if os.environ.get("CM_MEMAVAIL_GB"):
         free = float(os.environ["CM_MEMAVAIL_GB"])
     else:
-        free = 99.0
-        try:
-            for line in open("/proc/meminfo"):
-                if line.startswith("MemAvailable:"):
-                    free = int(line.split()[1]) / 1048576
-        except OSError:
-            pass
+        avail = _cm_proc().memory()[1]
+        free = avail / 1024 if avail is not None else 99.0
     loaded = load > cores * float(so.get("load_per_core", 1.0)) or free < float(so.get("free_ram_gb", 2))
     return load, cores, round(free, 1), loaded
 

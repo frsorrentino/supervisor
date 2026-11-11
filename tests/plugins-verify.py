@@ -23,6 +23,7 @@ P7 (29/10) col PATH del demone (/usr/bin:/bin) claude si trova in ~/.local/bin
 """
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -187,6 +188,21 @@ T.check("P6 update_all works on every plugin the summary counts as updatable: th
         [l.split(" plugin update ")[1].split(" ")[0] for l in lines] == ["alpha@tools", "needsconf@tools", "proj@tools"] and cwds[2] == str(projA)
         and ua[0] is False and all(pid in ua[1] for pid in upd) and sorted(upd) == ["alpha@tools", "lost@tools", "needsconf@tools", "proj@tools"],
         str((ua, lines, cwds, upd)))
+# P8 (11/11, supervisor-plugin-frase-doppia-11-11): l'app aggiunge «vale dalle sessioni nuove» all'esito; il relay non la
+# scrive piu', e piu' plugin aggiornati insieme stanno in una riga sola
+_tail = PL.msg("plugins.new_sessions")
+T.check("P8 the outcome of an update says what was updated, without «it applies to new sessions» (the app adds it): one plugin",
+        u1[0] is True and u1[1] == PL.msg("plugins.updated", id="alpha@tools") and _tail not in u1[1] and _tail, str(u1))
+_ok_lines = [l for l in ua[1].splitlines() if "alpha@tools" in l or "proj@tools" in l]
+T.check("P8 update_all: the plugins updated together in ONE line with their names, the phrase nowhere; the failures keep one line each",
+        len(_ok_lines) == 1 and _ok_lines[0] == PL.msg("plugins.updated_many", ids="alpha@tools, proj@tools") and _tail not in ua[1]
+        and len(ua[1].splitlines()) == 3, ua[1])
+log.write_text("")
+_cli = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-plugins.py"), "update", "personal", "alpha@tools"], capture_output=True, text=True, timeout=60)
+_cli_all = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-plugins.py"), "update-all", "personal"], capture_output=True, text=True, timeout=120)
+T.check("P8 in the terminal the phrase stays, once, at the bottom (update and update-all)",
+        _cli.stdout.splitlines() == [PL.msg("plugins.updated", id="alpha@tools"), _tail]
+        and _cli_all.stdout.count(_tail) == 1 and _cli_all.stdout.splitlines()[-1] == _tail, _cli.stdout + "|" + _cli_all.stdout)
 # P7 (29/10, «i tasti aggiorna danno errore»): il relay gira con PATH=/usr/bin:/bin e claude sta in ~/.local/bin:
 # «[Errno 2] No such file or directory: 'claude'»
 lb = home / ".local" / "bin"

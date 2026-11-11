@@ -248,6 +248,11 @@ def update(account, pid):
 
 
 def update_all(account):
+    """(ok, testo) per l'op plugin_update_all: vedi _update_all."""
+    return _update_all(account)[:2]
+
+
+def _update_all(account):
     """Ogni plugin con un aggiornamento, come li conta il riassunto; ok se tutti riescono. Una riga per plugin. 29/10:
     prima solo quelli di scope user, e quelli di progetto restavano nel conto per sempre («Aggiorna tutto (2)»)."""
     acc = next((a for a in collect()["accounts"] if a["account"] == account), None)
@@ -255,22 +260,29 @@ def update_all(account):
         return False, msg("plugins.not_installed", id="*", account=str(account)[:40])
     todo = [p["id"] for p in acc["plugins"] if p["update"]]
     if not todo:
-        return True, msg("plugins.nothing")
-    res = [update(account, pid) for pid in todo]
-    return all(ok for ok, _ in res), "\n".join(t for _, t in res)
+        return True, msg("plugins.nothing"), 0
+    res = [(pid,) + update(account, pid) for pid in todo]
+    # 11/11 (supervisor-plugin-frase-doppia-11-11): quelli riusciti in UNA riga, senza «vale dalle sessioni nuove», che
+    # l'app aggiunge da se' all'esito (con una riga per plugin la frase usciva una volta per plugin, e poi di nuovo)
+    done = [pid for pid, ok, _ in res if ok]
+    lines = ([msg("plugins.updated", id=done[0])] if len(done) == 1 else [msg("plugins.updated_many", ids=", ".join(done))] if done else [])
+    lines += [t for _, ok, t in res if not ok]
+    return all(ok for _, ok, _ in res), "\n".join(lines), len(done)
 
 
 def main(argv):
     if argv[:1] == ["check"]:
         print("checked" if check(force="--force" in argv) else "recent")
         return 0
-    if argv[:1] == ["update"] and len(argv) == 3:
-        ok, text = update(argv[1], argv[2])
+    if argv[:1] in (["update"], ["update-all"]) and len(argv) == (3 if argv[0] == "update" else 2):
+        if argv[0] == "update":
+            ok, text = update(argv[1], argv[2])
+            n = 1 if ok else 0
+        else:
+            ok, text, n = _update_all(argv[1])
         print(text)
-        return 0 if ok else 1
-    if argv[:1] == ["update-all"] and len(argv) == 2:
-        ok, text = update_all(argv[1])
-        print(text)
+        if n:   # 11/11: l'esito non porta piu' la frase (la aggiunge l'app); nel terminale la si dice una volta, in fondo
+            print(msg("plugins.new_sessions"))
         return 0 if ok else 1
     st = collect()
     if "--json" in argv:

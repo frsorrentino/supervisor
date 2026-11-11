@@ -34,6 +34,15 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+
+def _cm_proc():
+    """cm-proc: processi e misure per Linux e macOS (11/11, supervisor-macos-11-11)."""
+    import importlib.util as _u
+    spec = _u.spec_from_file_location("cm_proc", Path(__file__).resolve().parent / "cm-proc.py")
+    mod = _u.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -320,14 +329,12 @@ def local_status():
     """Il carico della regia letto adesso, non dallo snapshot: e' la macchina su cui si decide."""
     if os.environ.get("CM_FAKE_LOCAL_STATUS"):   # solo prove
         return json.loads(os.environ["CM_FAKE_LOCAL_STATUS"])
-    try:
-        la = float(Path("/proc/loadavg").read_text().split()[0])
-        threads = os.cpu_count() or 1
-        mem = dict(l.split(":", 1) for l in Path("/proc/meminfo").read_text().splitlines() if ":" in l)
-        free = int(mem["MemAvailable"].split()[0]) / 1048576
-        return {"load_pct": int(la / threads * 100), "ram_free_gb": round(free, 1), "threads": threads}
-    except (OSError, KeyError, ValueError):
-        return {"load_pct": 0, "ram_free_gb": 99, "threads": os.cpu_count() or 1}
+    P = _cm_proc()   # 11/11: Linux e macOS
+    la, avail = P.loadavg(), P.memory()[1]
+    threads = os.cpu_count() or 1
+    if la is None or avail is None:
+        return {"load_pct": 0, "ram_free_gb": 99, "threads": threads}
+    return {"load_pct": int(la / threads * 100), "ram_free_gb": round(avail / 1024, 1), "threads": threads}
 
 
 def fresh_status(name, h):
