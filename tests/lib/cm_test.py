@@ -27,6 +27,37 @@ PLUGIN = ROOT / "supervisor"
 SCRIPTS = PLUGIN / "scripts"
 FIXTURES = ROOT / "tests" / "fixtures"
 
+def _proc():
+    """cm-proc del plugin: i test leggono i processi come il prodotto, su Linux e su macOS (11/11/2026)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cm_proc_test", SCRIPTS / "cm-proc.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def proc_start(pid):
+    """Il segno d'avvio di un processo, come lo scrive Claude Code in procStart (Linux) o come lo legge cm-proc (macOS)."""
+    return _proc().start_token(pid)
+
+
+def proc_env(pid):
+    """L'ambiente di un processo come testo NOME=valore, una riga per variabile (Linux: /proc; macOS: ps -E)."""
+    return "\n".join(f"{k}={v}" for k, v in _proc().environ(int(pid)).items())
+
+
+def proc_zombie(pid):
+    return _proc().zombie(pid)
+
+
+def proc_alive(pid):
+    return _proc().alive(pid)
+
+
+def macos():
+    return _proc().mac()
+
+
 FAILS = []
 COUNT = 0
 

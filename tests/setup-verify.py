@@ -46,7 +46,9 @@ claude.write_text('#!/bin/sh\ncase "$1" in --version) echo "2.1.320 (Claude Code
                   f'exec {FAKE} "$@"\n')
 (tmp / "logged").write_text("")
 claude.chmod(0o755)
-ENV = {"PATH": f"{tmp / 'bin'}:/usr/local/bin:/usr/bin:/bin", "HOME": str(home), "CM_HOME": str(home), "SHELL": "/bin/bash",
+import shutil  # noqa: E402
+_tmux_dir = os.path.dirname(shutil.which("tmux") or "/usr/bin/tmux")   # macOS: tmux di Homebrew in /opt/homebrew/bin
+ENV = {"PATH": f"{tmp / 'bin'}:{_tmux_dir}:/usr/local/bin:/usr/bin:/bin", "HOME": str(home), "CM_HOME": str(home), "SHELL": "/bin/bash",
        "LANG": "it_IT.UTF-8", "CM_CRONTAB_CMD": str(fake_cron), "CM_CLAUDE_BIN": str(FAKE), "FAKE_CLAUDE_SCENARIO": "plain",
        "CM_TMUX_ARGS": "-L setup-verify", "TMUX_TMPDIR": str(tmp / "run"), "XDG_RUNTIME_DIR": str(tmp / "run"),
        "CM_RELAY_OPEN": "true", "TZ": "Europe/Rome", "CM_SETUP_CRON_RUNNING": "1", "CM_FIREBASE_CMD": str(tmp / "bin" / "no-firebase")}
@@ -116,7 +118,7 @@ try:
     T.check("SU2 relay and web app on in local mode (no Firebase); the crontab has the registry and the relay (ensure, beat); the daemon is alive",
             cfg.get("relay", {}).get("enabled") is True and cfg["relay"].get("web", {}).get("enabled") is True
             and not str(cfg["relay"].get("firebase_url") or "").strip() and "supervisor registry" in cron() and "relay ensure" in cron()
-            and "relay battito" in cron() and pid.isdigit() and Path(f"/proc/{pid}").exists(), f"{cfg.get('relay')} | {cron()} | pid {pid}")
+            and "relay battito" in cron() and pid.isdigit() and T.proc_alive(int(pid)), f"{cfg.get('relay')} | {cron()} | pid {pid}")
 
     # SU3
     alive = tmux("has-session", "-t", "=master").returncode == 0
@@ -127,7 +129,7 @@ try:
         ss = {}
     T.check("SU3 the master is open on the projects folder, and the state the web app reads shows it alive (not gone)",
             alive and ss.get("master") not in (None, "gone") and "✓ master: master aperta" in out2 and "stato della web app: la vede aperta" in out2,
-            f"tmux {alive} | {ss} | {out2[-1500:]}")
+            f"tmux {alive} | {ss} | {out2[-1500:]} | relay.log: {(relay_dir() / 'relay.log').read_text()[-1500:] if (relay_dir() / 'relay.log').is_file() else '-'}")
 
     # SU4
     tail = [x.strip() for x in r2.stdout.split("Riepilogo")[-1].strip().splitlines()]

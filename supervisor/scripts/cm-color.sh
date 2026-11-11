@@ -74,8 +74,11 @@ if [ "$RC" -ne 0 ]; then
 fi
 [ -f "$REG" ] || : > "$REG"
 
+# 11/11 (supervisor-macos-11-11): le liste su piu' righe passano dall'ambiente, non da -v: l'awk di macOS rifiuta un a capo
+# in un -v («newline in string») e il registro dei colori non si scriveva
+export CM_AWK_VIVE="$VIVE" CM_AWK_MAPPA="$MAPPA"
 IDX=$(
-  awk -v nome="$NOME" -v shape="$SHAPE" -v n="$N" -v vive="$VIVE" -v tmux_ok="$TMUX_OK" -v mappa="$MAPPA" '
+  awk -v nome="$NOME" -v shape="$SHAPE" -v n="$N" -v tmux_ok="$TMUX_OK" '
     function shape_of(s,   k, p, i) {
       for (i = 1; i <= nm; i++) {
         p = mp[i]
@@ -84,9 +87,9 @@ IDX=$(
       return "circle"
     }
     BEGIN {
-      nm = split(mappa, righe, "\n")
+      nm = split(ENVIRON["CM_AWK_MAPPA"], righe, "\n")
       for (i = 1; i <= nm; i++) { split(righe[i], kv, "="); mp[i] = kv[1]; ms[i] = kv[2] }
-      nv = split(vive, v, "\n")
+      nv = split(ENVIRON["CM_AWK_VIVE"], v, "\n")
       for (k = 1; k <= nv; k++) if (v[k] != "") { split(v[k], f, ":"); viva[f[1]] = 1; nata[f[1]] = f[2] + 0 }
       viva[nome] = 1              # la propria sessione potrebbe non esistere ancora
       if (!(nome in nata)) nata[nome] = 9999999999   # non ancora nata: la piu nuova
@@ -115,8 +118,8 @@ IDX=$(
 
 # riscrive il registro: le vive tranne se stessa, piu' la propria voce (tutte, se tmux non risponde)
 {
-  awk -v nome="$NOME" -v vive="$VIVE" -v tmux_ok="$TMUX_OK" '
-    BEGIN { nv = split(vive, v, "\n"); for (k = 1; k <= nv; k++) if (v[k] != "") { split(v[k], f, ":"); viva[f[1]] = 1 } }
+  awk -v nome="$NOME" -v tmux_ok="$TMUX_OK" '
+    BEGIN { nv = split(ENVIRON["CM_AWK_VIVE"], v, "\n"); for (k = 1; k <= nv; k++) if (v[k] != "") { split(v[k], f, ":"); viva[f[1]] = 1 } }
     $1 != nome && (tmux_ok != 1 || ($1 in viva)) { print $1 "\t" $2 }
   ' "$REG"
   printf '%s\t%s\n' "$NOME" "$IDX"

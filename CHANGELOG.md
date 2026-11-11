@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.148 — 2026-11-11: supervisor works on macOS, and the phone needs no Node and no Enter (supervisor-macos-11-11).**
+  - On a Mac supervisor did not see any session as open: it read the processes from /proc, which macOS does not have, and its scripts needed bash 4. Now processes, load and memory are read through one layer with a Linux and a macOS branch, and every script runs with the Mac's own bash 3.2.
+  - On macOS cron and the relay find tmux from Homebrew and the system tools, a new Terminal window opens, and a session restarts. Before, cron said «tmux not installed», no window opened and a restart failed.
+  - `launch` no longer says «started» when Claude Code never registered the session: it says so and exits with 8. `doctor` checks that processes can be read on this platform, and `sessions` says «tmux has not started yet» instead of «not responding» on first use.
+  - The install line works on a Mac, and a GitHub workflow runs the suites on macOS with its own bash at every push.
+  - The phone: setup downloads the Firebase CLI by itself (no Node, no sudo), creates the project with no question, and notices the «Get started» click in the Firebase console by itself, with no Enter to press.
 - **0.8.147 — 2026-11-11: the relay weighs much less on Firebase, install with one line, and the app no longer shows the master closed when it is open (supervisor-relay-peso-firebase-11-11, supervisor-installazione-semplice-11-11, supervisor-plugin-frase-doppia-11-11, supervisor-carta-scelta-sparita-11-11, contract 1.135).**
   - Firebase was over its free limits: 5.9 GB stored on 1, and 12.3 GB downloaded in 11 days on 10 a month. The answers to the app's commands were never removed: now each one leaves Firebase 6 hours after it is written. The old ones are removed with `supervisor relay results-prune`, when you choose to.
   - The relay no longer publishes the same state again before 150 seconds. Every publication is downloaded by every device, and the web app also reloads the events each time.

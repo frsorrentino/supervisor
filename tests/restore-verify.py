@@ -80,7 +80,7 @@ with T.PrivateTmux() as tm:
             and sum(1 for l in lines[-3:] if " -c" in f" {l} " or l.startswith("-c")) == 2, "\n".join(lines[-3:]))
     T.check("X5 the list says how each one resumes, and says it for the ones that fall back to --continue",
             f"resume {SID_ALFA[:8]}" in dry1 and dry1.count("(--continue)") == 2 and "per pix-beta" in dry1 and "per master" in dry1, dry1)
-    pane_env = subprocess.run(["bash", "-c", f"tr '\\0' '\\n' < /proc/$(tmux -L {tm.socket} list-panes -t pix-beta -F '#{{pane_pid}}')/environ"], capture_output=True, text=True).stdout
+    pane_env = T.proc_env(tm("list-panes", "-t", "pix-beta", "-F", "#{pane_pid}").stdout.strip() or 0)
     T.check("X2 professionale relaunched on its account", f"CLAUDE_CONFIG_DIR={home}/.claude-pixel" in pane_env, pane_env[:200])
     T.check("X2 per-session logs", (tmp / "state" / "restore" / "alfa.log").exists() and (tmp / "state" / "restore" / "master.log").exists(), str(list((tmp / "state" / "restore").glob("*"))))
     T.check("X2 outcome lines", r.stdout.count("ok:") >= 3 or r.stdout.count("ok") >= 3, r.stdout)

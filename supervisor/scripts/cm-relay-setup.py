@@ -54,7 +54,9 @@ cm = _load("cm-config")
 CFG = cm.load(warn=False)
 M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 R = CFG["relay"]
-FIREBASE = os.environ.get("CM_FIREBASE_CMD") or "firebase"
+FIREBASE = os.environ.get("CM_FIREBASE_CMD") or shutil.which("firebase") or (str(cm.home() / ".local" / "bin" / "firebase") if (cm.home() / ".local" / "bin" / "firebase").is_file() else "firebase")
+ANON_WAIT_S = 900   # 11/11: quanto si aspetta il clic «Inizia» nella console, guardando da soli
+ANON_POLL_S = 5
 CONFIGSTORE = Path(os.environ.get("CM_FIREBASE_CONFIGSTORE") or (cm.home() / ".config" / "configstore" / "firebase-tools.json"))
 IDENTITY_URL = (os.environ.get("CM_SETUP_IDENTITY_URL") or "https://identitytoolkit.googleapis.com").rstrip("/")
 IAM_URL = (os.environ.get("CM_SETUP_IAM_URL") or "https://iam.googleapis.com").rstrip("/")
@@ -228,7 +230,8 @@ class Setup:
 
     @staticmethod
     def new_id():
-        return f"claude-master-relay-{secrets.randbelow(10000):04d}"
+        # 11/11: 6 caratteri esadecimali (con 4 cifre un nome gia' preso nel mondo era probabile e projects:create falliva)
+        return f"supervisor-relay-{secrets.token_hex(3)}"
 
     def create_project(self, pid):
         self.project = pid
@@ -305,13 +308,32 @@ class Setup:
             if "CONFIGURATION_NOT_FOUND" in str(e) or "HTTP 404" in str(e):
                 # Firebase Auth non e' mai stato aperto: la console lo inizializza («Inizia»), nessuna API pubblica
                 # lo fa senza fatturazione (initializeAuth e' Identity Platform)
-                self.manual.append(M("setup.anon_init_manual", link=link))
-                self.row("WARN", "setup.anon_not_initialized")
-                self.wait_enter("setup.anon_init_manual", link=link)
-                try:
-                    conf = self.rest("GET", url)
-                except SetupError:
-                    self.row("WARN", "setup.anon_still_missing", link=link); return
+                # 11/11 (il maintainer: «il clic Inizia spiegato col link esatto e rilevato senza Invio»): con un
+                # terminale si stampa il link e si guarda da soli ogni 5 s, fino a ANON_WAIT_S; senza, come prima
+                wait_s = float(os.environ.get("CM_SETUP_ANON_WAIT_S") or (ANON_WAIT_S if sys.stdin.isatty() and not self.dry_run else 0))
+                if wait_s > 0:
+                    self.say("setup.anon_init_watch", link=link)
+                    end = time.time() + wait_s
+                    conf = None
+                    while time.time() < end:
+                        time.sleep(ANON_POLL_S)
+                        try:
+                            conf = self.rest("GET", url)
+                            break
+                        except SetupError:
+                            continue
+                    if conf is None:
+                        self.manual.append(M("setup.anon_init_manual", link=link))
+                        self.row("WARN", "setup.anon_still_missing", link=link); return
+                    self.say("setup.anon_init_seen")
+                else:
+                    self.manual.append(M("setup.anon_init_manual", link=link))
+                    self.row("WARN", "setup.anon_not_initialized")
+                    self.wait_enter("setup.anon_init_manual", link=link)
+                    try:
+                        conf = self.rest("GET", url)
+                    except SetupError:
+                        self.row("WARN", "setup.anon_still_missing", link=link); return
             else:
                 self.manual.append(M("setup.anon_manual", link=link))
                 self.row("WARN", "setup.anon_no_token", error=str(e)[:120])

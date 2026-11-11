@@ -80,7 +80,7 @@ with T.PrivateTmux() as tm:
     T.check("W4 wrapper creates the tmux session named after the folder", tm("has-session", "-t", "=alfa").returncode == 0, tm("list-sessions").stdout)
     T.check("W4 -n NAME and --remote-control NAME in argv, claude_args present", "-n alfa" in argslog.read_text().splitlines()[-1] and "--remote-control alfa" in argslog.read_text().splitlines()[-1] and "--dangerously-skip-permissions" in argslog.read_text().splitlines()[-1], argslog.read_text().splitlines()[-1])
     T.check("W4 destroy-unattached on after attach (T7)", "on" in (tm("show-options", "-t", "alfa", "-v", "destroy-unattached").stdout or ""), tm("show-options", "-t", "alfa").stdout)
-    pane_env = subprocess.run(["bash", "-c", f"tr '\\0' '\\n' < /proc/$(tmux -L {tm.socket} list-panes -t alfa -F '#{{pane_pid}}')/environ"], capture_output=True, text=True).stdout
+    pane_env = T.proc_env(tm("list-panes", "-t", "alfa", "-F", "#{pane_pid}").stdout.strip() or 0)
     T.check("W4 first account: no CLAUDE_CONFIG_DIR (T68)", "CLAUDE_CONFIG_DIR=" not in pane_env, pane_env[:200])
     tm("kill-session", "-t", "=runner")
     runner2 = runner.replace('cd \\"' + str(home / "ws/personali/alfa") + '\\"; claude', 'cd \\"' + str(home / "ws/pro/beta") + '\\"; claude-pro')
@@ -90,7 +90,7 @@ with T.PrivateTmux() as tm:
         time.sleep(0.5)
         if tm("has-session", "-t", "=pix-beta").returncode == 0:
             break
-    pane_env = subprocess.run(["bash", "-c", f"tr '\\0' '\\n' < /proc/$(tmux -L {tm.socket} list-panes -t pix-beta -F '#{{pane_pid}}')/environ"], capture_output=True, text=True).stdout
+    pane_env = T.proc_env(tm("list-panes", "-t", "pix-beta", "-F", "#{pane_pid}").stdout.strip() or 0)
     T.check("W4 second account: prefix and CLAUDE_CONFIG_DIR", tm("has-session", "-t", "=pix-beta").returncode == 0 and f"CLAUDE_CONFIG_DIR={home}/.claude-pixel" in pane_env, pane_env[:300] + tm("list-sessions").stdout)
     tm("kill-session", "-t", "=runner2")
     # W5: avviso di account — senza tty l'attach fallisce, ma l'avviso e' gia' su stderr

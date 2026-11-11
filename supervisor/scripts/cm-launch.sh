@@ -117,7 +117,7 @@ if [ -z "$HOST" ] && [ "$FORCE" != si ] && [ "$(readlink -f "$CARTELLA")" != "$(
   ATTIVE="$(python3 "$CM_SCRIPTS/cm-sessions.py" --count-active 2>/dev/null || echo 0)"
   MAX="${CM_SESSIONS_MAX_SESSIONS:-5}"
   if [ "${ATTIVE:-0}" -ge "$MAX" ] 2>/dev/null; then
-    LIBERA="$(free -m 2>/dev/null | awk '/^Mem:/{print $7}')"
+    LIBERA="$(python3 -c 'import importlib.util as u,sys; s=u.spec_from_file_location("p", sys.argv[1]); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.memory()[1] or "")' "$CM_SCRIPTS/cm-proc.py" 2>/dev/null)"   # 11/11: anche macOS
     cm_msg launch.too_many "n=$ATTIVE" "max=$MAX" "free=${LIBERA:-?}" >&2
     if [ -t 0 ] && [ -z "${CM_LAUNCH_NO_TTY:-}" ]; then
       printf '%s ' "$(cm_msg launch.too_many_ask)" >&2; read -r risposta

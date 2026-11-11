@@ -28,7 +28,23 @@ def mac():
     return platform() == "darwin"
 
 
+_SYS_DIRS = ("/usr/sbin", "/sbin", "/usr/bin", "/bin")
+
+
+def _tool(name):
+    """Il comando dal PATH, o dalle cartelle di sistema (lsof e sysctl stanno in /usr/sbin, fuori dal PATH di cron)."""
+    import shutil
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in _SYS_DIRS:
+        if os.access(os.path.join(d, name), os.X_OK):
+            return os.path.join(d, name)
+    return name
+
+
 def _run(*cmd, timeout=10):
+    cmd = (_tool(cmd[0]),) + tuple(cmd[1:])
     try:
         p = subprocess.run(list(cmd), capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
@@ -184,6 +200,19 @@ def pids():
         except ValueError:
             continue
     return out
+
+
+def cmdlines():
+    """{pid: riga di comando} di tutti i processi in una volta: su macOS un solo `ps` invece di uno per pid (centinaia di
+    processi: una scansione chiamava ps centinaia di volte, decine di secondi)."""
+    if mac():
+        out = {}
+        for line in _run("ps", "-axww", "-o", "pid=,command=", timeout=20).splitlines():
+            parts = line.strip().split(None, 1)
+            if parts and parts[0].isdigit():
+                out[int(parts[0])] = parts[1] if len(parts) > 1 else ""
+        return out
+    return {pid: cmdline(pid) for pid in pids()}
 
 
 def children(pid):

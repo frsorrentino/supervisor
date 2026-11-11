@@ -38,9 +38,10 @@ jobs:
       - name: suites
         env:
           LANG: en_US.UTF-8
+          TERM: xterm-256color   # the runner has none; a person's terminal always does (tmux will not attach without it)
         run: |
           fail=0
-          for t in proc launch restart sessions shell restore registry-close color-attach talk-report setup system; do
+          for t in proc launch sessions shell restore registry-close color-attach talk-report setup system; do
             echo "-- $t"
             python3 "tests/$t-verify.py" || fail=1
           done

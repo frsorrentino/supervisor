@@ -54,8 +54,7 @@ SCRIPT = T.SCRIPTS / "cm-sessions.py"
 
 
 def proc_start(pid):
-    stat = Path(f"/proc/{pid}/stat").read_text()
-    return stat[stat.rindex(")") + 2:].split()[19]
+    return T.proc_start(pid)   # 11/11: Linux e macOS (cm-proc)
 
 
 tmp = T.tmpdir()
@@ -113,7 +112,7 @@ with T.PrivateTmux() as tm:
     # client su pty per "alfa": risulta attaccata (T9)
     master, slave = pty.openpty()
     client = subprocess.Popen(["tmux", "-L", tm.socket, "attach", "-t", "=alfa"], stdin=slave, stdout=slave, stderr=slave,
-                              start_new_session=True)
+                              start_new_session=True, env=dict(os.environ, TERM=os.environ.get("TERM") or "xterm-256color"))   # senza TERM tmux non si attacca
     time.sleep(1)
 
     # S1: personale, vivo, registro del personale
@@ -131,11 +130,12 @@ with T.PrivateTmux() as tm:
     # S4: fuori registro, cmdline "claude"
     p4 = spawn(argv0="claude")
     # S20: un finto server tmux con la riga di comando della prima sessione dentro (come il vero, pid 1141 il 14/09)
-    p_tmux = subprocess.Popen(["bash", "-c", "exec -a tmux python3 -c 'import time; time.sleep(300)' new-session -d -s master env /home/demo/.local/bin/claude --x"],
+    # perl e non python3: su macOS il python3 di sistema si rilancia e perde l'argv0 finto (11/11)
+    p_tmux = subprocess.Popen(["bash", "-c", "exec -a tmux perl -e 'sleep 300' new-session -d -s master env /home/demo/.local/bin/claude --x"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     procs.append(p_tmux)
     # S20b: Claude Code 2.1.295 keeps each --bg session's terminal in a helper «claude bg-pty-host …» (seen 08/10)
-    p_pty = subprocess.Popen(["bash", "-c", "exec -a claude python3 -c 'import time; time.sleep(300)' bg-pty-host --bg-pty-host /tmp/x.sock 200 50"],
+    p_pty = subprocess.Popen(["bash", "-c", "exec -a claude perl -e 'sleep 300' bg-pty-host --bg-pty-host /tmp/x.sock 200 50"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     procs.append(p_pty)
     time.sleep(0.3)
@@ -150,7 +150,10 @@ with T.PrivateTmux() as tm:
     T.check("S1 account from environment (personale)", by.get("alfa", {}).get("account") == "personale", str(by.get("alfa")))
     T.check("S1 link from bridgeSessionId", by.get("alfa", {}).get("link") == "https://claude.ai/code/session_br_alfa", str(by.get("alfa")))
     T.check("S2 stale entry excluded", "morta" not in by, str(list(by)))
-    T.check("S3 reused pid excluded", "riusata" not in by, str(list(by)))
+    if T.macos():   # su macOS procStart non si confronta (Claude Code non scrive li' il campo 22 di /proc): non si sa
+        print("  skip S3 (macOS: a reused pid cannot be told from procStart)")
+    else:
+        T.check("S3 reused pid excluded", "riusata" not in by, str(list(by)))
     T.check("S4 unregistered claude process from /proc with status ?", by.get(f"pid{p4}", {}).get("status") == "?", str(list(by)))
     T.check("S20 the tmux server (argv0 tmux, …/claude in its command line) is not listed; the real claude process of S4 is", f"pid{p_tmux.pid}" not in by and f"pid{p4}" in by, str(list(by)))
     T.check("S20b the --bg terminal helper (claude bg-pty-host) is not a session", f"pid{p_pty.pid}" not in by, str(list(by)))
@@ -265,7 +268,8 @@ with T.PrivateTmux() as tm:
     # attive: alfa (waiting per il flag S7), pix-beta, questa-prova; fuori registro e master non contano
     entry(home / ".claude" / "sessions", spawn(), "master", str(home / "ws"), "master")
     rc = run("--count-active")
-    T.check("S23 --count-active: busy/idle/waiting in the registry, not the master, not the unregistered process", rc.stdout.strip() == "3", rc.stdout + rc.stderr + str([(x["name"], x["status"]) for x in rows]))
+    # su macOS anche «riusata» (S3) conta: li' un pid riusato non si riconosce
+    T.check("S23 --count-active: busy/idle/waiting in the registry, not the master, not the unregistered process", rc.stdout.strip() == ("4" if T.macos() else "3"), rc.stdout + rc.stderr + str([(x["name"], x["status"]) for x in rows]))
 
     # tabella
     r = run()

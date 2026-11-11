@@ -3259,7 +3259,7 @@ def sweep_results(now=None):
             write_json(sweep_path(), d)
         gone += len(part)
     if gone:
-        usage_add(now, results_deleted=gone)
+        usage_add(time.time(), results_deleted=gone)   # il giorno vero, non quello del `now` di chi chiama
     return gone
 
 

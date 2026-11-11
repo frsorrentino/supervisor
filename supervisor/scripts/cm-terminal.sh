@@ -34,7 +34,7 @@ cm_terminal_detect() {
 
 run_detached() {  # esegue staccato dal terminale corrente, oppure stampa (dry run)
   if [ "${CM_TERMINAL_DRY_RUN:-}" = 1 ]; then printf '%q ' "$@"; echo; return 0; fi
-  setsid "$@" >/dev/null 2>&1 < /dev/null &
+  cm_setsid "$@" >/dev/null 2>&1 < /dev/null &   # 11/11: su macOS senza setsid (la finestra di Terminale non si apriva)
 }
 
 cm_terminal_open() {
@@ -78,7 +78,7 @@ cm_terminal_open() {
       if [ "${CM_TERMINAL_FAKE_ATTACH:-}" = 1 ]; then
         # staccato e senza stdout/stderr ereditati: altrimenti chi ha lanciato
         # `open` resta appeso finche' il client tmux finto non muore
-        setsid python3 - "$nome" "$mode" "$CM_SCRIPTS" >/dev/null 2>&1 <<'PY' &
+        cm_setsid python3 - "$nome" "$mode" "$CM_SCRIPTS" >/dev/null 2>&1 <<'PY' &
 import os, pty, select, subprocess, sys, time
 nome, mode, scripts = sys.argv[1], sys.argv[2], sys.argv[3]
 m, s = pty.openpty()

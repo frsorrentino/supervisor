@@ -48,8 +48,7 @@ FAKE = T.ROOT / "tests" / "lib" / "fake-claude.sh"
 
 
 def proc_start(pid):
-    stat = Path(f"/proc/{pid}/stat").read_text()
-    return stat[stat.rindex(")") + 2:].split()[19]
+    return T.proc_start(pid)   # 11/11: Linux e macOS (cm-proc)
 
 
 def env(**extra):

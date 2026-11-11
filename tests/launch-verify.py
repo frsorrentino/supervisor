@@ -100,8 +100,7 @@ with T.PrivateTmux() as tm:
     T.check("L1 missing dir → exit 4", r.returncode == 4 and "--create" in r.stderr, r.stderr)
     r = run(str(home / "ws" / "personali" / "nuova"), "--create", "--no-window")
     T.check("L1 --create makes the dir and launches", r.returncode == 0 and (home / "ws" / "personali" / "nuova").is_dir(), r.stdout + r.stderr)
-    pane_env = subprocess.run(["bash", "-c", f"tr '\\0' '\\n' < /proc/$(tmux -L {tm.socket} list-panes -t nuova -F '#{{pane_pid}}')/environ"],
-                              capture_output=True, text=True).stdout
+    pane_env = T.proc_env(tm("list-panes", "-t", "nuova", "-F", "#{pane_pid}").stdout.strip() or 0)
     T.check("T68 default-dir account → CLAUDE_CONFIG_DIR NOT set in the session", "CLAUDE_CONFIG_DIR=" not in pane_env, pane_env[:300])
     T.check("L2 argv has claude_args, --remote-control NAME and -n NAME",
             "--dangerously-skip-permissions" in last_args() and "--remote-control nuova" in last_args() and "-n nuova" in last_args(), last_args())
@@ -113,7 +112,7 @@ with T.PrivateTmux() as tm:
     keep = []
     for i in range(5):
         pr = subprocess.Popen(["sleep", "300"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); keep.append(pr); time.sleep(0.1)
-        st = Path(f"/proc/{pr.pid}/stat").read_text(); st = st[st.rindex(")") + 2:].split()[19]
+        st = T.proc_start(pr.pid)
         (home / ".claude" / "sessions" / f"{pr.pid}.json").write_text(json.dumps({"pid": pr.pid, "name": f"finta{i}", "cwd": str(home), "status": "idle", "tmux": f"finta{i}:@0.%0",
                                                                                   "startedAt": int(time.time() * 1000), "procStart": st, "sessionId": f"sid-finta{i}"}))
     r = run(str(home / "ws" / "personali" / "sesta"), "--no-window", "--create", extra={"CM_LAUNCH_NO_TTY": "1", "CC_SUPERVISOR_CONFIG": str(cfg_cap)})
@@ -134,8 +133,8 @@ with T.PrivateTmux() as tm:
     T.check("L2 account deduced from folder_map → professionale", r.returncode == 0 and "professionale" in r.stdout and "dedotto" in r.stdout, r.stdout + r.stderr)
     T.check("L3 tmux name carries the account prefix", tm("has-session", "-t", "=pix-beta").returncode == 0, tm("list-sessions").stdout)
     T.check("T68 second account → CLAUDE_CONFIG_DIR passed", "ENV CLAUDE_CONFIG_DIR=" + str(home / ".claude-pixel") in
-            subprocess.run(["bash", "-c", f"tr '\\0' '\\n' < /proc/$(tmux -L {tm.socket} list-panes -t pix-beta -F '#{{pane_pid}}')/environ | grep -E '^CLAUDE_CONFIG_DIR=' | sed 's/^/ENV /'"],
-                           capture_output=True, text=True).stdout, "environ check")
+            "\n".join("ENV " + l for l in T.proc_env(tm("list-panes", "-t", "pix-beta", "-F", "#{pane_pid}").stdout.strip() or 0).splitlines()
+                      if l.startswith("CLAUDE_CONFIG_DIR=")), "environ check")
     reg_pro = list((home / ".claude-pixel" / "sessions").glob("*.json"))
     T.check("L2 launched with the account's CLAUDE_CONFIG_DIR (registered there)", len(reg_pro) == 1, str(reg_pro))
 
@@ -224,7 +223,7 @@ with T.PrivateTmux() as tm:
     time.sleep(0.5)
     (home / ".claude-pixel" / "sessions" / f"{zombie.pid}.json").write_text(json.dumps(
         {"pid": zombie.pid, "sessionId": "bg-2", "cwd": str(home / "ws" / "pro" / "zeta"), "kind": "interactive", "name": "pix-zeta"}, separators=(",", ":")))
-    was_zombie = "Z" in Path(f"/proc/{zombie.pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    was_zombie = T.proc_zombie(zombie.pid)
     r = run(str(home / "ws" / "pro" / "zeta"), "--bg", "--create")
     zombie.wait()
     T.check("L9b the registry entry of a zombie (exited, not yet reaped) does not hold the name", was_zombie and r.returncode == 0 and "-n pix-zeta " in last_args() + " ",
@@ -360,14 +359,11 @@ with T.PrivateTmux() as tm:
 
 def fake_attachers():
     """I finti attaccatori di cm-terminal.sh (backend fake) lanciati da questo test, riconosciuti dal loro log."""
+    P = T._proc()
     found = []
-    for d in Path("/proc").iterdir():
-        try:
-            if d.name.isdigit() and f"CM_TERMINAL_FAKE_LOG={fakelog}".encode() in (d / "environ").read_bytes().split(b"\0") \
-                    and (d / "cmdline").read_bytes().startswith(b"python3\0-\0"):
-                found.append(int(d.name))
-        except OSError:
-            pass
+    for pid in P.pids():
+        if P.environ(pid).get("CM_TERMINAL_FAKE_LOG") == str(fakelog) and P.cmdline(pid).startswith("python3 - "):
+            found.append(pid)
     return found
 
 

@@ -137,7 +137,7 @@ In full: [details/trust.md](details/trust.md) and [PRIVACY.md](PRIVACY.md).
 | `tmux` | everything | on the PATH |
 | `python3` | everything | 3.8+ |
 | `bash` | everything | on the PATH |
-| A system | everything | Linux, ChromeOS or WSL2; not native Windows ([details/windows.md](details/windows.md)); macOS not yet: sessions are not recognised there, a fix is in progress |
+| A system | everything | Linux, macOS (its own bash 3.2 is enough; tmux from Homebrew), ChromeOS or WSL2; not native Windows ([details/windows.md](details/windows.md)) |
 | Firebase project, `firebase-tools` | phone and watch away from this computer | your own, set up by `relay setup` |
 | A browser | web app | any phone or tablet; on iPhone and iPad, add it to the Home Screen and open it from there |
 | Android, Wear OS | native apps | Android 13+ phone, Wear OS 4+ watch |

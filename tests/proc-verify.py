@@ -34,29 +34,43 @@ def load(name, tag):
 
 P = load("cm-proc", "cm_proc_t")
 
-# PR1 — Linux
+# PR1 — la piattaforma vera: Linux da /proc; su un Mac (la CI macos.yml) ps, lsof e sysctl veri
 os.environ.pop("CM_PROC_PLATFORM", None)
 me = os.getpid()
-stat = Path(f"/proc/{me}/stat").read_text()
-child = subprocess.Popen(["sleep", "30"], cwd=str(tmp), env=dict(os.environ, CM_PROVA_PROC="si"))
-time.sleep(0.3)
-T.check("PR1 Linux: this pid alive, start = field 22 of stat, command, name, folder, parent",
-        P.platform() == "linux" and P.alive(me) and P.start_token(me) == stat[stat.rindex(")") + 2:].split()[19]
-        and "proc-verify" in P.cmdline(me) and P.comm(me).startswith("python") and P.cwd(me) == os.getcwd() and P.ppid(me) == os.getppid(),
-        json.dumps({"start": P.start_token(me), "comm": P.comm(me), "cwd": P.cwd(me), "ppid": P.ppid(me)}))
-T.check("PR1 Linux: a child — its folder, its environment, listed among our children and among all pids",
-        P.cwd(child.pid) == str(tmp) and P.environ(child.pid).get("CM_PROVA_PROC") == "si" and (child.pid, "sleep") in P.children(me)
-        and child.pid in P.pids() and P.argv(child.pid) == ["sleep", "30"], str(P.children(me)))
-child.kill()
-time.sleep(0.2)
-zombie_alive = P.alive(child.pid)   # non ancora raccolto: zombie
-child.wait()
-T.check("PR1 Linux: a zombie is not alive; a pid that is gone neither; a bad pid is no error",
-        not zombie_alive and not P.alive(child.pid) and not P.alive(0) and not P.alive("x") and P.cmdline(child.pid) == "", "")
-tot, avail = P.memory()
-T.check("PR1 Linux: load, memory (total and available in MB), boot time and boot id",
-        P.loadavg() is not None and tot and avail and 0 < avail <= tot and P.boot_time() and P.boot_time() < time.time() and len(P.boot_id()) > 8,
-        f"{P.loadavg()} {tot} {avail} {P.boot_time()} {P.boot_id()}")
+REAL_MAC = sys.platform == "darwin"
+if REAL_MAC:
+    child = subprocess.Popen(["sleep", "30"], cwd=str(tmp), env=dict(os.environ, CM_PROVA_PROC="si"))
+    time.sleep(0.5)
+    tot, avail = P.memory()
+    T.check("PR1 macOS (real): this pid and a child alive, start, command, name, folder, parent, environment, children, load, memory, boot",
+            P.mac() and P.alive(me) and P.start_token(me) and "proc-verify" in P.cmdline(me) and P.comm(me).lower().startswith("python")
+            and P.ppid(me) == os.getppid() and os.path.realpath(P.cwd(child.pid)) == os.path.realpath(str(tmp))
+            and P.environ(child.pid).get("CM_PROVA_PROC") == "si" and child.pid in [c for c, _ in P.children(me)] and child.pid in P.pids()
+            and P.loadavg() is not None and tot and avail and P.boot_time() and P.boot_id().startswith("boot-"),
+            json.dumps({"start": P.start_token(me), "cwd": P.cwd(child.pid), "env": P.environ(child.pid).get("CM_PROVA_PROC"), "mem": [tot, avail]}))
+    child.kill(); child.wait()
+    T.check("PR1 macOS (real): a pid that is gone is not alive", not P.alive(child.pid), "")
+stat = "" if REAL_MAC else Path(f"/proc/{me}/stat").read_text()
+if not REAL_MAC:
+  child = subprocess.Popen(["sleep", "30"], cwd=str(tmp), env=dict(os.environ, CM_PROVA_PROC="si"))
+  time.sleep(0.3)
+  T.check("PR1 Linux: this pid alive, start = field 22 of stat, command, name, folder, parent",
+          P.platform() == "linux" and P.alive(me) and P.start_token(me) == stat[stat.rindex(")") + 2:].split()[19]
+          and "proc-verify" in P.cmdline(me) and P.comm(me).startswith("python") and P.cwd(me) == os.getcwd() and P.ppid(me) == os.getppid(),
+          json.dumps({"start": P.start_token(me), "comm": P.comm(me), "cwd": P.cwd(me), "ppid": P.ppid(me)}))
+  T.check("PR1 Linux: a child — its folder, its environment, listed among our children and among all pids",
+          P.cwd(child.pid) == str(tmp) and P.environ(child.pid).get("CM_PROVA_PROC") == "si" and (child.pid, "sleep") in P.children(me)
+          and child.pid in P.pids() and P.argv(child.pid) == ["sleep", "30"], str(P.children(me)))
+  child.kill()
+  time.sleep(0.2)
+  zombie_alive = P.alive(child.pid)   # non ancora raccolto: zombie
+  child.wait()
+  T.check("PR1 Linux: a zombie is not alive; a pid that is gone neither; a bad pid is no error",
+          not zombie_alive and not P.alive(child.pid) and not P.alive(0) and not P.alive("x") and P.cmdline(child.pid) == "", "")
+  tot, avail = P.memory()
+  T.check("PR1 Linux: load, memory (total and available in MB), boot time and boot id",
+          P.loadavg() is not None and tot and avail and 0 < avail <= tot and P.boot_time() and P.boot_time() < time.time() and len(P.boot_id()) > 8,
+          f"{P.loadavg()} {tot} {avail} {P.boot_time()} {P.boot_id()}")
 
 # PR2 — macOS con i comandi finti
 fake = tmp / "macbin"
@@ -112,6 +126,8 @@ os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME
 SS = load("cm-sessions", "cm_sessions_mac")
 mac_entries = [d["pid"] for d in SS.registry_entries()]
 os.environ["CM_PROC_PLATFORM"] = "linux"
+if REAL_MAC:   # su un Mac il ramo Linux (/proc) non si prova: lo provano le corse su Linux
+    os.environ["CM_PROC_PLATFORM"] = "darwin"
 real_child = subprocess.Popen(["sleep", "30"])
 time.sleep(0.2)
 (home / ".claude" / "sessions" / "4242.json").unlink()
@@ -122,7 +138,7 @@ lin_bad = [d["pid"] for d in SS.registry_entries()]
 lin_ok = [d["pid"] for d in SS.registry_entries()]
 real_child.kill(); real_child.wait()
 T.check("PR3 cm-sessions: on macOS a registry entry of a live process stays although procStart cannot be compared; on Linux a different procStart drops it (pid reused), the same keeps it",
-        mac_entries == [4242] and lin_bad == [] and lin_ok == [real_child.pid], f"{mac_entries} {lin_bad} {lin_ok}")
+        mac_entries == [4242] and (REAL_MAC or (lin_bad == [] and lin_ok == [real_child.pid])), f"{mac_entries} {lin_bad} {lin_ok}")
 
 # PR4 — cm-system su macOS
 os.environ["CM_PROC_PLATFORM"] = "darwin"
@@ -135,12 +151,14 @@ T.check("PR4 cm-system on macOS: load and memory from cm-proc; processes from ps
         f"{mm} {rows}")
 
 # PR5 — doctor
-os.environ["CM_PROC_PLATFORM"] = "linux"
+os.environ["CM_PROC_PLATFORM"] = "darwin" if REAL_MAC else "linux"
+os.environ["PATH"] = os.environ["PATH"].replace(f"{fake}:", "", 1)   # i ps/lsof/sysctl veri per la riga di doctor
 CC = load("cm-config", "cm_config_proc")
 r5 = CC.processes_row()
 os.environ["CM_PROC_PLATFORM"] = "darwin"
+os.environ["PATH"] = f"{fake}:{os.environ['PATH']}"
 r5b = CC.processes_row(pid=4242)
 T.check("PR5 doctor: processes_ok on Linux with this pid; on macOS with the fake tools too",
-        r5[0] == "PASS" and r5[2]["platform"] == "Linux" and r5b[0] == "PASS" and r5b[2]["platform"] == "macOS", f"{r5} {r5b}")
+        r5[0] == "PASS" and r5[2]["platform"] == ("macOS" if REAL_MAC else "Linux") and r5b[0] == "PASS" and r5b[2]["platform"] == "macOS", f"{r5} {r5b}")
 T.rm(tmp)
 T.finish()

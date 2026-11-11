@@ -69,12 +69,14 @@ register() {
   [ "${FAKE_CLAUDE_REGISTER:-1}" = 1 ] || return 0
   local dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions" ps tm
   mkdir -p "$dir"
-  ps=$(awk '{print $22}' /proc/$$/stat)
+  # 11/11: procStart come lo scrive Claude Code su Linux (campo 22 di /proc/<pid>/stat); su macOS /proc non c'e' e
+  # Claude Code ne scrive un altro, che supervisor li' non confronta: vuoto
+  ps=$(awk '{print $22}' /proc/$$/stat 2>/dev/null || true)
   tm=$(tmux display-message -p '#S:@#{window_index}.%#{pane_index}' 2>/dev/null || echo "")
   printf '{"pid":%s,"sessionId":"fake-%s","cwd":"%s","startedAt":%s,"procStart":"%s","version":"2.1.265","kind":"interactive","tmux":"%s","messagingSocketPath":"/tmp/fake-%s.sock","name":"%s","status":"idle","bridgeSessionId":"%s"}\n' \
     "$$" "$$" "$PWD" "$(date +%s)000" "$ps" "$tm" "$$" "${NAME:-$(basename "$PWD")}" "$(case "$SCEN" in (*,bridge-late,*) ;; (*) printf '%s' "${RC:+session_01FAKE$$}";; esac)" > "$dir/$$.json"
   case "$SCEN" in *,bridge-late,*)
-    ( sleep "$DELAY"; sed -i "s/\"bridgeSessionId\":\"\"/\"bridgeSessionId\":\"session_01FAKE$$\"/" "$dir/$$.json" ) & ;;
+    ( sleep "$DELAY"; f="$dir/$$.json"; sed "s/\"bridgeSessionId\":\"\"/\"bridgeSessionId\":\"session_01FAKE$$\"/" "$f" > "$f.tmp" && mv "$f.tmp" "$f" ) & ;;
   esac
   printf '{"peerToken":"faketoken%s","procStart":"%s"}\n' "$$" "$ps" > "$dir/$$.fakehash.key"
   # 16/10/2026: la trap gira quando register() e' gia' tornata, e una variabile `local` li' non c'e' piu': con "$dir"

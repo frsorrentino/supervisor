@@ -215,7 +215,37 @@ def master_name():
 
 # ------------------------------------------------------------------ prima dei passi (11/11, la master: «controlla tutto
 # subito dopo le due domande»): l'accesso a Claude Code e, per il telefono, la CLI di Firebase e il suo accesso
-FIREBASE_INSTALL = "curl -sL https://firebase.tools | bash"   # la CLI autonoma: niente Node ne' npm
+FIREBASE_INSTALL = "curl -sL https://firebase.tools | bash"   # la riga ufficiale (sudo, in /usr/local/bin): il ripiego
+# 11/11 (il maintainer: «niente Node da installare a mano»): il binario autonomo della CLI, scaricato da setup in
+# ~/.local/bin, senza sudo. Linux x86_64 e macOS (il binario macos gira anche su Apple Silicon con Rosetta); altrove la riga
+FIREBASE_BIN_URL = {"linux": "https://firebase.tools/bin/linux/latest", "darwin": "https://firebase.tools/bin/macos/latest"}
+
+
+def firebase_download():
+    """Scarica la CLI autonoma in ~/.local/bin/firebase. Torna il percorso, o None (piattaforma senza binario, rete)."""
+    import platform
+    import urllib.request
+    url = FIREBASE_BIN_URL.get(sys.platform if sys.platform == "darwin" else "linux")
+    if sys.platform != "darwin" and platform.machine() not in ("x86_64", "AMD64"):
+        return None   # niente binario per Linux ARM: resta la riga ufficiale
+    dest = cm.home() / ".local" / "bin" / "firebase"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".part")
+    try:
+        print(M("install.pre_fb_downloading", path=cm.contract(str(dest))), flush=True)
+        with urllib.request.urlopen(url, timeout=300) as r, open(tmp, "wb") as f:
+            while True:
+                b = r.read(1 << 20)
+                if not b:
+                    break
+                f.write(b)
+        tmp.chmod(0o755)
+        os.replace(tmp, dest)
+    except (OSError, ValueError) as e:
+        tmp.unlink(missing_ok=True)
+        print(f"  {e}", flush=True)
+        return None
+    return str(dest)
 
 
 def claude_bin():
@@ -248,7 +278,7 @@ def firebase_bin():
     if os.environ.get("CM_FIREBASE_CMD"):   # le prove: quella e nessun'altra
         c = os.environ["CM_FIREBASE_CMD"]
         return c if os.path.isfile(c) and os.access(c, os.X_OK) else None
-    for c in (shutil.which("firebase"), "/usr/local/bin/firebase"):
+    for c in (shutil.which("firebase"), str(cm.home() / ".local" / "bin" / "firebase"), "/usr/local/bin/firebase"):
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
     return None
@@ -299,6 +329,8 @@ def preflight(phone, interactive, dry):
             print(f"  ✓ {M('install.pre_claude_ok')}")
     if phone:
         fb = firebase_bin()
+        if not fb and not dry and not os.environ.get("CM_FIREBASE_CMD"):
+            fb = firebase_download()   # senza domande: il sì al telefono lo copre; nessun sudo
         if not fb and interactive and not dry and ask(M("install.pre_fb_install_ask", line=FIREBASE_INSTALL) + " [Y/n]", "y", True).lower() in YES + ("",):
             interactive_run(FIREBASE_INSTALL)
             fb = firebase_bin()
@@ -319,9 +351,9 @@ def preflight(phone, interactive, dry):
     return out
 
 
-def step_master(st, window, pre=True):
+def step_master(st, window, pre=True, chosen=None):
     name = master_name()
-    root = cm.expand(cm.load(warn=False)["workspace"]["root"])
+    root = cm.expand(chosen if st.dry and chosen else cm.load(warn=False)["workspace"]["root"])
     if any((r.get("tmux") or r.get("name")) == name and r.get("status") != "dead" for r in live_rows()):
         st.add("done", "master", M("install.master_alive", name=name)); return True
     if st.dry:
@@ -395,7 +427,8 @@ def step_phone(st, phone, interactive, pre=True):
         st.add("fail", "phone", M("install.phone_blocked", why=pre)); return
     if not interactive:
         st.add("warn", "phone", M("install.phone_needs_terminal")); return
-    for args in ([] if has_fb else [("relay", "setup")]) + [("relay", "install"), ("relay", "pair")]:
+    # relay setup --yes: il progetto si crea senza domande, con un nome pronto (11/11)
+    for args in ([] if has_fb else [("relay", "setup", "--yes")]) + [("relay", "install"), ("relay", "pair")]:
         print(M("install.phone_running", cmd="supervisor " + " ".join(args)), flush=True)
         rc, _ = run(*args, timeout=3600, stdin=None, capture=False)
         if rc != 0:
@@ -509,7 +542,7 @@ def main(argv):
     step_shell(st)
     step_inbound(st)
     link = step_relay(st)
-    if step_master(st, window, pre["claude"]):
+    if step_master(st, window, pre["claude"], chosen=root):
         step_state(st)
     step_raccolta(st, sessions)
     step_phone(st, phone, interactive, pre["phone"])

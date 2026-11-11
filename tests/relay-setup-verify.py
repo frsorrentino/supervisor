@@ -15,6 +15,7 @@ S7  la configurazione principale (quella di HOME) non esiste e non nasce: si scr
 """
 import base64
 import json
+import time
 import os
 import subprocess
 import sys
@@ -152,12 +153,12 @@ fblog.unlink(); API["calls"].clear()
 # S2
 r = setup("--yes")
 st = json.loads(state.read_text())
-new_ids = [p for p in st["projects"] if p.startswith("claude-master-relay-")]
+new_ids = [p for p in st["projects"] if p.startswith("supervisor-relay-")]
 pid = new_ids[0] if new_ids else ""
 cfg_after = json.loads(cfg.read_text())["relay"]
 sa = rdir / "service-account.json"
 rules = json.loads((tmp / "deployed-rules.json").read_text()) if (tmp / "deployed-rules.json").exists() else {}
-T.check("S2 --yes on an empty account: exit 0, a project claude-master-relay-NNNN created, its DEFAULT instance in europe-west1 through the Management API (the three APIs enabled first, no database:instances:create), the rules deployed from a temp dir (deploy --only database)",
+T.check("S2 --yes on an empty account: exit 0, a project supervisor-relay-xxxxxx created, its DEFAULT instance in europe-west1 through the Management API (the three APIs enabled first, no database:instances:create), the rules deployed from a temp dir (deploy --only database)",
         r.returncode == 0 and len(new_ids) == 1 and st["instances"].get(pid) == {f"{pid}-default-rtdb": "europe-west1"} and "database:instances:create" not in calls() and any(m == "POST" and "/v1beta/" in p and f"databaseId={pid}-default-rtdb" in p for m, p, _ in API["calls"]) and {"firebasedatabase.googleapis.com", "identitytoolkit.googleapis.com", "iam.googleapis.com"} <= set(API.get("enabled", [])) and "deploy" in calls() and json.loads((tmp / "deployed-firebase.json").read_text())["database"][0]["instance"] == f"{pid}-default-rtdb", r.stdout + r.stderr + str(st) + str(API["calls"]))
 T.check("S2 the rules: /state /events /result readable only by a uid in /allowed, /cmd writable by them, /pair/$node readable and its watch writable by any signed-in (anonymous) user, root closed",
         rules.get("rules", {}).get(".read") is False and "allowed" in rules["rules"]["state"][".read"] and rules["rules"]["events"][".read"] == rules["rules"]["state"][".read"] == rules["rules"]["result"][".read"] and rules["rules"]["cmd"][".write"] == rules["rules"]["state"][".read"] and rules["rules"]["pair"]["$node"][".read"] == "auth != null" and rules["rules"]["pair"]["$node"]["watch"][".write"] == "auth != null", json.dumps(rules))
@@ -196,6 +197,20 @@ cfg4b.write_text(json.dumps({"language": "it", "relay": {"dir": str(rdir4b), "se
 r = setup("--yes", "--project", "fresh-proj", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg4b)))
 T.check("S4b Authentication never opened (404 CONFIGURATION_NOT_FOUND) → WARN with the «Inizia» console link, no PATCH, the rest done, exit 0 with the manual step listed",
         r.returncode == 0 and "premi «Inizia»" in r.stdout and "fresh-proj/authentication/providers" in r.stdout and not any(m == "PATCH" for m, _, _ in API["calls"]) and (rdir4b / "sa.json").is_file() and "manuale:" in r.stdout, r.stdout[-1000:] + r.stderr)
+API["auth_missing"] = {}
+# S4c (11/11): con un terminale relay setup non chiede Invio per «Inizia»: stampa il link e guarda da solo; il clic della
+# persona (qui: Authentication che diventa aperto dopo 3 s) basta, e l'accesso anonimo si accende
+import threading  # noqa: E402
+API["auth_missing"] = {"click-proj": True}
+threading.Timer(3, lambda: API["auth_missing"].pop("click-proj", None)).start()
+cfg4c = tmp / "config-4c.json"; rdir4c = tmp / "relay-4c"
+cfg4c.write_text(json.dumps({"language": "it", "relay": {"dir": str(rdir4c), "service_account": str(rdir4c / "sa.json"), "app_package": "it.example.cmwatch"}}))
+API["calls"].clear()
+t4c = time.time()
+r = setup("--yes", "--project", "click-proj", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg4c), CM_SETUP_ANON_WAIT_S="30"))
+T.check("S4c «Inizia» watched by setup itself: the exact link, no Enter asked, seen within seconds of the click, anonymous sign-in turned on (PATCH), no manual step left for it",
+        r.returncode == 0 and "click-proj/authentication/providers" in r.stdout and "non serve premere Invio" in r.stdout and "Authentication aperto" in r.stdout
+        and API["anon"].get("click-proj") is True and "premi Invio" not in r.stdout and time.time() - t4c < 25, r.stdout[-1200:] + r.stderr)
 API["auth_missing"] = {}
 T.check("S4 --project names a project that does not exist yet → created with that id", "manual-proj" in json.loads(state.read_text())["projects"], str(json.loads(state.read_text())["projects"]))
 fblog.unlink()

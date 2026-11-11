@@ -118,7 +118,7 @@ if [ -n "$_cm_interactive" ] && [ -z "${TMUX:-}" ]; then
   # attaccarsi entrambe alla stessa sessione); solo se la sessione esiste davvero.
   _cm_ph="${CM_TILE_PLACEHOLDER_FILE:-}"
   if [ -n "$_cm_ph" ] && [ -f "$_cm_ph" ]; then
-    _cm_age=$(( $(date +%s) - $(stat -c %Y "$_cm_ph" 2>/dev/null || echo 0) ))
+    _cm_age=$(( $(date +%s) - $(stat -c %Y "$_cm_ph" 2>/dev/null || stat -f %m "$_cm_ph" 2>/dev/null || echo 0) ))
     if [ "$_cm_age" -le "${CM_TILE_PLACEHOLDER_TTL_S:-120}" ]; then
       _cm_mine="$_cm_ph.$$"
       if mv "$_cm_ph" "$_cm_mine" 2>/dev/null; then

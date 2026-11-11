@@ -222,7 +222,9 @@ def registry_entries():
             ps = proc_start(pid)
             if ps is None or not alive(pid):
                 continue
-            # il confronto con procStart solo dove il segno e' lo stesso numero (Linux); su macOS basta che sia vivo
+            # il confronto con procStart solo dove il segno e' lo stesso numero (Linux). Su macOS basta che sia vivo: un pid
+            # riusato non si riconosce (un controllo sul nome «claude» scartava sessioni vere, che possono comparire col nome
+            # della versione, es. «2.1.322»)
             if P.comparable_start() and d.get("procStart") and str(d["procStart"]) != ps:
                 continue
             d["_registry"] = rp
@@ -280,8 +282,9 @@ def orphans(server=None, panes=None):
         return []
     cands = [(d["pid"], d.get("name") or "") for d in registry_entries()]
     scan = os.environ.get("CM_PROC_SCAN_PIDS")
-    for pid in ([int(x) for x in scan.split() if x.isdigit()] if scan is not None else P.pids()):
-        cmd = proc_cmdline(pid)
+    cmds = P.cmdlines() if scan is None else {}   # 11/11: in blocco (macOS: un ps solo)
+    for pid in ([int(x) for x in scan.split() if x.isdigit()] if scan is not None else list(cmds)):
+        cmd = cmds[pid] if pid in cmds else proc_cmdline(pid)
         if CLAUDE_CMD.search(cmd) and not CLAUDE_HELPER.search(cmd) and not is_tmux(pid, cmd):
             cands.append((pid, ""))
     out, seen = [], set()
@@ -678,11 +681,12 @@ def collect(read_screen=True):
     # CM_PROC_SCAN_PIDS (test) limita la scansione a pid noti: i test non devono
     # vedere le sessioni vere della macchina.
     scan = os.environ.get("CM_PROC_SCAN_PIDS")
-    candidates = [int(x) for x in scan.split() if x.isdigit()] if scan is not None else P.pids()
+    cmds = P.cmdlines() if scan is None else {}   # 11/11: in blocco (macOS: un ps solo)
+    candidates = [int(x) for x in scan.split() if x.isdigit()] if scan is not None else list(cmds)
     for pid in candidates:
         if pid in seen_pids:
             continue
-        cmd = proc_cmdline(pid)
+        cmd = cmds[pid] if pid in cmds else proc_cmdline(pid)
         if (CFG.get("experimental") or {}).get("codex") and pid in panes and CODEX_CMD.search(cmd) and not is_tmux(pid, cmd):
             # S09 (prova): il processo del riquadro tmux e' Codex CLI (il binario vero e' un suo figlio: non si conta due
             # volte); niente registro peer, lo stato viene dal rollout

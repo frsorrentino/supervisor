@@ -36,6 +36,14 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+# 11/11/2026 (supervisor-macos-11-11): su macOS tmux sta in /opt/homebrew/bin e lsof, sysctl in /usr/sbin. Dal cron e dal
+# demone del relay (PATH=/usr/bin:/bin) non si trovavano: «tmux non installato», processi senza cartella. Ogni script
+# Python carica questo modulo: il PATH si completa qui, una volta, e passa anche ai processi figli.
+if sys.platform == "darwin":
+    _path = os.environ.get("PATH", "").split(os.pathsep)
+    os.environ["PATH"] = os.pathsep.join(_path + [d for d in ("/opt/homebrew/bin", "/usr/local/bin", "/usr/sbin", "/sbin")
+                                                  if d not in _path and os.path.isdir(d)])
 PLUGIN = HERE.parent
 
 # ----------------------------------------------------------------- default
@@ -677,8 +685,7 @@ class Machine:
         spec = importlib.util.spec_from_file_location("cm_proc_cfg", HERE / "cm-proc.py")   # 11/11: Linux e macOS
         P = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(P)
-        for pid in P.pids():
-            cmd = P.cmdline(pid)
+        for pid, cmd in P.cmdlines().items():   # in blocco: su macOS un ps solo
             if not re.search(r"(^|/)claude( |$)", cmd) or "shell-snapshots" in cmd:
                 continue
             env = {k: v for k, v in P.environ(pid).items() if k == "CLAUDE_CONFIG_DIR"}
@@ -1144,6 +1151,7 @@ SHIM = """#!/usr/bin/env bash
 #   1. CC_SUPERVISOR_ROOT            (explicit, also used by the tests)
 #   2. plugin_root in the config     (a development checkout)
 #   3. installed_plugins.json        (CLAUDE_CONFIG_DIR first, then ~/.claude, then ~/.claude-*)
+#   4. the marketplace's checkout     (~/.claude*/plugins/marketplaces/*/supervisor: right after install, before 3 exists)
 root="${CC_SUPERVISOR_ROOT:-${TEAM_SUPERVISOR_ROOT:-${CLAUDE_MASTER_ROOT:-}}}"
 if [ -z "$root" ]; then
   root=$(python3 - "$HOME" "${CLAUDE_CONFIG_DIR:-}" "${CC_SUPERVISOR_CONFIG:-${TEAM_SUPERVISOR_CONFIG:-${CLAUDE_MASTER_CONFIG:-}}}" <<'PY' 2>/dev/null
@@ -1170,6 +1178,10 @@ for d in dirs:
                 p = e.get("installPath", "")
                 if p and os.path.isdir(p):
                     print(p); sys.exit(0)
+for d in dirs:
+    for p in sorted(glob.glob(os.path.join(d, "plugins", "marketplaces", "*", "supervisor"))):
+        if os.access(os.path.join(p, "scripts", "supervisor"), os.X_OK):
+            print(p); sys.exit(0)
 sys.exit(1)
 PY
   )

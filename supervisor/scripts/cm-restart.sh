@@ -134,7 +134,7 @@ hook() {
   [ "$mio" = "$suo" ] || exit 0
   local pending="$f.in-corso"
   mv "$f" "$pending" 2>/dev/null || exit 0
-  setsid nohup "$CM_SCRIPTS/cm-restart.sh" exec "$pending" </dev/null >>"$LOG" 2>&1 &
+  cm_setsid nohup "$CM_SCRIPTS/cm-restart.sh" exec "$pending" </dev/null >>"$LOG" 2>&1 &   # 11/11: macOS senza setsid
   printf '{"systemMessage":"%s"}\n' "$(cm_msg restart.in_progress "log=$LOG" | sed 's/"/\\"/g')"
 }
 

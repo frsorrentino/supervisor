@@ -47,13 +47,7 @@ case "$(uname -s 2>/dev/null)" in
     say "supervisor gira su Linux, macOS o dentro WSL2 su Windows: apri il terminale di Ubuntu (WSL) e rilancia lì." \
         "supervisor runs on Linux, macOS or inside WSL2 on Windows: open the Ubuntu (WSL) terminal and run it there."
     exit 3 ;;
-  Darwin)
-    # 11/11 (supervisor-macos-11-11): su macOS supervisor non riconosce ancora le sessioni vive (le legge da /proc) e gli
-    # script vogliono bash 4: meglio fermarsi qui con una riga chiara che installare a meta'
-    say "supervisor non funziona ancora su macOS: la correzione è in arrivo. Per ora usalo su Linux, ChromeOS o WSL2." \
-        "supervisor does not work on macOS yet: a fix is on its way. For now use it on Linux, ChromeOS or WSL2."
-    [ "${SUPERVISOR_INSTALL_MACOS:-}" = 1 ] || exit 3
-    OS=macos ;;
+  Darwin) OS=macos ;;   # 0.8.148: processes through cm-proc, no bash 4 syntax (supervisor-macos-11-11)
   *) OS=linux; { [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSL_INTEROP:-}" ]; } && OS=wsl ;;
 esac
 PM=""

@@ -14,6 +14,16 @@ case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) export PATH="$HOME/.local/bin:/usr/local/bin:$PATH" ;;
 esac
+# 11/11 (supervisor-macos-11-11): su macOS tmux sta in /opt/homebrew/bin (Homebrew su Apple Silicon) e lsof, sysctl in
+# /usr/sbin: dal cron e dal demone del relay, col PATH ridotto, «tmux non installato»
+if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  for _cm_d in /opt/homebrew/bin /usr/local/bin /usr/sbin /sbin; do
+    case ":$PATH:" in *":$_cm_d:"*) ;; *) [ -d "$_cm_d" ] && PATH="$PATH:$_cm_d" ;; esac
+  done
+  export PATH; unset _cm_d
+fi
+# setsid (util-linux) su macOS non c'e': staccato vuol dire senza, il figlio parte comunque in fondo (&)
+cm_setsid() { if command -v setsid >/dev/null 2>&1; then setsid "$@"; else "$@"; fi; }
 # Una volta per catena di script, ma legata a QUALE config: la chiave e' file, data di modifica e home.
 # Con il solo «1» (fino al 14/09/2026) le CM_* passavano dal server tmux, partito da uno script al boot, a
 # ogni sessione e ai suoi figli: un test con la sua config e il suo tmux scriveva nel registro colori vero
