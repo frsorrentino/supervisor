@@ -1,0 +1,15 @@
+{
+  "name": "supervisor-dev",
+  "description": "The marketplace of Supervisor for Claude Code: add it with `claude plugin marketplace add frsorrentino/supervisor`, then `claude plugin install supervisor@supervisor-dev`.",
+  "owner": {
+    "name": "Francesco Sorrentino",
+    "email": "info@francescosorrentino.com"
+  },
+  "plugins": [
+    {
+      "name": "supervisor",
+      "source": "./supervisor",
+      "description": "Supervisor for Claude Code. Run many Claude Code sessions on one machine: launch them in the right folder and account, in tmux, with a terminal window whose tab tells you which is which; list, close, restart, talk to them and restore them after a reboot. Configurable per machine, generic across terminals."
+    }
+  ]
+}

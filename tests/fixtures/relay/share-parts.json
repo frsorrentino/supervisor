@@ -1,0 +1,30 @@
+{
+  "file": "notes from the call:\nship on monday\n",
+  "key": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+  "part_bytes": 16,
+  "meta_plain": {
+    "n": 3,
+    "size": 36,
+    "sha256": "0d273fc3977b87e7a15c9f057f9d0c5f2f36923eeb0e6729ca4a5ea22d99340c",
+    "mime": "text/plain",
+    "name": "notes.txt"
+  },
+  "meta": {
+    "v": 1,
+    "enc": "IFZAn4s4C+gLOdTPv9QyIymGO50Va2OF/Oo516s2Bkr/YStmE4jWDw44G1qOudqEQP6UoSvK1fQQ9vDFBMmK7rQug/JAolKd21ulLznXksYQDgIthftQjYiIoInOTQ7Jiz9amWbPdPq1zEvXzw6zwJ1cvVz7/zBHG0IgqoCN6xixovpXdj9cdZfPSnQlVl7gIkO+7SSZzt8Pl6soha+sXQ=="
+  },
+  "parts": [
+    {
+      "v": 1,
+      "enc": "75F7iwCHBNyfscUMkUfVu4MeUd3vaUdOsCT61n9cfwBK3B2MvSlfRSUy2NE="
+    },
+    {
+      "v": 1,
+      "enc": "I/J2aWsuSvSUtIPJj5Jf7FnXcErfs6/p378IPzD74lhMAhIErKhck8cPAcg="
+    },
+    {
+      "v": 1,
+      "enc": "UYgToKXWyIRYjP/nQcp1DYPCgkfD06LqcPlxHIACCM4="
+    }
+  ]
+}

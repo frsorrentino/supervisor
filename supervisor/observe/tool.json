@@ -1,0 +1,12 @@
+{
+  "name": "supervisor",
+  "repo": "frsorrentino/supervisor",
+  "command": "supervisor observe",
+  "security": "advisory",
+  "version_from": ".claude-plugin/plugin.json",
+  "match": {
+    "bash": ["(^|\\s|/)(supervisor|claude-master)(\\s|$)", "/scripts/cm-[\\w-]+\\.(sh|py)\\b"]
+  },
+  "benign_exits": {"restart arm": [4], "model": [2, 3], "effort": [2, 3], "close": [3, 4]},
+  "known": []
+}

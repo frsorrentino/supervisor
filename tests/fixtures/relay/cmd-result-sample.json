@@ -1,0 +1,2464 @@
+{
+  "cmd": [
+    {
+      "id": "6f1c2d3e-0001-4000-8000-000000000001",
+      "op": "answer",
+      "session": "ledger-api",
+      "arg": "1",
+      "issued": 1789210880,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0002-4000-8000-000000000002",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "review the test seeds",
+      "issued": 1789210890,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0003-4000-8000-000000000003",
+      "op": "launch",
+      "session": null,
+      "arg": "/home/demo/workspaces/work/own/orbit-docs",
+      "issued": 1789210900,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0004-4000-8000-000000000004",
+      "op": "screen",
+      "session": "atlas-shop",
+      "arg": null,
+      "issued": 1789210910,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0005-4000-8000-000000000005",
+      "op": "follow",
+      "session": "atlas-shop",
+      "arg": null,
+      "issued": 1789210920,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0006-4000-8000-000000000006",
+      "op": "resume",
+      "session": "orbit-docs",
+      "arg": null,
+      "issued": 1789210930,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0007-4000-8000-000000000007",
+      "op": "allow_all",
+      "session": "ledger-api",
+      "arg": null,
+      "issued": 1789210940,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0008-4000-8000-000000000008",
+      "op": "last",
+      "session": "atlas-shop",
+      "arg": null,
+      "issued": 1789210950,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0009-4000-8000-000000000009",
+      "op": "reopen",
+      "session": "orbit-docs",
+      "arg": null,
+      "issued": 1789210960,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0120-4000-8000-000000000120",
+      "op": "model",
+      "session": "field-notes",
+      "arg": "claude-sonnet-5",
+      "issued": 1789210970,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0121-4000-8000-000000000121",
+      "op": "effort",
+      "session": "atlas-shop",
+      "arg": "low",
+      "issued": 1789210980,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0122-4000-8000-000000000122",
+      "op": "launch",
+      "session": null,
+      "arg": "/home/demo/workspaces/personal/field-notes",
+      "text": "check the draft for typos",
+      "issued": 1789210990,
+      "by": "watch-pixel5"
+    },
+    {
+      "id": "6f1c2d3e-0123-4000-8000-000000000123",
+      "op": "night_add",
+      "session": null,
+      "arg": "/home/demo/workspaces/work/clients/ledger-api",
+      "text": "Update the changelog for 2.4",
+      "issued": 1789210600,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0124-4000-8000-000000000124",
+      "op": "night_remove",
+      "session": null,
+      "arg": "5d0e6b92",
+      "issued": 1789210700,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0125-4000-8000-000000000125",
+      "op": "report",
+      "session": "atlas-shop",
+      "arg": "7a0c1b2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d",
+      "text": "the client says the checkout button is grey on iPhone",
+      "issued": 1789210710,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0126-4000-8000-000000000126",
+      "op": "report",
+      "session": "field-notes",
+      "arg": null,
+      "text": "add the Tuesday meeting notes to the draft",
+      "issued": 1789210720,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0127-4000-8000-000000000127",
+      "op": "report",
+      "session": "orbit-docs",
+      "arg": null,
+      "text": "check the pricing page",
+      "issued": 1789210730,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0128-4000-8000-000000000128",
+      "op": "interrupt",
+      "session": "atlas-shop",
+      "arg": null,
+      "issued": 1789210740,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0129-4000-8000-000000000129",
+      "op": "interrupt",
+      "session": "field-notes",
+      "arg": null,
+      "issued": 1789210750,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0130-4000-8000-000000000130",
+      "op": "transcript",
+      "session": "field-notes",
+      "arg": "20",
+      "issued": 1789210760,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0131-4000-8000-000000000131",
+      "op": "transcript",
+      "session": "field-notes",
+      "arg": "20:after=a4.0",
+      "issued": 1789210770,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0132-4000-8000-000000000132",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "also add the attendees list",
+      "device": "phone",
+      "issued": 1789210780,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0140-4000-8000-000000000140",
+      "op": "file",
+      "session": "field-notes",
+      "arg": "/home/demo/workspaces/personal/field-notes/docs/cover.png",
+      "issued": 1789210790,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0141-4000-8000-000000000141",
+      "op": "file",
+      "session": "field-notes",
+      "arg": "/home/demo/.ssh/id_ed25519",
+      "issued": 1789210795,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0150-4000-8000-000000000150",
+      "op": "slash",
+      "session": "field-notes",
+      "arg": "compact",
+      "text": "keep the meeting notes and the open questions",
+      "issued": 1789210800,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0151-4000-8000-000000000151",
+      "op": "slash",
+      "session": "field-notes",
+      "arg": "model",
+      "text": null,
+      "issued": 1789210805,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0160-4000-8000-000000000160",
+      "op": "projects",
+      "session": null,
+      "arg": null,
+      "issued": 1789210810,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0170-4000-8000-000000000170",
+      "op": "search",
+      "session": null,
+      "arg": "tuesday",
+      "issued": 1789210820,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0180-4000-8000-000000000180",
+      "op": "report",
+      "session": "atlas-shop",
+      "arg": "6f1c2d3e-0180-4000-8000-00000000a180",
+      "text": "the client's quote, check the totals",
+      "device": "phone",
+      "issued": 1789210830,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0190-4000-8000-000000000190",
+      "op": "timeline",
+      "session": null,
+      "arg": "1789200000",
+      "issued": 1789210840,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0200-4000-8000-000000000200",
+      "op": "pair_add",
+      "session": null,
+      "arg": null,
+      "issued": 1789210850,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0360-4000-8000-000000000360",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "check the cart totals too",
+      "device": "web",
+      "issued": 1789210960,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0370-4000-8000-000000000370",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-release-2-4",
+      "text": "ok, go ahead",
+      "device": "phone",
+      "issued": 1789210970,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0371-4000-8000-000000000371",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-old-task",
+      "text": "ok",
+      "device": "phone",
+      "issued": 1789210975,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0372-4000-8000-000000000372",
+      "op": "decision",
+      "session": null,
+      "arg": "atlas-shop",
+      "text": "Prices always include VAT on the checkout page",
+      "device": "phone",
+      "issued": 1789210980,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0390-4000-8000-000000000390",
+      "op": "unpair",
+      "session": null,
+      "arg": "webUid000000000000000000000",
+      "device": "web",
+      "issued": 1789210990,
+      "by": "web-safari"
+    },
+    {
+      "id": "6f1c2d3e-0391-4000-8000-000000000391",
+      "op": "unpair",
+      "session": null,
+      "arg": "nope0000",
+      "device": "web",
+      "issued": 1789210995,
+      "by": "web-safari"
+    },
+    {
+      "id": "6f1c2d3e-0380-4000-8000-000000000380",
+      "op": "prompt",
+      "session": "master",
+      "arg": "which session is closest to a release?",
+      "voice": true,
+      "device": "phone",
+      "issued": 1789211000,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0381-4000-8000-000000000381",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-release-2-4",
+      "text": "ok",
+      "via": "live",
+      "confirmations": 2,
+      "device": "phone",
+      "issued": 1789211010,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0382-4000-8000-000000000382",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-release-2-4",
+      "text": "ok",
+      "via": "live",
+      "confirmations": 1,
+      "device": "phone",
+      "issued": 1789211020,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0383-4000-8000-000000000383",
+      "op": "night",
+      "session": null,
+      "arg": null,
+      "issued": 1789211030,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0384-4000-8000-000000000384",
+      "op": "night",
+      "session": null,
+      "arg": "2026-10-01",
+      "issued": 1789211040,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0386-4000-8000-000000000386",
+      "op": "agenda",
+      "session": null,
+      "arg": null,
+      "issued": 1789211060,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0387-4000-8000-000000000387",
+      "op": "agenda",
+      "session": null,
+      "arg": null,
+      "issued": 1789211070,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0470-4000-8000-000000000470",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "c21b025ee5fe",
+      "action": "done",
+      "issued": 1789211080,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0471-4000-8000-000000000471",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "c21b025ee5fe",
+      "action": "done",
+      "issued": 1789211090,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0472-4000-8000-000000000472",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "4a74d7ef133f",
+      "action": "snooze",
+      "until": "2026-10-20",
+      "issued": 1789211100,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0473-4000-8000-000000000473",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "ebd085c3be89",
+      "action": "pass",
+      "blocks": "claude",
+      "issued": 1789211110,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0474-4000-8000-000000000474",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "03995e6b66aa",
+      "action": "remove",
+      "issued": 1789211120,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0475-4000-8000-000000000475",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "64fd942753ab",
+      "action": "archive",
+      "issued": 1789211130,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0476-4000-8000-000000000476",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "64fd942753ab",
+      "action": "snooze",
+      "until": "2026-02-30",
+      "issued": 1789211140,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0477-4000-8000-000000000477",
+      "op": "agenda_set",
+      "session": null,
+      "arg": "64fd942753ab",
+      "action": "pass",
+      "blocks": "terzi",
+      "issued": 1789211150,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0480-4000-8000-000000000480",
+      "op": "report",
+      "session": "atlas-shop",
+      "arg": "6f1c2d3e-0480-4000-8000-00000000a480",
+      "text": "the notes from the call",
+      "device": "phone",
+      "issued": 1789211200,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0481-4000-8000-000000000481",
+      "op": "report",
+      "session": "atlas-shop",
+      "arg": "6f1c2d3e-0481-4000-8000-00000000a481",
+      "text": "",
+      "device": "phone",
+      "issued": 1789211210,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0490-4000-8000-000000000490",
+      "op": "night_add",
+      "session": null,
+      "arg": "master",
+      "text": "Do this agenda item: Move the docs site to the new host (orbit-docs)",
+      "issued": 1789211300,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0500-4000-8000-000000000500",
+      "op": "report",
+      "session": "atlas-shop",
+      "arg": "6f1c2d3e-0500-4000-8000-00000000a500,6f1c2d3e-0500-4000-8000-00000000b500",
+      "text": "two screens of the checkout",
+      "device": "phone",
+      "issued": 1789211300,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0501-4000-8000-000000000501",
+      "op": "report",
+      "session": "atlas-shop",
+      "arg": "6f1c2d3e-0501-4000-8000-00000000a501,6f1c2d3e-0501-4000-8000-00000000b501",
+      "text": "the second one is missing",
+      "device": "phone",
+      "issued": 1789211310,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0580-4000-8000-0000000000580",
+      "op": "quota_route",
+      "session": "field-notes",
+      "arg": "other_account",
+      "device": "phone",
+      "issued": 1789211400,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0581-4000-8000-0000000000581",
+      "op": "quota_route",
+      "session": "field-notes",
+      "arg": "at_reset",
+      "device": "phone",
+      "issued": 1789211410,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0582-4000-8000-0000000000582",
+      "op": "quota_route",
+      "session": "field-notes",
+      "arg": "pass:ghost",
+      "device": "phone",
+      "issued": 1789211420,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0583-4000-8000-0000000000583",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "check the cart totals too",
+      "device": "phone",
+      "issued": 1789211430,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0520-4000-8000-000000000520",
+      "op": "answer",
+      "session": "ledger-api",
+      "arg": "1",
+      "question": "q-1789210500-1",
+      "device": "phone",
+      "issued": 1789211400,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0521-4000-8000-000000000521",
+      "op": "answer",
+      "session": "ledger-api",
+      "arg": "1",
+      "question": "q-1789210380-1",
+      "device": "phone",
+      "issued": 1789211410,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0630-4000-8000-0000000000630",
+      "op": "prompt",
+      "session": "atlas-shop",
+      "arg": "tag the release",
+      "at": 1789225200,
+      "device": "phone",
+      "issued": 1789211500,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0640-4000-8000-0000000000640",
+      "op": "project_new",
+      "session": null,
+      "arg": "/home/demo/workspaces/personal",
+      "text": "brand-new",
+      "device": "phone",
+      "issued": 1789211510,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0641-4000-8000-0000000000641",
+      "op": "project_new",
+      "session": null,
+      "arg": "/home/demo/workspaces/personal",
+      "text": "brand-new",
+      "confirm": true,
+      "prompt": "set up a README",
+      "device": "phone",
+      "issued": 1789211520,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0690-4000-8000-0000000000690",
+      "op": "permission_mode",
+      "session": "field-notes",
+      "arg": "acceptEdits",
+      "device": "phone",
+      "issued": 1789211530,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0691-4000-8000-0000000000691",
+      "op": "permission_mode",
+      "session": "work-ledger-api",
+      "arg": "bypassPermissions",
+      "device": "phone",
+      "issued": 1789211540,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0740-4000-8000-0000000000740",
+      "op": "studio",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789211560,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0741-4000-8000-0000000000741",
+      "op": "studio",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789211570,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0742-4000-8000-0000000000742",
+      "op": "prompt",
+      "session": "master",
+      "arg": "what is due this week?",
+      "scope": "studio",
+      "device": "web",
+      "issued": 1789211580,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0750-4000-8000-0000000000750",
+      "op": "nights",
+      "session": null,
+      "arg": null,
+      "issued": 1789211600,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0751-4000-8000-0000000000751",
+      "op": "nights",
+      "session": null,
+      "arg": null,
+      "issued": 1789211610,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0760-4000-8000-0000000000760",
+      "op": "done",
+      "session": null,
+      "arg": null,
+      "device": "phone",
+      "issued": 1789211700,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0761-4000-8000-0000000000761",
+      "op": "done",
+      "session": null,
+      "arg": "2026-02-09",
+      "device": "web",
+      "issued": 1789211710,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0762-4000-8000-0000000000762",
+      "op": "done",
+      "session": null,
+      "arg": "ieri",
+      "issued": 1789211720,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0770-4000-8000-000000000770",
+      "op": "attention_done",
+      "session": null,
+      "arg": "atlas-shop",
+      "kind": "needs_you",
+      "device": "phone",
+      "issued": 1789211730,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0771-4000-8000-000000000771",
+      "op": "attention_done",
+      "session": null,
+      "arg": "nobody",
+      "kind": "needs_you",
+      "device": "phone",
+      "issued": 1789211740,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0780-4000-8000-000000000780",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-checkout-layout",
+      "text": "ok",
+      "choice": "Strada B",
+      "device": "phone",
+      "issued": 1789211750,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0781-4000-8000-000000000781",
+      "op": "approve",
+      "session": null,
+      "arg": "atlas-checkout-layout",
+      "text": "ok",
+      "choice": "Strada C",
+      "device": "phone",
+      "issued": 1789211760,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0800-4000-8000-000000000800",
+      "op": "transcript",
+      "session": null,
+      "sid": "0b6e3c52-1f4a-4d7e-9a21-6c8d2e5f7a90",
+      "arg": "20",
+      "issued": 1789211800,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0801-4000-8000-000000000801",
+      "op": "transcript",
+      "session": null,
+      "sid": "ffffffff-0000-4000-8000-000000000000",
+      "arg": "20",
+      "issued": 1789211810,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0830-4000-8000-000000000830",
+      "op": "elicit",
+      "session": "atlas-shop",
+      "arg": "e-4f1c2a9b7d30",
+      "action": "accept",
+      "content": {
+        "project": "SHOP",
+        "urgent": true,
+        "title": "Checkout total ignores the gift card",
+        "estimate": 3
+      },
+      "device": "phone",
+      "issued": 1789214360,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0831-4000-8000-000000000831",
+      "op": "elicit",
+      "session": "atlas-shop",
+      "arg": "e-4f1c2a9b7d30",
+      "action": "accept",
+      "content": {
+        "project": "BLOG",
+        "title": "Checkout total ignores the gift card"
+      },
+      "device": "phone",
+      "issued": 1789214355,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0832-4000-8000-000000000832",
+      "op": "elicit",
+      "session": "atlas-shop",
+      "arg": "e-9a0b1c2d3e4f",
+      "action": "decline",
+      "device": "phone",
+      "issued": 1789214365,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0840-4000-8000-000000000840",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-a41c7e2b90",
+      "action": "accept",
+      "device": "phone",
+      "issued": 1789214370,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0841-4000-8000-000000000841",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-0000000000",
+      "action": "later",
+      "device": "phone",
+      "issued": 1789214375,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0842-4000-8000-000000000842",
+      "op": "close_preview",
+      "session": null,
+      "arg": "field-notes,atlas-shop,ledger-api",
+      "device": "phone",
+      "issued": 1789214380,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0843-4000-8000-000000000843",
+      "op": "close",
+      "session": null,
+      "arg": "field-notes,atlas-shop",
+      "device": "phone",
+      "issued": 1789214385,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0844-4000-8000-000000000844",
+      "op": "close_preview",
+      "session": null,
+      "arg": "",
+      "device": "phone",
+      "issued": 1789214390,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0845-4000-8000-000000000845",
+      "op": "close",
+      "session": null,
+      "arg": "atlas-shop",
+      "device": "phone",
+      "issued": 1789214395,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1120-4000-8000-000000001120",
+      "op": "close",
+      "session": null,
+      "arg": "atlas-shop",
+      "device": "phone",
+      "issued": 1789214397,
+      "by": "phone-pixel8",
+      "when": "after"
+    },
+    {
+      "id": "6f1c2d3e-1121-4000-8000-000000001121",
+      "op": "close",
+      "session": null,
+      "arg": "atlas-shop",
+      "device": "phone",
+      "issued": 1789214398,
+      "by": "phone-pixel8",
+      "when": "force"
+    },
+    {
+      "id": "6f1c2d3e-0880-4000-8000-000000000880",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-1c0a7e5f21",
+      "action": "choose",
+      "choice": "Maybe",
+      "device": "phone",
+      "issued": 1789214380,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0881-4000-8000-000000000881",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-6b5f8a0c76",
+      "action": "discuss",
+      "device": "phone",
+      "issued": 1789214385,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0882-4000-8000-000000000882",
+      "op": "suggestion",
+      "session": null,
+      "arg": "s-1c0a7e5f21",
+      "action": "choose",
+      "choice": "Full",
+      "device": "phone",
+      "issued": 1789214390,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-0890-4000-8000-000000000890",
+      "op": "sys_kill",
+      "session": null,
+      "arg": "4410:912345",
+      "device": "web",
+      "issued": 1789214500,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0891-4000-8000-000000000891",
+      "op": "sys_kill",
+      "session": null,
+      "arg": "4410:912345",
+      "device": "web",
+      "issued": 1789214510,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0892-4000-8000-000000000892",
+      "op": "sys_unit_stop",
+      "session": null,
+      "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+      "device": "web",
+      "issued": 1789214520,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0893-4000-8000-000000000893",
+      "op": "sys_unit_stop",
+      "session": null,
+      "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+      "device": "web",
+      "issued": 1789214530,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0894-4000-8000-000000000894",
+      "op": "plugins",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789214600,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0895-4000-8000-000000000895",
+      "op": "plugin_check",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789214610,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0896-4000-8000-000000000896",
+      "op": "plugin_update",
+      "session": null,
+      "arg": "personal:chrisbanes-skills@chrisbanes-skills",
+      "device": "web",
+      "issued": 1789214620,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0897-4000-8000-000000000897",
+      "op": "plugin_update",
+      "session": null,
+      "arg": "personal:needs-command@some-market",
+      "device": "web",
+      "issued": 1789214630,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0898-4000-8000-000000000898",
+      "op": "plugin_update_all",
+      "session": null,
+      "arg": "work",
+      "device": "web",
+      "issued": 1789214640,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0899-4000-8000-000000000899",
+      "op": "kpi",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789214700,
+      "by": "web"
+    },
+    {
+      "id": "6f1c2d3e-0900-4000-8000-000000000900",
+      "op": "prove",
+      "session": null,
+      "arg": null,
+      "device": "phone",
+      "issued": 1789214700,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-0901-4000-8000-000000000901",
+      "op": "decisioni",
+      "session": null,
+      "arg": null,
+      "device": "phone",
+      "issued": 1789214701,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-0902-4000-8000-000000000902",
+      "op": "prova",
+      "session": null,
+      "arg": "41,42",
+      "device": "phone",
+      "issued": 1789214702,
+      "by": "phone-pixel7",
+      "result": "ok"
+    },
+    {
+      "id": "6f1c2d3e-0903-4000-8000-000000000903",
+      "op": "prova",
+      "session": null,
+      "arg": "38",
+      "device": "phone",
+      "issued": 1789214703,
+      "by": "phone-pixel7",
+      "result": "ko",
+      "text": "The filter closes at once"
+    },
+    {
+      "id": "6f1c2d3e-0904-4000-8000-000000000904",
+      "op": "decisione",
+      "session": null,
+      "arg": "3f2a91c07d11",
+      "device": "phone",
+      "issued": 1789214704,
+      "by": "phone-pixel7",
+      "action": "not_now",
+      "hours": 24
+    },
+    {
+      "id": "6f1c2d3e-0905-4000-8000-000000000905",
+      "op": "decisione",
+      "session": null,
+      "arg": "a81c55e20b34",
+      "device": "phone",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "action": "drop",
+      "reason": "Done by voice"
+    },
+    {
+      "id": "6f1c2d3e-0906-4000-8000-0000000000906",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "prima_raccolta"
+    },
+    {
+      "id": "6f1c2d3e-0907-4000-8000-0000000000907",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "prima_raccolta_azione",
+      "action": "consent",
+      "value": "si",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0908-4000-8000-0000000000908",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "prima_raccolta_azione",
+      "action": "first_round",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0909-4000-8000-0000000000909",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti"
+    },
+    {
+      "id": "6f1c2d3e-0910-4000-8000-0000000000910",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "allinea",
+      "product": "atlas-shop",
+      "key": "demo",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0911-4000-8000-0000000000911",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "ok",
+      "product": "atlas-shop",
+      "key": "demo",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0912-4000-8000-0000000000912",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "remind_remove",
+      "key": "7f3e1a20",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0913-4000-8000-0000000000913",
+      "session": null,
+      "arg": "2026-09",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "conti",
+      "project": "work/acme-site"
+    },
+    {
+      "id": "6f1c2d3e-0914-4000-8000-0000000000914",
+      "session": null,
+      "arg": "2026-09",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "conti_azione",
+      "project": "work/acme-site",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0915-4000-8000-0000000000915",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_consent",
+      "on": true,
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0916-4000-8000-0000000000916",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_send",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0917-4000-8000-0000000000917",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_send",
+      "hash": "3fa1c09b2e",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0918-4000-8000-0000000000918",
+      "session": null,
+      "arg": "supervisor",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "feedback_text",
+      "text": "A button to retry a failed send",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0919-4000-8000-0000000000919",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "results"
+    },
+    {
+      "id": "6f1c2d3e-0920-4000-8000-0000000000920",
+      "session": null,
+      "arg": "9c1e4a7b2d3f5e60",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "result_seen",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0921-4000-8000-0000000000921",
+      "session": null,
+      "arg": "9c1e4a7b2d3f5e60",
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "result_note",
+      "text": "The intro still cuts the title",
+      "pos_s": 3.5,
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-0922-4000-8000-000000000922",
+      "op": "decisione",
+      "session": null,
+      "arg": "5be07a3c9e42",
+      "device": "phone",
+      "issued": 1789214722,
+      "by": "phone-pixel7",
+      "action": "provato"
+    },
+    {
+      "id": "6f1c2d3e-0923-4000-8000-000000000923",
+      "op": "decisione",
+      "session": null,
+      "arg": "5be07a3c9e42",
+      "device": "phone",
+      "issued": 1789214723,
+      "by": "phone-pixel7",
+      "action": "non_va",
+      "reason": "The categories do not stay closed"
+    },
+    {
+      "id": "6f1c2d3e-0924-4000-8000-000000000924",
+      "op": "transcript",
+      "session": "atlas-shop",
+      "arg": "20",
+      "issued": 1789214724,
+      "by": "phone-pixel7"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1210-4000-8000-000000001210",
+      "op": "feedback_app",
+      "kind": "bug",
+      "text": "The session list stays empty after the login.\nIt happens with a file report.pdf open",
+      "tech": {
+        "app_version": "2.4.1",
+        "os": "Android 15",
+        "device": "Pixel 7",
+        "screen": "Sessions"
+      },
+      "share": "k3f9a1",
+      "screenshot_ok": true
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1211-4000-8000-000000001211",
+      "op": "feedback_app",
+      "hash": "7c41e09a2b",
+      "choice": "anonymous"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1212-4000-8000-000000001212",
+      "op": "feedback_app",
+      "hash": "7c41e09a2b",
+      "choice": "github"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1213-4000-8000-000000001213",
+      "op": "feedback_app",
+      "hash": "5d20b7f413",
+      "choice": "later"
+    },
+    {
+      "session": null,
+      "arg": null,
+      "issued": 1789214800,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1214-4000-8000-000000001214",
+      "op": "feedback_app",
+      "kind": "bug",
+      "text": "Screen attached",
+      "share": "k3f9a2"
+    },
+    {
+      "session": "atlas-shop",
+      "arg": "claude-fable-5-1",
+      "issued": 1789215000,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1220-4000-8000-000000001220",
+      "op": "model"
+    },
+    {
+      "session": "atlas-shop",
+      "arg": "4",
+      "issued": 1789215660,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1230-4000-8000-000000001230",
+      "op": "transcript"
+    },
+    {
+      "session": null,
+      "arg": "red jacket",
+      "issued": 1789216000,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1240-4000-8000-000000001240",
+      "op": "search"
+    },
+    {
+      "session": "atlas-shop",
+      "arg": "7:around=a4.0",
+      "issued": 1789216010,
+      "by": "phone-pixel8",
+      "device": "phone",
+      "id": "6f1c2d3e-1241-4000-8000-000000001241",
+      "op": "transcript"
+    },
+    {
+      "id": "6f1c2d3e-1290-4000-8000-000000001290",
+      "op": "approval_close",
+      "session": null,
+      "arg": "atlas-pages-layout",
+      "text": "not needed any more",
+      "device": "phone",
+      "issued": 1789216100,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1291-4000-8000-000000001291",
+      "op": "approval_close",
+      "session": null,
+      "arg": "atlas-release-2-4",
+      "device": "phone",
+      "issued": 1789216110,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1292-4000-8000-000000001292",
+      "op": "approval_close",
+      "session": null,
+      "arg": "atlas-gone-task",
+      "device": "phone",
+      "issued": 1789216120,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1300-4000-8000-000000001300",
+      "op": "attese",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789216200,
+      "by": "web-chromebook"
+    },
+    {
+      "id": "6f1c2d3e-1301-4000-8000-000000001301",
+      "op": "attesa",
+      "session": null,
+      "arg": "wd2f87e85e2",
+      "device": "phone",
+      "issued": 1789216210,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1302-4000-8000-000000001302",
+      "op": "attesa",
+      "session": null,
+      "arg": "w0000000000",
+      "device": "phone",
+      "issued": 1789216220,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1310-4000-8000-000000001310",
+      "op": "monitors",
+      "session": null,
+      "arg": null,
+      "issued": 1789805000,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1311-4000-8000-000000001311",
+      "op": "monitors",
+      "session": null,
+      "arg": "prezzi-portatili",
+      "issued": 1789805010,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1312-4000-8000-000000001312",
+      "op": "monitors",
+      "session": null,
+      "arg": "vecchio",
+      "issued": 1789805020,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1320-4000-8000-000000001320",
+      "op": "monitor_refresh",
+      "session": null,
+      "arg": "prezzi-portatili",
+      "issued": 1789805030,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1321-4000-8000-000000001321",
+      "op": "monitor_refresh",
+      "session": null,
+      "arg": "adozione",
+      "issued": 1789805040,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1322-4000-8000-000000001322",
+      "op": "monitor_refresh",
+      "session": null,
+      "arg": "prezzi-portatili",
+      "issued": 1789805090,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1330-4000-8000-000000001330",
+      "op": "prove",
+      "session": null,
+      "arg": "41",
+      "device": "phone",
+      "issued": 1789806000,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1331-4000-8000-000000001331",
+      "op": "prove",
+      "session": null,
+      "arg": "35",
+      "device": "phone",
+      "issued": 1789806001,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1332-4000-8000-000000001332",
+      "op": "prove",
+      "session": null,
+      "arg": "38",
+      "device": "phone",
+      "issued": 1789806002,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1333-4000-8000-000000001333",
+      "op": "prove",
+      "session": null,
+      "arg": "36",
+      "device": "phone",
+      "issued": 1789806003,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1334-4000-8000-000000001334",
+      "op": "prove",
+      "session": null,
+      "arg": "999",
+      "device": "phone",
+      "issued": 1789806004,
+      "by": "phone-pixel7"
+    },
+    {
+      "id": "6f1c2d3e-1350-4000-8000-000000001350",
+      "op": "monitors",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789900000,
+      "by": "web-chrome"
+    },
+    {
+      "id": "6f1c2d3e-1351-4000-8000-000000001351",
+      "op": "monitors",
+      "session": null,
+      "arg": null,
+      "device": "web",
+      "issued": 1789900030,
+      "by": "web-chrome",
+      "etag": "fce03203717a363b"
+    }
+  ],
+  "result": [
+    {
+      "id": "6f1c2d3e-0001-4000-8000-000000000001",
+      "ok": true,
+      "text": "answered 1. yes",
+      "at": 1789210882
+    },
+    {
+      "id": "6f1c2d3e-0002-4000-8000-000000000002",
+      "ok": true,
+      "text": "queued: atlas-shop is working, it reads it when the turn ends",
+      "at": 1789210891
+    },
+    {
+      "id": "6f1c2d3e-0003-4000-8000-000000000003",
+      "ok": true,
+      "text": "launched orbit-docs (work)",
+      "at": 1789210915
+    },
+    {
+      "id": "6f1c2d3e-0004-4000-8000-000000000004",
+      "ok": true,
+      "text": "$ pytest -q tests\n42 passed in 3.1s\nEdit app/admin.py\nRead app/seed.py\n… (30 righe)",
+      "at": 1789210911
+    },
+    {
+      "id": "6f1c2d3e-0005-4000-8000-000000000005",
+      "ok": true,
+      "text": "following atlas-shop",
+      "at": 1789210921
+    },
+    {
+      "id": "6f1c2d3e-0006-4000-8000-000000000006",
+      "ok": false,
+      "text": "orbit-docs is gone: use launch",
+      "at": 1789210931
+    },
+    {
+      "id": "6f1c2d3e-0007-4000-8000-000000000007",
+      "ok": false,
+      "text": "no «don't ask again» option on this question",
+      "at": 1789210941
+    },
+    {
+      "id": "6f1c2d3e-0008-4000-8000-000000000008",
+      "ok": true,
+      "text": "Seeds and admin page reviewed: 12 users and 40 test orders, the admin page shows them. Tests green (42). Not committing: your call.",
+      "at": 1789210951
+    },
+    {
+      "id": "6f1c2d3e-0009-4000-8000-000000000009",
+      "ok": true,
+      "text": "reopened orbit-docs (work): last conversation in the folder",
+      "at": 1789211000
+    },
+    {
+      "id": "6f1c2d3e-0120-4000-8000-000000000120",
+      "ok": true,
+      "text": "field-notes: model Sonnet 5, this session only",
+      "at": 1789210975
+    },
+    {
+      "id": "6f1c2d3e-0121-4000-8000-000000000121",
+      "ok": true,
+      "text": "atlas-shop is working: effort low is chosen and applies at the end of the turn, before the next prompt",
+      "at": 1789210981
+    },
+    {
+      "id": "6f1c2d3e-0122-4000-8000-000000000122",
+      "ok": true,
+      "text": "launched field-notes (personal) with the first message",
+      "session": "field-notes-2",
+      "at": 1789211010
+    },
+    {
+      "id": "6f1c2d3e-0123-4000-8000-000000000123",
+      "ok": true,
+      "text": "queued for tonight: ledger-api (work), job 7b21d4e8",
+      "job": "7b21d4e8",
+      "at": 1789210620
+    },
+    {
+      "id": "6f1c2d3e-0124-4000-8000-000000000124",
+      "ok": true,
+      "text": "removed from tonight's queue: 5d0e6b92",
+      "at": 1789210705
+    },
+    {
+      "id": "6f1c2d3e-0125-4000-8000-000000000125",
+      "ok": true,
+      "text": "sent to atlas-shop: image saved as docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg",
+      "at": 1789210716
+    },
+    {
+      "id": "6f1c2d3e-0126-4000-8000-000000000126",
+      "ok": true,
+      "text": "sent to field-notes",
+      "at": 1789210722
+    },
+    {
+      "id": "6f1c2d3e-0127-4000-8000-000000000127",
+      "ok": false,
+      "text": "no session orbit-docs",
+      "at": 1789210731
+    },
+    {
+      "id": "6f1c2d3e-0128-4000-8000-000000000128",
+      "ok": true,
+      "text": "atlas-shop: stopped",
+      "at": 1789210742
+    },
+    {
+      "id": "6f1c2d3e-0129-4000-8000-000000000129",
+      "ok": false,
+      "text": "field-notes: nothing to stop",
+      "at": 1789210751
+    },
+    {
+      "id": "6f1c2d3e-0130-4000-8000-000000000130",
+      "ok": true,
+      "text": "{\"entries\": [{\"id\": \"u1.0\", \"role\": \"user\", \"text\": \"Add the Tuesday meeting notes to the draft\", \"at\": 1789207200, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"a1.0\", \"role\": \"assistant\", \"text\": \"I'll read the draft first.\", \"at\": 1789207205, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a1.1\", \"role\": \"tool\", \"text\": \"docs/draft.md\", \"at\": 1789207205, \"tool\": \"Read\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a3.0\", \"role\": \"tool\", \"text\": \"grep -n Tuesday notes/*.md\", \"at\": 1789207220, \"tool\": \"Bash\", \"note\": \"Find the Tuesday notes\", \"error\": true, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a4.0\", \"role\": \"assistant\", \"text\": \"The notes file was missing, so I added the Tuesday section to the draft by hand.\", \"at\": 1789207240, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": {\"started\": 1789207200, \"ended\": 1789207245, \"in\": 4020, \"out\": 130}, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"u2.0\", \"role\": \"user\", \"text\": \"Also fix the typo in the title\", \"at\": 1789207320, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"q1.0\", \"role\": \"user\", \"text\": \"and push when done\", \"at\": 1789207350, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"a6.0\", \"role\": \"tool\", \"text\": \"docs/cover.png\", \"at\": 1789207352, \"tool\": \"Write\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/field-notes/docs/cover.png\", \"mime\": \"image/png\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a6.1\", \"role\": \"tool\", \"text\": \"notes.py\", \"at\": 1789207352, \"tool\": \"Edit\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a6.2\", \"role\": \"tool\", \"text\": \"/home/demo/workspaces/personal/field-notes/docs/broken.pdf\", \"at\": 1789207352, \"tool\": \"Write\", \"note\": null, \"error\": true, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a7.0\", \"role\": \"tool\", \"text\": \"Tuesday minutes\", \"at\": 1789207355, \"tool\": \"SendUserFile\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/field-notes/docs/minutes.pdf\", \"mime\": \"application/pdf\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a7.1\", \"role\": \"tool\", \"text\": \"team-supervisor report atlas-shop /tmp/shot.jpg \\\"checkout is grey\\\"\", \"at\": 1789207355, \"tool\": \"Bash\", \"note\": \"Forward the screenshot to atlas-shop\", \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/atlas-shop/docs/reports/2026-09-12-checkout-is-grey.jpg\", \"mime\": \"image/jpeg\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"p1.0\", \"role\": \"user\", \"text\": \"Also add the attendees list\", \"at\": 1789207357, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"phone\", \"queued\": false, \"diff\": null}, {\"id\": \"w1.0\", \"role\": \"user\", \"text\": \"Also add the room booking\", \"at\": 1789207358, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"web\", \"queued\": false, \"diff\": null}, {\"id\": \"q1789207361000\", \"role\": \"user\", \"text\": \"then tag the release\", \"at\": 1789207361, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"img1.0\", \"role\": \"user\", \"text\": \"this is how the header looks now\", \"at\": 1789207364, \"tool\": null, \"note\": \"1 image(s)\", \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"q1789207365000\", \"role\": \"user\", \"text\": \"still waiting in the queue\", \"at\": 1789207365, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": true, \"diff\": null}, {\"id\": \"a5.0\", \"role\": \"assistant\", \"text\": \"Fixed «Teusday» in the title; pushing now.\", \"at\": 1789207360, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a8.0\", \"role\": \"tool\", \"text\": \"/home/dev/storefront/src/checkout/totals.ts\", \"at\": 1789207415, \"tool\": \"Edit\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": {\"path\": \"/home/dev/storefront/src/checkout/totals.ts\", \"kind\": \"edit\", \"added\": 2, \"removed\": 1, \"hunks\": [{\"old_start\": 12, \"old_lines\": 3, \"new_start\": 12, \"new_lines\": 4, \"lines\": [\" export function total(cart: Cart) {\", \"-  return cart.items.reduce((s, i) => s + i.price, 0)\", \"+  const sub = cart.items.reduce((s, i) => s + i.price * i.qty, 0)\", \"+  return sub - (cart.giftCard?.amount ?? 0)\", \" }\"]}], \"cut\": false}}], \"more\": false}",
+      "at": 1789210761
+    },
+    {
+      "id": "6f1c2d3e-0131-4000-8000-000000000131",
+      "ok": true,
+      "text": "{\"entries\": [{\"id\": \"u2.0\", \"role\": \"user\", \"text\": \"Also fix the typo in the title\", \"at\": 1789207320, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"q1.0\", \"role\": \"user\", \"text\": \"and push when done\", \"at\": 1789207350, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"a6.0\", \"role\": \"tool\", \"text\": \"docs/cover.png\", \"at\": 1789207352, \"tool\": \"Write\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/field-notes/docs/cover.png\", \"mime\": \"image/png\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a6.1\", \"role\": \"tool\", \"text\": \"notes.py\", \"at\": 1789207352, \"tool\": \"Edit\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a6.2\", \"role\": \"tool\", \"text\": \"/home/demo/workspaces/personal/field-notes/docs/broken.pdf\", \"at\": 1789207352, \"tool\": \"Write\", \"note\": null, \"error\": true, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a7.0\", \"role\": \"tool\", \"text\": \"Tuesday minutes\", \"at\": 1789207355, \"tool\": \"SendUserFile\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/field-notes/docs/minutes.pdf\", \"mime\": \"application/pdf\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a7.1\", \"role\": \"tool\", \"text\": \"team-supervisor report atlas-shop /tmp/shot.jpg \\\"checkout is grey\\\"\", \"at\": 1789207355, \"tool\": \"Bash\", \"note\": \"Forward the screenshot to atlas-shop\", \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/atlas-shop/docs/reports/2026-09-12-checkout-is-grey.jpg\", \"mime\": \"image/jpeg\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"p1.0\", \"role\": \"user\", \"text\": \"Also add the attendees list\", \"at\": 1789207357, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"phone\", \"queued\": false, \"diff\": null}, {\"id\": \"w1.0\", \"role\": \"user\", \"text\": \"Also add the room booking\", \"at\": 1789207358, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"web\", \"queued\": false, \"diff\": null}, {\"id\": \"q1789207361000\", \"role\": \"user\", \"text\": \"then tag the release\", \"at\": 1789207361, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"img1.0\", \"role\": \"user\", \"text\": \"this is how the header looks now\", \"at\": 1789207364, \"tool\": null, \"note\": \"1 image(s)\", \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"q1789207365000\", \"role\": \"user\", \"text\": \"still waiting in the queue\", \"at\": 1789207365, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": true, \"diff\": null}, {\"id\": \"a5.0\", \"role\": \"assistant\", \"text\": \"Fixed «Teusday» in the title; pushing now.\", \"at\": 1789207360, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a8.0\", \"role\": \"tool\", \"text\": \"/home/dev/storefront/src/checkout/totals.ts\", \"at\": 1789207415, \"tool\": \"Edit\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": {\"path\": \"/home/dev/storefront/src/checkout/totals.ts\", \"kind\": \"edit\", \"added\": 2, \"removed\": 1, \"hunks\": [{\"old_start\": 12, \"old_lines\": 3, \"new_start\": 12, \"new_lines\": 4, \"lines\": [\" export function total(cart: Cart) {\", \"-  return cart.items.reduce((s, i) => s + i.price, 0)\", \"+  const sub = cart.items.reduce((s, i) => s + i.price * i.qty, 0)\", \"+  return sub - (cart.giftCard?.amount ?? 0)\", \" }\"]}], \"cut\": false}}], \"more\": false}",
+      "at": 1789210771
+    },
+    {
+      "id": "6f1c2d3e-0132-4000-8000-000000000132",
+      "ok": true,
+      "text": "queued: atlas-shop is working, it reads it when the turn ends",
+      "at": 1789210781
+    },
+    {
+      "id": "6f1c2d3e-0140-4000-8000-000000000140",
+      "ok": true,
+      "text": "file ready (image/png, 69 bytes)",
+      "at": 1789210791
+    },
+    {
+      "id": "6f1c2d3e-0141-4000-8000-000000000141",
+      "ok": false,
+      "text": "not in the transcript",
+      "at": 1789210796
+    },
+    {
+      "id": "6f1c2d3e-0150-4000-8000-000000000150",
+      "ok": true,
+      "text": "sent /compact to field-notes",
+      "at": 1789210801
+    },
+    {
+      "id": "6f1c2d3e-0151-4000-8000-000000000151",
+      "ok": false,
+      "text": "not allowed: model",
+      "at": 1789210806
+    },
+    {
+      "id": "6f1c2d3e-0160-4000-8000-000000000160",
+      "ok": true,
+      "text": "{\"projects\": [{\"name\": \"atlas-shop\", \"path\": \"/home/demo/workspaces/personal/atlas-shop\", \"account\": \"personal\", \"last_used\": 1789210700}, {\"name\": \"ledger-api\", \"path\": \"/home/demo/workspaces/work/clients/ledger-api\", \"account\": \"work\", \"last_used\": 1789210500}, {\"name\": \"orbit-docs\", \"path\": \"/home/demo/workspaces/work/own/orbit-docs\", \"account\": \"work\", \"last_used\": 1789203600}, {\"name\": \"field-notes\", \"path\": \"/home/demo/workspaces/personal/field-notes\", \"account\": \"personal\", \"last_used\": 1789120000}, {\"name\": \"sketchbook\", \"path\": \"/home/demo/workspaces/personal/sketchbook\", \"account\": \"personal\", \"last_used\": null}], \"more\": false}",
+      "at": 1789210811
+    },
+    {
+      "id": "6f1c2d3e-0170-4000-8000-000000000170",
+      "ok": true,
+      "text": "{\"hits\": [{\"session\": \"orbit-docs\", \"live\": false, \"project\": \"/home/demo/workspaces/work/own/orbit-docs\", \"entry\": \"c5.0\", \"role\": \"user\", \"at\": 1789286460, \"snippet\": \"move the review to tuesday\", \"match\": [19, 26], \"sid\": \"C-O\"}, {\"session\": \"orbit-docs\", \"live\": false, \"project\": \"/home/demo/workspaces/work/own/orbit-docs\", \"entry\": \"c2.0\", \"role\": \"assistant\", \"at\": 1789286410, \"snippet\": \"ll blocks the release is the review of the migration scripts, which moved to TUESDAY after the client asked for one more pass on the data model and the exports.\", \"match\": [77, 84], \"sid\": \"C-O\"}, {\"session\": \"orbit-docs\", \"live\": false, \"project\": \"/home/demo/workspaces/work/own/orbit-docs\", \"entry\": \"c1.0\", \"role\": \"user\", \"at\": 1789286400, \"snippet\": \"Perché la riunione di Tuesday è saltata? Rispondi breve.\", \"match\": [22, 29], \"sid\": \"C-O\"}, {\"session\": \"field-notes\", \"live\": true, \"project\": \"/home/demo/workspaces/personal/field-notes\", \"entry\": \"a4.0\", \"role\": \"assistant\", \"at\": 1789207240, \"snippet\": \"The notes file was missing, so I added the Tuesday section to the draft by hand.\", \"match\": [43, 50], \"sid\": \"S-F\"}, {\"session\": \"field-notes\", \"live\": true, \"project\": \"/home/demo/workspaces/personal/field-notes\", \"entry\": \"u1.0\", \"role\": \"user\", \"at\": 1789207200, \"snippet\": \"Add the Tuesday meeting notes to the draft\", \"match\": [8, 15], \"sid\": \"S-F\"}], \"more\": false}",
+      "at": 1789210821
+    },
+    {
+      "id": "6f1c2d3e-0180-4000-8000-000000000180",
+      "ok": true,
+      "text": "sent Preventivo cliente.pdf to atlas-shop",
+      "at": 1789210831
+    },
+    {
+      "id": "6f1c2d3e-0190-4000-8000-000000000190",
+      "ok": true,
+      "text": "{\"since\": 1789200000, \"sessions\": [{\"session\": \"ledger-api\", \"live\": false, \"project\": \"work/clients/ledger-api\", \"events\": [{\"at\": 1789205000, \"kind\": \"prompt\", \"text\": \"add the invoices endpoint\", \"ok\": null, \"ref\": null}, {\"at\": 1789205600, \"kind\": \"test\", \"text\": \"api-verify.py\", \"ok\": false, \"ref\": \"3/4 OK, FAIL: A2 invoices\"}, {\"at\": 1789206600, \"kind\": \"test\", \"text\": \"api-verify.py\", \"ok\": true, \"ref\": \"4/4 OK\"}, {\"at\": 1789207000, \"kind\": \"commit\", \"text\": \"feat(api): invoices endpoint\", \"ok\": null, \"ref\": \"0f20786\"}, {\"at\": 1789207800, \"kind\": \"outcome\", \"text\": \"invoices endpoint added, api suite green\", \"ok\": null, \"ref\": null, \"type\": \"done\"}, {\"at\": 1789208000, \"kind\": \"task\", \"text\": \"Invoices endpoint: check green\", \"ok\": true, \"ref\": \"invoices\"}, {\"at\": 1789210500, \"kind\": \"wait\", \"text\": \"waiting for you: question\", \"ok\": null}]}, {\"session\": \"field-notes\", \"live\": true, \"project\": \"personal/field-notes\", \"events\": [{\"at\": 1789207200, \"kind\": \"prompt\", \"text\": \"Add the Tuesday meeting notes to the draft\", \"ok\": null, \"ref\": null}, {\"at\": 1789207320, \"kind\": \"prompt\", \"text\": \"Also fix the typo in the title\", \"ok\": null, \"ref\": null}, {\"at\": 1789207350, \"kind\": \"prompt\", \"text\": \"and push when done\", \"ok\": null, \"ref\": null}, {\"at\": 1789207357, \"kind\": \"prompt\", \"text\": \"Also add the attendees list\", \"ok\": null, \"ref\": \"phone\"}, {\"at\": 1789207358, \"kind\": \"prompt\", \"text\": \"Also add the room booking\", \"ok\": null, \"ref\": \"web\"}, {\"at\": 1789207364, \"kind\": \"prompt\", \"text\": \"this is how the header looks now\", \"ok\": null, \"ref\": null}]}], \"more\": false, \"outcomes_n\": 1, \"outcomes_settled_n\": 1}",
+      "at": 1789210841
+    },
+    {
+      "id": "6f1c2d3e-0200-4000-8000-000000000200",
+      "ok": true,
+      "text": "{\"qr\": {\"v\": 1, \"i\": \"q3Vb2mXz0rT8yKp1LwN4sA\", \"c\": \"j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8=\", \"h\": \"penguin\", \"e\": 1789211100, \"f\": {\"k\": \"AIzaSyD-example-key-000000000000000000\", \"p\": \"cmwatch-demo\", \"a\": \"1:123456789012:android:0a1b2c3d4e5f6a7b8c9d0e\", \"d\": \"https://cmwatch-demo-default-rtdb.europe-west1.firebasedatabase.app\", \"t\": \"watch\"}, \"m\": \"add\"}, \"code\": \"482913\", \"exp\": 1789211100}",
+      "at": 1789210851
+    },
+    {
+      "id": "6f1c2d3e-0360-4000-8000-000000000360",
+      "ok": true,
+      "text": "queued: atlas-shop is working, it reads it when the turn ends",
+      "at": 1789210961
+    },
+    {
+      "id": "6f1c2d3e-0370-4000-8000-000000000370",
+      "ok": true,
+      "text": "approved atlas-release-2-4",
+      "at": 1789210971
+    },
+    {
+      "id": "6f1c2d3e-0371-4000-8000-000000000371",
+      "ok": false,
+      "text": "atlas-old-task: no task waiting for an ok",
+      "at": 1789210976
+    },
+    {
+      "id": "6f1c2d3e-0372-4000-8000-000000000372",
+      "ok": true,
+      "text": "decision sent to the master",
+      "at": 1789210981
+    },
+    {
+      "id": "6f1c2d3e-0390-4000-8000-000000000390",
+      "ok": true,
+      "text": "removed Safari on Mac",
+      "at": 1789210991
+    },
+    {
+      "id": "6f1c2d3e-0391-4000-8000-000000000391",
+      "ok": false,
+      "text": "unknown device nope0000",
+      "at": 1789210996
+    },
+    {
+      "id": "6f1c2d3e-0380-4000-8000-000000000380",
+      "ok": true,
+      "text": "delivered",
+      "at": 1789211001
+    },
+    {
+      "id": "6f1c2d3e-0381-4000-8000-000000000381",
+      "ok": true,
+      "text": "approved atlas-release-2-4",
+      "at": 1789211011
+    },
+    {
+      "id": "6f1c2d3e-0382-4000-8000-000000000382",
+      "ok": false,
+      "text": "atlas-release-2-4: live approval needs a double confirmation",
+      "at": 1789211021
+    },
+    {
+      "id": "6f1c2d3e-0383-4000-8000-000000000383",
+      "ok": true,
+      "text": "{\"schema\": \"team-supervisor/night-report\", \"v\": 2, \"generated_at\": 1791333420, \"date\": \"2026-10-07\", \"title\": \"3 progetti: 1 in parte, 2 fermi\", \"window\": {\"start\": 1791325980, \"end\": 1791333360, \"start_source\": \"last_message\", \"end_source\": \"now\", \"floor\": 1791309600, \"morning\": 1791348000, \"last_message\": {\"at\": 1791325980, \"session\": \"master\", \"origin\": \"phone\", \"text\": \"vado a dormire, prosegui tu e segui le sessioni\"}, \"morning_message\": null}, \"attention\": {\"questions\": [{\"session\": \"ledger-api\", \"project\": \"/w/ledger-api\", \"id\": \"q-1\", \"kind\": \"choice\", \"text\": \"Pubblico la release 1.4 adesso?\", \"options\": [{\"n\": 1, \"label\": \"Yes\"}, {\"n\": 2, \"label\": \"No\"}], \"tier\": \"normal\", \"asked_at\": 1791332400}], \"approvals\": [{\"task\": \"ledger-release-14\", \"title\": \"Release 1.4 di ledger-api\", \"project\": \"/w/ledger-api\", \"what\": \"tag v1.4 e push\", \"where\": \"github.com/example/ledger-api\", \"requested_at\": 1791332460}], \"unblock\": [{\"session\": \"field-notes\", \"project\": \"/w/field-notes\", \"text\": \"/clear\"}]}, \"commitments\": [{\"task\": \"ledger-release-14\", \"title\": \"Release 1.4 di ledger-api\", \"short\": \"Release 1.4 di ledger-api\", \"project\": \"/w/ledger-api\", \"session\": \"ledger-api\", \"state\": \"awaiting_ok\", \"lane\": \"closed\", \"plan\": null, \"approved\": false, \"approved_at\": null, \"approved_by\": null, \"age_s\": 6000, \"last_step\": {\"at\": 1791332460, \"kind\": \"state\", \"text\": \"awaiting_ok\"}, \"idle_s\": 6000, \"next\": \"l'ok a: tag v1.4 e push\", \"waits\": {\"who\": \"ledger-api\", \"on\": \"person\"}, \"expected\": \"la 1.4 su github.com/example/ledger-api\", \"outcome_kind\": \"release\", \"check\": null, \"paused\": null, \"stalled\": false}, {\"task\": \"notes-gantt-apk\", \"title\": \"APK del Gantt sul telefono\", \"short\": \"APK del Gantt sul telefono\", \"project\": \"/w/field-notes\", \"session\": \"field-notes\", \"state\": \"running\", \"lane\": \"closed\", \"plan\": null, \"approved\": true, \"approved_at\": 1791290460, \"approved_by\": \"maintainer\", \"age_s\": 48000, \"last_step\": {\"at\": 1791296000, \"kind\": \"step\", \"text\": \"APK in CI\"}, \"idle_s\": 42460, \"next\": \"installazione sul telefono\", \"waits\": {\"who\": \"person\", \"on\": \"field-notes\"}, \"expected\": \"l'utente vede il Gantt sul telefono\", \"outcome_kind\": \"install\", \"check\": {\"outcome\": \"red\", \"at\": 1791300000}, \"paused\": null, \"stalled\": true}], \"timeline\": [{\"kind\": \"session\", \"id\": \"master\", \"title\": \"master\", \"project\": \"/w\", \"dir\": \"/w\", \"host\": \"local\", \"role\": \"master\", \"start\": 1791325980, \"end\": null, \"spans\": [[1791325980, 1791333360]], \"outcome\": \"running\", \"detail\": \"vado a dormire, prosegui tu e segui le sessioni\", \"report\": null, \"live\": true, \"assigned\": null, \"prompt\": \"vado a dormire, prosegui tu e segui le sessioni\", \"counts\": {\"prompts\": 1, \"tests\": 0, \"commits\": 0}}, {\"kind\": \"session\", \"id\": \"atlas-shop\", \"title\": \"atlas-shop\", \"project\": \"/w/atlas-shop\", \"dir\": \"/w/atlas-shop\", \"host\": \"local\", \"role\": null, \"start\": 1791326160, \"end\": 1791330000, \"spans\": [[1791326160, 1791330000]], \"outcome\": \"ok\", \"detail\": \"Checkout rifatto, test verdi\", \"report\": null, \"live\": false, \"assigned\": null, \"prompt\": null, \"counts\": {\"prompts\": 0, \"tests\": 2, \"commits\": 3}, \"session_id\": \"0b6e3c52-1f4a-4d7e-9a21-6c8d2e5f7a90\"}, {\"kind\": \"session\", \"id\": \"ledger-api\", \"title\": \"ledger-api\", \"project\": \"/w/ledger-api\", \"dir\": \"/w/ledger-api\", \"host\": \"local\", \"role\": null, \"start\": 1791326160, \"end\": 1791327360, \"spans\": [[1791326160, 1791326700], [1791327000, 1791327360]], \"outcome\": \"ok\", \"detail\": \"Migrazione del registro committata in locale, nessuna release\", \"report\": null, \"live\": true, \"assigned\": \"Dalla master: porta a termine la migrazione del registro e non fare release.\", \"prompt\": \"Porta a termine la migrazione del registro: committala in locale e non fare release finché non torno.\", \"counts\": {\"prompts\": 0, \"tests\": 4, \"commits\": 6}}, {\"kind\": \"session\", \"id\": \"win-orbit-docs\", \"title\": \"win-orbit-docs\", \"project\": \"/w/orbit-docs\", \"dir\": \"/w/orbit-docs\", \"host\": \"win\", \"role\": null, \"start\": 1791327600, \"end\": 1791331800, \"spans\": [[1791327600, 1791329400], [1791330600, 1791331800]], \"outcome\": \"unknown\", \"detail\": \"Dalla master: sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.\", \"report\": null, \"live\": false, \"assigned\": \"Dalla master: sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.\", \"prompt\": \"Dalla master: sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.\", \"counts\": {\"prompts\": 0, \"tests\": 0, \"commits\": 2}}, {\"kind\": \"night_job\", \"id\": \"a1b2c3d4\", \"title\": \"atlas-shop-notte — Prima esecuzione del lavoro notturno sul checkout: rifare il carrello e i test di integrazione senza toccare la produzione. Stanotte nessuno risponde alle domande: le scel…\", \"project\": \"/w/atlas-shop-notte\", \"start\": 1791331200, \"end\": 1791331260, \"outcome\": \"stopped\", \"detail\": \"fermo prima del piano: la specifica non si legge.\", \"report\": \"/w/atlas-shop-notte/docs/notte/2026-10-07-a1b2c3d4.md\", \"rc\": 0, \"prompt\": \"Prima esecuzione del lavoro notturno sul checkout: rifare il carrello e i test di integrazione senza toccare la produzione. Stanotte nessuno risponde alle domande: le scelte che non puoi prendere da solo scrivile in docs/notte/domande.md e fermati prima di qualunque passo che le richieda. Leggi la specifica in docs/spec/checkout.md, rifai il carrello secondo la specifica, poi i test di\"}, {\"kind\": \"night_job\", \"id\": \"e5f6a7b8\", \"title\": \"ledger-api-notte — Dati del registro dei pagamenti per la pagina mensile.\", \"project\": \"/w/ledger-api-notte\", \"start\": 1791331260, \"end\": 1791332820, \"outcome\": \"ok\", \"detail\": \"dati fatti e verificati, 3 commit sul ramo notte/registro.\", \"report\": \"/w/ledger-api-notte/docs/notte/2026-10-07-e5f6a7b8.md\", \"rc\": 0, \"prompt\": \"Dati del registro dei pagamenti per la pagina mensile.\", \"session_id\": \"7d2a9e14-58c3-4b6f-8e01-3a9c4f2b6d18\"}, {\"kind\": \"night_job\", \"id\": \"c9d0e1f2\", \"title\": \"field-notes-notte — Riordino delle note di campo per cartella e data, con un indice in testa.\", \"project\": \"/w/field-notes-notte\", \"start\": 1791332880, \"end\": null, \"outcome\": \"running\", \"detail\": null, \"report\": null, \"rc\": null, \"prompt\": \"Riordino delle note di campo per cartella e data, con un indice in testa.\"}], \"queue\": [], \"projects\": [{\"name\": \"ledger-api\", \"path\": \"/w/ledger-api\", \"worktrees\": [\"/w/ledger-api-notte\"], \"hosts\": [\"local\"], \"parts_source\": \"plan\", \"parts_file\": \"/w/ledger-api/docs/plans/registro.md\", \"parts\": [{\"title\": \"Migrazione del registro\", \"state\": \"done\"}, {\"title\": \"Pagina mensile\", \"state\": \"done\"}, {\"title\": \"Esportazione CSV\", \"state\": \"done\"}, {\"title\": \"Release 1.4\", \"state\": \"todo\"}], \"parts_total\": 4, \"waiting_on\": [\"domanda: Pubblico la release 1.4 adesso?\", \"ok: Release 1.4 di ledger-api\"], \"next\": \"Release 1.4 dopo l'ok\", \"events\": [{\"at\": 1791326400, \"kind\": \"commit\", \"text\": \"feat(ledger): monthly page\", \"ok\": null, \"ref\": \"a1b2c3d\"}, {\"at\": 1791327300, \"kind\": \"test\", \"text\": \"ledger-verify.py\", \"ok\": true, \"ref\": \"18/18 OK\"}, {\"at\": 1791327360, \"kind\": \"outcome\", \"text\": \"Migrazione del registro committata in locale, nessuna release\", \"ok\": null, \"ref\": null}], \"spans\": [{\"session\": \"ledger-api\", \"host\": \"local\", \"start\": 1791326160, \"end\": 1791326700}, {\"session\": \"ledger-api\", \"host\": \"local\", \"start\": 1791327000, \"end\": 1791327360}], \"goals\": [{\"title\": \"Registro dei pagamenti: migrazione e pagina mensile\", \"file\": \"/w/ledger-api/docs/proposte/2026-10-07-registro.md\", \"at\": 1791325800, \"points\": [{\"title\": \"Migrazione del registro\", \"state\": \"done\", \"done_at\": 1791332820}, {\"title\": \"Pagina mensile\", \"state\": \"done\", \"done_at\": 1791332820}, {\"title\": \"Release 1.4\", \"state\": \"done\", \"done_at\": 1791332820}], \"host\": \"local\", \"source\": \"proposta\", \"reports\": [{\"file\": \"/w/ledger-api/docs/notte/2026-10-07-registro.md\", \"title\": \"ledger-api, registro\", \"at\": 1791332820, \"fine\": true, \"fine_at\": 1791332820, \"esito\": \"Migrazione e pagina mensile fatte, 6 commit in locale; la release aspetta l'ok.\", \"stopped\": false, \"decisions\": [\"Release 1.4 adesso o lunedì?\"], \"host\": \"local\"}], \"state\": \"done\", \"done_at\": 1791332820}], \"reports\": [], \"milestones\": [{\"at\": 1791326400, \"kind\": \"commit\", \"text\": \"feat(ledger): monthly page\", \"ok\": null, \"ref\": \"a1b2c3d\"}, {\"at\": 1791332820, \"kind\": \"fine\", \"text\": \"ledger-api, registro\", \"ok\": true, \"ref\": \"/w/ledger-api/docs/notte/2026-10-07-registro.md\"}], \"where\": {\"state\": \"stopped\", \"text\": \"domanda: Pubblico la release 1.4 adesso?\", \"missing\": [], \"needs_you\": [\"domanda: Pubblico la release 1.4 adesso?\", \"ok: Release 1.4 di ledger-api\", \"Release 1.4 adesso o lunedì?\"]}}, {\"name\": \"field-notes\", \"path\": \"/w/field-notes\", \"worktrees\": [\"/w/field-notes-notte\"], \"hosts\": [], \"parts_source\": null, \"parts_file\": null, \"parts\": [], \"parts_total\": 0, \"waiting_on\": [\"!: /clear\"], \"next\": \"Indice delle note per data\", \"events\": [], \"spans\": [], \"goals\": [], \"reports\": [], \"milestones\": [], \"where\": {\"state\": \"stopped\", \"text\": \"!: /clear\", \"missing\": [], \"needs_you\": [\"!: /clear\"]}}, {\"name\": \"orbit-docs\", \"path\": \"/w/orbit-docs\", \"worktrees\": [], \"hosts\": [\"win\"], \"parts_source\": null, \"parts_file\": null, \"parts\": [], \"parts_total\": 0, \"waiting_on\": [], \"next\": null, \"events\": [{\"at\": 1791328800, \"kind\": \"commit\", \"text\": \"deploy: nuovo host della documentazione\", \"ok\": null, \"ref\": \"d4e5f6a\"}, {\"at\": 1791331500, \"kind\": \"commit\", \"text\": \"docs: redirect dei vecchi indirizzi\", \"ok\": null, \"ref\": \"b7c8d9e\"}], \"spans\": [{\"session\": \"win-orbit-docs\", \"host\": \"win\", \"start\": 1791327600, \"end\": 1791329400}, {\"session\": \"win-orbit-docs\", \"host\": \"win\", \"start\": 1791330600, \"end\": 1791331800}], \"goals\": [{\"title\": \"sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.\", \"file\": null, \"at\": 1791327600, \"points\": [], \"host\": \"win\", \"source\": \"assigned\", \"session\": \"win-orbit-docs\", \"reports\": [], \"state\": \"partial\", \"done_at\": null}], \"reports\": [], \"milestones\": [{\"at\": 1791328800, \"kind\": \"commit\", \"text\": \"deploy: nuovo host della documentazione\", \"ok\": null, \"ref\": \"d4e5f6a\"}, {\"at\": 1791329100, \"kind\": \"push\", \"text\": \"origin/notte/host\", \"ok\": null, \"ref\": \"refs/remotes/origin/notte/host\"}, {\"at\": 1791331500, \"kind\": \"commit\", \"text\": \"docs: redirect dei vecchi indirizzi\", \"ok\": null, \"ref\": \"b7c8d9e\"}], \"where\": {\"state\": \"partial\", \"text\": \"docs: redirect dei vecchi indirizzi\", \"missing\": [\"sposta il sito della documentazione sul nuovo host, senza cambiare il dominio.\"], \"needs_you\": []}}], \"sources\": {\"transcripts\": \"ok\", \"night_done\": \"ok\", \"night_queue\": \"ok\", \"host:win\": \"ok\", \"timeline\": \"ok\", \"registry\": \"ok\", \"relay_state\": \"ok\"}}",
+      "at": 1789211031
+    },
+    {
+      "id": "6f1c2d3e-0384-4000-8000-000000000384",
+      "ok": false,
+      "text": "no night report for 2026-10-01",
+      "at": 1789211041
+    },
+    {
+      "id": "6f1c2d3e-0386-4000-8000-000000000386",
+      "ok": true,
+      "text": "{\"rows\": [{\"key\": \"c21b025ee5fe\", \"state\": \"aperto\", \"scope\": \"agenzia\", \"blocks\": \"owner\", \"title\": \"Confirm the 6 client ids with a candidate\", \"short\": \"Confirm the 6 client ids\", \"ref\": \".claude/to-decide-client-id.md\", \"detail\": null, \"until\": null}, {\"key\": \"4a74d7ef133f\", \"state\": \"aperto\", \"scope\": \"personale\", \"blocks\": \"claude\", \"title\": \"Move the docs site to the new host\", \"short\": \"Move the docs site\", \"ref\": \"orbit-docs\", \"detail\": null, \"until\": null}, {\"key\": \"ebd085c3be89\", \"state\": \"sospeso\", \"scope\": \"agenzia\", \"blocks\": \"terzi\", \"title\": \"Staging of atlas-shop not reachable from the CLI\", \"short\": \"Staging of atlas-shop\", \"ref\": \"\", \"detail\": \"The host blocks SSH from the office.\\nAsk the provider to open port 22.\", \"until\": \"2026-10-12\"}, {\"key\": \"03995e6b66aa\", \"state\": \"fatto\", \"scope\": \"postazione\", \"blocks\": \"nessuno\", \"title\": \"Backups of the workstation every night\", \"short\": \"Backups of the workstation\", \"ref\": \"crontab\", \"detail\": null, \"until\": null}, {\"key\": \"64fd942753ab\", \"state\": \"scartato\", \"scope\": \"personale\", \"blocks\": \"nessuno\", \"title\": \"A second dashboard for the quotas\", \"short\": \"A second dashboard\", \"ref\": \"\", \"detail\": null, \"until\": null}], \"more\": false, \"owner\": \"owner\"}",
+      "at": 1789211061
+    },
+    {
+      "id": "6f1c2d3e-0387-4000-8000-000000000387",
+      "ok": false,
+      "text": "no agenda file",
+      "at": 1789211071
+    },
+    {
+      "id": "6f1c2d3e-0470-4000-8000-000000000470",
+      "ok": true,
+      "text": "{\"row\": {\"key\": \"5b44e408d692\", \"state\": \"fatto\", \"scope\": \"agenzia\", \"blocks\": \"owner\", \"title\": \"Confirm the 6 client ids with a candidate\", \"short\": \"Confirm the 6 client ids\", \"ref\": \".claude/to-decide-client-id.md\", \"detail\": null, \"until\": null}}",
+      "at": 1789211081
+    },
+    {
+      "id": "6f1c2d3e-0471-4000-8000-000000000471",
+      "ok": false,
+      "text": "agenda row changed",
+      "at": 1789211091
+    },
+    {
+      "id": "6f1c2d3e-0472-4000-8000-000000000472",
+      "ok": true,
+      "text": "{\"row\": {\"key\": \"bf99f5227931\", \"state\": \"sospeso\", \"scope\": \"personale\", \"blocks\": \"claude\", \"title\": \"Move the docs site to the new host\", \"short\": \"Move the docs site\", \"ref\": \"orbit-docs\", \"detail\": null, \"until\": \"2026-10-20\"}}",
+      "at": 1789211101
+    },
+    {
+      "id": "6f1c2d3e-0473-4000-8000-000000000473",
+      "ok": true,
+      "text": "{\"row\": {\"key\": \"90b2bdb97f34\", \"state\": \"sospeso\", \"scope\": \"agenzia\", \"blocks\": \"claude\", \"title\": \"Staging of atlas-shop not reachable from the CLI\", \"short\": \"Staging of atlas-shop\", \"ref\": \"\", \"detail\": \"The host blocks SSH from the office.\\nAsk the provider to open port 22.\", \"until\": \"2026-10-12\"}}",
+      "at": 1789211111
+    },
+    {
+      "id": "6f1c2d3e-0474-4000-8000-000000000474",
+      "ok": true,
+      "text": "{\"row\": {\"key\": \"c17568410eab\", \"state\": \"scartato\", \"scope\": \"postazione\", \"blocks\": \"nessuno\", \"title\": \"Backups of the workstation every night\", \"short\": \"Backups of the workstation\", \"ref\": \"crontab\", \"detail\": null, \"until\": null}}",
+      "at": 1789211121
+    },
+    {
+      "id": "6f1c2d3e-0475-4000-8000-000000000475",
+      "ok": false,
+      "text": "bad agenda action: archive",
+      "at": 1789211131
+    },
+    {
+      "id": "6f1c2d3e-0476-4000-8000-000000000476",
+      "ok": false,
+      "text": "bad until date: 2026-02-30",
+      "at": 1789211141
+    },
+    {
+      "id": "6f1c2d3e-0477-4000-8000-000000000477",
+      "ok": false,
+      "text": "bad blocks: terzi",
+      "at": 1789211151
+    },
+    {
+      "id": "6f1c2d3e-0480-4000-8000-000000000480",
+      "ok": true,
+      "text": "sent notes.txt to atlas-shop",
+      "at": 1789211202
+    },
+    {
+      "id": "6f1c2d3e-0481-4000-8000-000000000481",
+      "ok": false,
+      "text": "bad parts",
+      "at": 1789211211
+    },
+    {
+      "id": "6f1c2d3e-0490-4000-8000-000000000490",
+      "ok": true,
+      "text": "queued for tonight: master (personal), job 7b21d4e8",
+      "job": "7b21d4e8",
+      "at": 1789211301
+    },
+    {
+      "id": "6f1c2d3e-0500-4000-8000-000000000500",
+      "ok": true,
+      "text": "sent to atlas-shop: images saved as docs/segnalazioni/2026-10-10-two-screens-of-the-checkout.png, docs/segnalazioni/2026-10-10-two-screens-of-the-checkout.jpg",
+      "at": 1789211302
+    },
+    {
+      "id": "6f1c2d3e-0501-4000-8000-000000000501",
+      "ok": false,
+      "text": "image missing or unreadable",
+      "at": 1789211311
+    },
+    {
+      "id": "6f1c2d3e-0580-4000-8000-0000000000580",
+      "ok": true,
+      "text": "field-notes-2 continues on work from the handoff",
+      "session": "field-notes-2",
+      "at": 1789211401
+    },
+    {
+      "id": "6f1c2d3e-0581-4000-8000-0000000000581",
+      "ok": true,
+      "text": "field-notes resumes by itself at 15:00, when the quota resets",
+      "at": 1789211411
+    },
+    {
+      "id": "6f1c2d3e-0582-4000-8000-0000000000582",
+      "ok": false,
+      "text": "ghost is not running: nothing sent",
+      "at": 1789211421
+    },
+    {
+      "id": "6f1c2d3e-0583-4000-8000-0000000000583",
+      "ok": false,
+      "text": "atlas-shop: the same message was sent 12 s ago, not sent again",
+      "at": 1789211431
+    },
+    {
+      "id": "6f1c2d3e-0520-4000-8000-000000000520",
+      "ok": true,
+      "text": "answered 1. yes",
+      "at": 1789211402
+    },
+    {
+      "id": "6f1c2d3e-0521-4000-8000-000000000521",
+      "ok": false,
+      "text": "ledger-api: the question changed after your answer, nothing was pressed",
+      "at": 1789211411
+    },
+    {
+      "id": "6f1c2d3e-0630-4000-8000-0000000000630",
+      "ok": true,
+      "text": "scheduled for 17:00: atlas-shop gets it then (at its first stop after, if it is working)",
+      "at": 1789211501
+    },
+    {
+      "id": "6f1c2d3e-0640-4000-8000-0000000000640",
+      "ok": false,
+      "text": "confirm: create /home/demo/workspaces/personal/brand-new",
+      "at": 1789211511
+    },
+    {
+      "id": "6f1c2d3e-0641-4000-8000-0000000000641",
+      "ok": true,
+      "text": "created /home/demo/workspaces/personal/brand-new and launched it (personal)",
+      "session": "brand-new",
+      "at": 1789211521
+    },
+    {
+      "id": "6f1c2d3e-0690-4000-8000-0000000000690",
+      "ok": true,
+      "text": "field-notes: permissions now acceptEdits",
+      "at": 1789211533
+    },
+    {
+      "id": "6f1c2d3e-0691-4000-8000-0000000000691",
+      "ok": false,
+      "text": "work-ledger-api: bypassPermissions is not in this session's Shift+Tab cycle, left on plan",
+      "at": 1789211548
+    },
+    {
+      "id": "6f1c2d3e-0740-4000-8000-0000000000740",
+      "ok": true,
+      "text": "{\"cases\": [{\"id\": \"c_7a1e0c5b9d21\", \"name\": \"Harbor lease dispute\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_7a1e0c5b9d22\", \"name\": \"Harbor lease: appeal\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_4b8f2a6e1c30\", \"name\": \"tax-2026\", \"project\": \"personal/tax-2026\"}], \"deadlines\": [{\"uid\": \"e6\", \"summary\": \"Call the client about the appeal\", \"date\": \"2026-09-12\", \"days_left\": 0, \"due\": true, \"case\": \"c_7a1e0c5b9d22\"}, {\"uid\": \"e1\", \"summary\": \"File the defence brief\", \"date\": \"2026-09-14\", \"days_left\": 2, \"due\": true, \"case\": \"c_7a1e0c5b9d21\"}, {\"uid\": \"e2\", \"summary\": \"Tax return: second instalment\", \"date\": \"2026-10-02\", \"days_left\": 20, \"due\": false, \"case\": \"c_4b8f2a6e1c30\"}, {\"uid\": \"e3\", \"summary\": \"Renew the office insurance\", \"date\": \"2026-11-05\", \"days_left\": 54, \"due\": false, \"case\": \"\"}], \"outcomes\": [{\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789207240, \"short\": \"Brief outline ready\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789203640, \"short\": \"Exhibits indexed\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor-lease\", \"at\": 1789124440, \"short\": \"Hearing date confirmed\"}, {\"project\": \"personal/tax-2026\", \"session\": \"tax-2026\", \"at\": 1788710840, \"short\": \"Receipts sorted by month\"}], \"error\": \"\"}",
+      "at": 1789211561
+    },
+    {
+      "id": "6f1c2d3e-0741-4000-8000-0000000000741",
+      "ok": true,
+      "text": "{\"cases\": [{\"id\": \"c_7a1e0c5b9d21\", \"name\": \"Harbor lease dispute\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_7a1e0c5b9d22\", \"name\": \"Harbor lease: appeal\", \"project\": \"personal/harbor-lease\"}, {\"id\": \"c_4b8f2a6e1c30\", \"name\": \"tax-2026\", \"project\": \"personal/tax-2026\"}], \"deadlines\": [], \"outcomes\": [{\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789207240, \"short\": \"Brief outline ready\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor\", \"at\": 1789203640, \"short\": \"Exhibits indexed\"}, {\"project\": \"personal/harbor-lease\", \"session\": \"harbor-lease\", \"at\": 1789124440, \"short\": \"Hearing date confirmed\"}, {\"project\": \"personal/tax-2026\", \"session\": \"tax-2026\", \"at\": 1788710840, \"short\": \"Receipts sorted by month\"}], \"error\": \"calendar off\"}",
+      "at": 1789211571
+    },
+    {
+      "id": "6f1c2d3e-0742-4000-8000-0000000000742",
+      "ok": true,
+      "text": "delivered",
+      "at": 1789211581
+    },
+    {
+      "id": "6f1c2d3e-0750-4000-8000-0000000000750",
+      "ok": true,
+      "text": "{\"nights\": [{\"date\": \"2026-10-08\", \"title\": \"3 progetti: 1 in parte, 2 fermi\", \"generated_at\": 1791419820, \"v\": 2}, {\"date\": \"2026-10-07\", \"title\": null, \"generated_at\": 1791333420, \"v\": 1}]}",
+      "at": 1789211601
+    },
+    {
+      "id": "6f1c2d3e-0751-4000-8000-0000000000751",
+      "ok": true,
+      "text": "{\"nights\": []}",
+      "at": 1789211611
+    },
+    {
+      "id": "6f1c2d3e-0760-4000-8000-0000000000760",
+      "ok": true,
+      "text": "{\"date\": \"2026-02-10\", \"rows\": [{\"task\": \"atlas-release-2-3\", \"title\": \"Release 2.3 of atlas-shop\", \"short\": \"Release 2.3 of atlas-shop\", \"project\": \"personal/atlas-shop\", \"session\": \"atlas-shop\", \"at\": 1789211400, \"outcome\": \"green\", \"proof\": {\"kind\": \"release\", \"value\": \"v2.3\", \"url\": \"https://github.com/example/atlas-shop/releases/tag/v2.3\"}}, {\"task\": \"ledger-migrations-010\", \"title\": \"Migrations 008-010 on staging\", \"short\": \"Migrations 008-010\", \"project\": \"work/clients/ledger-api\", \"session\": \"ledger-api\", \"at\": 1789209000, \"outcome\": \"green\", \"proof\": {\"kind\": \"commit\", \"value\": \"9f8e7d6\", \"url\": \"https://github.com/example/ledger-api/commit/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e\"}}, {\"task\": \"notes-night-report\", \"title\": \"Night report of field-notes\", \"short\": \"Night report of field-notes\", \"project\": \"personal/field-notes\", \"session\": null, \"at\": 1789205000, \"outcome\": \"cancelled\", \"proof\": {\"kind\": \"file\", \"value\": \"docs/notte/2026-02-10-field-notes.md\", \"url\": null}}, {\"task\": \"notes-map-zoom\", \"title\": \"Zoom on the field-notes map\", \"short\": \"Zoom on the map\", \"project\": \"personal/field-notes\", \"session\": \"field-notes\", \"at\": 1789203000, \"outcome\": \"superseded\", \"proof\": {\"kind\": \"check\", \"value\": \"npm test\", \"url\": null}}, {\"task\": \"orbit-docs-lint\", \"title\": \"Lint of the orbit docs\", \"short\": \"Lint of the orbit docs\", \"project\": \"work/own/orbit-docs\", \"session\": \"orbit-docs\", \"at\": 1789201000, \"outcome\": \"failed\", \"proof\": {\"kind\": \"check\", \"value\": \"npm run lint\", \"url\": null}}], \"days\": [{\"date\": \"2026-02-09\", \"n\": 3}, {\"date\": \"2026-02-07\", \"n\": 1}], \"more\": false}",
+      "at": 1789211701
+    },
+    {
+      "id": "6f1c2d3e-0761-4000-8000-0000000000761",
+      "ok": false,
+      "text": "no task registry",
+      "at": 1789211711
+    },
+    {
+      "id": "6f1c2d3e-0762-4000-8000-0000000000762",
+      "ok": false,
+      "text": "ieri: not a date YYYY-MM-DD",
+      "at": 1789211721
+    },
+    {
+      "id": "6f1c2d3e-0770-4000-8000-000000000770",
+      "ok": true,
+      "text": "closed: needs_you atlas-shop",
+      "at": 1789211731
+    },
+    {
+      "id": "6f1c2d3e-0771-4000-8000-000000000771",
+      "ok": false,
+      "text": "needs_you nobody: nothing to close",
+      "at": 1789211741
+    },
+    {
+      "id": "6f1c2d3e-0780-4000-8000-000000000780",
+      "ok": true,
+      "text": "approved atlas-checkout-layout (Strada B)",
+      "at": 1789211751
+    },
+    {
+      "id": "6f1c2d3e-0781-4000-8000-000000000781",
+      "ok": false,
+      "text": "atlas-checkout-layout: choice Strada C not among Strada A, Strada B",
+      "at": 1789211761
+    },
+    {
+      "id": "6f1c2d3e-0800-4000-8000-000000000800",
+      "ok": true,
+      "text": "{\"entries\": [{\"id\": \"u1.0\", \"role\": \"user\", \"text\": \"Add the Tuesday meeting notes to the draft\", \"at\": 1789207200, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"a1.0\", \"role\": \"assistant\", \"text\": \"I'll read the draft first.\", \"at\": 1789207205, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a1.1\", \"role\": \"tool\", \"text\": \"docs/draft.md\", \"at\": 1789207205, \"tool\": \"Read\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a3.0\", \"role\": \"tool\", \"text\": \"grep -n Tuesday notes/*.md\", \"at\": 1789207220, \"tool\": \"Bash\", \"note\": \"Find the Tuesday notes\", \"error\": true, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a4.0\", \"role\": \"assistant\", \"text\": \"The notes file was missing, so I added the Tuesday section to the draft by hand.\", \"at\": 1789207240, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": {\"started\": 1789207200, \"ended\": 1789207245, \"in\": 4020, \"out\": 130}, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"u2.0\", \"role\": \"user\", \"text\": \"Also fix the typo in the title\", \"at\": 1789207320, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"q1.0\", \"role\": \"user\", \"text\": \"and push when done\", \"at\": 1789207350, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"a6.0\", \"role\": \"tool\", \"text\": \"docs/cover.png\", \"at\": 1789207352, \"tool\": \"Write\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/field-notes/docs/cover.png\", \"mime\": \"image/png\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a6.1\", \"role\": \"tool\", \"text\": \"notes.py\", \"at\": 1789207352, \"tool\": \"Edit\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a6.2\", \"role\": \"tool\", \"text\": \"/home/demo/workspaces/personal/field-notes/docs/broken.pdf\", \"at\": 1789207352, \"tool\": \"Write\", \"note\": null, \"error\": true, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a7.0\", \"role\": \"tool\", \"text\": \"Tuesday minutes\", \"at\": 1789207355, \"tool\": \"SendUserFile\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/field-notes/docs/minutes.pdf\", \"mime\": \"application/pdf\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a7.1\", \"role\": \"tool\", \"text\": \"team-supervisor report atlas-shop /tmp/shot.jpg \\\"checkout is grey\\\"\", \"at\": 1789207355, \"tool\": \"Bash\", \"note\": \"Forward the screenshot to atlas-shop\", \"error\": false, \"cut\": false, \"turn\": null, \"files\": [{\"path\": \"/home/demo/workspaces/personal/atlas-shop/docs/reports/2026-09-12-checkout-is-grey.jpg\", \"mime\": \"image/jpeg\", \"size\": null}], \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"p1.0\", \"role\": \"user\", \"text\": \"Also add the attendees list\", \"at\": 1789207357, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"phone\", \"queued\": false, \"diff\": null}, {\"id\": \"w1.0\", \"role\": \"user\", \"text\": \"Also add the room booking\", \"at\": 1789207358, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"web\", \"queued\": false, \"diff\": null}, {\"id\": \"q1789207361000\", \"role\": \"user\", \"text\": \"then tag the release\", \"at\": 1789207361, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"img1.0\", \"role\": \"user\", \"text\": \"this is how the header looks now\", \"at\": 1789207364, \"tool\": null, \"note\": \"1 image(s)\", \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": false, \"diff\": null}, {\"id\": \"q1789207365000\", \"role\": \"user\", \"text\": \"still waiting in the queue\", \"at\": 1789207365, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"pc\", \"queued\": true, \"diff\": null}, {\"id\": \"a5.0\", \"role\": \"assistant\", \"text\": \"Fixed «Teusday» in the title; pushing now.\", \"at\": 1789207360, \"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null}, {\"id\": \"a8.0\", \"role\": \"tool\", \"text\": \"/home/dev/storefront/src/checkout/totals.ts\", \"at\": 1789207415, \"tool\": \"Edit\", \"note\": null, \"error\": false, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": {\"path\": \"/home/dev/storefront/src/checkout/totals.ts\", \"kind\": \"edit\", \"added\": 2, \"removed\": 1, \"hunks\": [{\"old_start\": 12, \"old_lines\": 3, \"new_start\": 12, \"new_lines\": 4, \"lines\": [\" export function total(cart: Cart) {\", \"-  return cart.items.reduce((s, i) => s + i.price, 0)\", \"+  const sub = cart.items.reduce((s, i) => s + i.price * i.qty, 0)\", \"+  return sub - (cart.giftCard?.amount ?? 0)\", \" }\"]}], \"cut\": false}}], \"more\": false}",
+      "at": 1789211801
+    },
+    {
+      "id": "6f1c2d3e-0801-4000-8000-000000000801",
+      "ok": false,
+      "text": "no transcript for ffffffff-0000-4000-8000-000000000000",
+      "at": 1789211811
+    },
+    {
+      "id": "6f1c2d3e-0830-4000-8000-000000000830",
+      "ok": true,
+      "text": "answered issue-tracker (e-4f1c2a9b7d30)",
+      "at": 1789214361
+    },
+    {
+      "id": "6f1c2d3e-0831-4000-8000-000000000831",
+      "ok": false,
+      "text": "e-4f1c2a9b7d30: project must be one of Documentation, Shop, Operations",
+      "at": 1789214356
+    },
+    {
+      "id": "6f1c2d3e-0832-4000-8000-000000000832",
+      "ok": false,
+      "text": "e-9a0b1c2d3e4f: figma asks to open a link, answer in the terminal",
+      "at": 1789214366
+    },
+    {
+      "id": "6f1c2d3e-0840-4000-8000-000000000840",
+      "ok": true,
+      "text": "sent to master",
+      "at": 1789214371
+    },
+    {
+      "id": "6f1c2d3e-0841-4000-8000-000000000841",
+      "ok": true,
+      "text": "already gone",
+      "at": 1789214376
+    },
+    {
+      "id": "6f1c2d3e-0842-4000-8000-000000000842",
+      "ok": true,
+      "text": "{\"sessions\": [{\"name\": \"field-notes\", \"closable\": true, \"blocked_by\": null, \"save\": {\"outcome\": null, \"next\": null, \"session_id\": \"S-F\", \"dirty_n\": 3, \"dirty\": [\"docs/\", \"draft.txt\", \"notes.md\"]}}, {\"name\": \"atlas-shop\", \"closable\": false, \"blocked_by\": \"busy\", \"save\": null}, {\"name\": \"ledger-api\", \"closable\": false, \"blocked_by\": \"question\", \"save\": null}]}",
+      "at": 1789214381
+    },
+    {
+      "id": "6f1c2d3e-0843-4000-8000-000000000843",
+      "ok": true,
+      "text": "closed: field-notes\natlas-shop not closed: it is working",
+      "at": 1789214386
+    },
+    {
+      "id": "6f1c2d3e-0844-4000-8000-000000000844",
+      "ok": false,
+      "text": "close: no session given",
+      "at": 1789214391
+    },
+    {
+      "id": "6f1c2d3e-0845-4000-8000-000000000845",
+      "ok": false,
+      "text": "atlas-shop not closed: it is working",
+      "at": 1789214396
+    },
+    {
+      "id": "6f1c2d3e-1120-4000-8000-000000001120",
+      "ok": true,
+      "text": "atlas-shop closes as soon as it finishes",
+      "at": 1789214398
+    },
+    {
+      "id": "6f1c2d3e-1121-4000-8000-000000001121",
+      "ok": true,
+      "text": "atlas-shop: stopped, writing the handoff; it closes at the end of the turn or within 180 s",
+      "at": 1789214399
+    },
+    {
+      "id": "6f1c2d3e-0880-4000-8000-000000000880",
+      "ok": false,
+      "text": "suggestion: «Maybe» is not one of its options",
+      "at": 1789214381
+    },
+    {
+      "id": "6f1c2d3e-0881-4000-8000-000000000881",
+      "ok": true,
+      "text": "sent to master to talk it over",
+      "at": 1789214386
+    },
+    {
+      "id": "6f1c2d3e-0882-4000-8000-000000000882",
+      "ok": true,
+      "text": "sent to master with the choice",
+      "at": 1789214391
+    },
+    {
+      "id": "6f1c2d3e-0890-4000-8000-000000000890",
+      "ok": true,
+      "text": "closed process 4410",
+      "at": 1789214501
+    },
+    {
+      "id": "6f1c2d3e-0891-4000-8000-000000000891",
+      "ok": false,
+      "text": "4410:912345 is no longer among the advice: nothing closed",
+      "at": 1789214511
+    },
+    {
+      "id": "6f1c2d3e-0892-4000-8000-000000000892",
+      "ok": true,
+      "text": "stopped: cros-notificationd.service, sommelier-x@0.service, sommelier-x@1.service",
+      "at": 1789214521
+    },
+    {
+      "id": "6f1c2d3e-0893-4000-8000-000000000893",
+      "ok": false,
+      "text": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service is no longer among the advice: nothing stopped",
+      "at": 1789214531
+    },
+    {
+      "id": "6f1c2d3e-0894-4000-8000-000000000894",
+      "ok": true,
+      "text": "{\"checked_at\": 1789189400, \"accounts\": [{\"account\": \"personal\", \"plugins\": [{\"id\": \"chrisbanes-skills@chrisbanes-skills\", \"name\": \"chrisbanes-skills\", \"marketplace\": \"chrisbanes-skills\", \"scope\": \"user\", \"installed\": \"2026.9.22.01\", \"latest\": \"2026.10.26\", \"update\": true}, {\"id\": \"frontend-design@claude-plugins-official\", \"name\": \"frontend-design\", \"marketplace\": \"claude-plugins-official\", \"scope\": \"user\", \"installed\": \"465f09344424\", \"latest\": null, \"update\": null}, {\"id\": \"supervisor@supervisor-dev\", \"name\": \"supervisor\", \"marketplace\": \"supervisor-dev\", \"scope\": \"user\", \"installed\": \"0.8.81\", \"latest\": \"0.8.81\", \"update\": false}], \"skills\": [{\"name\": \"animate\", \"version\": \"1.2\", \"source\": \"someone/motion-skills@1a2b3c4d\"}, {\"name\": \"docx\", \"version\": null, \"source\": \"account\"}]}, {\"account\": \"work\", \"plugins\": [{\"id\": \"supervisor@supervisor-dev\", \"name\": \"supervisor\", \"marketplace\": \"supervisor-dev\", \"scope\": \"user\", \"installed\": \"0.8.81\", \"latest\": \"0.8.81\", \"update\": false}], \"skills\": []}]}",
+      "at": 1789214601
+    },
+    {
+      "id": "6f1c2d3e-0895-4000-8000-000000000895",
+      "ok": true,
+      "text": "plugin check started: the versions come with the next state",
+      "at": 1789214611
+    },
+    {
+      "id": "6f1c2d3e-0896-4000-8000-000000000896",
+      "ok": true,
+      "text": "chrisbanes-skills@chrisbanes-skills updated",
+      "at": 1789214621
+    },
+    {
+      "id": "6f1c2d3e-0897-4000-8000-000000000897",
+      "ok": false,
+      "text": "needs-command@some-market: the marketplace asks to confirm a command, to confirm at the PC (claude plugin update needs-command@some-market)",
+      "at": 1789214631
+    },
+    {
+      "id": "6f1c2d3e-0898-4000-8000-000000000898",
+      "ok": true,
+      "text": "nothing to update",
+      "at": 1789214641
+    },
+    {
+      "id": "6f1c2d3e-0899-4000-8000-000000000899",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"kpi_tasks\": {\"open\": 3, \"waiting_you\": 1, \"stalled\": 1, \"closed_today\": 2, \"tasks\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"state\": \"running\", \"age_s\": 9000, \"attempts\": 2, \"attempts_max\": 3, \"stalled\": true, \"who\": \"master\"}, {\"task\": \"ledger-vendor-ticket\", \"short\": \"Vendor ticket 4411\", \"state\": \"paused\", \"age_s\": 172800, \"attempts\": 0, \"attempts_max\": 3, \"stalled\": false, \"who\": \"maintainer\"}]}, \"kpi_checks_week\": [{\"date\": \"2026-09-06\", \"green\": 4, \"red\": 0}, {\"date\": \"2026-09-07\", \"green\": 7, \"red\": 1}, {\"date\": \"2026-09-08\", \"green\": 3, \"red\": 0}, {\"date\": \"2026-09-09\", \"green\": 5, \"red\": 2}, {\"date\": \"2026-09-10\", \"green\": 7, \"red\": 0}, {\"date\": \"2026-09-11\", \"green\": 2, \"red\": 0}, {\"date\": \"2026-09-12\", \"green\": 5, \"red\": 1}], \"kpi_turns_today\": [{\"session\": \"atlas-shop\", \"turns\": [{\"start\": 1789200000, \"end\": 1789200240, \"outcome\": \"ok\", \"tokens\": 18200, \"cache_read\": 210000}, {\"start\": 1789201000, \"end\": 1789201420, \"outcome\": \"fail\", \"tokens\": 26100, \"cache_read\": 260000}, {\"start\": 1789210000, \"end\": 1789210700, \"outcome\": \"running\", \"tokens\": 41000, \"cache_read\": 390000}]}], \"kpi_health\": {\"latency\": {\"p50_s\": 2.1, \"p95_s\": 6.4, \"max_s\": 9.8, \"n\": 41}, \"commands\": {\"p50_s\": 0.4, \"p95_s\": 2.6, \"n\": 268}, \"local_disk\": {\"free\": 21474836480, \"total\": 62277025792}, \"sessions_here\": 4, \"sessions_max\": 5, \"hosts\": [{\"name\": \"win\", \"up\": true, \"cpu\": 0.12, \"ram_pct\": 71, \"disk_pct\": null, \"working\": true, \"working_why\": [\"session\"]}]}, \"kpi_suggestions_7d\": {\"accepted\": 7, \"discussed\": 3, \"later\": 2, \"never\": 0, \"expired\": 2}, \"kpi_waits\": {\"now\": [{\"session\": \"ledger-api\", \"kind\": \"question\", \"since\": 1789210500}], \"week\": [{\"date\": \"2026-09-06\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-07\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-08\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-09\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-10\", \"median_min\": null, \"n\": 0}, {\"date\": \"2026-09-11\", \"median_min\": 6.0, \"n\": 3}, {\"date\": \"2026-09-12\", \"median_min\": 11.5, \"n\": 2}]}}",
+      "at": 1789214701
+    },
+    {
+      "id": "6f1c2d3e-0900-4000-8000-000000000900",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w672849311e\"}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w0309d64e51\"}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}], \"archived\": [{\"task\": \"orbit-filter\", \"short\": \"Filter\", \"kind\": \"pause\", \"rule\": 4, \"text\": \"in archivio: nessun passo da 7 giorni e il compito non è in corso\", \"at\": 1789200000}]}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0901-4000-8000-000000000901",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"n\": 4, \"here\": 3, \"tasks\": 4, \"snoozed\": 1, \"groups\": [{\"key\": \"3f2a91c07d11\", \"title\": \"mailbox for the shop\", \"cause\": \"mailbox for the shop\", \"items\": [{\"task\": \"atlas-mail\", \"short\": \"Order mails\", \"title\": \"Order mails of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"kind\": \"pause\", \"prova\": null, \"reason\": \"Needs the shop's mailbox\", \"since\": 1789120000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"Proposal: move the checkout to the new layout, with the old one kept behind a flag.\", \"asks\": \"ok\", \"wid\": \"w92198d0c3b\"}], \"unblocks\": [\"atlas-mail\", \"atlas-receipts\"], \"weight\": 2, \"where\": \"here\", \"since\": 1789120000, \"note\": \"With the mailbox the order mails and the receipts start\", \"refs\": [\"atlas-mail\"]}, {\"key\": \"5be07a3c9e42\", \"title\": \"Try the new home on the phone\", \"cause\": null, \"items\": [{\"task\": \"orbit-home\", \"short\": \"New home\", \"title\": \"New home of orbit-app\", \"session\": \"orbit-app\", \"project\": \"personal/orbit-app\", \"kind\": \"pause\", \"prova\": {\"project\": \"personal/orbit-app\", \"release\": \"home-2026-09-12\", \"web\": \"0.2.1663\"}, \"reason\": \"Try the new home: pre-release home-2026-09-12, web 0.2.1663\", \"since\": 1789210000, \"where\": \"here\", \"undo\": null, \"undo_how\": null, \"needs_you\": null, \"plan_start\": \"The home with the four categories, open or closed with a tap.\", \"asks\": \"other\", \"wid\": \"wacff9ad031\"}], \"unblocks\": [\"orbit-home\"], \"weight\": 1, \"where\": \"here\", \"since\": 1789210000, \"note\": null, \"refs\": [\"orbit-home\"]}, {\"key\": \"a81c55e20b34\", \"title\": \"Needs the login on the hosting panel\", \"cause\": null, \"items\": [{\"kind\": \"needs_you\", \"task\": null, \"session\": \"ledger-api\", \"reason\": \"Needs the login on the hosting panel\", \"since\": 1789214000, \"where\": \"pc\", \"title\": null, \"plan_start\": null, \"asks\": \"other\", \"wid\": \"wc02709c4c5\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"pc\", \"since\": 1789214000, \"note\": null, \"refs\": [\"needs:ledger-api\"]}, {\"key\": \"5b0e1f7c2a93\", \"title\": \"The login of work expires on 17/09 at 14:05: write to the master «redo the login of work» and keep ready the 6-digit code that arrives by email\", \"cause\": null, \"items\": [{\"kind\": \"login\", \"title\": null, \"plan_start\": null, \"asks\": \"other\", \"task\": null, \"session\": \"master\", \"reason\": \"The login of work expires on 17/09 at 14:05: write to the master «redo the login of work» and keep ready the 6-digit code that arrives by email\", \"account\": \"work\", \"label\": \"work\", \"expires_at\": 1789646700, \"since\": 1789041900, \"where\": \"here\", \"wid\": \"w4e6378c154\"}], \"unblocks\": [], \"weight\": 1, \"where\": \"here\", \"since\": 1789041900, \"note\": null, \"refs\": [\"login:work\"]}]}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0902-4000-8000-000000000902",
+      "ok": true,
+      "text": "prove ok: 2; compiti che passano al controllo: 2",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0903-4000-8000-000000000903",
+      "ok": true,
+      "text": "prova 38: segnalata alla master",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0904-4000-8000-000000000904",
+      "ok": true,
+      "text": "non ora: torna tra 24 ore",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0905-4000-8000-000000000905",
+      "ok": true,
+      "text": "lasciato perdere: 1 voci",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0906-4000-8000-0000000000906",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"status\": \"ask\", \"done\": 7, \"total\": 8, \"consent\": null, \"ask_text\": \"May I read your past sessions of the last 14 days, to count them and pick up what they left open? The data stays on this machine; it reaches the phone encrypted.\", \"cost\": 0, \"sections\": [{\"key\": \"plugins\", \"dove\": \"settings\", \"n\": 12, \"text\": \"12 plugins, 2 to update, 30 skills\", \"why\": null, \"when\": null}, {\"key\": \"sessions\", \"dove\": \"search\", \"n\": 0, \"text\": null, \"why\": \"Past sessions are read only with your yes.\", \"when\": \"It fills as soon as you answer.\"}], \"first_round\": {\"at\": null, \"cost\": \"The master's first round uses your plan's quota: usually a small part of the 5 hours. It starts only if you touch it.\"}}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0907-4000-8000-0000000000907",
+      "ok": true,
+      "text": "collection started",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0908-4000-8000-0000000000908",
+      "ok": true,
+      "text": "first round sent to the master",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0909-4000-8000-0000000000909",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"rimasto\": [{\"product\": \"atlas-shop\", \"key\": \"demo\", \"title\": \"Site demo\", \"where\": \"the demo on the site\", \"stale\": true, \"why\": \"paths:3\", \"session\": \"atlas-shop\", \"aligned_version\": \"v2.3.0\", \"aligned_at\": 1789100000, \"task\": null}], \"altrove\": [{\"id\": \"a81c55e20b\", \"text\": \"Public dumps in the web root\", \"complete\": true, \"at\": 1789214000, \"total\": 12, \"done\": 12, \"positive\": [\"personal/atlas-shop\"], \"errors\": [], \"running\": false, \"task\": null}], \"promemoria\": [{\"id\": \"7f3e1a20\", \"text\": \"When the store approves, the amber icon\", \"created_at\": 1789200000, \"expires_at\": null, \"at_time\": null}], \"promemoria_scattati\": [{\"id\": \"1b2c3d4e\", \"text\": \"Renew the certificate\", \"outcome\": \"fired\", \"at\": 1789210000}]}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0910-4000-8000-0000000000910",
+      "ok": true,
+      "text": "allinea-atlas-shop-demo-02-11",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0911-4000-8000-0000000000911",
+      "ok": true,
+      "text": "demo: marked aligned with this version",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0912-4000-8000-0000000000912",
+      "ok": true,
+      "text": "reminder removed",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0913-4000-8000-0000000000913",
+      "ok": true,
+      "text": "{\"at\": 1789214700, \"mese\": \"2026-09\", \"mesi\": [\"2026-09\", \"2026-08\"], \"clienti\": [{\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"n\": 7, \"draft_at\": null}], \"dettaglio\": {\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"mese\": \"2026-09\", \"measured\": {\"tasks\": 7, \"commits\": 41, \"releases\": 2}, \"tasks\": [{\"task\": \"acme-checkout-fix\", \"title\": \"Checkout fix\", \"at\": 1789120000, \"outcome_kind\": \"release\"}], \"commits\": [{\"hash\": \"a81c55e\", \"at\": 1789119000, \"subject\": \"fix checkout on mobile\"}], \"commits_more\": false, \"releases\": [{\"tag\": \"v2.3.1\", \"at\": 1789120500}], \"git\": true}, \"pagella\": {\"since\": 1789000000, \"min\": 10, \"rows\": [{\"model\": \"claude-opus-5-5\", \"kind\": \"fix\", \"n\": 14, \"enough\": true, \"defects\": 2, \"rate\": 0.143, \"efforts\": {\"high\": 14}}, {\"model\": \"claude-sonnet-5-5\", \"kind\": \"fix\", \"n\": 6, \"enough\": false, \"defects\": null, \"rate\": null, \"efforts\": {}}], \"advice\": [], \"unknown_model\": 3}}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0914-4000-8000-0000000000914",
+      "ok": true,
+      "text": "draft asked of the master",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0915-4000-8000-0000000000915",
+      "ok": true,
+      "text": "«Always anonymous» on for supervisor: new errors are sent anonymously without asking, never the notes",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0916-4000-8000-0000000000916",
+      "ok": true,
+      "text": "{\"plugin\": \"supervisor\", \"n\": 2, \"title\": \"[supervisor] field observations: 2 error(s), most frequent `relay agenda`\", \"body\": \"Collected on 2026-09-12 by claude-observe (https://github.com/frsorrentino/claude-observe): errors recorded by a hook and notes added by hand; parameter values are never stored.\\n\\n- `relay agenda` — no agenda file (×146, 01/09 08:00–12/09 07:55; supervisor 0.8.99)\\n- `relay file` — too large: <N> max 26214400 (×140, 02/09 10:11–12/09 07:40; supervisor 0.8.99)\", \"hash\": \"3fa1c09b2e\"}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0917-4000-8000-0000000000917",
+      "ok": true,
+      "text": "sent anonymously for supervisor: https://github.com/frsorrentino/supervisor/issues/41",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0918-4000-8000-0000000000918",
+      "ok": true,
+      "text": "sent anonymously for supervisor: https://github.com/frsorrentino/supervisor/issues/42",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0919-4000-8000-0000000000919",
+      "ok": true,
+      "text": "{\"groups\": [{\"title\": \"Docs tour\", \"project\": \"work/own/orbit-docs\", \"session\": \"orbit-docs\", \"kind\": \"video\", \"at\": 1789199800, \"versions\": 3, \"unseen\": true, \"items\": [{\"id\": \"9c1e4a7b2d3f5e60\", \"session\": \"orbit-docs\", \"title\": \"Docs tour\", \"kind\": \"video\", \"mime\": \"video/mp4\", \"path\": \"/home/dev/orbit-docs/tour.mp4\", \"size\": 4812345, \"at\": 1789199800, \"duration_s\": 36.7, \"version\": 3, \"versions\": 3, \"changed\": \"Shorter intro\", \"seen_at\": null, \"caption\": \"Docs tour, version 3: shorter intro\", \"files\": [], \"notes\": [], \"replaced\": false}, {\"id\": \"4b2d9e1f0a7c3e15\", \"session\": \"orbit-docs\", \"title\": \"Docs tour\", \"kind\": \"video\", \"mime\": \"video/mp4\", \"path\": \"/home/dev/orbit-docs/tour.mp4\", \"size\": 5120000, \"at\": 1789196200, \"duration_s\": 36.7, \"version\": 2, \"versions\": 3, \"changed\": \"New voice\", \"seen_at\": 1789197000, \"caption\": \"Docs tour, version 2: new voice\", \"files\": [], \"notes\": [{\"at\": 1789197100, \"text\": \"The logo flickers here\", \"pos_s\": 12.4}], \"replaced\": true}]}], \"n_unseen\": 1, \"more\": false}",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0920-4000-8000-0000000000920",
+      "ok": true,
+      "text": "seen",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0921-4000-8000-0000000000921",
+      "ok": true,
+      "text": "note sent to orbit-docs",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-0922-4000-8000-000000000922",
+      "ok": true,
+      "text": "provato: 1 compiti confermati, il controllo li chiude",
+      "at": 1789214724
+    },
+    {
+      "id": "6f1c2d3e-0923-4000-8000-000000000923",
+      "ok": true,
+      "text": "non va: 1 compiti tornano alla sessione",
+      "at": 1789214724
+    },
+    {
+      "id": "6f1c2d3e-0924-4000-8000-000000000924",
+      "ok": false,
+      "text": "sostituita da una lettura più recente della stessa sessione",
+      "superseded": true,
+      "at": 1789214725
+    },
+    {
+      "id": "6f1c2d3e-1210-4000-8000-000000001210",
+      "ok": true,
+      "text": "{\"hash\": \"7c41e09a2b\", \"kind\": \"bug\", \"label\": \"bug\", \"title\": \"[supervisor-app] field observations: bug from the app, The session list stays empty after the login.\", \"body\": \"Collected on 2026-11-04 by claude-observe (https://github.com/frsorrentino/claude-observe): a bug written in the Supervisor app; parameter values are never stored.\\n\\n- bug: The session list stays empty after the login.\\n  - note: It happens with a file <file>.pdf open\\n  - note: app_version 2.4.1 · os Android 15 · device Pixel 7 · screen Sessions\", \"screenshot\": true, \"screenshot_notice\": \"Only the maintainer sees the screenshot, in the private feedback repository, as it is: nobody removes names or data from it. Look at it before sending\", \"github_ok\": true, \"options\": [{\"id\": \"github\", \"label\": \"Send from my GitHub\", \"description\": \"Opens the issue already written on frsorrentino/supervisor-feedback, the private feedback repository, with your GitHub account and the screenshot already in it: you check it and send it. It works only if you can read that repository\"}, {\"id\": \"anonymous\", \"label\": \"Send anonymously\", \"description\": \"An issue in the private feedback repository, opened by the observe service without your name, with the screenshot: only the maintainer reads it\"}, {\"id\": \"later\", \"label\": \"Not now\", \"description\": \"It stays among the observations of this computer, nothing is sent\"}]}",
+      "at": 1789214801
+    },
+    {
+      "id": "6f1c2d3e-1211-4000-8000-000000001211",
+      "ok": true,
+      "text": "{\"choice\": \"anonymous\", \"url\": \"https://github.com/frsorrentino/supervisor-feedback/issues/901\", \"text\": \"Sent anonymously, with the screenshot: https://github.com/frsorrentino/supervisor-feedback/issues/901\", \"screenshot_url\": null}",
+      "at": 1789214806
+    },
+    {
+      "id": "6f1c2d3e-1212-4000-8000-000000001212",
+      "ok": true,
+      "text": "{\"choice\": \"github\", \"url\": \"https://github.com/frsorrentino/supervisor-feedback/issues/new?title=%5Bsupervisor-app%5D+field+observations%3A+bug+from+the+app%2C+The+session+list+stays+empty+after+the+login.&body=Collected+on+2026-11-04+by+claude-observe+%28https%3A%2F%2Fgithub.com%2Ffrsorrentino%2Fclaude-observe%29%3A+a+bug+written+in+the+Supervisor+app%3B+parameter+values+are+never+stored.%0A%0A-+bug%3A+The+session+list+stays+empty+after+the+login.%0A++-+note%3A+It+happens+with+a+file+%3Cfile%3E.pdf+open%0A++-+note%3A+app_version+2.4.1+%C2%B7+os+Android+15+%C2%B7+device+Pixel+7+%C2%B7+screen+Sessions%0A-+screenshot%3A+%21%5Bscreenshot%5D%28https%3A%2F%2Fgithub.com%2Ffrsorrentino%2Fsupervisor-feedback%2Fraw%2Fmain%2Fimages%2F2026%2F11%2F3f9c0a7d51e2b8846c1d0e2a.jpg%29&labels=app%2Cbug\", \"text\": \"Open the link: the issue is already written, with the screenshot; send it from your GitHub\", \"screenshot_url\": \"https://github.com/frsorrentino/supervisor-feedback/raw/main/images/2026/11/3f9c0a7d51e2b8846c1d0e2a.jpg\"}",
+      "at": 1789214806
+    },
+    {
+      "id": "6f1c2d3e-1213-4000-8000-000000001213",
+      "ok": true,
+      "text": "{\"choice\": \"later\", \"url\": null, \"text\": \"Not now: the feedback stays among the observations of this computer, nothing was sent\", \"screenshot_url\": null}",
+      "at": 1789214806
+    },
+    {
+      "id": "6f1c2d3e-1214-4000-8000-000000001214",
+      "ok": false,
+      "text": "feedback_app: the screenshot goes only with the person's yes (screenshot_ok: true); not taken",
+      "at": 1789214807
+    },
+    {
+      "id": "6f1c2d3e-1220-4000-8000-000000001220",
+      "ok": true,
+      "text": "atlas-shop is working: model Fable 5.1 is chosen and applies at the end of the turn, before the next prompt",
+      "at": 1789215001
+    },
+    {
+      "id": "6f1c2d3e-1230-4000-8000-000000001230",
+      "ok": true,
+      "text": "{\"entries\": [{\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"b7.1\", \"role\": \"assistant\", \"text\": \"The handoff is in docs/handoff-2026-09-12.md: the session continues from it after /clear.\", \"at\": 1789215560}, {\"id\": \"sep-5e0c41aa-9b2f-1789215600\", \"role\": \"separator\", \"reason\": \"clear\", \"at\": 1789215600, \"memory\": \"handoff\", \"handoff\": \"/home/dev/storefront/docs/handoff-2026-09-12.md\", \"text\": \"/clear at 18:52: from here the session remembers only the handoff\"}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"c1.0\", \"role\": \"user\", \"text\": \"Continue from the handoff\", \"at\": 1789215630}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"c2.0\", \"role\": \"assistant\", \"text\": \"Resuming: the totals test is next.\", \"at\": 1789215655}], \"more\": true}",
+      "at": 1789215661
+    },
+    {
+      "id": "6f1c2d3e-1240-4000-8000-000000001240",
+      "ok": true,
+      "text": "{\"hits\": [{\"session\": \"atlas-shop\", \"live\": true, \"project\": \"/home/dev/storefront\", \"entry\": \"a4.0\", \"role\": \"assistant\", \"at\": 1789212440, \"snippet\": \"The red jacket is 89 € on the first listing and 74 € on the second, same size and seller rating.\", \"match\": [4, 14], \"sid\": \"4a7d0c19-8e52-4b3f-a6d1-2c9e5f80b713\"}], \"more\": false}",
+      "at": 1789216001
+    },
+    {
+      "id": "6f1c2d3e-1241-4000-8000-000000001241",
+      "ok": true,
+      "text": "{\"entries\": [{\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"u3.0\", \"role\": \"user\", \"text\": \"And the second listing?\", \"at\": 1789212400}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"a3.0\", \"role\": \"assistant\", \"text\": \"The second one ships in two days.\", \"at\": 1789212420}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"u4.0\", \"role\": \"user\", \"text\": \"Compare the prices\", \"at\": 1789212430}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"a4.0\", \"role\": \"assistant\", \"text\": \"The red jacket is 89 € on the first listing and 74 € on the second, same size and seller rating.\", \"at\": 1789212440}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": \"app\", \"queued\": false, \"diff\": null, \"id\": \"u5.0\", \"role\": \"user\", \"text\": \"Fine, now the shipping labels\", \"at\": 1789212500}, {\"tool\": null, \"note\": null, \"error\": null, \"cut\": false, \"turn\": null, \"files\": null, \"origin\": null, \"queued\": false, \"diff\": null, \"id\": \"a5.0\", \"role\": \"assistant\", \"text\": \"The handoff is in docs/handoff-2026-09-12.md: the session continues from it after /clear.\", \"at\": 1789212560}, {\"id\": \"sep-5e0c41aa-9b2f-1789212600\", \"role\": \"separator\", \"reason\": \"clear\", \"at\": 1789212600, \"memory\": \"handoff\", \"handoff\": \"/home/dev/storefront/docs/handoff-2026-09-12.md\", \"text\": \"/clear at 18:10: from here the session remembers only the handoff\"}], \"more\": true, \"more_after\": true, \"anchor\": \"a4.0\"}",
+      "at": 1789216011
+    },
+    {
+      "id": "6f1c2d3e-1290-4000-8000-000000001290",
+      "ok": true,
+      "text": "{\"task\": \"atlas-pages-layout\", \"closed\": true, \"state\": \"running\", \"text\": \"atlas-pages-layout: card closed, the task is back to running\"}",
+      "at": 1789216101
+    },
+    {
+      "id": "6f1c2d3e-1291-4000-8000-000000001291",
+      "ok": true,
+      "text": "{\"task\": \"atlas-release-2-4\", \"closed\": false, \"state\": \"approved\", \"text\": \"atlas-release-2-4: it no longer waited for an ok (approved), the card closes\"}",
+      "at": 1789216111
+    },
+    {
+      "id": "6f1c2d3e-1292-4000-8000-000000001292",
+      "ok": false,
+      "text": "atlas-gone-task: unknown task",
+      "at": 1789216121
+    },
+    {
+      "id": "6f1c2d3e-1300-4000-8000-000000001300",
+      "ok": true,
+      "text": "{\"at\": 1789216200, \"items\": [{\"id\": \"wd2f87e85e2\", \"type\": \"carta\", \"kind\": \"choice\", \"session\": \"atlas-shop\", \"task\": \"atlas-release-2-4\", \"text\": \"tag v2.4 and push to origin main\", \"options\": [{\"n\": 1, \"label\": \"Release now\", \"recommended\": true, \"value\": \"Release now (recommended)\"}, {\"n\": 2, \"label\": \"Tomorrow morning\", \"value\": \"Tomorrow morning\"}], \"at\": 1789210600, \"answer\": {\"op\": \"approve\", \"arg\": \"atlas-release-2-4\"}, \"card\": {\"what\": \"tag v2.4 and push to origin main\", \"where\": \"production (shop.example.com)\", \"untested\": \"checkout on Safari\", \"undo\": \"si\", \"undo_how\": \"delete the tag and redeploy 2.3\", \"deploy\": true}, \"link\": \"https://supervisor.example.com/#/attesa/wd2f87e85e2\", \"label\": \"choose\", \"label_text\": \"Choose\", \"title\": \"Release 2.4\", \"actions\": [{\"label\": \"Release now\", \"style\": \"primary\", \"cmd\": {\"session\": null, \"op\": \"approve\", \"arg\": \"atlas-release-2-4\", \"text\": \"ok\", \"choice\": \"Release now (recommended)\"}, \"recommended\": true}, {\"label\": \"Tomorrow morning\", \"style\": \"option\", \"cmd\": {\"session\": null, \"op\": \"approve\", \"arg\": \"atlas-release-2-4\", \"text\": \"ok\", \"choice\": \"Tomorrow morning\"}}, {\"label\": \"Close without ok\", \"style\": \"secondary\", \"cmd\": {\"session\": null, \"op\": \"approval_close\", \"arg\": \"atlas-release-2-4\"}, \"text_field\": \"text\"}]}, {\"id\": \"wb973ef3ed0\", \"type\": \"chat\", \"kind\": \"prossimi\", \"session\": \"atlas-shop\", \"task\": null, \"text\": \"Left rule\", \"options\": [{\"n\": 1, \"label\": \"Left rule\", \"value\": \"Left rule\"}, {\"n\": 2, \"label\": \"Light border\", \"value\": \"Light border\"}], \"at\": 1789215900, \"answer\": {\"op\": \"prompt\", \"arg\": \"atlas-shop\", \"done\": {\"op\": \"attention_done\", \"arg\": \"atlas-shop\", \"kind\": \"turn_blocking\"}}, \"card\": null, \"link\": \"https://supervisor.example.com/#/attesa/wb973ef3ed0\", \"label\": \"reply\", \"label_text\": \"Reply\", \"title\": \"Left rule\", \"actions\": [{\"label\": \"Left rule\", \"style\": \"option\", \"cmd\": {\"session\": \"atlas-shop\", \"op\": \"prompt\", \"arg\": \"Left rule\"}}, {\"label\": \"Light border\", \"style\": \"option\", \"cmd\": {\"session\": \"atlas-shop\", \"op\": \"prompt\", \"arg\": \"Light border\"}}, {\"label\": \"Reply\", \"style\": \"secondary\", \"cmd\": {\"session\": \"atlas-shop\", \"op\": \"prompt\"}, \"text_field\": \"arg\"}, {\"label\": \"Done\", \"style\": \"secondary\", \"cmd\": {\"session\": null, \"op\": \"attention_done\", \"arg\": \"atlas-shop\", \"kind\": \"turn_blocking\"}}]}]}",
+      "at": 1789216201
+    },
+    {
+      "id": "6f1c2d3e-1301-4000-8000-000000001301",
+      "ok": true,
+      "text": "{\"id\": \"wd2f87e85e2\", \"type\": \"carta\", \"kind\": \"choice\", \"session\": \"atlas-shop\", \"task\": \"atlas-release-2-4\", \"text\": \"tag v2.4 and push to origin main\", \"options\": [{\"n\": 1, \"label\": \"Release now\", \"recommended\": true, \"value\": \"Release now (recommended)\"}, {\"n\": 2, \"label\": \"Tomorrow morning\", \"value\": \"Tomorrow morning\"}], \"at\": 1789210600, \"answer\": {\"op\": \"approve\", \"arg\": \"atlas-release-2-4\"}, \"card\": {\"what\": \"tag v2.4 and push to origin main\", \"where\": \"production (shop.example.com)\", \"untested\": \"checkout on Safari\", \"undo\": \"si\", \"undo_how\": \"delete the tag and redeploy 2.3\", \"deploy\": true}, \"link\": \"https://supervisor.example.com/#/attesa/wd2f87e85e2\", \"label\": \"choose\", \"label_text\": \"Choose\", \"msg\": {\"session\": \"atlas-shop\", \"session_id\": \"0b6f3c2e-7d41-4a8e-9c55-2f1e8d7a6b30\", \"id\": \"5d2e8f1a-3c47-4b9e-8a61-7e0d9c4b2f18.0\", \"uuid\": \"5d2e8f1a-3c47-4b9e-8a61-7e0d9c4b2f18\", \"text\": \"Release 2.4 is ready: tests green, the changelog is written. Checkout on Safari is not tested.\\n\\nShould I release now or tomorrow morning?\\n\\nNext: ! Release now · ! Tomorrow morning\", \"key\": \"Should I release now or tomorrow morning?\", \"at\": 1789210590}, \"title\": \"Release 2.4\", \"actions\": [{\"label\": \"Release now\", \"style\": \"primary\", \"cmd\": {\"session\": null, \"op\": \"approve\", \"arg\": \"atlas-release-2-4\", \"text\": \"ok\", \"choice\": \"Release now (recommended)\"}, \"recommended\": true}, {\"label\": \"Tomorrow morning\", \"style\": \"option\", \"cmd\": {\"session\": null, \"op\": \"approve\", \"arg\": \"atlas-release-2-4\", \"text\": \"ok\", \"choice\": \"Tomorrow morning\"}}, {\"label\": \"Close without ok\", \"style\": \"secondary\", \"cmd\": {\"session\": null, \"op\": \"approval_close\", \"arg\": \"atlas-release-2-4\"}, \"text_field\": \"text\"}]}",
+      "at": 1789216211
+    },
+    {
+      "id": "6f1c2d3e-1302-4000-8000-000000001302",
+      "ok": false,
+      "text": "w0000000000: this question is no longer waiting (closed or already answered)",
+      "at": 1789216221
+    },
+    {
+      "id": "6f1c2d3e-1310-4000-8000-000000001310",
+      "ok": true,
+      "text": "{\"at\": 1789805000, \"items\": [{\"id\": \"adozione\", \"title\": \"Adozione dei plugin\", \"form\": \"tile\", \"unit\": \"utenti\", \"status\": \"ok\", \"verdict\": null, \"verdict_at\": null, \"value\": \"130 utenti\", \"delta\": \"−1 in 7 giorni\", \"delta_pct\": -0.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"Chrome Web Store\", \"every\": \"1d\", \"example\": true, \"alerts\": [], \"hits\": [], \"series\": [{\"name\": null, \"points\": [[1789200000, 131.0], [1789804800, 130.0]], \"n\": 2, \"last\": 130.0, \"last_text\": \"130 utenti\", \"min\": 130.0, \"max\": 131.0}], \"link\": \"https://supervisor.example.com/#/monitor/adozione\", \"refresh\": null, \"refreshable\": false}, {\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"ok\", \"started\": 1789804788, \"ended\": 1789804800, \"rc\": 0, \"message\": \"2 prezzi letti da 3 negozi\", \"retry_at\": 1789804860, \"timeout_s\": 180}, \"refreshable\": true}]}",
+      "at": 1789805002
+    },
+    {
+      "id": "6f1c2d3e-1311-4000-8000-000000001311",
+      "ok": true,
+      "text": "{\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"ok\", \"started\": 1789804788, \"ended\": 1789804800, \"rc\": 0, \"message\": \"2 prezzi letti da 3 negozi\", \"retry_at\": 1789804860, \"timeout_s\": 180}, \"refreshable\": true}",
+      "at": 1789805012
+    },
+    {
+      "id": "6f1c2d3e-1312-4000-8000-000000001312",
+      "ok": false,
+      "text": "vecchio: questo monitoraggio non c'è più",
+      "at": 1789805022
+    },
+    {
+      "id": "6f1c2d3e-1320-4000-8000-000000001320",
+      "ok": true,
+      "text": "{\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"running\", \"started\": 1789805031, \"ended\": null, \"rc\": null, \"message\": null, \"retry_at\": null, \"timeout_s\": 180}, \"refreshable\": true}",
+      "at": 1789805031
+    },
+    {
+      "id": "6f1c2d3e-1321-4000-8000-000000001321",
+      "ok": false,
+      "text": "adozione: questo monitoraggio non ha un comando di aggiornamento",
+      "at": 1789805041
+    },
+    {
+      "id": "6f1c2d3e-1322-4000-8000-000000001322",
+      "ok": false,
+      "text": "prezzi-portatili: aggiornato da poco, riprova fra 42 s",
+      "at": 1789805091
+    },
+    {
+      "id": "6f1c2d3e-1330-4000-8000-000000001330",
+      "ok": true,
+      "text": "{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"state\": \"todo\", \"text\": null, \"at\": 1789214100}",
+      "at": 1789806001
+    },
+    {
+      "id": "6f1c2d3e-1331-4000-8000-000000001331",
+      "ok": true,
+      "text": "{\"id\": 35, \"task\": \"atlas-login-focus\", \"short\": \"Login focus\", \"title\": \"Login focus of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"login\", \"fai\": \"Open the login page\", \"atteso\": \"The cursor is in the email field\", \"state\": \"ok\", \"text\": null, \"at\": 1789128300}",
+      "at": 1789806002
+    },
+    {
+      "id": "6f1c2d3e-1332-4000-8000-000000001332",
+      "ok": true,
+      "text": "{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"title\": \"Search filters of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"state\": \"ko\", \"text\": \"The filter closes at once\", \"at\": 1789213000}",
+      "at": 1789806003
+    },
+    {
+      "id": "6f1c2d3e-1333-4000-8000-000000001333",
+      "ok": true,
+      "text": "{\"id\": 36, \"task\": \"atlas-order-mail\", \"short\": \"Order mail\", \"title\": \"Order mail of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"checkout\", \"fai\": \"Place a test order\", \"atteso\": \"The confirmation mail arrives\", \"state\": \"red\", \"text\": \"check red: exit 1 — 2 tests failed\", \"at\": 1789129000}",
+      "at": 1789806004
+    },
+    {
+      "id": "6f1c2d3e-1334-4000-8000-000000001334",
+      "ok": false,
+      "text": "test 999: it does not exist",
+      "at": 1789806005
+    },
+    {
+      "id": "6f1c2d3e-1350-4000-8000-000000001350",
+      "ok": true,
+      "text": "{\"at\": 1789805000, \"items\": [{\"id\": \"adozione\", \"title\": \"Adozione dei plugin\", \"form\": \"tile\", \"unit\": \"utenti\", \"status\": \"ok\", \"verdict\": null, \"verdict_at\": null, \"value\": \"130 utenti\", \"delta\": \"−1 in 7 giorni\", \"delta_pct\": -0.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"Chrome Web Store\", \"every\": \"1d\", \"example\": true, \"alerts\": [], \"hits\": [], \"series\": [{\"name\": null, \"points\": [[1789200000, 131.0], [1789804800, 130.0]], \"n\": 2, \"last\": 130.0, \"last_text\": \"130 utenti\", \"min\": 130.0, \"max\": 131.0}], \"link\": \"https://supervisor.example.com/#/monitor/adozione\", \"refresh\": null, \"refreshable\": false}, {\"id\": \"prezzi-portatili\", \"title\": \"Prezzi portatili\", \"form\": \"multiples\", \"unit\": \"€\", \"status\": \"watch\", \"verdict\": \"Yoga 9i al minimo: 1.749 €, −10% dal 9/9.\", \"verdict_at\": 1789805000, \"value\": \"1.749 €\", \"delta\": \"−9,8% in 7 giorni\", \"delta_pct\": -9.8, \"delta_since\": 1789200000, \"at\": 1789804800, \"source\": \"negozi affidabili\", \"every\": \"3h\", \"example\": false, \"alerts\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"hits\": [{\"kind\": \"below\", \"value\": 1800.0, \"series\": \"Yoga 9i\", \"text\": \"sotto 1.800 € · Yoga 9i\"}], \"series\": [{\"name\": \"Yoga 9i\", \"points\": [[1789200000, 1940.0], [1789459200, 1899.0], [1789804800, 1749.0]], \"n\": 3, \"last\": 1749.0, \"last_text\": \"1.749 €\", \"min\": 1749.0, \"max\": 1940.0}, {\"name\": \"Zenbook 14\", \"points\": [[1789200000, 1299.0], [1789459200, 1279.0], [1789804800, 1289.0]], \"n\": 3, \"last\": 1289.0, \"last_text\": \"1.289 €\", \"min\": 1279.0, \"max\": 1299.0}], \"link\": \"https://supervisor.example.com/#/monitor/prezzi-portatili\", \"refresh\": {\"state\": \"ok\", \"started\": 1789804788, \"ended\": 1789804800, \"rc\": 0, \"message\": \"2 prezzi letti da 3 negozi\", \"retry_at\": 1789804860, \"timeout_s\": 180}, \"refreshable\": true}]}",
+      "etag": "fce03203717a363b",
+      "at": 1789900001
+    },
+    {
+      "id": "6f1c2d3e-1351-4000-8000-000000001351",
+      "ok": true,
+      "text": "",
+      "etag": "fce03203717a363b",
+      "unchanged": true,
+      "at": 1789900031
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+<!doctype html><html><body><pre id="o"></pre><script>
+// supervisor — sonda WebGL (piano multi-PC 1.2): renderer smascherato e tempo medio di una scena fissa 1280x720
+// (shader a pieno schermo con 64 iterazioni per pixel, 60 fotogrammi, readPixels per aspettare la GPU).
+var r = {};
+try {
+  var c = document.createElement("canvas"); c.width = 1280; c.height = 720;
+  var g = c.getContext("webgl", {preserveDrawingBuffer: true});
+  if (!g) { r.error = "no-webgl"; } else {
+    var e = g.getExtension("WEBGL_debug_renderer_info");
+    r.renderer = e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER);
+    var vs = "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
+    var fs = "precision highp float;uniform float t;void main(){vec2 u=gl_FragCoord.xy/vec2(1280.,720.);float a=0.;" +
+             "for(int i=0;i<64;i++){a+=sin(u.x*float(i)+t)*cos(u.y*float(i)-t);}gl_FragColor=vec4(a*.01,u,1.);}";
+    function sh(tp, src) { var s = g.createShader(tp); g.shaderSource(s, src); g.compileShader(s); return s; }
+    var pr = g.createProgram(); g.attachShader(pr, sh(g.VERTEX_SHADER, vs)); g.attachShader(pr, sh(g.FRAGMENT_SHADER, fs));
+    g.linkProgram(pr); g.useProgram(pr);
+    var b = g.createBuffer(); g.bindBuffer(g.ARRAY_BUFFER, b);
+    g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), g.STATIC_DRAW);
+    var loc = g.getAttribLocation(pr, "p"); g.enableVertexAttribArray(loc); g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
+    var ut = g.getUniformLocation(pr, "t"), px = new Uint8Array(4);
+    g.drawArrays(g.TRIANGLE_STRIP, 0, 4); g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px);
+    var t0 = performance.now();
+    for (var i = 0; i < 60; i++) { g.uniform1f(ut, i * 0.1); g.drawArrays(g.TRIANGLE_STRIP, 0, 4); g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px); }
+    r.ms = Math.round((performance.now() - t0) / 60 * 100) / 100;
+  }
+} catch (x) { r.error = String(x); }
+document.getElementById("o").textContent = "CMWEBGL" + JSON.stringify(r) + "CMWEBGL";
+</script></body></html>

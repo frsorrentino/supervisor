@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""Cronologia delle sessioni (fase 2, 03/10/2026): prompt, test, commit, esiti e compiti in ordine di tempo, dal
+codice. Trascrizioni sintetiche in una HOME finta, un repo git vero, `sessions` dalla supervisor finta."""
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import cm_test as T  # noqa: E402
+
+tmp = Path(tempfile.mkdtemp(prefix="cm-timeline-"))
+conf = tmp / ".claude"
+proj = tmp / "ws" / "atlas"
+closed = tmp / "ws" / "orbit"
+for d in (proj, closed):
+    d.mkdir(parents=True)
+cfg = tmp / "config.json"
+cfg.write_text(json.dumps({"language": "it", "default_account": "personal", "accounts": {"personal": {"config_dir": str(conf), "tmux_prefix": "w-"}}}))
+fake = tmp / "fake"
+fake.mkdir()
+ENV = dict(os.environ, CC_SUPERVISOR_CONFIG=str(cfg), CM_BIN=str(Path(__file__).resolve().parent / "lib" / "fake-cm-plan.py"),
+           FAKE_CM_DIR=str(fake), CM_TASKS_DB=str(tmp / "tasks.db"), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+NOW = int(time.time())
+PFX = json.loads((T.PLUGIN / "messages" / "it.json").read_text())["relay.prompt_prefix_phone"]
+PFX_WEB = json.loads((T.PLUGIN / "messages" / "it.json").read_text())["relay.prompt_prefix_web"]
+HANDOFF = json.loads((T.PLUGIN / "messages" / "it.json").read_text()).get("relay.prompt_handoff", "")   # 10/10: non c'era prima
+VOICE = json.loads((T.PLUGIN / "messages" / "it.json").read_text()).get("relay.prompt_voice", "Dall'utente a voce, in modalità live:")
+
+
+def iso(t):
+    return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def slug(p):
+    return re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(str(p)))
+
+
+def line(kind, uid, t, content, cwd, **kw):
+    d = {"type": kind, "uuid": uid, "timestamp": iso(t), "isSidechain": False, "cwd": str(cwd), "message": {"role": kind, "content": content}}
+    if kind == "user" and "origin" not in kw:
+        d["origin"] = {"kind": "human"}
+    d.update(kw)
+    return json.dumps(d, separators=(",", ":"))
+
+
+def bash(uid, t, tid, cmd):
+    return line("assistant", uid, t, [{"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": cmd}}], proj)
+
+
+def result(uid, t, tid, text, err=False):
+    return line("user", uid, t, [{"type": "tool_result", "tool_use_id": tid, "is_error": err, "content": text}], proj, origin=None)
+
+
+L = [
+    line("user", "u0", NOW - 9 * 3600, "too old to show", proj),
+    line("user", "u1", NOW - 3000, "aggiungi il campo IVA al checkout", proj),
+    bash("a1", NOW - 2900, "t1", "cd x && python3 tests/checkout-verify.py 2>&1 | tail -3"),
+    result("r1", NOW - 2890, "t1", "  OK  C1 vat\n\n12/12 OK\nShell cwd was reset to /x"),
+    bash("a2", NOW - 2800, "t2", "python3 tests/cart-verify.py | tail -1"),
+    result("r2", NOW - 2790, "t2", "3/4 OK, FAIL: C2 rounding"),
+    bash("a3", NOW - 2700, "t3", "pytest -q tests/test_vat.py"),
+    result("r3", NOW - 2690, "t3", "1 failed, 4 passed", err=True),
+    bash("a4", NOW - 2600, "t4", "grep -n vat tests/checkout-verify.py"),
+    bash("a5", NOW - 2500, "t5", "python3 - <<'EOF'\nimport pytest\nEOF"),
+    line("assistant", "a6", NOW - 2400, [{"type": "text", "text": "Fatto.\n\nEsito: campo IVA aggiunto, checkout verde"}], proj),
+    line("assistant", "a7", NOW - 2300, [{"type": "text", "text": "Esito: subagent says hi"}], proj, isSidechain=True),
+    line("user", "p1", NOW - 2200, "x", proj, origin={"kind": "peer", "body": PFX + " controlla anche il carrello", "msg_id": "m1"}),
+    line("user", "p2", NOW - 2190, "x", proj, origin={"kind": "peer", "body": PFX + " controlla anche il carrello", "msg_id": "m1"}),
+    line("user", "p3", NOW - 2100, "x", proj, origin={"kind": "peer", "body": "another session talking", "msg_id": "m2"}),
+    line("user", "p4", NOW - 2050, "x", proj, origin={"kind": "peer", "body": PFX_WEB + " rifai il totale", "msg_id": "m3"}),
+    # un prompt dal telefono arrivato prima del rinomino (07/10): il prefisso diceva «claude-master»
+    line("user", "p5", NOW - 2020, "x", proj, origin={"kind": "peer", "body": PFX.replace(HANDOFF, "").replace("supervisor", "claude-master") + " chiudo ora", "msg_id": "m4"}),
+    # 1.42: un prompt a voce dalla modalità live, con le istruzioni vocali dopo il prefisso
+    line("user", "p6", NOW - 2010, "x", proj, origin={"kind": "peer", "body": PFX + " " + VOICE + " quale sessione è vicina al rilascio?", "msg_id": "m5"}),
+    # il riassunto di una compattazione: riga `user` senza origin, come nelle trascrizioni vere (07/10)
+    line("user", "c1", NOW - 2000, "This session is being continued from a previous conversation that ran out of context.", proj,
+         origin=None, isCompactSummary=True, isVisibleInTranscriptOnly=True),
+]
+d1 = conf / "projects" / slug(proj)
+d1.mkdir(parents=True)
+(d1 / "S-A.jsonl").write_text("\n".join(L) + "\n")
+d2 = conf / "projects" / slug(closed)
+d2.mkdir(parents=True)
+(d2 / "S-O.jsonl").write_text(line("assistant", "o1", NOW - 1000, [{"type": "text", "text": "Esito: docs aggiornate"}], closed) + "\n")
+(d2 / "S-OLD.jsonl").write_text(line("assistant", "o2", NOW - 20 * 3600, [{"type": "text", "text": "Esito: ancient"}], closed) + "\n")
+os.utime(d2 / "S-OLD.jsonl", (NOW - 20 * 3600, NOW - 20 * 3600))
+(fake / "sessions.json").write_text(json.dumps([{"tmux": "w-atlas", "name": "w-atlas", "cwd": str(proj), "account": "personal", "session_id": "S-A"}]))
+
+# un repo vero: un commit nella finestra, lo stesso soggetto su un altro ramo (la release pubblica), uno vecchio
+g = lambda *a, t=None: subprocess.run(["git", "-C", str(proj), *a], capture_output=True, text=True, env=dict(ENV, **({"GIT_COMMITTER_DATE": f"@{t}", "GIT_AUTHOR_DATE": f"@{t}"} if t else {})))  # noqa: E731
+g("init", "-q", "-b", "main")
+(proj / "a.txt").write_text("1"); g("add", "a.txt"); g("commit", "-qm", "old work", t=NOW - 10 * 3600)
+(proj / "a.txt").write_text("2"); g("add", "a.txt"); g("commit", "-qm", "feat: VAT field", t=NOW - 2450)
+g("checkout", "-qb", "public", "HEAD~1"); (proj / "b.txt").write_text("x"); g("add", "b.txt"); g("commit", "-qm", "feat: VAT field", t=NOW - 2440)
+g("checkout", "-q", "main")
+
+# un esito del registro per quella cartella
+task = {"schema_version": 1, "task": {"id": "vat", "title": "IVA nel checkout", "plan": None, "where": {"project": str(proj), "session": None, "host": "local", "account": None},
+        "check": {"cmd": "true", "cwd": None, "timeout_s": 10}, "perimeter": [], "lane": "open", "depends_on": [], "route": "session", "hold": False,
+        "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
+subprocess.run([str(T.SCRIPTS / "supervisor"), "task", "add", "-"], input=json.dumps(task), capture_output=True, text=True, env=ENV)
+subprocess.run([str(T.SCRIPTS / "supervisor"), "task", "done", "vat"], capture_output=True, text=True, env=ENV)
+
+
+def tl(*a):
+    p = subprocess.run([str(T.SCRIPTS / "supervisor"), "timeline", *a], capture_output=True, text=True, env=ENV, timeout=120)
+    return p.returncode, p.stdout, p.stderr
+
+
+rc, out, err = tl("--since", "6h", "--json")
+d = json.loads(out) if rc == 0 else {"sessions": []}
+by = {s["session"]: s for s in d["sessions"]}
+atlas = by.get("atlas", {"events": []})
+kinds = [(e["kind"], e["text"]) for e in atlas["events"]]
+T.check("TL1 the live session by its short name (prefix w- dropped), live, its folder; the closed one of the window by its folder name; the 20-hour-old one left out",
+        rc == 0 and set(by) == {"atlas", "orbit"} and atlas.get("live") is True and atlas.get("project") == str(proj) and by["orbit"]["live"] is False
+        and [e["text"] for e in by["orbit"]["events"]] == ["docs aggiornate"], out[:400] + err)
+T.check("TL2 in time order: the prompt, three tests, the commit, the outcome, the phone's, the web app's and the voice prompts, the task (closed just now); nothing older than the window",
+        [k for k, _ in kinds] == ["prompt", "test", "test", "test", "commit", "outcome", "prompt", "prompt", "prompt", "prompt", "task"] and atlas["events"] == sorted(atlas["events"], key=lambda e: e["at"])
+        and not any("too old" in t or "old work" in t for _, t in kinds), str(kinds))
+tests = [e for e in atlas["events"] if e["kind"] == "test"]
+T.check("TL3 tests named by their suite, with the summary line: 12/12 OK green; «3/4 OK, FAIL» red although the command exited 0; pytest with is_error red",
+        [(e["text"], e["ok"], e["ref"]) for e in tests] == [("checkout-verify.py", True, "12/12 OK"), ("cart-verify.py", False, "3/4 OK, FAIL: C2 rounding"),
+                                                             ("pytest tests/test_vat.py", False, "1 failed, 4 passed")], str(tests))
+T.check("TL4 not a test: a grep that names a -verify.py file, a heredoc that imports pytest", len(tests) == 3, "")
+commit = [e for e in atlas["events"] if e["kind"] == "commit"]
+T.check("TL5 commits from git log of the folder: the one in the window once (the same subject on another branch within 2 minutes is not repeated), with its hash",
+        len(commit) == 1 and commit[0]["text"] == "feat: VAT field" and re.fullmatch(r"[0-9a-f]{7,}", commit[0]["ref"] or ""), str(commit))
+outc = [e["text"] for e in atlas["events"] if e["kind"] == "outcome"]
+T.check("TL6 the «Esito:» line of the session, not the subagent's", outc == ["campo IVA aggiunto, checkout verde"], str(outc))
+prompts = [(e["text"], e["ref"]) for e in atlas["events"] if e["kind"] == "prompt"]
+T.check("TL7 prompts: the one typed (ref null), the phone's through the relay once, prefix stripped (ref phone), the web app's (ref web, 1.36), one with the prefix from before the rename (phone), a voice prompt without the voice instructions (1.42, phone); another session's message and a compaction summary left out",
+        prompts == [("aggiungi il campo IVA al checkout", None), ("controlla anche il carrello", "phone"), ("rifai il totale", "web"), ("chiudo ora", "phone"), ("quale sessione è vicina al rilascio?", "phone")], str(prompts))
+tk = [e for e in atlas["events"] if e["kind"] == "task"]
+T.check("TL8 the registry's accepted outcome for the folder", len(tk) == 1 and tk[0]["ok"] is True and tk[0]["ref"] == "vat" and tk[0]["text"].startswith("IVA nel checkout: check green"), str(tk))
+rc, txt, _ = tl("atlas", "--since", "6h")
+T.check("TL9 as text, one session by name: a header, then «HH:MM kind ✓/✗ text», the summary after the test, the hash after the commit",
+        txt.startswith("atlas — ") and "orbit" not in txt and re.search(r"\d\d:\d\d test    ✗ cart-verify\.py — 3/4 OK, FAIL: C2 rounding", txt)
+        and re.search(r"commit    feat: VAT field \[[0-9a-f]+\]", txt), txt)
+p = subprocess.run([str(T.SCRIPTS / "supervisor"), "task", "board", "--timeline", "--since", "6h", "--json"], capture_output=True, text=True, env=ENV)
+b = json.loads(p.stdout) if p.returncode == 0 else {}
+T.check("TL10 task board --timeline carries the same timeline under the counts", b.get("counts", {}).get("done") == 1 and {s["session"] for s in b.get("timeline", {}).get("sessions", [])} == {"atlas", "orbit"}, p.stdout[:300] + p.stderr)
+T.check("TL11 a bad --since → a plain error", tl("--since", "yesterday")[0] != 0, "")
+
+# la chat del telefono e della web (11/10): il riassunto di una compattazione non e' un messaggio della persona
+spec = __import__("importlib.util").util.spec_from_file_location("cm_core", T.SCRIPTS / "cm-core.py")
+core = __import__("importlib.util").util.module_from_spec(spec)
+spec.loader.exec_module(core)
+chat = [e["text"] for e in core.transcript_entries(str(d1 / "S-A.jsonl"), 0, chat_only=True) if e["role"] == "user"]
+T.check("TL12 the chat leaves out a compaction summary and keeps the prompt typed",
+        "aggiungi il campo IVA al checkout" in chat and not any("being continued" in x for x in chat), str(chat))
+
+# TL13 (16/10/2026, Claude Code 2.1.299): una compattazione a sessione ferma diventa un evento `compact`. Le righe come
+# nella trascrizione della master del 14/10 alle 23:07: metadati senza ora, poi il compact_boundary «auto» ~54 minuti
+# dopo l'ultimo messaggio, poi il riassunto. Una compattazione «auto» subito dopo un turno (contesto pieno) e una
+# manuale dopo un'ora non sono eventi.
+os.environ["CC_SUPERVISOR_CONFIG"] = str(cfg)
+spec = __import__("importlib.util").util.spec_from_file_location("cm_timeline", T.SCRIPTS / "cm-timeline.py")
+tlm = __import__("importlib.util").util.module_from_spec(spec)
+spec.loader.exec_module(tlm)
+T0 = NOW - 9000
+
+
+def boundary(t, trigger, ms, **meta):
+    return json.dumps({"type": "system", "subtype": "compact_boundary", "content": "Conversation compacted", "timestamp": iso(t), "isSidechain": False,
+                       "compactMetadata": dict(trigger=trigger, durationMs=ms, **meta)}, separators=(",", ":"))
+
+
+C = [line("user", "k1", T0, "rileggi il piano", proj), line("assistant", "k2", T0 + 10, [{"type": "text", "text": "Letto."}], proj),
+     json.dumps({"type": "mode", "mode": "normal"}, separators=(",", ":")), json.dumps({"type": "agent-name", "agentName": "atlas"}, separators=(",", ":")),
+     boundary(T0 + 10 + 54 * 60 + 65, "auto", 65000, preTokens=915613, postTokens=14815),
+     line("user", "k3", T0 + 3315, "This session is being continued…", proj, origin=None, isCompactSummary=True),
+     line("user", "k4", T0 + 3400, "continua", proj), line("assistant", "k5", T0 + 3405, [{"type": "text", "text": "Vado."}], proj),
+     boundary(T0 + 3410, "auto", 3000, preTokens=990000, postTokens=20000),
+     line("assistant", "k6", T0 + 3500, [{"type": "text", "text": "Fatto."}], proj),
+     boundary(T0 + 3500 + 3600, "manual", 30000, preTokens=300000, postTokens=12000)]
+(d1 / "S-C.jsonl").write_text("\n".join(C) + "\n")
+comp = [e for e in tlm.transcript_events(str(d1 / "S-C.jsonl"), NOW - 6 * 3600) if e["kind"] == "compact"]
+T.check("TL13 an idle compaction (auto, 54 minutes after the last message) is a `compact` event with the tokens before and after; a full-context one and a manual one are not",
+        comp == [{"at": T0 + 10 + 54 * 60 + 65, "kind": "compact", "text": "compacted after 54 min idle: 916k → 15k tokens", "ok": None, "ref": None}], str(comp))
+
+# 1.98 (01/11, il maintainer: gli esiti raggruppati per categoria): la riga «Tipo:»/«Type:» subito dopo l'esito
+def _tmod(name):
+    sp = __import__("importlib.util").util.spec_from_file_location(name.replace("-", "_"), T.SCRIPTS / f"{name}.py")
+    m = __import__("importlib.util").util.module_from_spec(sp)
+    sp.loader.exec_module(m)
+    return m
+
+
+S = _tmod("cm-relay-state")
+core = _tmod("cm-core")
+hosts = _tmod("cm-hosts")
+TY = [("Esito: release fuori\nTipo: pubblicato", "shipped"), ("Esito: file scritto\nTipo: fatto\nProssimi: rileggi · apri", "done"),
+      ("Esito: serve un ok\n\nTipo: aspetta", "waiting"), ("Esito: CI partita\nTipo: in corso\nWatch: CI partita", "running"),
+      ("Esito: spiegato\n**Tipo:** **risposta**", "answer"), ("Esito: rosso\nTipo: Problema.", "problem"),
+      ("Outcome: shipped it\nType: shipped", "shipped"), ("Outcome: wrote it\nType: done", "done"), ("Outcome: asked\nType: waiting", "waiting"),
+      ("Outcome: CI\nType: running", "running"), ("Outcome: told\nType: answer", "answer"), ("Outcome: red\nType: problem", "problem"),
+      ("Esito: senza tipo", None), ("Esito: tipo ignoto\nTipo: boh", None), ("Esito: due tipi\nTipo: fatto e pubblicato", None),
+      ("Tipo: fatto\n\nun paragrafo dopo\n\nEsito: tipo lontano, prima dell'esito", None)]
+pt = conf / "projects" / slug(tmp / "ws" / "typed")
+pt.mkdir(parents=True)
+(pt / "S-T.jsonl").write_text("\n".join(line("assistant", f"ty{i}", NOW - 500 + i, [{"type": "text", "text": txt}], tmp / "ws" / "typed") for i, (txt, _) in enumerate(TY)) + "\n")
+evs = [e for e in tlm.transcript_events(str(pt / "S-T.jsonl"), NOW - 3600) if e["kind"] == "outcome"]
+got = [e.get("type", "MISSING") for e in evs]
+T.check("TY1 outcome type: Italian and English read to the fixed keys, «in corso» with its space, bold and a final stop tolerated; absent, unknown, two words or a line far from the outcome are null, never an error",
+        got == [w for _, w in TY], str(got))
+T.check("TY2 outcome type: the event's text is the outcome alone, the line does not enter it",
+        not any(re.search(r"(?i)\b(tipo|type)\s*:", e["text"]) for e in evs) and evs[3]["text"] == "CI partita" and evs[3]["type"] == "running", str(evs[3:4]))
+stop = lambda tail, **kw: [dict({"event": "stop", "ts": "2026-11-01T10:00:00", "tail": tail}, **kw)]  # noqa: E731
+o1 = S._outcome(stop("Corpo.\nEsito: release fuori\nTipo: pubblicato\nProssimi: a · !b", esito="Esito: release fuori"))
+o2 = S._outcome(stop("Corpo finale\nType: done"))
+o3 = S._outcome(stop("Outcome: wrote it\nType: done\nWatch: wrote it", watch="Watch: wrote it"))
+o4 = S._outcome(stop("Esito: x\nTipo: boh"))
+T.check("TY3 outcome type: the line leaves short and full of the session's outcome, also unknown or with no «Esito:» above; Esito and Prossimi stay",
+        o1["short"] == "release fuori" and "Tipo" not in o1["full"] and "Prossimi: a · b" in o1["full"] and "Esito: release fuori" in o1["full"]
+        and o2["short"] == "Corpo finale" and "Type" not in o2["full"] and o3["short"] == "wrote it" and "Type" not in o3["full"]
+        and o4["short"] == "x" and "boh" not in o4["full"], str([o1, o2, o3, o4]))
+T.check("TY4 outcome type: a body line that only looks like one stays — known value in the middle, unknown value away from the outcome; `next` reads the steps past the line",
+        S.without_type("Tipo: fatto\ne poi altro\nEsito: x") == "Tipo: fatto\ne poi altro\nEsito: x" and S.without_type("Type: Foo\nEsito: x") == "Type: Foo\nEsito: x"
+        and S.without_type("Tipo: risposta") == "" and [x["text"] for x in S.next_steps("Esito: x\nTipo: aspetta\nProssimi: a · !b")] == ["a", "b"]
+        and S.outcome_type("nothing here") is None and S.outcome_type(None) is None, S.without_type("Tipo: fatto\ne poi altro\nEsito: x"))
+ents = core.transcript_entries(str(pt / "S-T.jsonl"))
+said = [e["text"] for e in ents if e["role"] == "assistant"]
+T.check("TY5 outcome type: the chat (transcript entries) never shows the line, «Esito:» stays; the ledger rows rebuilt for a remote session have it out too",
+        said[0] == "Esito: release fuori" and said[1] == "Esito: file scritto\nProssimi: rileggi · apri" and not any(re.search(r"(?m)^\W*(tipo|type)\W*:\W*(pubblicato|fatto|aspetta|in corso|risposta|problema|shipped|done|waiting|running|answer|problem)\W*$", x, re.I) for x in said[:15]), str(said[:4]))
+hb = tmp / "S-H.jsonl"
+hb.write_text(line("assistant", "hb", NOW - 400, [{"type": "text", "text": "Per la master: guarda qui\nEsito: x\nTipo: fatto\nProssimi: a"}], tmp / "ws" / "typed") + "\n")
+blocks, _ = hosts.master_blocks(hb, 0)
+T.check("TY6 outcome type: a «Per la master:» block forwarded from another host ends without the tail, the type line with it", [b[1] for b in blocks] == ["Per la master: guarda qui"], str(blocks))
+tld = tlm.timeline(3600, "typed", now=NOW, live=[])
+T.check("TY7 outcome type: the timeline page counts the outcomes in the window and those not «in corso» (unknown and absent count), past the events' cap",
+        tld.get("outcomes_n") == 16 and tld.get("outcomes_settled_n") == 14, str({k: tld.get(k) for k in ("outcomes_n", "outcomes_settled_n")}))
+tl6 = tlm.timeline(3600, "typed", limit=2, now=NOW, live=[])
+T.check("TY8 outcome type: the counts do not drop with the per-session cap of the events", tl6.get("outcomes_n") == 16 and tl6.get("outcomes_settled_n") == 14 and len(tl6["sessions"][0]["events"]) == 2, str(tl6.get("outcomes_n")))
+
+T.finish()

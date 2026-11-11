@@ -1,0 +1,4885 @@
+#!/usr/bin/env python3
+"""Verifica cm-relay.py (fase 1 dell'app polso, design docs/plans/2026-09-12-app-polso-design.md) con un
+Firebase finto (RTDB REST + SSE, token, FCM), il dispatcher finto e il claude finto.
+
+R0   le fixture in tests/fixtures/relay sono identiche al contratto v1 dell'app (claude-master-watch/contract, dal ramo remoto con l'ultimo commit su contract/);
+     il RTDB finto: PUT/GET/PATCH/DELETE, print=silent, shallow, stream SSE (put iniziale, poi patch/put)
+R1   crypto: chiave 32 byte su file 0600, AES-256-GCM {"v":1,"enc"} con nonce diverso ogni volta, chiave
+     sbagliata → ValueError; X25519 + HKDF simmetrico; check del codice; token del service account (JWT RS256
+     firmato, scope firebase.database + messaging) con cache su file
+R2   build_state dalle sorgenti == contratto (state-1, state-2, state-3): ordine waiting/busy/idle/gone poi
+     alfabetico, short ≤ 60, full ≤ 600, domanda intera, n da 1, ≤ 8 KB (fit_state)
+R3   eventi dal diff di due stati == forma di events-sample (question, answered, outcome, gone, launched, quota)
+R4   relay push: --dry-run stampa il JSON in chiaro senza HTTP; push scrive /state cifrato (decifrabile = dry-run),
+     /events, FCM; seconda push senza cambiamenti → niente eventi; --async con debounce 2 s (due richieste →
+     una scrittura); stato oltre 8 KB ridotto
+R5   relay pair: codice a 6 cifre, /pair/<code> con pc_pub, orologio finto che risponde → chiave condivisa
+     salvata, uid in /allowed e devices.json, /pair cancellato; check sbagliato ×5 → esce 2; timeout → 3;
+     ri-pair revoca l'uid vecchio. 1.15: lo stesso documento in /pair/<id>, il telefono finto risponde li' con
+     uids e names; --text stampa il JSON del QR; il QR a mezzi blocchi si decodifica (OpenCV, se c'e')
+R5b  i vettori del contratto 1.15 (pair-qr.json, pair-response.json: scalari 0..31 e 32..63) → pair_accept
+     produce esattamente `ok`; qr_payload = pair-qr.json
+R5c  prove isolate: CC_SUPERVISOR_CONFIG di prova → pair/push/serve solo li', la configurazione principale intatta
+R6   relay serve: SSE su /cmd, i sette op del contratto eseguiti via dispatcher finto → /result, /cmd cancellato,
+     /state ripubblicato; duplicati ignorati; op fuori allow-list rifiutato; launch fuori da projects rifiutato;
+     RTDB giù → riconnessione; status/ensure/install/uninstall/off; install e pair rifiutati senza crontab (esce 5)
+R7   cm-hook.py: waiting/<sid> in JSON con tool_input; PermissionRequest/Stop/SessionStart/SessionEnd → push
+     --async (relay abilitata); disabilitata → niente; bot follow/unfollow → push
+R70  (1.83) le domande dei server MCP: /state.elicitations, l'evento elicitation, l'op elicit (il resto in elicit-verify)
+"""
+import base64
+import fcntl
+import json
+import re
+import shutil
+import os
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import cm_test as T  # noqa: E402
+
+WATCH = next((p for p in (Path.home() / "Desktop" / "workspaces" / "personali" / n for n in ("supervisor-app", "team-supervisor-app", "claude-master-watch")) if p.is_dir()), Path.home() / "Desktop" / "workspaces" / "personali" / "supervisor-app")   # percorso vero della macchina, non un nome del set demo
+FIX = T.ROOT / "tests" / "fixtures" / "relay"
+# 1.21: le op che il relay esegue, lette dal sorgente (l'allow-list OPS), non ricopiate a mano
+import ast as _ast, re as _re0  # noqa: E401
+R_OPS = list(_ast.literal_eval(_re0.search(r"^OPS = (\(.*?\))$", (T.SCRIPTS / "cm-relay.py").read_text(), _re0.M).group(1)))
+
+# R0: fixture identiche al contratto pubblicato dall'app (30/09: non il ramo del suo worktree, che puo' stare indietro;
+# 17/10: il ramo remoto con l'ultimo commit su contract/, non sempre master)
+
+
+_CONTRACT_REF = []
+
+
+def contract_ref():
+    """17/10/2026: il ramo da cui l'app pubblica il contratto non e' sempre master (la 1.72 e' uscita da
+    feature/tablet, e R0 confrontava con un origin/master rimasto alla 1.70). Il ramo remoto il cui ultimo commit
+    su contract/ e' il piu' recente; il master locale solo se non c'e' nessun remoto."""
+    if not _CONTRACT_REF:
+        refs = subprocess.run(["git", "-C", str(WATCH), "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
+                              capture_output=True, text=True).stdout.split()
+        best = (0, "master")
+        for ref in refs:
+            if ref.endswith("/HEAD") or "/" not in ref:   # origin/HEAD (in forma corta «origin»)
+                continue
+            ct = subprocess.run(["git", "-C", str(WATCH), "log", "-1", "--format=%ct", ref, "--", "contract"], capture_output=True, text=True).stdout.strip()
+            if ct.isdigit() and int(ct) > best[0]:
+                best = (int(ct), ref)
+        _CONTRACT_REF.append(best[1])
+    return _CONTRACT_REF[0]
+
+
+def app_contract(name):
+    if not (WATCH / ".git").exists():
+        return None
+    r = subprocess.run(["git", "-C", str(WATCH), "show", f"{contract_ref()}:contract/{name}"], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+for f in ("state-1-question", "state-2-idle", "state-3-stale", "events-sample", "cmd-result-sample", "pair-qr", "pair-response", "pair-add", "pair-link", "file-parts", "share-parts", "local-api", "changes-sample"):
+    a = FIX / f"{f}.json"; b = app_contract(f"{f}.json")
+    T.check(f"R0 fixture {f} identical to the app contract on the branch it was last published from (skipped if the app repo is absent)", a.is_file() and (b is None or a.read_bytes() == b), f"{WATCH}@{contract_ref() if (WATCH / '.git').exists() else '-'}:contract/{f}.json")
+
+# R55 (contratto 1.72, 15/10): il diff dal telefono — le fixture nuove, coerenti fra loro e con le regole del contratto
+CH54 = json.loads((FIX / "changes-sample.json").read_text())
+_f54 = CH54["files"]
+_l54 = lambda f: [s for h in f["hunks"] for s in h["lines"]]  # noqa: E731
+T.check("R55 (1.72) changes-sample.json: {source, repo, base, files, totals, cut, at}; every file {path, status, added, removed, size, hunks, cut} with a status of the contract",
+        list(CH54) == ["source", "repo", "base", "files", "totals", "cut", "at"] and CH54["source"] in ("git", "transcript")
+        and all(list(f) == ["path", "status", "added", "removed", "size", "hunks", "cut"] for f in _f54)
+        and {f["status"] for f in _f54} <= {"modified", "added", "deleted", "renamed", "binary"}, json.dumps(CH54)[:300])
+T.check("R55 (1.72) changes-sample.json: a file's counts are its «+» and «-» lines, the sensitive name and the binary carry none, lines start with «-», «+» or a space, totals = the sums",
+        all((f["added"], f["removed"]) == (sum(1 for s in _l54(f) if s[0] == "+"), sum(1 for s in _l54(f) if s[0] == "-")) for f in _f54 if f["hunks"])
+        and [f["hunks"] for f in _f54 if f["path"] in (".env.local", "assets/logo.png")] == [[], []]
+        and all(s[:1] in ("-", "+", " ") for f in _f54 for s in _l54(f))
+        and CH54["totals"] == {"files": len(_f54), "added": sum(f["added"] for f in _f54), "removed": sum(f["removed"] for f in _f54)}, json.dumps(CH54["totals"]))
+_p54 = [json.loads(r["text"]) for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]
+        if r["id"] in ("6f1c2d3e-0130-4000-8000-000000000130", "6f1c2d3e-0131-4000-8000-000000000131")]
+_a8 = [e for p in _p54 for e in p["entries"] if e["id"] == "a8.0"]
+T.check("R55 (1.72) the transcript pages: every entry carries diff, null but on a8.0 (the Edit of totals.ts), whose diff is {path, kind, added, removed, hunks, cut} with the hunk of changes-sample.json",
+        len(_p54) == 2 and len(_a8) == 2 and all("diff" in e for p in _p54 for e in p["entries"])
+        and all(e["diff"] is None for p in _p54 for e in p["entries"] if e["id"] != "a8.0")
+        and _a8[0]["diff"] == {"path": "/home/dev/storefront/src/checkout/totals.ts", "kind": "edit", "added": 2, "removed": 1, "hunks": _f54[0]["hunks"], "cut": False},
+        json.dumps(_a8[:1])[:300])
+_s54 = [json.loads((FIX / f"{n}.json").read_text()) for n in ("state-1-question", "state-2-idle", "state-3-stale")]
+T.check("R55 (1.72) the states: ops carry changes and diff, one after the other; every session carries changes — on atlas-shop of state-1 the totals of changes-sample with its at, null on the others",
+        all(s["ops"][s["ops"].index("changes"):][:2] == ["changes", "diff"] for s in _s54) and all("changes" in x for s in _s54 for x in s["sessions"])
+        and [x["changes"] for x in _s54[0]["sessions"]] == [None, dict(CH54["totals"], at=CH54["at"]), None, None]
+        and _s54[0]["sessions"][1]["name"] == "atlas-shop" and _s54[1]["sessions"][0]["changes"] is None, str([x.get("changes") for x in _s54[0]["sessions"]]))
+_la54 = json.loads((FIX / "local-api.json").read_text())
+T.check("R55 (1.72) local-api.json: the entries of /api/tail carry diff (null), and the rules say so",
+        "1.72" in _la54["rules"] and all(e.get("diff", "absent") is None for ex in _la54["exchanges"] if isinstance(ex["response"].get("body"), dict)
+                                         for e in ex["response"]["body"].get("entries") or []), "")
+# R0b: il RTDB finto
+URL, CALLS, STORE = T.fake_rtdb()
+
+
+def http(method, path, body=None, headers=None):
+    req = urllib.request.Request(URL + path, data=json.dumps(body).encode() if body is not None else None, method=method, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        raw = r.read().decode()
+        return r.status, (json.loads(raw) if raw else None)
+
+
+st, body = http("PUT", "/state.json", {"v": 1, "enc": "abc"})
+T.check("R0b PUT /state.json stores the document; GET reads it back", st == 200 and http("GET", "/state.json")[1] == {"v": 1, "enc": "abc"} and STORE["state"] == {"v": 1, "enc": "abc"}, str(STORE))
+http("PATCH", "/cmd.json", {"u1": {"op": "answer"}})
+http("PATCH", "/cmd.json", {"u2": {"op": "screen"}})
+T.check("R0b PATCH adds children; shallow lists keys; DELETE removes one", set(http("GET", "/cmd.json?shallow=true")[1]) == {"u1", "u2"} and http("DELETE", "/cmd/u1.json")[0] == 200 and list(STORE["cmd"]) == ["u2"], str(STORE))
+st, _ = http("PUT", "/x.json?print=silent", 1)
+T.check("R0b print=silent → 204", st == 204, str(st))
+events = []
+
+
+def stream():
+    req = urllib.request.Request(URL + "/cmd.json", headers={"Accept": "text/event-stream"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        ev = None
+        for raw in r:
+            line = raw.decode().rstrip("\n")
+            if line.startswith("event: "):
+                ev = line[7:]
+            elif line.startswith("data: ") and ev != "keep-alive":
+                events.append((ev, json.loads(line[6:])))
+                if len(events) >= 3:
+                    return
+
+
+th = threading.Thread(target=stream, daemon=True); th.start()
+T.wait_until(lambda: len(events) >= 1, 3)
+http("PATCH", "/cmd.json", {"u3": {"op": "follow"}})
+http("PUT", "/cmd/u4.json", {"op": "resume"})
+T.wait_until(lambda: len(events) >= 3, 4)
+T.check("R0b SSE: initial put with the node, then a patch and a put for writes under it", len(events) >= 3 and events[0][0] == "put" and events[0][1]["path"] == "/" and events[0][1]["data"] == {"u2": {"op": "screen"}} and events[1][0] == "patch" and events[1][1]["data"] == {"u3": {"op": "follow"}} and events[2] == ("put", {"path": "/u4", "data": {"op": "resume"}}), str(events))
+
+# R1: crypto
+import importlib.util as _ilu
+
+
+def load(name):
+    spec = _ilu.spec_from_file_location(name.replace("-", "_"), T.SCRIPTS / f"{name}.py"); m = _ilu.module_from_spec(spec); spec.loader.exec_module(m); return m
+
+
+C = load("cm-relay-crypto")
+tmp = Path(T.tmpdir())
+rdir = tmp / "relay"
+k = C.new_key()
+kp = C.save_key(rdir, k)
+T.check("R1 key: 32 bytes, saved as hex in <dir>/key with mode 0600, loaded back equal; missing → None", len(k) == 32 and kp.name == "key" and oct(kp.stat().st_mode & 0o777) == "0o600" and C.load_key(rdir) == k and C.load_key(tmp / "nope") is None, str(kp))
+doc = C.encrypt({"a": 1, "s": "é"}, k)
+doc2 = C.encrypt({"a": 1, "s": "é"}, k)
+T.check("R1 encrypt → {v:1, enc:base64}, a fresh nonce each time; decrypt round-trips", doc["v"] == 1 and set(doc) == {"v", "enc"} and doc["enc"] != doc2["enc"] and C.decrypt(doc, k) == {"a": 1, "s": "é"}, str(doc)[:80])
+try:
+    C.decrypt(doc, C.new_key()); bad = False
+except ValueError:
+    bad = True
+try:
+    C.decrypt({"v": 2, "enc": doc["enc"]}, k); bad2 = False
+except ValueError:
+    bad2 = True
+T.check("R1 wrong key or wrong form → ValueError", bad and bad2, "")
+a_priv, a_pub = C.pair_keys(); b_priv, b_pub = C.pair_keys()
+ka, kb = C.shared_key(a_priv, b_pub), C.shared_key(b_priv, a_pub)
+T.check("R1 X25519 + HKDF: both sides derive the same 32-byte key; another pair differs", ka == kb and len(ka) == 32 and ka != C.shared_key(a_priv, a_pub), "")
+T.check("R1 check_code: 16 hex, depends on the key", len(C.check_code(ka, "123456")) == 16 and C.check_code(ka, "123456") != C.check_code(C.new_key(), "123456") and C.check_code(ka, "123456") == C.check_code(kb, 123456), "")
+# service account di prova (RSA generata qui) e token endpoint finto
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+pem = rsa_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+SA = tmp / "service-account.json"
+SA.write_text(json.dumps({"type": "service_account", "project_id": "fake-project", "private_key": pem, "client_email": "relay@fake-project.iam.gserviceaccount.com", "token_uri": URL + "/token"}))
+tok = C.sa_token(SA, URL + "/token", rdir / "token.json", now=1789210000)
+import base64 as _b64
+jwt_claims = json.loads(_b64.urlsafe_b64decode(CALLS["token"][-1].split(".")[1] + "=="))
+T.check("R1 sa_token: JWT signed and exchanged (iss = client_email, scope has database + messaging, aud = token url), token cached 0600", tok == "fake-token" and jwt_claims["iss"] == "relay@fake-project.iam.gserviceaccount.com" and "firebase.database" in jwt_claims["scope"] and "firebase.messaging" in jwt_claims["scope"] and jwt_claims["aud"] == URL + "/token" and oct((rdir / "token.json").stat().st_mode & 0o777) == "0o600", str(jwt_claims))
+n_tok = len(CALLS["token"])
+T.check("R1 sa_token: second call within the lifetime → from the cache, no request; past it → a new request", C.sa_token(SA, URL + "/token", rdir / "token.json", now=1789210000 + 3000) == "fake-token" and len(CALLS["token"]) == n_tok and C.sa_token(SA, URL + "/token", rdir / "token.json", now=1789210000 + 3600) == "fake-token" and len(CALLS["token"]) == n_tok + 1, str(len(CALLS["token"])))
+
+# R2: build_state == contratto
+S = load("cm-relay-state")
+
+
+def iso(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t))
+
+
+ROOT_WS = "/home/demo/workspaces"
+SES = load("cm-sessions")   # 1.16: le letture dello schermo e del goal che alimentano /state
+F1 = json.loads((FIX / "state-1-question.json").read_text())
+F2 = json.loads((FIX / "state-2-idle.json").read_text())
+F3 = json.loads((FIX / "state-3-stale.json").read_text())
+SRC1 = {
+    "host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"], "high_words": None,
+    "rows": [
+        {"name": "work-ledger-api", "tmux": "work-ledger-api", "low_priority": "offered", "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/clients/ledger-api", "status": "waiting", "waiting": True, "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "link": "https://claude.ai/code/session_01ledger", "attached": False, "started_at": 1789210000000},
+        {"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "active", "suggestion": "stale text from before the turn", "goal_status": {"text": "Checkout tests green, release tagged", "since": 1789210700, "met": False}, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "busy", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_02atlas", "attached": True, "started_at": 1789209000000},
+        {"name": "field-notes", "tmux": "field-notes", "low_priority": "off", "suggestion": "commit the README changes and open a PR", "goal_status": None, "account": "personal", "cwd": ROOT_WS + "/personal/field-notes", "status": "idle", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "link": "https://claude.ai/code/session_03fieldnotes", "attached": False, "started_at": 1789120000000},
+        {"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs", "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789200000},
+    ],
+    "ledger": [
+        {"event": "start", "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "ts": iso(1789210000)},
+        {"event": "prompt", "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "ts": iso(1789210380)},
+        {"event": "waiting", "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "ts": iso(1789210500), "tool": "AskUserQuestion"},
+        {"event": "start", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789209000)},
+        {"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210300), "last": "x", "esito": "Esito: migrations 008-011 applied, tests green.", "tail": "Esito: migrations 008-011 applied, tests green.\nProssimi: !ok to deploy on staging · review the test seeds\nWatch: Migrations 008-011 applied, tests green", "watch": "Watch: Migrations 008-011 applied, tests green"},
+        {"event": "prompt", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789210700)},
+        {"event": "start", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789120000)},
+        {"event": "stop", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789121000), "last": "x", "esito": "Esito: README rewritten.", "tail": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.\nWatch: README rewritten", "watch": "Watch: README rewritten"},
+    ],
+    # 1.53: la consigliata e le spiegazioni dal payload dell'hook; 1.56: un token nel testo → question.preview
+    "questions": {"work-ledger-api": {"tool": "AskUserQuestion", "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
+                                      "options": ["yes (Recommended)", "no"], "asked_at": 1789210500,
+                                      "descriptions": {"yes (Recommended)": "Deploy 2.4 to production now", "no": "Wait for the client's ok"}}},
+    "quota": {"personal": {"cinque_ore_pct": 11, "settimana_pct": 36, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False},
+              "work": {"cinque_ore_pct": None, "settimana_pct": 75.2, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": True}},
+    "projects": [{"path": ROOT_WS + "/work/own/orbit-docs", "name": "orbit-docs", "account": "work", "last_used": 1789203600}, {"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789210700}, {"path": ROOT_WS + "/work/clients/ledger-api", "name": "ledger-api", "account": "work", "last_used": 1789210500}],
+    # 1.17: le righe della coda come le scrive `night add` (added ISO locale, prompt intero)
+    "night": {"queued": 2, "running": None, "master": True, "items": [
+        {"id": "a3f09c1e", "dir": ROOT_WS + "/personal/atlas-shop", "prompt": "Reproduce the flaky issues with their seeds, fix the real ones, run the suite twice and write the notes to docs/notte/flaky-issues-reproduced-with-seeds-fixed-or-explained.md", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789207200)},
+        {"id": "7b21d4e8", "dir": ROOT_WS + "/work/clients/ledger-api", "prompt": "Update the changelog for 2.4", "account": "work", "model": "", "effort": "", "max_turns": 40, "added": iso(1789210620)}]},
+    "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": [{"project": "atlas-shop", "done": "Migrations 008-011 applied, tests green", "next": "Review the seeds"}, {"project": "ledger-api", "done": "Deploy ready", "next": "Wait"}]},
+    "follow": {"work-ledger-api"}, "awaiting": set(),
+    "next": {"work-ledger-api": "Wait for the go", "atlas-shop": "Review the seeds and the admin page", "work-orbit-docs": "Pick up the pricing page"},
+    "tools": {"atlas-shop": "Bash pytest -q tests"},
+    "tool_notes": {"atlas-shop": "Run the test suite"},
+    "icons": {"work-ledger-api": "🟦", "atlas-shop": "🟢", "field-notes": "🟡", "work-orbit-docs": "🟪"},
+    "next_at": {"work-ledger-api": 1789171200, "atlas-shop": 1789171200, "work-orbit-docs": 1789171200}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]},
+    # 1.11: quello che ogni sessione viva sta usando (la gone non ha trascrizione da rileggere)
+    # 1.54: la modalita' dei permessi su due sessioni
+    "runtime": {"work-ledger-api": {"model": {"id": "claude-opus-5[1m]", "label": "Opus 5"}, "effort": "high", "context": 62, "permission_mode": "plan"},
+                "atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18, "permission_mode": "bypassPermissions", "permission_bypass": True},
+                # 1.14: field-notes e' passata da sola a Sonnet 5 dopo un messaggio segnalato
+                "field-notes": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "low", "context": 4,
+                                "fallback": {"from": "claude-opus-5-5", "to": "claude-sonnet-5", "category": "cyber", "at": 1789210300}}},
+}
+KINDS = {"personal": "personal", "work": "work"}   # 1.8: come li calcola il relay dalla config del test
+SRC1["account_kinds"] = KINDS
+# 1.55: field-notes ha risolto al terminale la sua domanda di prima
+SRC1["resolved"] = {"field-notes": {"id": "q-1789120500-1", "text": "Commit the README changes now?", "at": 1789210600}}
+# 1.62: atlas-shop e' attaccata e qualcuno ha premuto un tasto 30 s fa → at_pc; 1.64: le cartelle madri dei progetti
+SRC1["rows"][1]["pc_activity"] = 1789210770
+SRC1["project_parents"] = [ROOT_WS + "/personal", ROOT_WS + "/work/clients", ROOT_WS + "/work/own"]
+# 1.51: il comando dell'handoff per sessione — fable-director, quello di supervisor, nessuno
+SRC1["handoffs"] = {"work-ledger-api": "/fable-director:handoff --here", "atlas-shop": "/supervisor:handoff --here", "field-notes": None}
+# 1.72: la pillola della testata su atlas-shop (i totali di changes-sample.json); le altre sessioni non ce l'hanno
+SRC1["changes"] = {"atlas-shop": {"files": 4, "added": 8, "removed": 2, "at": 1792100000}}
+# 1.37: il consiglio di fable-director per atlas-shop (gia' passato da advice_of) e un compito che aspetta l'ok
+SRC1["advice"] = {"atlas-shop": {"model": "claude-fable-5-1", "effort": "high", "reason": "Big refactor",   # 24/10: piu' corto, state-1 sta negli 8 KB con published_at; 28/10 (1.91): ancora, per sys_unit_stop in ops
+                                
+                                 "switch_cost_tokens": 36000, "at": 1789210700, "source": "fable-director", "when": "next_task", "differs": True}}
+SRC1["approvals"] = [{"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main",
+                      "where": "production (shop.example.com)", "deploy": True, "requested_at": 1789210600}]
+# 1.32: i dispositivi accoppiati — telefono e orologio (kind dal pairing e dal nome), tablet e Chromebook (dal pairing),
+# uno mai visto; seen in s (il relay converte i ms di /seen)
+DEV_SRC = {"devices": {"phoneUid00000000000000000000": {"name": "Pixel 9", "paired_at": 1789100000, "kind": "phone"},
+                       "watchUid0000000000000000000": {"name": "Pixel Watch 5", "paired_at": 1789100000},
+                       "tabletUid0000000000000000000": {"name": "Pixel Tablet", "paired_at": 1789150000, "kind": "tablet"},
+                       "crbookUid0000000000000000000": {"name": "Chromebook", "paired_at": 1789160000, "kind": "chromebook"},
+                       "spareUid00000000000000000000": {"name": "Pixel 7", "paired_at": 1789170000},
+                       "webUid000000000000000000000": {"name": "Safari on Mac", "paired_at": 1789180000, "kind": "web"}},
+           "seen": {"phoneUid00000000000000000000": 1789210790.0, "watchUid0000000000000000000": 1789210500.4,
+                    "tabletUid0000000000000000000": 1789209000.0, "crbookUid0000000000000000000": 1789190000.0}}
+# 1.33: le azioni ricorrenti della master, gia' in ordine (l'ultima usata in cima), una con param
+# 07/11 (1.130): short labels, so that wid and the attese ops stay under the 8 KB cap
+DEV_SRC["recurring"] = [{"id": "x-posts", "label": "X posts", "prompt": "X posts", "param": False},
+                        {"id": "release-changelog", "label": "Changelog of a release", "prompt": "Write the changelog of release", "param": True},
+                        {"id": "plugin-rivals", "label": "Rival plugins", "prompt": "Competing plugins", "param": False}]
+SRC1.update(DEV_SRC)
+SRC1["suggestions"] = []   # 1.84: nessun suggerimento; orbit-docs chiusa dal PC porta closed {at, session_id}
+# 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
+SRC1["hosts_status"], SRC1["published_today"] = F1["hosts_status"], F1["published_today"]
+SRC1["commitments"] = F1["commitments"]   # 1.76
+st1 = S.build_state(SRC1, 1789210800)
+
+
+def diff(a, b, path=""):
+    if isinstance(a, dict) and isinstance(b, dict):
+        for k in sorted(set(a) | set(b)):
+            d = diff(a.get(k), b.get(k), f"{path}.{k}")
+            if d:
+                return d
+        return ""
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return f"{path}: len {len(a)} != {len(b)}"
+        for i, (x, y) in enumerate(zip(a, b)):
+            d = diff(x, y, f"{path}[{i}]")
+            if d:
+                return d
+        return ""
+    return "" if a == b else f"{path}: {a!r} != {b!r}"
+
+
+# 1.43 (08/10): published_at lo mette _push subito prima della PUT, non build_state: nel confronto non conta
+_np = lambda d: {kk: v for kk, v in d.items() if kk != "published_at"}  # noqa: E731
+T.check("R2 build_state(src) == state-1-question.json (four sessions, two accounts, quota, projects, night, recap)", st1 == _np(F1), diff(st1, _np(F1)) or "equal")
+# R12 (contratto 1.16, 25/09): low_priority («off» | «offered» | «active» | null) e goal ({text, since, met} | null) per sessione
+# R13 (contratto 1.17, 29/09): la coda di stanotte nello stato, sempre presente; prompt a fine parola entro 160, senza «…»
+T.check("R13 (1.17) state-1: night.items in queue order with id, dir, name (as projects[].name), prompt, added (epoch), started null",
+        [(i["id"], i["name"], i["added"], i["started"]) for i in st1["night"]["items"]] == [("a3f09c1e", "atlas-shop", 1789207200, None), ("7b21d4e8", "ledger-api", 1789210620, None)]
+        and set(st1["night"]["items"][0]) == {"id", "dir", "name", "prompt", "added", "started"}, str(st1["night"]))
+_p0 = st1["night"]["items"][0]["prompt"]
+T.check("R13 (1.17) a long prompt is cut at a word end within 160 characters, no «…»; a short one stays whole",
+        len(_p0) <= 160 and SRC1["night"]["items"][0]["prompt"].startswith(_p0 + " ") and "…" not in _p0 and st1["night"]["items"][1]["prompt"] == SRC1["night"]["items"][1]["prompt"], _p0)
+T.check("R13 (1.17) cut_words: newlines folded, exactly 160 kept, one word longer than 160 cut at 160",
+        S.cut_words("a\n b", 160) == "a b" and S.cut_words("x" * 160, 160) == "x" * 160 and S.cut_words("y" * 200, 160) == "y" * 160 and S.cut_words(("w" * 9 + " ") * 16 + "z", 160) == " ".join(["w" * 9] * 16), S.cut_words(("w" * 9 + " ") * 16 + "z", 160))
+T.check("R13 (1.17) an empty queue still carries night.items = [] (its presence tells the app the relay can edit the queue)",
+        S.build_state({"night": {"queued": 0}}, 1)["night"] == {"queued": 0, "running": None, "items": []}, str(S.build_state({"night": {"queued": 0}}, 1)["night"]))
+# R20 (contratto 1.23, 30/09): il prompt suggerito in grigio, per il chip del telefono — solo a sessione ferma al prompt
+T.check("R20 (1.23) suggestion: the idle session carries its dim suggestion; the busy one gets null even if its row had one; waiting and gone null",
+        [(x["name"], x["suggestion"]) for x in st1["sessions"]] == [("ledger-api", None), ("atlas-shop", None), ("field-notes", "commit the README changes and open a PR"), ("orbit-docs", None)], str([(x["name"], x["suggestion"]) for x in st1["sessions"]]))
+T.check("R12 (1.16) state-1: low_priority offered/active/off/null and goal {text, since, met} on the busy session, null elsewhere",
+        [x["low_priority"] for x in st1["sessions"]] == ["offered", "active", "off", None] and st1["sessions"][1]["goal"] == {"text": "Checkout tests green, release tagged", "since": 1789210700, "met": False} and all(x["goal"] is None for i, x in enumerate(st1["sessions"]) if i != 1), str([(x["low_priority"], x["goal"]) for x in st1["sessions"]]))
+_lp = SES.low_priority_on_screen
+T.check("R12 (1.16) the screen decides: «Working at lower priority» → active, «/low-priority to continue now at lower priority» → offered, the menu line «Continue now at lower priority» → offered, a plain screen → off, no screen → null",
+        _lp("x", "…\n  Working at lower priority · waiting for capacity\n") == "active" and _lp("x", "Usage limit reached · /low-priority to continue now at lower priority · uses your weekly limit") == "offered"
+        and _lp("x", "  ❯ 1. Stop and wait for limit to reset\n    2. Continue now at lower priority\n") == "offered" and _lp("x", "  ❯ \n") == "off" and _lp("x", "") is None, "")
+_gt = tmp / "goal-transcript.jsonl"
+_gt.write_text('{"type":"attachment","uuid":"a","timestamp":"2026-09-25T12:00:00.000Z","attachment":{"type":"goal_status","met":false,"sentinel":true,"condition":"la suite passa"}}\n'
+               '{"type":"attachment","uuid":"b","timestamp":"2026-09-25T12:10:00.000Z","attachment":{"type":"goal_status","met":false,"sentinel":false,"iterations":3,"condition":"la suite passa"}}\n')
+_row = {"account": "personale", "session_id": "goal-transcript", "cwd": str(tmp)}
+_orig = SES.transcript_of
+SES.transcript_of = lambda r: _gt
+g_open = SES.goal_of(_row)
+_gt.write_text(_gt.read_text() + '{"type":"attachment","uuid":"c","timestamp":"2026-09-25T12:20:00.000Z","attachment":{"type":"goal_status","met":true,"sentinel":false,"iterations":4,"condition":"la suite passa"}}\n')
+g_met = SES.goal_of(_row)
+_gt.write_text(_gt.read_text() + '{"type":"attachment","uuid":"d","timestamp":"2026-09-25T12:21:00.000Z","attachment":{"type":"goal_status","met":true,"sentinel":true,"condition":"la suite passa"}}\n')
+g_cleared = SES.goal_of(_row)
+SES.transcript_of = _orig
+T.check("R12 (1.16) goal_of: open → {condition, since = the set sentinel's timestamp (epoch), met false}; the check that finds it met → met true; the clear sentinel → none",
+        g_open == {"condition": "la suite passa", "iterations": 3, "since": 1790337600, "met": False} and g_met is not None and g_met["met"] is True and g_met["since"] == 1790337600 and g_cleared is None, str((g_open, g_met, g_cleared)))
+T.check("R2 rules: order waiting/busy/idle/gone then alphabetical, short ≤ 200 (1.6), full ≤ 600, n from 1, ≤ 8 KB", [x["state"] for x in st1["sessions"]] == ["waiting", "busy", "idle", "gone"] and all(len(x["outcome"]["short"]) <= 200 and len(x["outcome"]["full"]) <= 600 for x in st1["sessions"] if x["outcome"]) and [o["n"] for o in st1["sessions"][0]["question"]["options"]] == [1, 2] and S.size_of(st1) <= 8192, str(S.size_of(st1)))
+SRC2 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"],
+        "rows": [{"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "off", "goal_status": None, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "idle", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_02atlas", "attached": False, "started_at": 1789214000000}],
+        "ledger": [{"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789213900), "last": "x", "esito": "Esito: seeds and admin page reviewed, 42 tests green.", "tail": "Esito: seeds and admin page reviewed, 42 tests green.\nWatch: Seeds and admin page reviewed", "watch": "Watch: Seeds and admin page reviewed"}],
+        "questions": {}, "quota": {"personal": {"cinque_ore_pct": 24, "settimana_pct": 38, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False,
+                                                 # 1.86: campioni orari dal rinnovo (start = 1789005600) e origini a lettura finita
+                                                 "settimana_punti": [[1789007400, 1.6], [1789012860, 4.0], [1789016700, 5.4], [1789094400, 30.2], [1789097000, 38.0]],
+                                                 "settimana_origini": {"sessioni": 20.1, "automazioni": 6.5, "richieste": 11.4, "completo": True}},
+                                    "work": {"cinque_ore_pct": 3, "settimana_pct": 75, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": False,
+                                             "settimana_punti": [], "settimana_origini": {"sessioni": 50.0, "automazioni": 5.0, "richieste": 20.0, "completo": False}}},
+        "projects": [{"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789213900}], "night": {"queued": 1, "running": None, "master": True, "items": [{"id": "c41d9e07", "dir": ROOT_WS, "name": "master", "prompt": "Do this agenda item: Move the docs site to the new host (orbit-docs)", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789213000)}]}, "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": []},
+        "follow": set(), "awaiting": set(), "next": {"atlas-shop": "Test deploy on staging"}, "tools": {}, "icons": {"atlas-shop": "🟢"}, "next_at": {"atlas-shop": 1789171200}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]},
+        "runtime": {"atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18}}}
+SRC2["account_kinds"] = KINDS
+SRC2.update(DEV_SRC)
+# 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
+SRC2["hosts_status"], SRC2["published_today"] = F2["hosts_status"], F2["published_today"]
+SRC2["commitments"] = F2["commitments"]   # 1.76
+SRC2["home_order"] = F2["home_order"]   # 1.97
+SRC2["tocca"] = {"atlas-shop": {"prove": 2, "decidi": 1, "guarda": 3, "segui": 1}, "orbit-docs": {"prove": 0, "decidi": 0, "guarda": 0, "segui": 0}}   # 1.111
+SRC2["tocca_state"] = F2["tocca"]   # 1.113: il conto unico e le chiusure di oggi passano a /state cosi' come sono
+# 1.81 (23/10): un compito che chiede una scelta — le sue opzioni passano in approvals[] cosi' come sono
+SRC2["approvals"] = [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout",
+                      "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789214100, "options": ["Strada A", "Strada B"],
+                      "untested": "phone", "undo": "in-parte", "undo_how": "revert", "also": [{"task": "atlas-seo-pages", "short": "SEO pages"}]}]   # 1.99
+SRC2["decisions"], SRC2["prove"] = F2["decisions"], F2["prove"]   # 1.99
+SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP passano a /state cosi' come sono
+# 1.84 (24/10): tre suggerimenti della master di tipo diverso, i token di oggi su due account, e una richiesta per la persona
+# che la master ha legato a un compito di atlas-shop (needs-you --task)
+SRC2["suggestions"] = [
+    {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "ledger-api invoice due Friday",
+     "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
+    {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Night report ready",
+     "prompt": "Read me last night's report", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
+    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Close the paused orbit-docs tasks?",
+     "prompt": "Close the two paused orbit-docs tasks", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
+SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
+                       {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
+                       {"session": "master", "account": "personal", "tokens": 1130000, "share": 0.38},
+                       {"session": "orbit-docs", "account": "work", "tokens": 30000, "share": 0.03}]
+SRC2["needs_you"] = {"atlas-shop": {"reason": "Type the TV code", "at": 1789214200, "expires_at": 1789221400,
+                                    "name": "atlas-shop", "task": "atlas-tv-pairing", "from": "master"}}
+st2 = S.build_state(SRC2, 1789214400)
+T.check("R2 build_state(src) == state-2-idle.json", st2 == _np(F2), diff(st2, _np(F2)) or "equal")
+SRC3 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": [], "rows": [], "ledger": [], "questions": {},
+        "quota": {"personal": {"cinque_ore_pct": 0, "settimana_pct": 36, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": True}, "work": {"cinque_ore_pct": None, "settimana_pct": 75, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": True}},
+        "projects": [], "night": {"queued": 0, "running": None, "master": True}, "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": []}, "follow": set(), "awaiting": set(), "next": {}, "tools": {}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]}}
+SRC3["account_kinds"] = KINDS
+SRC3.update(DEV_SRC)
+# 1.75: lo stato dei PC remoti e le pubblicazioni di oggi passano da src a /state cosi' come sono
+SRC3["hosts_status"], SRC3["published_today"] = F3["hosts_status"], F3["published_today"]
+SRC3["prima_raccolta"] = F3["prima_raccolta"]   # 1.100
+SRC3["seguiti"] = F3["seguiti"]   # 1.102
+SRC3["commitments"] = F3["commitments"]   # 1.76
+SRC3["system"] = F3["system"]   # 1.90
+SRC3["plugins"] = F3["plugins"]   # 1.95
+SRC3["feedback"] = F3["feedback"]   # 1.105
+SRC3["results"] = F3["results"]   # 1.106
+# 1.84 (24/10): orbit-docs chiusa dall'app prima che il PC si fermasse — lo stato salvato, con due file non committati
+SRC3["rows"] = [{"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs",
+                 "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789199000}]
+SRC3["prefixes"] = ["work-"]
+SRC3["closed"] = {"work-orbit-docs": {"name": "orbit-docs", "tmux": "work-orbit-docs", "cwd": ROOT_WS + "/work/own/orbit-docs", "account": "work",
+                                      "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
+                                      "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"],
+                                      "closed_at": 1789199000, "by": "phone-pixel8"}}
+# 1.88 (27/10): la coda dei suggerimenti — una voce per ciascuno dei sei tipi nuovi (state-2 e' gia' vicino agli 8 KB)
+SRC3["suggestions"] = [
+    {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing page copy: the short one or the full one?",
+     "prompt": "For the pricing page the maintainer picks {choice}: go ahead", "at": 1789199500, "expires_at": 1789242700, "rank": 2, "source": "master", "options": ["Short", "Full"]},
+    {"id": "s-2d9b4c7e30", "kind": "followup", "key": "followup:atlas-shop:5e1f0a2b", "text": "atlas-shop idle, next: Open the PR for the checkout fix",
+     "prompt": "A next step left halfway in session atlas-shop", "at": 1789199400, "expires_at": 1789293000, "rank": 4, "source": "script"},
+    {"id": "s-3e8c5d6f49", "kind": "unsaved", "key": "unsaved:orbit-docs:3d1b2c4e-0000-4000-8000-000000000004", "text": "orbit-docs: 2 files not committed when it closed",
+     "prompt": "Session orbit-docs closed with 2 uncommitted files", "at": 1789199300, "expires_at": 1789292900, "rank": 4, "source": "script"},
+    {"id": "s-4f7d6e8a58", "kind": "waiting", "key": "waiting:task:ledger-vendor-ticket", "text": "Check again: the vendor's answer on ticket 4411",
+     "prompt": "Time to check again the external wait of task ledger-vendor-ticket", "at": 1789199200, "expires_at": 1789292800, "rank": 5, "source": "script"},
+    # 1.94 (28/10): lo smistamento delle note di claude-observe di un plugin
+    {"id": "s-7c4a9b1d85", "kind": "observe", "key": "observe:chrome-bridge:2026-W38", "text": "chrome-bridge: 12 new error notes, top «No tab with id»: sort them?",
+     "prompt": "Sorting of the claude-observe notes of chrome-bridge", "at": 1789199150, "expires_at": 1789292750, "rank": 5, "source": "script"},
+    {"id": "s-5a6e7f9b67", "kind": "idea", "key": "idea:field-notes-on-phone", "text": "Try field-notes on the phone",
+     "prompt": "Set up field-notes on the phone", "at": 1789199100, "expires_at": 1789242300, "rank": 6, "source": "master"},
+    {"id": "s-6b5f8a0c76", "kind": "proposal", "key": "proposal:release-notes-script", "text": "Release notes written by hand three times: a script?",
+     "prompt": "Propose a script for the release notes", "at": 1789199000, "expires_at": 1789242200, "rank": 6, "source": "master"}]
+# 1.89 (28/10): l'ultimo comando di ogni dispositivo (Cmd.uid) e l'ultimo arrivo tenuto dal relay, che vale quando
+# /seen non ce l'ha (il browser, il Pixel 7)
+SRC3["activity"] = {"phoneUid00000000000000000000": {"cmd": 1789199950.2, "arrival": 1789210000.0},
+                    "webUid000000000000000000000": {"cmd": 1789198000.0, "arrival": 1789197990.0},
+                    "spareUid00000000000000000000": {"arrival": 1789150500.0}, "goneUid0000000000000000000": {"cmd": 1789199999.0}}
+st3 = S.build_state(SRC3, 1789200000)
+T.check("R2 build_state(src) == state-3-stale.json", st3 == _np(F3), diff(st3, _np(F3)) or "equal")
+T.check("R2 (1.33) no recurring list → no `recurring` field (the app shows no box)", "recurring" not in S.build_state(dict(SRC3, recurring=[]), 1789200000), "")
+T.check("R2 (1.8) every session carries account_kind and every quota entry its kind (personal | work)",
+        all(x["account_kind"] in ("personal", "work") for x in st1["sessions"]) and st1["quota"]["personal"]["kind"] == "personal" and st1["quota"]["work"]["kind"] == "work", str([(x["name"], x["account"], x["account_kind"]) for x in st1["sessions"]]))
+T.check("R2 (1.8) kinds_of: an explicit kind wins; else the default account is personal and the others work; a single account is personal",
+        S.kinds_of({"a": {}, "b": {}}, "a") == {"a": "personal", "b": "work"} and S.kinds_of({"x": {}}, "") == {"x": "personal"} and S.kinds_of({"a": {"kind": "work"}, "b": {"kind": "personal"}}, "a") == {"a": "work", "b": "personal"}, "")
+big = dict(SRC1, devices={}, seen={}, recurring=[]); big["projects"] = [{"path": f"{ROOT_WS}/personal/p{i:03d}", "name": f"p{i:03d}", "account": "personal"} for i in range(120)]
+stb = S.build_state(big, 1789210800)
+T.check("R2 over 8 KB → fit_state trims (old gone sessions, projects past 10, …), the question stays whole", S.size_of(stb) <= 8192 and stb["sessions"][0]["question"]["text"] == F1["sessions"][0]["question"]["text"] and len(stb["projects"]) <= 10, str(S.size_of(stb)))
+# (job-*: work- e' il prefisso tmux dell'account work; 60 progetti: lo stato resta oltre gli 8 KB finche' le sessioni
+# finite non scendono a tre anche con i nomi inglesi, piu' corti)
+# 14/09 dal vivo: tre sessioni al lavoro con un esito lungo + dieci finite → prima ogni full diventava short
+live = dict(SRC1, devices={}, seen={}, recurring=[], approvals=[], advice={}, project_parents=[])   # 1.32 (e 1.37): questi casi misurano i tagli delle sessioni, senza dispositivi ne approvazioni
+# 15/10 (1.72): * 6 invece di * 9 — `changes` e `diff` in ops e `changes` in ogni sessione allungano lo stato di 107 byte,
+# e il caso stava a 12 byte dal tetto; con sei ripetizioni il full resta ben oltre i 300 caratteri che il controllo vuole
+# 24/10 (1.84): * 5 — ogni sessione gone porta closed {at, session_id}; con cinque il full resta oltre i 300 caratteri
+long_tail = "Ho messo in pausa a un punto pulito; i passi per riprendere sono nel piano. " * 5
+live["rows"] = [{"name": f"job-{i}", "tmux": f"job-{i}", "account": "personal", "cwd": ROOT_WS + f"/personal/job-{i}", "status": "idle", "waiting": False, "session_id": f"sid-job-{i}", "link": "https://claude.ai/code/session_" + "x" * 24, "attached": False, "started_at": 1789200000000} for i in range(3)] + \
+    [{"name": f"old-{i:02d}", "tmux": f"old-{i:02d}", "account": "personal", "cwd": ROOT_WS + f"/personal/old-progetto-{i:02d}", "status": "dead", "session_id": f"0000000{i:02d}-aaaa-bbbb-cccc-dddddddddddd", "link": "https://claude.ai/code/session_" + "y" * 24, "visto_ts": 1789100000 + i, "started_at": 1789000000000} for i in range(10)]
+# 14/10: senza «on both suites» (la 1.58 allunga ops di 15 byte e lo stato stava a un byte dal tetto)
+live["ledger"] = [{"event": "stop", "session_id": f"sid-job-{i}", "ts": iso(1789210000), "tail": long_tail + "\nWatch: " + "paused at a clean point; resume steps are in the plan and the tests are green", "watch": "Watch: paused at a clean point; resume steps are in the plan and the tests are green"} for i in range(3)]
+live["questions"] = {}
+live["projects"] = [{"path": f"{ROOT_WS}/personal/progetto-{i:02d}", "name": f"progetto-{i:02d}", "account": "personal"} for i in range(60)]
+stl = S.build_state(live, 1789210800)
+works = [x for x in stl["sessions"] if x["name"].startswith("job-")]
+gones = [x["name"] for x in stl["sessions"] if x["state"] == "gone"]
+T.check("R2 (14/09) over 8 KB with ten gone sessions: the outcomes keep a real full (> 280, not the short), the three most recent gone stay, under the cap", S.size_of(stl) <= 8192 and len(works) == 3 and all(len(x["outcome"]["full"]) > 280 and x["outcome"]["full"] != x["outcome"]["short"] for x in works) and gones == ["old-07", "old-08", "old-09"], f"{S.size_of(stl)} {[len(x['outcome']['full']) for x in works]} {gones}")
+# 1.7 (14/09 dall'app: recap.items = 0 con 9 sessioni e 10 progetti): lo stesso stato con dieci voci di recap lunghe
+recap_long = {"date": "2026-09-12", "items": [{"project": f"progetto-{i:02d}", "done": "Migrazioni applicate e verificate, test verdi su tutte e due le suite. " * 2, "next": "Rivedere i seed, la pagina admin e il deploy di prova su staging. " * 2} for i in range(10)]}
+str_ = S.build_state(dict(live, recap=recap_long), 1789210800)
+T.check("R2 (1.7) the recap is no longer the first thing to go: with ten gone sessions and thirty projects it keeps its items (done/next cut at a word), under the cap",
+        S.size_of(str_) <= 8192 and len(str_["recap"]["items"]) >= 1 and all(len(i["done"]) <= S.RECAP_CUT and len(i["next"]) <= S.RECAP_CUT for i in str_["recap"]["items"]), f"{S.size_of(str_)} items={len(str_['recap']['items'])}")
+import copy
+tiny = S.fit_state(copy.deepcopy(dict(S.build_state(dict(live, recap=recap_long), 1789210800))), max_kb=2)
+# 23/09 (dal polso: «Session closed» per sessioni vive e ferme): fit_state toglieva sessioni VIVE dal fondo quando lo
+# stato sfiorava gli 8 KB, e gli eventi calcolati sullo stato tagliato davano «gone»
+crowd = S.build_state(live, 1789210800, fit=False)
+for i in range(3):   # un caso in cui i tagli leggeri bastano; oltre (13 sessioni da ~600 byte) una sessione deve cadere
+    crowd["sessions"].append(dict(copy.deepcopy(crowd["sessions"][0]), name=f"viva-{i}", state="idle", question=None,
+                                  tool_note="nota " * 20, next="prossimo passo " * 8))
+crowd["projects"] = crowd["projects"] * 3
+cut = S.fit_state(copy.deepcopy(crowd), max_kb=8)
+live_names = {x["name"] for x in crowd["sessions"] if x["state"] != "gone"}
+T.check("R2 (23/09) a state over the cap: the lighter cuts (idle sessions' tool_note/next, projects to five) keep every live session",
+        S.size_of(crowd) > 8192 and live_names <= {x["name"] for x in cut["sessions"]} and S.size_of(cut) <= 8192,
+        f"{S.size_of(crowd)} → {S.size_of(cut)} {sorted(live_names - {x['name'] for x in cut['sessions']})}")
+tight = S.fit_state(copy.deepcopy(crowd), max_kb=3)
+ev_full, _ = S.events_between(crowd, crowd, 1789210900, 1)
+dropped = live_names - {x["name"] for x in tight["sessions"]}
+ev_cut, _ = S.events_between(crowd, tight, 1789210900, 1)
+T.check("R2 (23/09, 06/10) even under a tight cap no live session is trimmed, so none is ever «gone» by the cut; events come from the full state",
+        not dropped and not [e for e in ev_full if e["kind"] == "gone"] and not [e for e in ev_cut if e["kind"] == "gone"],
+        f"dropped={sorted(dropped)} gone_full={[e['session'] for e in ev_full if e['kind'] == 'gone']}")
+relay_src = (T.SCRIPTS / "cm-relay.py").read_text()
+T.check("R2 (23/09) _push diffs full states and keeps the full one in last-state.json",
+        "full = S.build_state(src, now, fit=False)" in relay_src and 'last.get("full") or last.get("state")' in relay_src
+        and '"full": full' in relay_src, "")
+# 06/10 (regola del maintainer delle 10:57; rino sparita dall'app): oltre il tetto, con molte sessioni vive, nessuna
+# viva esce mai — via le finite, i campi facoltativi e i progetti, e se non basta lo stato resta sopra il tetto
+many = copy.deepcopy(crowd)
+for i in range(3, 14):
+    many["sessions"].append(dict(copy.deepcopy(crowd["sessions"][0]), name=f"viva-{i}", state="idle", question=None, tool_note="nota " * 20))
+_live_many = {x["name"] for x in many["sessions"] if x["state"] != "gone"}
+fat = S.fit_state(copy.deepcopy(many), max_kb=8)
+T.check("R2 (06/10) a state that cannot fit: every LIVE session stays (never removed without consent), the gone ones, the optional fields and the projects go first",
+        {x["name"] for x in fat["sessions"]} == _live_many and not any(x["state"] == "gone" for x in fat["sessions"]) and fat["projects"] == []
+        and all(x["outcome"] is None or x["outcome"]["full"] == x["outcome"]["short"] for x in fat["sessions"]), f"{len(_live_many)} live, {len(fat['sessions'])} kept, {S.size_of(fat)} bytes")
+T.check("R2 (1.7) even under a tiny cap one recap item stays, cut to RECAP_CUT at a word (items go from the end, never the last)",
+        len(tiny["recap"]["items"]) == 1 and tiny["recap"]["items"][0]["project"] == "progetto-00" and len(tiny["recap"]["items"][0]["done"]) <= S.RECAP_CUT, str(tiny["recap"]))
+T.check("R2 (1.6) short = the whole Watch line up to 200, cut at a word, no «…»", works[0]["outcome"]["short"] == "paused at a clean point; resume steps are in the plan and the tests are green" and S.short_of("parola " * 40, S.SHORT_MAX) == ("parola " * 40)[:200].rsplit(" ", 1)[0].rstrip() and "…" not in S.short_of("parola " * 40, S.SHORT_MAX), works[0]["outcome"]["short"])
+T.check("R2 cut_at_word keeps newlines and cuts at a word", S.cut_at_word("uno due\ntre quattro", 12) == "uno due\ntre" and S.cut_at_word("corto", 50) == "corto", repr(S.cut_at_word("uno due\ntre quattro", 12)))
+T.check("R2 tier_of: dangerous words in a PERMISSION → high; Read → low; Bash → medium; ask/plan → always medium", S.tier_of("permission", "Bash", "rm -rf build") == "high" and S.tier_of("permission", "Read", "cat x") == "low" and S.tier_of("permission", "Bash", "ls") == "medium" and S.tier_of("ask", "AskUserQuestion", "Deploy now?") == "medium" and S.tier_of("ask", None, "git push origin main?") == "medium" and S.tier_of("permission", "Bash", "git push origin main") == "high", "")
+T.check("R2 (1.5) tool_note carries the intent of the running command (null when the session is not working)", st1["sessions"][1]["tool_note"] == "Run the test suite" and st1["sessions"][2]["tool_note"] is None, str([(x["name"], x["tool_note"]) for x in st1["sessions"]]))
+T.check("R2 (1.3) quota carries reset_h5, when the 5-hour window restarts (before, the watch showed the weekly reset under the 5-hour figure)", st1["quota"]["personal"]["reset_h5"] == 1789228800 and st1["quota"]["work"]["reset_h5"] == 1789225200 and S.build_quota({"x": {}})["x"]["reset_h5"] is None, str(st1["quota"]))
+T.check("R2 (1.2) next_at: the date of the recap line that produced «next» (null when there is no next)", st1["sessions"][0]["next_at"] == 1789171200 and st1["sessions"][2]["next"] is None and st1["sessions"][2]["next_at"] is None, str([(x["name"], x["next_at"]) for x in st1["sessions"]]))
+T.check("R2 (1.1) color_of: circle/square/heart of the same hue → the same hex; unknown or empty → None; relay.colors overrides", S.color_of("🟠") == "#F5A623" and S.color_of("🟧") == "#F5A623" and S.color_of("🧡") == "#F5A623" and S.color_of("❤️") == "#E74C3C" and S.color_of("⬜") == "#BDC3C7" and S.color_of("") is None and S.color_of("🐙") is None and S.color_of("🟠", {"🟠": "#111111"}) == "#111111", "")
+T.check("R2 (1.1) a session without an icon → icon and color null (old readers: grey)", S.build_session({"name": "x", "tmux": "x", "status": "idle"}, {"root": "/", "prefixes": []})["icon"] is None and S.build_session({"name": "x", "tmux": "x", "status": "idle"}, {"root": "/", "prefixes": []})["color"] is None, "")
+T.check("R2 awaiting state: a session with a wrist prompt pending is «awaiting» (ordered with busy)", S.state_of({"status": "idle", "tmux": "x"}, {"x"}) == "awaiting" and S.ORDER["awaiting"] == S.ORDER["busy"], "")
+
+# R3: eventi dal diff
+EV = json.loads((FIX / "events-sample.json").read_text())
+# 1.56-1.58: preview (quando qualcosa e' nascosto) e i campi di quota_limit sono facoltativi; gli altri sempre
+EV_OPT = {"preview", "reset_at", "window", "other_account", "other_model", "actions", "reason", "continue_text", "quiet", "ok"}
+ev_ok = lambda e: set(EV[0]) <= set(e) <= set(EV[0]) | EV_OPT  # noqa: E731
+ev, seq = S.events_between(F2, F1, 1789210800, 1)
+T.check("R3 state-2 → state-1: launched ledger-api, question ledger-api, outcome atlas-shop, launched field-notes; keys <ts>_<seq>; shape of events-sample", [(e["kind"], e["session"]) for e in ev] == [("launched", "ledger-api"), ("question", "ledger-api"), ("outcome", "atlas-shop"), ("launched", "field-notes")] and ev[0]["key"] == "1789210800_001" and ev[3]["key"] == "1789210800_004" and seq == 5 and all(ev_ok(e) for e in ev) and ev[1]["title"] == "ledger-api" and ev[1]["body"] == F1["sessions"][0]["question"]["text"] and ev[1]["ref"] == "q-1789210500-1" and ev[2]["body"] == "Migrations 008-011 applied, tests green" and ev[0]["body"] == "work/clients/ledger-api", str(ev))
+ev2, _ = S.events_between(F1, F2, 1789214400, 1)
+T.check("R3 state-1 → state-2: outcome atlas-shop (new at), gone ledger-api and field-notes (vanished), nothing for orbit-docs (already gone); 1.83: the two MCP questions of state-2; 1.84: atlas-shop's needs_you", [(e["kind"], e["session"]) for e in ev2] == [("outcome", "atlas-shop"), ("needs_you", "atlas-shop"), ("gone", "ledger-api"), ("gone", "field-notes"), ("elicitation", "atlas-shop"), ("elicitation", "atlas-shop")] and ev2[2]["title"] == "ledger-api", str(ev2))
+q_prev = {"sessions": [F1["sessions"][0]], "quota": {"personal": {"h5": 90, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
+q_cur = {"sessions": [dict(F1["sessions"][0], question=None)], "quota": {"personal": {"h5": 96, "w7": 30, "reset_w7": 1789610400, "stale": False}}}
+ev3, _ = S.events_between(q_prev, q_cur, 1789210900, 7)
+T.check("R3 question gone → answered (ref = question id); quota crossing warn_pct → «96 % personal» with the reset time (no emoji, 22/10)", [(e["kind"], e["key"]) for e in ev3] == [("answered", "1789210900_007"), ("quota", "1789210900_008")] and ev3[0]["ref"] == "q-1789210500-1" and ev3[1]["title"] == "96 % personal" and ev3[1]["account"] == "personal" and ev3[1]["body"].startswith("reset "), str(ev3))
+
+# R4: relay push contro il Firebase finto, con dispatcher finto e stato finto della macchina
+home = tmp / "home"; (home / ".claude" / "waiting").mkdir(parents=True)
+ws = home / "ws"
+for d in ("personal/atlas-shop/docs", "personal/field-notes", "work/clients/ledger-api", "work/own/orbit-docs", ".claude"):
+    (ws / d).mkdir(parents=True)
+(ws / "personal" / "atlas-shop" / "docs" / "recap.md").write_text("# Recap\n\n- 2026-09-12: Migrazioni applicate · prossimo: Review the seeds and the admin page\n")
+state_dir = home / ".claude"
+argslog = tmp / "cm-args.log"
+alive = tmp / "alive.json"
+good_json = tmp / "good.json"      # la fotografia del registro (registry --good)
+launch_adds = tmp / "launch-adds.json"   # se c'e', launch la copia su alive: la sessione nata dal lancio
+GOOD_ORBIT = {"nome": "work-orbit-docs", "cartella": str(ws / "work" / "own" / "orbit-docs"), "account": "work", "visto": "2026-09-12T09:00:00"}
+good_json.write_text(json.dumps({"sessioni": [GOOD_ORBIT]}))
+# 0319ab: il talk finto scrive il record nella casella come quello vero (cm-inbox.put, origin «session»)
+fake_talk = tmp / "fake-talk.py"
+fake_talk.write_text(f"""import importlib.util, sys
+spec = importlib.util.spec_from_file_location("cm_inbox", {str(T.SCRIPTS / "cm-inbox.py")!r})
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m.put(sys.argv[1], sys.argv[2], "supervisor")
+""")
+fake_cm = tmp / "supervisor"
+fake_cm.write_text(f"""#!/bin/sh
+printf '%s\\n' "$*" >> "{argslog}"
+case "$1" in
+  sessions) cat "{alive}" ;;
+  registry) if [ "$2" != "--closed" ]; then cat "{good_json}"; fi ;;
+  quota) echo '{{"personal": {{"cinque_ore_pct": 11, "settimana_pct": 36, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": false}}, "work": {{"cinque_ore_pct": null, "settimana_pct": 75, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": true}}}}' ;;
+  answer) if [ "$3" = "--show" ]; then if [ "$2" = "work-ledger-api" ]; then echo "«$2» chiede — Deploy: Deploy ready, waiting for the client ok. Deploy now?"; echo "  ❯ 1. yes"; echo "    2. no"; else echo "nessuna domanda aperta sullo schermo"; exit 1; fi; else case "$3" in 1|2) echo "«$2»: risposto $3. yes  (Deploy now?)" ;; --text) echo "«$2»: risposto 3. $4  (Deploy now?)" ;; --chat) echo "«$2»: risposto 4. Chat about this  (Deploy now?)" ;; *) echo "opzione $3 inesistente" >&2; exit 2 ;; esac; fi ;;
+  screen) i=1; while [ $i -le 30 ]; do echo "riga $i dello schermo"; i=$((i+1)); done ;;
+  panel) if [ "$2" = "field-notes" ]; then echo "   Session"; echo "   Total cost:            \$0.42"; else exit 1; fi ;;
+  talk) if [ -f "{tmp / 'talk-saved'}" ]; then echo "supervisor talk: «$2» è chiusa; messaggio m1 salvato nella casella, le arriva quando riparte (stato: supervisor talk --status m1)" >&2; else python3 "{fake_talk}" "$2" "$3"; echo "consegnato"; fi ;;
+  model) echo "$2: model Sonnet 5, this session only" ;;
+  permissions) if [ "$2" = "work-ledger-api" ]; then echo "$2: $3 is not in this session's Shift+Tab cycle, left on plan"; exit 4; else echo "$2: permissions now $3"; fi ;;
+  effort) if [ "$2" = "atlas-shop" ]; then echo "atlas-shop is working: effort low is chosen and applies at the end of the turn, before the next prompt"; exit 0; else echo "$2: effort $3, this session only"; fi ;;
+  report) python3 "{fake_talk}" "$6" "segnalazione: $4"; if [ "$3" != "-" ]; then cp "$3" "{tmp / 'report-img'}"; echo "segnalazione consegnata a «$6»"; echo "  immagine: $2/docs/segnalazioni/2026-09-12-the-client-says-the-checkout-button-is-g.jpg"; else echo "segnalazione consegnata a «$6»"; fi ;;
+  interrupt) case "$2" in atlas-shop) echo "$2: fermata" ;; field-notes) echo "$2: niente da fermare" >&2; exit 1 ;; *) echo "supervisor interrupt: «$2» non è viva" >&2; exit 3 ;; esac ;;
+  night) case "$2" in
+      add) if [ "$4" = "FULL" ]; then echo "coda piena: 8 lavori, night.max_queued è 8" >&2; exit 4; fi; echo "in coda: 7b21d4e8 · $3 · account «work» (2 in coda)" ;;
+      remove) case "$3" in 5d0e6b92) echo "tolta: $3" ;; a3f09c1e) echo "$3 è già partito: non si può togliere" >&2; exit 5 ;; *) echo "nessuna voce con id $3" >&2; exit 1 ;; esac ;;
+    esac ;;
+  task) case "$2" in list) if [ -f "{tmp / 'tasks.json'}" ]; then cat "{tmp / 'tasks.json'}"; else echo '[]'; fi ;; approve) echo "" ;; show) if [ -f "{tmp / 'task-show.json'}" ]; then cat "{tmp / 'task-show.json'}"; fi ;; closed) if [ -f "{tmp / 'tasks-closed.json'}" ]; then cat "{tmp / 'tasks-closed.json'}"; else echo "no task registry" >&2; exit 3; fi ;; impegni) if [ -f "{tmp / 'impegni.json'}" ]; then cat "{tmp / 'impegni.json'}"; else echo '[]'; fi ;; esac ;;
+  launch) echo "sessione avviata"; echo "  link: https://claude.ai/code/session_01NEW"; if [ -f "{launch_adds}" ]; then cp "{launch_adds}" "{alive}"; fi ;;
+esac
+""")
+fake_cm.chmod(0o755)
+
+
+def rows_alive(*names, **over):
+    base = {"ledger-api": {"pid": 7, "name": "work-ledger-api", "tmux": "work-ledger-api", "cwd": str(ws / "work" / "clients" / "ledger-api"), "status": "waiting", "waiting": True, "link": "https://claude.ai/code/session_01L", "account": "work", "session_id": "S-L", "attached": False, "started_at": 1789210000000},
+            "atlas-shop": {"pid": 8, "name": "atlas-shop", "tmux": "atlas-shop", "cwd": str(ws / "personal" / "atlas-shop"), "status": "busy", "waiting": False, "link": "https://claude.ai/code/session_01A", "account": "personal", "session_id": "S-A", "attached": True, "started_at": 1789209000000},
+            "field-notes": {"pid": 9, "name": "field-notes", "tmux": "field-notes", "cwd": str(ws / "personal" / "field-notes"), "status": "idle", "waiting": False, "link": "https://claude.ai/code/session_01F", "account": "personal", "session_id": "S-F", "attached": False, "started_at": 1789120000000}}
+    rows = [dict(base[n], **over.get(n, {})) for n in names]
+    alive.write_text(json.dumps(rows))
+
+
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {"questions": [{"question": "Deploy now?"}]}}))
+ledger = state_dir / "ledger.jsonl"
+ledger.write_text("\n".join(json.dumps(r) for r in [
+    {"ts": iso(1789210380), "event": "prompt", "session_id": "S-L"},
+    {"ts": iso(1789210500), "event": "waiting", "session_id": "S-L", "tool": "AskUserQuestion"},
+    {"ts": iso(1789210300), "event": "stop", "session_id": "S-A", "last": "x", "esito": "Esito: migrations 008-011 applied, tests green.", "tail": "Esito: migrations 008-011 applied, tests green.\nRestano da rivedere i seed.\nWatch: Migrazioni applicate, test verdi", "watch": "Watch: Migrazioni applicate, test verdi"},
+    {"ts": iso(1789210700), "event": "prompt", "session_id": "S-A"},
+]) + "\n")
+tgdir = home / ".claude" / "channels" / "telegram"
+tgdir.mkdir(parents=True, exist_ok=True)
+(tgdir / ".env").write_text("TELEGRAM_BOT_TOKEN=123:ABC\n")
+(tgdir / "access.json").write_text(json.dumps({"allowFrom": ["1001"]}))
+TG_API, TG_CALLS, _ = T.fake_telegram()
+rdir2 = tmp / "relay-live"
+C.save_key(rdir2, k)
+cfg = tmp / "config.json"
+
+
+def write_cfg(enabled=True, **extra):
+    d = {"language": "it", "sessions": {"max_sessions": 50}, "state_dir": str(state_dir), "default_account": "personal",
+         "workspace": {"root": str(ws), "excluded_dirs": [".git"], "project_dirs": ["personal", "work/clients", "work/own"]},
+         "folder_map": [{"path": str(ws / "work"), "account": "work"}, {"path": str(ws / "personal"), "account": "personal"}],
+         "bot": {"api_base": TG_API, "token_file": str(tgdir / ".env"), "access_file": str(tgdir / "access.json")},
+         "accounts": {"personal": {"config_dir": str(home / ".claude")}, "work": {"config_dir": str(home / ".claude-pixel"), "tmux_prefix": "work-"}},
+         "relay": {"enabled": enabled, "firebase_url": URL, "service_account": str(SA), "token_url": URL + "/token", "fcm_url": URL,
+                   "dir": str(rdir2), "host": "crostini-test", "debounce_s": 1, "fcm_topic": "watch", "duplicate_prompt_s": 0,
+                   "stream_silence_s": 4,   # il RTDB finto manda un keep-alive ogni 2 s
+                   "adb": str(Path(__file__).resolve().parent / "lib" / "fake-adb.py"), **extra},   # 1.32: mai l'adb vero
+         # i modelli delle fixture del contratto (Opus 5, 1.12): dal 22/09 il default e' Opus 5.5 (2.1.280), e le fixture
+         # restano identiche a quelle dell'app (R0), che si aggiornano dal suo lato
+         "tune": {"models": [{"id": m["id"], "label": m["label"], "pick": m["label"]}
+                             for m in json.loads((FIX / "state-1-question.json").read_text())["choices"]["models"]]}}
+    cfg.write_text(json.dumps(d))
+
+
+write_cfg()
+rdir2.mkdir(parents=True, exist_ok=True)
+(rdir2 / "follow.json").write_text(json.dumps(["work-ledger-api"]))
+ENV = {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_RELAY_CM": str(fake_cm),
+       "CM_RELAY_NOW": "1789210840"}   # 1.29: solo la cronologia lo legge (i dati di prova sono del 12/09/2026)
+
+
+def relay(*args, timeout=60, env=None):
+    return subprocess.run([sys.executable, str(T.SCRIPTS / "cm-relay.py"), *args], capture_output=True, text=True, env=env or ENV, timeout=timeout)
+
+
+def cm_calls():
+    return argslog.read_text().splitlines() if argslog.exists() else []
+
+
+# 14/09 (dall'app): attesa vista solo sullo schermo, senza file dell'hook e senza nulla da estrarre → niente «?»
+rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"status": "waiting", "waiting": True}})
+fq = next(x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"] if x["name"] == "field-notes")
+T.check("R4 waiting seen only on screen, no waiting/<sid>, nothing extracted → no question, the session back to idle (no open turn in the ledger), never «?»", fq["state"] == "idle" and fq["question"] is None, str(fq))
+# senza evento waiting nel ledger l'asked_at e' il primo avvistamento (la push precedente), non «adesso»
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+ledger_bak = ledger.read_text()
+ledger.write_text("\n".join(l for l in ledger_bak.splitlines() if '"waiting"' not in l) + "\n")
+(rdir2 / "last-state.json").write_text(json.dumps({"state": {"sessions": [{"name": "ledger-api", "question": {"asked_at": 1789210123}}]}}))
+lq = json.loads(relay("push", "--dry-run").stdout)["sessions"][0]
+T.check("R4 no waiting event in the ledger → asked_at = first sighting (the previous push), not now", lq["name"] == "ledger-api" and lq["question"]["asked_at"] == 1789210123, str(lq.get("question")))
+(rdir2 / "last-state.json").unlink()
+ledger.write_text(ledger_bak)
+n_req = len(CALLS["requests"])
+r = relay("push", "--dry-run")
+dry = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip().startswith("{") else {}
+T.check("R4 push --dry-run: clear JSON on stdout, no HTTP; sessions ordered ❓ ▶ ✓ ✗ with short names, the question whole with kind ask and options 1-2, the busy session's outcome from the ledger (short = Watch line), gone from the snapshot, quota, projects with accounts from folder_map, recap, night", r.returncode == 0 and len(CALLS["requests"]) == n_req and [(x["name"], x["state"]) for x in dry.get("sessions", [])] == [("ledger-api", "waiting"), ("atlas-shop", "busy"), ("field-notes", "idle"), ("orbit-docs", "gone")] and dry["sessions"][0]["question"]["text"] == "Deploy ready, waiting for the client ok. Deploy now?" and dry["sessions"][0]["question"]["kind"] == "ask" and [o["label"] for o in dry["sessions"][0]["question"]["options"]] == ["yes", "no"] and dry["sessions"][0]["question"]["asked_at"] == 1789210500 and dry["sessions"][0]["followed"] is True and dry["sessions"][0]["project"] == "work/clients/ledger-api" and dry["sessions"][1]["outcome"]["short"] == "Migrazioni applicate, test verdi" and dry["sessions"][1]["turn_started"] == 1789210700 and dry["sessions"][1]["next"] == "Review the seeds and the admin page" and dry["sessions"][3]["since"] == S.epoch("2026-09-12T09:00:00") and dry["quota"]["work"] == {"h5": None, "w7": 75, "reset_w7": 1789444800, "reset_h5": 1789225200, "stale": True, "kind": "work"} and {(p["name"], p["account"]) for p in dry["projects"]} == {("atlas-shop", "personal"), ("field-notes", "personal"), ("ledger-api", "work"), ("orbit-docs", "work")} and dry["host"] == "crostini-test" and dry["night"] == {"queued": 0, "running": None, "items": [], "master": True} and dry["v"] == 1, r.stdout[:600] + r.stderr)
+T.check("R4 (1.1) every live session carries icon (from cm-color's registry, stable) and color «#RRGGBB»; the gone one has none on the first push", all(x["icon"] and re.match(r"^#[0-9A-F]{6}$", x["color"] or "") for x in dry["sessions"] if x["state"] != "gone") and dry["sessions"][3]["icon"] is None, str([(x["name"], x["icon"], x["color"]) for x in dry["sessions"]]))
+r = relay("push")
+_pub4 = C.decrypt(STORE["state"], k) if r.returncode == 0 and STORE.get("state") else {}
+T.check("R4 push: exit 0, /state on the bus is {v:1, enc} and decrypts to the same document as the dry-run (but ts, published_at and system, 1.90: a live reading of the machine)", r.returncode == 0 and set(STORE.get("state", {})) == {"v", "enc"} and STORE["state"]["v"] == 1 and {kk: v for kk, v in _pub4.items() if kk not in ("ts", "published_at", "system")} == {kk: v for kk, v in dry.items() if kk not in ("ts", "system")}, r.stdout + r.stderr + str(STORE.get("state"))[:100])
+evs = {kk: C.decrypt(v, k) for kk, v in list((STORE.get("events") or {}).items())}
+T.check("R4 first push: /events has launched ×3 and the question (encrypted, key <ts>_<seq>); FCM sent one data message per event with kind and session; last-state.json written", sorted(e["kind"] for e in evs.values()) == ["launched", "launched", "launched", "question"] and all(kk == evs[kk]["key"] for kk in evs) and len(CALLS["fcm"]) == 4 and any(m["message"]["data"]["kind"] == "question" and m["message"]["data"]["session"] == "ledger-api" and m["message"]["topic"] == "watch" for m in CALLS["fcm"]) and (rdir2 / "last-state.json").is_file(), str(evs) + str(CALLS["fcm"])[:300])
+n_fcm, n_ev = len(CALLS["fcm"]), len(STORE["events"])
+ts1 = C.decrypt(STORE["state"], k)["ts"]
+time.sleep(1.1)
+r = relay("push")
+T.check("R4 second push without changes: new ts, no new event, no FCM", r.returncode == 0 and C.decrypt(STORE["state"], k)["ts"] > ts1 and len(STORE["events"]) == n_ev and len(CALLS["fcm"]) == n_fcm, r.stdout + r.stderr)
+# la domanda risposta altrove → evento answered; una sessione sparisce → gone
+rows_alive("atlas-shop", "field-notes", **{"atlas-shop": {"status": "idle"}})
+(state_dir / "waiting" / "S-L").unlink()
+r = relay("push")
+evs = {kk: C.decrypt(v, k) for kk, v in list(STORE["events"].items())}
+new = [e for e in evs.values() if e["key"] not in [] and e["ts"] >= ts1]
+T.check("R4 third push: ledger-api vanished → gone; the FCM for it", any(e["kind"] == "gone" and e["session"] == "ledger-api" for e in evs.values()) and CALLS["fcm"][-1]["message"]["data"]["kind"] == "gone", str([(e["kind"], e["session"]) for e in evs.values()]))
+# async con debounce: due richieste in mezzo secondo → una sola scrittura di /state
+n_put = len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")])
+t0 = time.time(); r1 = relay("push", "--async"); r2 = relay("push", "--async"); dt = time.time() - t0
+puts_back = len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")]) - n_put   # 08/10: «subito» = la push non e' ancora partita
+T.wait_until(lambda: len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")]) > n_put, 5)
+time.sleep(1.5)
+T.check("R4 push --async: returns at once (no /state write yet when both calls are back; the time alone depends on the machine's load), one /state write for two requests within the debounce", r1.returncode == 0 and r2.returncode == 0 and puts_back == 0 and dt < 6 and len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")]) == n_put + 1, f"dt={dt:.2f} puts={len([x for x in CALLS['requests'] if x == ('PUT', '/state.json')]) - n_put}")
+# oltre 8 KB: molti progetti → fit_state
+for i in range(150):
+    (ws / "personal" / f"progetto-con-un-nome-lungo-{i:03d}").mkdir()
+r = relay("push", "--dry-run")
+big = json.loads(r.stdout)
+T.check("R4 a state over 8 KB is trimmed under the cap (projects cut to 10), the question untouched", r.returncode == 0 and S.size_of(big) <= 8192 and len(big["projects"]) <= 10, str(S.size_of(big)))
+import shutil
+for i in range(150):
+    shutil.rmtree(ws / "personal" / f"progetto-con-un-nome-lungo-{i:03d}")
+write_cfg(enabled=False)
+r = relay("push")
+T.check("R4 relay.enabled=false: push exits 2 saying so; --dry-run still works", r.returncode == 2 and "spento" in r.stdout and relay("push", "--dry-run").returncode == 0, r.stdout + r.stderr)
+write_cfg()
+
+# crontab finto (pair e install lo cercano prima di fare qualsiasi cosa, 0.4.20)
+cron = tmp / "crontab"; cron.write_text("")
+fake_crontab = tmp / "crontab.sh"
+fake_crontab.write_text('#!/bin/sh\nif [ "$1" = "-l" ]; then cat "%s"; else cat > "%s.tmp" && mv "%s.tmp" "%s"; fi\n' % (cron, cron, cron, cron))
+fake_crontab.chmod(0o755)
+ENV["CM_CRONTAB_CMD"] = str(fake_crontab)
+
+# R5: pair con un orologio finto (codice) e un telefono finto (QR, 1.15)
+CODE_LINE = [""]   # 1.32: l'ultima riga del codice stampata da pair
+
+
+def pair_run(timeout=8, *extra):
+    """Lancia `pair`, legge stdout fino alla riga del codice; torna (processo, codice, righe prima del codice)."""
+    pr = subprocess.Popen([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", "--timeout", str(timeout), *extra], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=ENV)
+    import re as _re
+    head = []
+    for _ in range(200):
+        line = pr.stdout.readline()
+        if not line:
+            break
+        m = _re.search(r"Codice.*\b(\d{6})\b", line)
+        if m:
+            CODE_LINE[0] = line.rstrip("\n")
+            return pr, m.group(1), head
+        head.append(line.rstrip("\n"))
+    return pr, "", head
+
+
+def pair_nodes(code):
+    """I nodi di questo giro: quelli con la stessa pc_pub del codice (una conferma `ok` di un giro vecchio non conta)."""
+    pub = ((STORE.get("pair") or {}).get(code) or {}).get("pc_pub")
+    return {n: v for n, v in (STORE.get("pair") or {}).items() if isinstance(v, dict) and pub and v.get("pc_pub") == pub}
+
+
+def pair_stop(pr):
+    """Ctrl-C al pair in corso: il suo `finally` toglie i nodi dal bus."""
+    import signal as _sig
+    pr.send_signal(_sig.SIGINT); pr.wait(timeout=10)
+
+
+pr, code, head = pair_run()
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+nodes = pair_nodes(code)
+pid_node = next((n for n in nodes if n != code), "")
+T.check("R5 pair: a six-digit code on stdout; /pair/<code> has the PC's public key, host and exp", len(code) == 6 and nodes.get(code, {}).get("pc_pub") and nodes[code]["host"] == "crostini-test" and nodes[code]["exp"] > time.time(), str(STORE.get("pair")))
+T.check("R5 (1.15) the same {pc_pub, host, exp} under /pair/<id>, the id 22 base64url characters; without the app's Firebase data no QR, said in one line above the code", len(pid_node) == 22 and re.fullmatch(r"[A-Za-z0-9_-]{22}", pid_node) and nodes[pid_node] == nodes[code] and len(nodes) == 2 and any("niente QR" in l and "relay.firebase_app" in l for l in head), f"nodes={list(nodes)} head={head}")
+w_priv, w_pub = C.pair_keys()
+k_watch = C.shared_key(w_priv, STORE["pair"][code]["pc_pub"])
+for i in range(3):   # tre sul codice, due sull'id: i tentativi sono in comune
+    http("PUT", f"/pair/{code}/watch.json", {"watch_pub": w_pub, "uid": "u-bad", "name": "intruder", "check": f"{i:016x}"})
+    T.wait_until(lambda: not (STORE.get("pair") or {}).get(code, {}).get("watch"), 3)
+for i in range(2):
+    http("PUT", f"/pair/{pid_node}/watch.json", {"watch_pub": w_pub, "uid": "u-bad", "name": "intruder", "check": f"{i:016x}"})
+    T.wait_until(lambda: not (STORE.get("pair") or {}).get(pid_node, {}).get("watch"), 3)
+pr.wait(timeout=10)
+T.check("R5 five wrong checks (three on the code, two on the id: attempts shared) → exit 2, no key change, no uid allowed, both nodes cleaned", pr.returncode == 2 and C.load_key(rdir2) == k and not (STORE.get("allowed") or {}) and code not in (STORE.get("pair") or {}) and pid_node not in (STORE.get("pair") or {}), f"rc={pr.returncode} " + pr.stdout.read() + pr.stderr.read())
+pr, code, head = pair_run()
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+pid_node = next(n for n in pair_nodes(code) if n != code)
+w_priv, w_pub = C.pair_keys()
+k_watch = C.shared_key(w_priv, STORE["pair"][code]["pc_pub"])
+http("PUT", f"/pair/{code}/watch.json", {"watch_pub": w_pub, "uid": "u1", "name": "watch-pixel5", "check": C.check_code(k_watch, code)})
+pr.wait(timeout=10)
+out5 = pr.stdout.read()
+T.wait_until(lambda: set((STORE.get("pair") or {}).get(code, {})) == {"ok"}, 3)
+T.check("R5 right check on the code → exit 0, the shared key saved (0600) and equal to the watch's, u1 in /allowed and devices.json, only the confirmation left under /pair/<code> (the watch still has to read it), /pair/<id> gone, «accoppiato» printed", pr.returncode == 0 and C.load_key(rdir2) == k_watch and STORE.get("allowed") == {"u1": True} and json.loads((rdir2 / "devices.json").read_text())["u1"]["name"] == "watch-pixel5" and set((STORE.get("pair") or {}).get(code, {})) == {"ok"} and STORE["pair"][code]["ok"]["check"] == C.check_code(k_watch, code + ":pc") and pid_node not in STORE["pair"] and "accoppiato: watch-pixel5 (uid u1)" in out5, f"rc={pr.returncode} {out5} {pr.stderr.read()} {STORE.get('allowed')} {STORE.get('pair')}")
+# 1.15: il telefono risponde sull'id del QR, con uids e names: tutti gli uid in /allowed, i nomi in devices.json
+pr, code, head = pair_run()
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+pid_node = next(n for n in pair_nodes(code) if n != code)
+w2_priv, w2_pub = C.pair_keys(); k2 = C.shared_key(w2_priv, STORE["pair"][pid_node]["pc_pub"])
+http("PUT", f"/pair/{pid_node}/watch.json", {"watch_pub": w2_pub, "uid": "u2", "name": "Pixel 9", "check": C.check_code(k2, pid_node),
+                                              "uids": ["u2", "u3"], "names": {"u2": "Pixel 9", "u3": "Pixel Watch 5"}})
+pr.wait(timeout=10); out5b = pr.stdout.read()
+dev = json.loads((rdir2 / "devices.json").read_text())
+T.check("R5 (1.15) pairing again from the phone on /pair/<id> with uids and names → exit 0, /allowed = {u2, u3} (u1 revoked), devices.json with both names, new key, ok.check = HMAC(key, id + «:pc») under /pair/<id>, /pair/<code> gone and the previous confirmation swept", pr.returncode == 0 and STORE.get("allowed") == {"u2": True, "u3": True} and {u: d["name"] for u, d in dev.items()} == {"u2": "Pixel 9", "u3": "Pixel Watch 5"} and C.load_key(rdir2) == k2 and set(STORE["pair"]) == {pid_node} and STORE["pair"][pid_node] == {"ok": {"host": "crostini-test", "check": C.check_code(k2, pid_node + ":pc")}} and "Pixel 9 (uid u2)" in out5b and "Pixel Watch 5 (uid u3)" in out5b, f"rc={pr.returncode} {out5b} {STORE.get('allowed')} {STORE.get('pair')} {dev}")
+pr, code, head = pair_run(2)
+pr.wait(timeout=10)
+T.check("R5 nobody answers → exit 3 at the timeout, both nodes cleaned", pr.returncode == 3 and not pair_nodes(code), f"rc={pr.returncode} {STORE.get('pair')}")
+# R5d (contratto 1.30, 04/10, chiesto dall'app per il tablet): pair --help non accoppia; pair --add aggiunge senza revocare
+_n5d = len(STORE.get("pair") or {})
+_h = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", "--help"], capture_output=True, text=True, env=ENV, timeout=30)
+_u = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", "--bogus"], capture_output=True, text=True, env=ENV, timeout=30)
+T.check("R5d pair --help prints the usage (with --add) and exits 0; an unknown argument prints it on stderr and exits 2; neither touches /pair or the key",
+        _h.returncode == 0 and "relay pair [--add]" in _h.stdout and "Codice" not in _h.stdout and _u.returncode == 2 and "relay pair [--add]" in _u.stderr
+        and len(STORE.get("pair") or {}) == _n5d and C.load_key(rdir2) == k2, _h.stdout + _h.stderr + _u.stderr)
+_kp = C.key_path(rdir2); _kp.rename(_kp.with_suffix(".away"))
+_na = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", "--add", "--timeout", "3"], capture_output=True, text=True, env=ENV, timeout=30)
+_kp.with_suffix(".away").rename(_kp)
+T.check("R5d pair --add with no saved key → exit 2 «nothing to add to», no node on /pair", _na.returncode == 2 and "niente a cui aggiungersi" in _na.stdout and len(STORE.get("pair") or {}) == _n5d, _na.stdout + _na.stderr)
+_dev_before = (rdir2 / "devices.json").read_text()
+http("PUT", "/events/e-keep.json", {"v": 1, "enc": "kept"}); http("PUT", "/result/r-keep.json", {"v": 1, "enc": "kept"})
+pr, code, head = pair_run(8, "--add")
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+pid_node = next(n for n in pair_nodes(code) if n != code)
+T.check("R5d (1.30) pair --add: both nodes carry mode «add» besides pc_pub, host, exp", all((STORE["pair"][n] or {}).get("mode") == "add" for n in (code, pid_node)), str(STORE.get("pair"))[:300])
+t_priv, t_pub = C.pair_keys(); kt = C.shared_key(t_priv, STORE["pair"][pid_node]["pc_pub"])
+http("PUT", f"/pair/{pid_node}/watch.json", {"watch_pub": t_pub, "uid": "u4", "name": "Pixel Tablet", "check": C.check_code(kt, pid_node)})
+pr.wait(timeout=10); out5d = pr.stdout.read()
+T.wait_until(lambda: set((STORE.get("pair") or {}).get(pid_node, {})) == {"ok"}, 3)
+okd = (STORE.get("pair") or {}).get(pid_node, {}).get("ok") or {}
+dev5d = json.loads((rdir2 / "devices.json").read_text())
+T.check("R5d (1.30) the tablet answers → exit 0; the relay's key UNCHANGED; /allowed = u2, u3 (still there) + u4; devices.json merged; events and results kept; «aggiunto … 3» printed",
+        pr.returncode == 0 and C.load_key(rdir2) == k2 and STORE.get("allowed") == {"u2": True, "u3": True, "u4": True} and set(dev5d) == {"u2", "u3", "u4"} and dev5d["u4"]["name"] == "Pixel Tablet"
+        and (STORE.get("events") or {}).get("e-keep") and (STORE.get("result") or {}).get("r-keep") and "aggiunto: Pixel Tablet (uid u4)" in out5d and "dispositivi accoppiati: 3" in out5d, f"rc={pr.returncode} {out5d} {STORE.get('allowed')}")
+T.check("R5d (1.30) the confirmation: check = HMAC(pairing key, id + «:pc») as before, and key = {v, enc} that the tablet opens with the pairing key → {key: the relay's key in hex}",
+        okd.get("check") == C.check_code(kt, pid_node + ":pc") and C.decrypt(okd.get("key"), kt) == {"key": k2.hex()} and code not in (STORE.get("pair") or {}), str(okd)[:200])
+# 1.39: otto posti — altri due gia' accoppiati (5), e una risposta con 4 uid (il massimo di una risposta) fa 9
+http("PUT", "/allowed.json", dict(STORE.get("allowed") or {}, u13=True, u14=True))
+(rdir2 / "devices.json").write_text(json.dumps(dict(json.loads((rdir2 / "devices.json").read_text()), u13={"name": "u13", "paired_at": 1}, u14={"name": "u14", "paired_at": 1})))
+pr, code, head = pair_run(8, "--add")
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+f_priv, f_pub = C.pair_keys(); kf = C.shared_key(f_priv, STORE["pair"][code]["pc_pub"])
+http("PUT", f"/pair/{code}/watch.json", {"watch_pub": f_pub, "uid": "u5", "name": "Phone 2", "check": C.check_code(kf, code), "uids": ["u5", "u6", "u9", "u10"]})
+pr.wait(timeout=10); out5e = pr.stdout.read()
+T.check("R5d (1.30, 1.39: eight places) over 8 devices (5 + 4) → exit 4, the device reads {error: full} on its node, /allowed, devices.json and key unchanged",
+        pr.returncode == 4 and (STORE.get("pair") or {}).get(code) == {"error": "full"} and STORE.get("allowed") == {"u2": True, "u3": True, "u4": True, "u13": True, "u14": True}
+        and set(json.loads((rdir2 / "devices.json").read_text())) == {"u2", "u3", "u4", "u13", "u14"} and C.load_key(rdir2) == k2 and "RIFIUTATO" in out5e, f"rc={pr.returncode} {out5e} {STORE.get('pair')}")
+# torna come prima di R5d: i test dopo contano su u2, u3 e su eventi che si aprono con la chiave
+(rdir2 / "devices.json").write_text(_dev_before)
+http("PUT", "/allowed.json", {"u2": True, "u3": True}); http("DELETE", "/events/e-keep.json"); http("DELETE", "/result/r-keep.json"); http("DELETE", f"/pair/{code}.json")
+# con i dati dell'app Firebase: --text stampa il JSON del QR su una riga (contratto 1.15, pair-qr.json), poi il codice
+APP = {"api_key": "AIzaSyD-test-key", "project_id": "fake-project", "app_id": "1:123456789012:android:0a1b2c3d4e5f6a7b"}
+write_cfg(firebase_app=APP)
+pr, code, head = pair_run(8, "--text")
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+pid_node = next(n for n in pair_nodes(code) if n != code)
+try:
+    qr_doc = json.loads(head[-1]) if head else {}
+except ValueError:
+    qr_doc = {}
+T.check("R5 (1.15) pair --text: one JSON line {v:1, i:<id node>, c:pc_pub, h, e:exp, f:{k,p,a,d,t}} above the code, no QR drawn", len(head) == 1 and qr_doc.get("v") == 1 and qr_doc.get("i") == pid_node and qr_doc.get("c") == STORE["pair"][pid_node]["pc_pub"] and qr_doc.get("h") == "crostini-test" and qr_doc.get("e") == STORE["pair"][pid_node]["exp"] and qr_doc.get("f") == {"k": APP["api_key"], "p": APP["project_id"], "a": APP["app_id"], "d": URL, "t": "watch"}, str(head)[:400])
+pair_stop(pr)
+T.wait_until(lambda: code not in (STORE.get("pair") or {}) and pid_node not in (STORE.get("pair") or {}), 3)
+
+
+# R5h (13/10, chiesto dal maintainer): accanto al codice il link della web app con l'invito dentro —
+# <relay.web_app_url>/#pair=<base64url della riga di --text, senza padding>, e la riga che lo dice segreto
+def _after_code(pr_):
+    """Le righe dopo il codice: il pair scade da solo (timeout corto) e si legge fino alla fine. Un select sul fd non
+    basta: le righe stampate insieme al codice sono gia' nel buffer di Python."""
+    out = pr_.stdout.read().splitlines()
+    pr_.wait(timeout=10)
+    return out
+
+
+def _web_q(lines, origin):
+    m = re.search(re.escape(origin) + r"/#pair=([A-Za-z0-9_-]+)$", lines[0] if lines else "")
+    return base64.urlsafe_b64decode(m.group(1) + "=" * (-len(m.group(1)) % 4)).decode() if m and "=" not in m.group(1) else None
+
+
+for _extra, _origin in (({}, "https://supervisor.francescosorrentino.com"), ({"web_app_url": "https://example.web.app/"}, "https://example.web.app")):
+    write_cfg(firebase_app=APP, **_extra)
+    pr, code, head = pair_run(3, "--text")
+    _w = _after_code(pr)
+    T.check(f"R5h pair --text prints after the code «Web app: {_origin}/#pair=<base64url of the --text line, no padding>» and a line that says it is secret, {_extra or 'default origin'}",
+            head and _web_q(_w, _origin) == head[-1] and _w[0].startswith("Web app: ") and len(_w) > 1 and "Segreto come il QR" in _w[1] and "vale 1 min" in _w[1], str(_w))
+write_cfg(firebase_app=APP, web_app_url="")
+pr, code, head = pair_run(3, "--add", "--text")
+_w = _after_code(pr)
+T.check("R5h relay.web_app_url = \"\" → no web app link", code and not any("#pair=" in l for l in _w), str(_w))
+write_cfg(firebase_app=APP)
+pr, code, head = pair_run(3, "--add", "--text")
+_w = _after_code(pr)
+T.check("R5h pair --add --text prints the web app link too", any(_web_q([l], "https://supervisor.francescosorrentino.com") == head[-1] for l in _w if "#pair=" in l), str(_w))
+T.wait_until(lambda: not any(isinstance(v, dict) and v.get("pc_pub") for v in (STORE.get("pair") or {}).values()), 3)
+# senza --text: il QR a mezzi blocchi, margine di 2 moduli, decodificato (OpenCV, se c'e') = quel JSON
+pr, code, head = pair_run(8)
+T.wait_until(lambda: (STORE.get("pair") or {}).get(code, {}).get("pc_pub"), 3)
+pid_node = next(n for n in pair_nodes(code) if n != code)
+rows = [l for l in head if l and set(l) <= set("█▀▄ ")]
+
+
+def qr_decode(rows, scale=6):
+    """Le righe a mezzi blocchi tornano immagine (chiaro = blocco) e OpenCV le legge; None senza cv2. Il detector e'
+    QRCodeDetectorAruco (OpenCV >= 4.8): quello classico perde circa un QR su dieci a qualunque scala e livello di
+    correzione, sempre sugli stessi contenuti (misurato su 40 payload di pair, 25/09), e il test era aleatorio."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    Det = getattr(cv2, "QRCodeDetectorAruco", None)
+    if Det is None:   # 08/10: OpenCV < 4.8 (WSL di win, apt) ha solo il classico, aleatorio: come senza cv2
+        return None
+    img = np.zeros((len(rows) * 2 * scale, len(rows[0]) * scale), np.uint8)
+    for y, r in enumerate(rows):
+        for x, ch in enumerate(r):
+            img[y * 2 * scale:(y * 2 + 1) * scale, x * scale:(x + 1) * scale] = 255 if ch in "█▀" else 0
+            img[(y * 2 + 1) * scale:(y * 2 + 2) * scale, x * scale:(x + 1) * scale] = 255 if ch in "█▄" else 0
+    return Det().detectAndDecode(img)[0]
+
+
+decoded = qr_decode(rows) if rows else ""
+T.check("R5 (1.15) pair draws the QR in half blocks: «Inquadra» line, square rows of equal width, a light margin of 2 modules (1 row and 2 columns of full blocks) on every side, then the code", any("Inquadra il QR" in l for l in head) and len(rows) >= 20 and len({len(r) for r in rows}) == 1 and rows[0] == "█" * len(rows[0]) and rows[-1] == "█" * len(rows[0]) and rows[1] != rows[0] and all(r.startswith("██") and r.endswith("██") for r in rows) and abs(len(rows) * 2 - len(rows[0])) <= 1, f"rows={len(rows)} width={len(rows[0]) if rows else 0} head={head[:3]}")
+T.check("R5 (1.15) the drawn QR decodes (OpenCV) to the JSON of the QR, with i = the id node on the bus (skipped without cv2)", decoded is None or (decoded and json.loads(decoded)["i"] == pid_node and json.loads(decoded)["c"] == STORE["pair"][pid_node]["pc_pub"]), f"decoded={str(decoded)[:120]}")
+# R5e (contratto 1.32, 04/10): zero tocchi sul Chromebook — pair --add apre l'invito nell'app via adb (finto qui)
+_adblog = tmp / "adb.log"
+ENV.update({"FAKE_ADB_LOG": str(_adblog), "FAKE_ADB_MODE": "ok"})
+write_cfg(firebase_app=APP, app_package="com.example.cmaster")
+def _pair_lines(*extra, wait_s=6):
+    pr_, code_, head_ = pair_run(8, *extra)
+    after = []
+    t_end = time.time() + wait_s
+    import select as _sel
+    while time.time() < t_end:
+        r_, _, _ = _sel.select([pr_.stdout], [], [], 0.5)
+        if r_:
+            ln = pr_.stdout.readline()
+            if not ln:
+                break
+            after.append(ln.rstrip("\n"))
+            if "invito" in ln:
+                break
+    pair_stop(pr_)
+    return code_, head_, after
+_adblog.write_text(""); (rdir2 / "relay.log").write_text("")
+code5e, head5e, after5e = _pair_lines("--add", "--text")
+_cl5e = CODE_LINE[0]
+_line5e = head5e[-1] if head5e else ""
+_calls5e = _adblog.read_text().splitlines()
+_am = next((c for c in _calls5e if " shell am start " in c), "")
+_q = re.search(r"'cmwatch://pair\?q=([A-Za-z0-9_-]+)'", _am)
+_dec = base64.urlsafe_b64decode(_q.group(1) + "=" * (-len(_q.group(1)) % 4)).decode() if _q else ""
+T.check("R5e (1.32) pair --add with an adb that sees emulator-5554 → get-state, then am start -W VIEW of cmwatch://pair?q=<base64url of the --text line, no padding> for relay.app_package; «invito aperto» in the log",
+        _calls5e[:1] == ["-s emulator-5554 get-state"] and _am.startswith("-s emulator-5554 shell am start -W -a android.intent.action.VIEW -d '") and _am.endswith(" com.example.cmaster")
+        and _dec == _line5e and "=" not in _q.group(1) and "pair --add: invito aperto su emulator-5554" in (rdir2 / "relay.log").read_text(), str(_calls5e) + str(after5e))
+T.check("R5e (1.32) with --add the code line speaks of the app (QR or the line above) and of the minutes, not «scrivilo sull'orologio»",
+        "Sul telefono, tablet o Chromebook" in _cl5e and "orologio, 0 min" not in _cl5e and "scrivilo sull'orologio" not in _cl5e and code5e in _cl5e, _cl5e)
+ENV["FAKE_ADB_MODE"] = "offline"; _adblog.write_text("")
+code5f, head5f, after5f = _pair_lines("--add", "--text", wait_s=4)
+T.check("R5e (1.32) adb offline → no am start, nothing opened (not a terminal: no clipboard either), the pairing waits as usual",
+        _adblog.read_text().splitlines() == ["-s emulator-5554 get-state"] and not any("invito aperto" in a for a in after5f) and re.fullmatch(r"\d{6}", code5f or ""), _adblog.read_text() + str(after5f))
+ENV["FAKE_ADB_MODE"] = "ok"; _adblog.write_text("")
+code5g, head5g, _ = _pair_lines("--text", wait_s=2)
+T.check("R5e (1.32) a plain pair (not --add) never calls adb and keeps «scrivilo sull'orologio»", _adblog.read_text() == "" and "scrivilo sull'orologio" in CODE_LINE[0], _adblog.read_text() + CODE_LINE[0])
+write_cfg(firebase_app=APP)
+pair_stop(pr)
+T.wait_until(lambda: code not in (STORE.get("pair") or {}) and pid_node not in (STORE.get("pair") or {}), 3)
+write_cfg()
+
+# R5b: i vettori del contratto 1.15 — pair-qr.json e pair-response.json (chiave privata del PC = scalare 0..31,
+# del telefono = 32..63): pair_accept sull'id della fixture accetta la risposta e produce esattamente `ok`
+os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home)})
+RL = load("cm-relay")
+from cryptography.hazmat.primitives.asymmetric import x25519 as _x
+from cryptography.hazmat.primitives import serialization as _ser
+FQ = json.loads((FIX / "pair-qr.json").read_text()); FR = json.loads((FIX / "pair-response.json").read_text())
+pc_priv = _x.X25519PrivateKey.from_private_bytes(bytes(range(32)))
+ph_priv = _x.X25519PrivateKey.from_private_bytes(bytes(range(32, 64)))
+pc_pub_fx = base64.b64encode(pc_priv.public_key().public_bytes(_ser.Encoding.Raw, _ser.PublicFormat.Raw)).decode()
+k_fx = C.shared_key(ph_priv, FQ["c"])
+T.check("R5b fixture pair-qr.json: c is the public key of scalar 0..31, i has 22 base64url chars, v = 1, f has k p a d t", FQ["c"] == pc_pub_fx and len(FQ["i"]) == 22 and FQ["v"] == 1 and set(FQ["f"]) == {"k", "p", "a", "d", "t"}, FQ["c"])
+T.check("R5b fixture pair-response.json: watch_pub is the public key of scalar 32..63 and check = HMAC(key, i) of the shared key", FR["watch"]["watch_pub"] == base64.b64encode(ph_priv.public_key().public_bytes(_ser.Encoding.Raw, _ser.PublicFormat.Raw)).decode() and FR["watch"]["check"] == C.check_code(k_fx, FQ["i"]), FR["watch"]["check"])
+got = RL.pair_accept(pc_priv, FQ["i"], FR["watch"], FQ["h"])
+T.check("R5b pair_accept(id of the fixture, watch of pair-response.json) → the same key, exactly pair-response.json's `ok`, the devices with uids and names", got is not None and got[0] == k_fx and got[1] == FR["ok"] and {u: d["name"] for u, d in got[2].items()} == FR["watch"]["names"] and list(got[2]) == FR["watch"]["uids"], str(got[1:] if got else got))
+T.check("R5b pair_accept with the check computed on the code instead of the id → refused (the check binds the node)", RL.pair_accept(pc_priv, "123456", FR["watch"], FQ["h"]) is None, "")
+FA = json.loads((FIX / "pair-add.json").read_text())
+tb_priv = _x.X25519PrivateKey.from_private_bytes(bytes(range(64, 96)))
+k_add = C.shared_key(tb_priv, FA["qr"]["c"])
+got_a = RL.pair_accept(pc_priv, FA["qr"]["i"], FA["watch"], FA["qr"]["h"])
+T.check("R5b (1.30) fixture pair-add.json: qr = pair-qr.json with m «add»; the tablet's watch_pub is scalar 64..95; pair_accept gives its check's `ok`; ok.key opens with the pairing key to {key: relay_key}",
+        FA["qr"] == dict(FQ, m="add") and FA["watch"]["watch_pub"] == base64.b64encode(tb_priv.public_key().public_bytes(_ser.Encoding.Raw, _ser.PublicFormat.Raw)).decode()
+        and got_a is not None and got_a[0] == k_add and {k_: v_ for k_, v_ in FA["ok"].items() if k_ != "key"} == got_a[1]
+        and C.decrypt(FA["ok"]["key"], k_add) == {"key": FA["relay_key"]} and C.decrypt(RL.add_ok(got_a[1], k_add, bytes.fromhex(FA["relay_key"]))["key"], k_add) == {"key": FA["relay_key"]}, json.dumps(FA)[:300])
+pla = RL.qr_payload(FQ["i"], FQ["c"], FQ["h"], FQ["e"], {"api_key": FQ["f"]["k"], "project_id": FQ["f"]["p"], "app_id": FQ["f"]["a"]}, add=True)
+T.check("R5b (1.30) qr_payload(add=True) = the QR with m «add»; without add no m (the 1.15 QR unchanged)", pla.get("m") == "add" and "m" not in RL.qr_payload(FQ["i"], FQ["c"], FQ["h"], FQ["e"], {"api_key": "k", "project_id": "p", "app_id": "a"}), str(pla))
+FL = json.loads((FIX / "pair-link.json").read_text())
+T.check("R5b (1.32) fixture pair-link.json: line = pair-add.json's QR compact, uri = pair_link(line) (base64url, no padding)",
+        FL["line"] == json.dumps(FA["qr"], ensure_ascii=False, separators=(",", ":")) and RL.pair_link(FL["line"]) == FL["uri"] and "=" not in FL["uri"].split("q=", 1)[1], FL["uri"][:80])
+T.check("R5b (1.32) pair_accept keeps the kind the device declares (pair-add.json: tablet) in its devices; a kind outside the list is dropped",
+        got_a[2][FA["watch"]["uid"]].get("kind") == "tablet" and "kind" not in RL.pair_accept(pc_priv, FA["qr"]["i"], dict(FA["watch"], kind="toaster"), FA["qr"]["h"])[2][FA["watch"]["uid"]], str(got_a[2]))
+T.check("R5b (1.32) kind_of for pairings before 1.32: watch-pixel5 → watch, Pixel Tablet → tablet, Pixel 11 Pro XL → null",
+        S.kind_of("watch-pixel5") == "watch" and S.kind_of("Pixel Tablet") == "tablet" and S.kind_of("Pixel 11 Pro XL") is None, "")
+pl = RL.qr_payload(FQ["i"], FQ["c"], FQ["h"], FQ["e"], {"api_key": FQ["f"]["k"], "project_id": FQ["f"]["p"], "app_id": FQ["f"]["a"]})
+T.check("R5b qr_payload with the fixture's values = pair-qr.json (d and t from this config: firebase_url and fcm_topic)", pl == dict(FQ, f=dict(FQ["f"], d=URL, t="watch")), json.dumps(pl))
+fx_rows = RL.qr_lines(json.dumps(FQ, ensure_ascii=False, separators=(",", ":")))
+fx_dec = qr_decode(fx_rows)
+T.check("R5b the fixture's JSON drawn as QR and decoded (OpenCV) gives back the same document (skipped without cv2)", fx_dec is None or (fx_dec and json.loads(fx_dec) == FQ), str(fx_dec)[:100])
+for kk in ("CC_SUPERVISOR_CONFIG", "HOME", "CM_HOME"):
+    os.environ.pop(kk, None)
+
+# R5c (1.15): prove isolate — con CC_SUPERVISOR_CONFIG su una configurazione di prova (relay.dir, service account e
+# firebase_url suoi) pair, push e serve lavorano solo li': chiave, devices.json, /allowed e crontab della
+# configurazione principale restano come sono (le prove dell'app non devono scollegare l'orologio vero)
+URL_ISO, CALLS_ISO, STORE_ISO = T.fake_rtdb("iso-project")
+rdir_iso = tmp / "relay-iso"
+SA_ISO = tmp / "sa-iso.json"; SA_ISO.write_text(SA.read_text().replace("fake-project", "iso-project"))
+cfg_iso = tmp / "config-iso.json"
+cfg_iso.write_text(json.dumps(dict(json.loads(cfg.read_text()), relay={"enabled": True, "firebase_url": URL_ISO, "service_account": str(SA_ISO), "token_url": URL_ISO + "/token",
+                                                                         "fcm_url": URL_ISO, "dir": str(rdir_iso), "host": "iso-host", "debounce_s": 1, "fcm_topic": "watch-iso", "firebase_app": APP})))
+ENV_ISO = dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg_iso))
+snap = lambda: ((rdir2 / "key").read_bytes(), (rdir2 / "devices.json").read_bytes(), json.dumps(STORE.get("allowed"), sort_keys=True), cron.read_text(), (rdir2 / "serve.pid").exists())  # noqa: E731
+before_iso = snap()
+pr = subprocess.Popen([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", "--timeout", "8", "--text"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=ENV_ISO)
+T.wait_until(lambda: any(isinstance(v, dict) and v.get("pc_pub") for v in (STORE_ISO.get("pair") or {}).values()), 4)
+iso_nodes = {n: v for n, v in (STORE_ISO.get("pair") or {}).items() if isinstance(v, dict) and v.get("pc_pub")}
+iso_id = next((n for n in iso_nodes if len(n) == 22), "")
+wi_priv, wi_pub = C.pair_keys(); k_iso = C.shared_key(wi_priv, iso_nodes[iso_id]["pc_pub"]) if iso_id else b""
+if iso_id:
+    import urllib.request as _ur
+    req = _ur.Request(f"{URL_ISO}/pair/{iso_id}/watch.json", data=json.dumps({"watch_pub": wi_pub, "uid": "u-iso", "name": "Phone iso", "check": C.check_code(k_iso, iso_id)}).encode(), method="PUT", headers={"Content-Type": "application/json"})
+    _ur.urlopen(req, timeout=5).read()
+pr.wait(timeout=12); out_iso = pr.stdout.read()
+r_push = relay("push", env=ENV_ISO)
+r_ens = relay("ensure", env=ENV_ISO)
+iso_pid = int((rdir_iso / "serve.pid").read_text().strip() or 0) if (rdir_iso / "serve.pid").exists() else 0
+r_off = relay("off", env=ENV_ISO)
+T.check("R5c the trial config pairs on its own bus and dir: exit 0, key and devices.json under its relay.dir, u-iso in ITS /allowed, its /state pushed (exit 0), its serve started and stopped", pr.returncode == 0 and C.load_key(rdir_iso) == k_iso and "u-iso" in json.loads((rdir_iso / "devices.json").read_text()) and STORE_ISO.get("allowed") == {"u-iso": True} and r_push.returncode == 0 and "enc" in (STORE_ISO.get("state") or {}) and r_ens.returncode == 0 and iso_pid > 0 and r_off.returncode == 0, f"rc={pr.returncode} {out_iso[-200:]} {pr.stderr.read()[-200:]} push={r_push.returncode} {r_push.stderr[-200:]} ens={r_ens.stdout}{r_ens.stderr} pid={iso_pid}")
+T.check("R5c meanwhile the main config is untouched: same key bytes, same devices.json, same /allowed on its bus, same crontab, no serve pid in its dir", snap() == before_iso and json.loads((rdir2 / "devices.json").read_text()) == dev and STORE.get("allowed") == {"u2": True, "u3": True}, f"before={before_iso[2:]} after={snap()[2:]}")
+T.wait_until(lambda: not (rdir_iso / "serve.pid").exists() or not os.path.exists(f"/proc/{iso_pid}"), 5)
+k = k2   # da qui la chiave viva e' quella dell'ultimo pairing
+
+# R6: serve — i comandi del contratto
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
+relay("push")
+
+
+def _stop_test_serve():
+    """05/10: un test caduto a meta' lasciava vivo il suo daemon di prova (HOME e config in /tmp): all'uscita, sempre via."""
+    try:
+        os.kill(int((rdir2 / "serve.pid").read_text().strip()), 15)
+    except (OSError, ValueError):
+        pass
+
+
+import atexit
+atexit.register(_stop_test_serve)
+
+
+def serve_pid():
+    try:
+        pid = int((rdir2 / "serve.pid").read_text().strip() or 0); os.kill(pid, 0); return pid
+    except (OSError, ValueError):
+        return 0
+
+
+r = relay("ensure")
+T.check("R6 relay ensure starts serve (pidfile, live process); a second ensure keeps the same pid", r.returncode == 0 and serve_pid() > 0 and relay("ensure").returncode == 0 and serve_pid() == serve_pid(), r.stdout + r.stderr)
+T.check("R6 the status file is written at startup with the new pid and zeroed counters (else `status` shows the dead process's numbers)", T.wait_until(lambda: json.loads((rdir2 / "serve.json").read_text()).get("pid") == serve_pid(), 5) and json.loads((rdir2 / "serve.json").read_text())["reconnects"] == 0, (rdir2 / "serve.json").read_text() if (rdir2 / "serve.json").exists() else "assente")
+pid1 = serve_pid()
+CMDS = json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"]
+
+
+def send_cmd(cmd, wait=20):   # sotto carico il daemon impiega di piu' (build in parallelo)
+    cid = cmd["id"]
+    http("PUT", f"/cmd/{cid}.json", C.encrypt(cmd, k))
+    T.wait_until(lambda: (STORE.get("result") or {}).get(cid), wait)
+    res = STORE.get("result", {}).get(cid)
+    return C.decrypt(res, k) if res else None
+
+
+n_state_puts = len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")])
+res = send_cmd(CMDS[0])   # answer ledger-api 1
+T.check("R6 answer → `answer work-ledger-api 1` (name mapped to tmux), /result {ok, text «answered 1. yes», at}, /cmd/<id> deleted", res and res["ok"] is True and res["text"] == "answered 1. yes" and isinstance(res["at"], int) and "answer work-ledger-api 1" in cm_calls() and T.wait_until(lambda: CMDS[0]["id"] not in (STORE.get("cmd") or {}), 5), str(res) + str(cm_calls()[-4:]))   # il daemon scrive /result e POI cancella /cmd: si aspetta
+T.check("R6 a successful answer removes the hook's waiting flag (else «waiting» until the next prompt: answered and outcome 3 min late, 14/09)", not (state_dir / "waiting" / "S-L").exists(), str(list((state_dir / "waiting").iterdir())))
+led_rows = lambda: [json.loads(l) for l in ledger.read_text().splitlines() if l.strip()]  # noqa: E731
+T.check("R6 the command is annotated in the ledger: event watch-cmd with op, name, by (who answered) and ok", any(x.get("event") == "watch-cmd" and x.get("op") == "answer" and x.get("name") == "ledger-api" and x.get("by") == "watch-pixel5" and x.get("ok") is True for x in led_rows()), str([x for x in led_rows() if x.get("event") == "watch-cmd"][-2:]))
+T.check("R6 after a command /state is republished (a new PUT of /state, from the push in background)", T.wait_until(lambda: len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")]) > n_state_puts, 30), "")
+res = send_cmd(CMDS[1])   # prompt atlas-shop
+T.check("R6 prompt without device → talk atlas-shop with the neutral prefix «via app», not «polso» (1.36; Watch: line requested) --no-wait; atlas-shop is busy → «queued: … reads it when the turn ends» (14/10), atlas-shop awaiting", res and res["ok"] and res["text"] == "queued: atlas-shop is working, it reads it when the turn ends" and any(c.startswith("talk atlas-shop Dall'utente via app.") and "Watch:" in c and c.endswith("review the test seeds --no-wait") for c in cm_calls()) and "atlas-shop" in json.loads((rdir2 / "awaiting.json").read_text()), str(res) + str(cm_calls()[-3:]))
+box_a = sorted((state_dir / "inbox" / "atlas-shop").glob("*.json"), key=lambda q: json.loads(q.read_text())["created"])
+rec_a = json.loads(box_a[-1].read_text()) if box_a else {}
+T.check("R6 (0319ab) the relay's message in the recipient's inbox has origin «relay» (talk writes «session»: the master tells an ok from the phone from a session's message)",
+        rec_a.get("origin") == "relay" and rec_a.get("text", "").startswith("Dall'utente via app.") and rec_a.get("from") == "supervisor", str(rec_a))
+res = send_cmd(CMDS[2])   # launch path fuori dai progetti pubblicati
+T.check("R6 launch of a path outside the published projects → ok false, no launch", res and res["ok"] is False and "not a published project" in res["text"] and not any(c.startswith("launch ") for c in cm_calls()), str(res))
+res = send_cmd(dict(CMDS[2], id="6f1c2d3e-0003-4000-8000-0000000000aa", arg=str(ws / "work" / "own" / "orbit-docs")))
+T.check("R6 launch of a published project → `launch PATH --window` (its tab on the desktop, 1.9.2), «launched orbit-docs (work)»", res and res["ok"] is True and res["text"] == "launched orbit-docs (work)" and any(c.startswith("launch ") and c.endswith("orbit-docs --window") for c in cm_calls()), str(res) + str(cm_calls()[-3:]))
+# 1.4: «last» — l'ultimo messaggio dell'assistente per intero dal transcript (il ledger ne tiene solo la coda)
+tdir_a = home / ".claude" / "projects" / "".join(ch if ch.isalnum() else "-" for ch in os.path.realpath(str(ws / "personal" / "atlas-shop")))
+tdir_a.mkdir(parents=True, exist_ok=True)
+lungo = "Prima frase del messaggio lungo. " + ("Dettaglio del lavoro fatto. " * 200) + "Ultima frase."
+(tdir_a / "S-A.jsonl").write_text("\n".join([
+    json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Messaggio vecchio da ignorare."}]}}),
+    json.dumps({"type": "user", "message": {"role": "user", "content": "fai"}}),
+    json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": lungo}, {"type": "tool_use", "name": "Bash", "input": {"command": "x"}}]}}),
+]) + "\n")
+res = send_cmd({"id": "6f1c2d3e-0010-4000-8000-000000000010", "op": "last", "session": "atlas-shop", "arg": None, "issued": 1, "by": "watch-pixel5"})
+T.check("R6 (1.4) last → the whole last assistant message from the transcript, up to 4000 chars cut at a sentence end (the ledger only keeps 600 of the tail)", res and res["ok"] is True and res["text"].startswith("Prima frase del messaggio lungo.") and len(res["text"]) <= 4000 and len(res["text"]) > 3000 and res["text"].rstrip().endswith(".") and "Messaggio vecchio" not in res["text"], str(len(res["text"] if res else "")) + " " + (res or {}).get("text", "")[:60])
+(tdir_a / "S-A.jsonl").write_text(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Corto e intero."}]}}) + "\n")
+res = send_cmd({"id": "6f1c2d3e-0011-4000-8000-000000000011", "op": "last", "session": "atlas-shop", "arg": None, "issued": 1, "by": "watch-pixel5"})
+T.check("R6 (1.4) a short message comes back whole, untouched", res and res["ok"] and res["text"] == "Corto e intero.", str(res))
+res = send_cmd({"id": "6f1c2d3e-0012-4000-8000-000000000012", "op": "last", "session": "field-notes", "arg": None, "issued": 1, "by": "watch-pixel5"})
+T.check("R6 (1.4) a session without a transcript → ok false with «nessun messaggio da leggere»", res and res["ok"] is False and "nessun messaggio" in res["text"], str(res))
+T.check("R6 (17/10) the reads (PASSIVE_OPS: last) leave no watch-cmd line in the ledger; the commands that change something do",
+        not any(x.get("event") == "watch-cmd" and x.get("op") == "last" for x in led_rows()) and any(x.get("event") == "watch-cmd" and x.get("op") == "answer" for x in led_rows()), "")
+res = send_cmd(CMDS[3])   # screen
+T.check("R6 screen → `screen atlas-shop --lines 30 --join` (tmux reunites wrapped lines: no words cut on the wrist), 30 lines in text", res and res["ok"] and len(res["text"].splitlines()) == 30 and "screen atlas-shop --lines 30 --join" in cm_calls(), str(res)[:200] + str([c for c in cm_calls() if c.startswith("screen ")]))
+res = send_cmd(CMDS[4])   # follow
+T.check("R6 follow → follow.json has atlas-shop, «following atlas-shop»; the next /state marks it followed", res and res["ok"] and res["text"] == "following atlas-shop" and "atlas-shop" in json.loads((rdir2 / "follow.json").read_text()) and T.wait_until(lambda: any(s_["name"] == "atlas-shop" and s_["followed"] for s_ in C.decrypt(STORE["state"], k)["sessions"]), 30), str(res))
+res = send_cmd(dict(CMDS[4], id="6f1c2d3e-0005-4000-8000-0000000000bb", op="unfollow"))
+T.check("R6 unfollow → removed", res and res["ok"] and "atlas-shop" not in json.loads((rdir2 / "follow.json").read_text()), str(res))
+res = send_cmd(CMDS[5])   # resume orbit-docs (gone)
+T.check("R6 resume of a gone session → ok false «orbit-docs is gone: use launch»", res and res["ok"] is False and res["text"] == "orbit-docs is gone: use launch", str(res))
+# R6 (1.9, 15/09, dall'orologio: una sessione chiusa non si poteva riprendere): reopen rilancia una gone
+orbit = ws / "work" / "own" / "orbit-docs"
+
+
+def reopen_cmd(n, session="orbit-docs"):
+    return {"id": f"6f1c2d3e-0010-4000-8000-0000000001{n:02d}", "op": "reopen", "session": session, "arg": None, "issued": 1789210960, "by": "watch-pixel5"}
+
+
+def launches():
+    return [c for c in cm_calls() if c.startswith("launch ")]
+
+
+res = send_cmd(reopen_cmd(1))
+T.check("R6 reopen of a gone session, no conversation id, nobody live in its folder → `launch <path> --window --account work --continue`, «reopened orbit-docs (work): last conversation in the folder»", res and res["ok"] is True and res["text"] == "reopened orbit-docs (work): last conversation in the folder" and launches()[-1] == f"launch {orbit} --window --account work --continue", str(res) + str(cm_calls()[-3:]))
+T.check("R6 reopen is annotated in the ledger (watch-cmd, op reopen, ok)", any(x.get("event") == "watch-cmd" and x.get("op") == "reopen" and x.get("name") == "orbit-docs" and x.get("ok") is True for x in led_rows()), "")
+tdir = home / ".claude-pixel" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(orbit))
+tdir.mkdir(parents=True, exist_ok=True)
+(tdir / "S-O.jsonl").write_text("{}\n")
+good_json.write_text(json.dumps({"sessioni": [dict(GOOD_ORBIT, session_id="S-O")]}))
+res = send_cmd(reopen_cmd(2))
+T.check("R6 reopen with the snapshot's conversation id and its transcript on disk → `--resume S-O` (never -c), «…: same conversation»", res and res["ok"] is True and res["text"] == "reopened orbit-docs (work): same conversation" and launches()[-1] == f"launch {orbit} --window --account work --resume S-O", str(res) + str(launches()[-1:]))
+good_json.write_text(json.dumps({"sessioni": [dict(GOOD_ORBIT, session_id="S-GONE")]}))
+rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"cwd": str(orbit)}})
+n_l = len(launches())
+res = send_cmd(reopen_cmd(3))
+T.check("R6 reopen with an id whose transcript is missing and another live session in the folder → ok false, no launch (-c would take the other one's conversation)", res and res["ok"] is False and res["text"] == "orbit-docs: conversation unknown and 1 live session(s) in its folder: use launch" and len(launches()) == n_l, str(res))
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+res = send_cmd(reopen_cmd(4, "atlas-shop"))
+T.check("R6 reopen of a live name → ok true «atlas-shop is already running» with its session, no launch (1.135: the app saw it closed from an old state)",
+        res and res["ok"] is True and res["text"] == "atlas-shop is already running" and res.get("session") == "atlas-shop" and len(launches()) == n_l, str(res))
+res = send_cmd(reopen_cmd(5, "nope"))
+T.check("R6 reopen of a name outside the registry snapshot → ok false «nope is not a closed session»", res and res["ok"] is False and res["text"] == "nope is not a closed session" and len(launches()) == n_l, str(res))
+good_json.write_text(json.dumps({"sessioni": [GOOD_ORBIT]}))
+launch_adds.write_text(json.dumps(json.loads(alive.read_text()) + [{"pid": 11, "name": "work-orbit-docs-2", "tmux": "work-orbit-docs-2", "cwd": str(orbit), "status": "idle", "waiting": False, "link": "", "account": "work", "session_id": "S-O2", "attached": False, "started_at": 1789211000000}]))
+res = send_cmd(reopen_cmd(6))
+T.check("R6 reopen that comes back under another name (launch takes the first free one) → the old name leaves the snapshot (`registry --closed work-orbit-docs`), else it stays ✗ for ever", res and res["ok"] is True and "registry --closed work-orbit-docs" in cm_calls(), str(res) + str(cm_calls()[-4:]))
+launch_adds.unlink()
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+# una domanda nuova su ledger-api: la risposta di prima ha tolto il flag, l'hook del dialogo nuovo lo riscrive
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
+relay("push")
+res = send_cmd(CMDS[6])   # allow_all ledger-api
+T.check("R6 allow_all without a «don't ask again» option → ok false with the contract's text", res and res["ok"] is False and res["text"] == "no «don't ask again» option on this question", str(res))
+# R6 (1.52, 14/10): una risposta vale solo per la sua domanda. Il telefono offline teneva il comando in coda, la sessione
+# faceva una domanda nuova e la risposta vecchia ci premeva il tasto. Domanda nuova su ledger-api alle 1789211000.
+ledger_before = ledger.read_text()
+with ledger.open("a") as f:
+    f.write(json.dumps({"ts": iso(1789211000), "event": "waiting", "session_id": "S-L", "tool": "AskUserQuestion"}) + "\n")
+CHANGED = {json.loads((T.ROOT / "supervisor" / "messages" / f"{lg}.json").read_text())["relay.cmd_question_changed"].format(name="ledger-api") for lg in ("en", "it")}
+
+
+def answers():
+    return [c for c in cm_calls() if c.startswith("answer work-ledger-api ") and "--show" not in c]
+
+
+def ans(n, **kw):
+    return dict({"id": f"6f1c2d3e-0052-4000-8000-0000000005{n:02d}", "op": "answer", "session": "ledger-api", "arg": "2", "issued": 1789211005, "by": "phone-pixel9"}, **kw)
+
+
+n_a = len(answers())
+res = send_cmd(ans(1, question="q-1789210500-1", issued=1789210890))
+T.check("R6 (1.52) answer with the id of the previous question → ok false relay.cmd_question_changed, no key pressed", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res) + str(answers()[-2:]))
+res = send_cmd(ans(2, issued=1789210890))
+T.check("R6 (1.52) answer without `question`, issued 110 s before the open question (over the 60 s margin) → refused, no key pressed", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res))
+res = send_cmd(ans(3, op="allow_all", arg=None, question="q-1789210500-1"))
+T.check("R6 (1.52) allow_all with the id of the previous question → refused before anything else, no key pressed", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res))
+res = send_cmd(ans(4, question="garbage"))
+T.check("R6 (1.52) answer with an id that is not «q-<asked_at>-<n>» → refused", res and res["ok"] is False and res["text"] in CHANGED and len(answers()) == n_a, str(res))
+res = send_cmd(ans(5, question="q-1789211000-1"))
+T.check("R6 (1.52) answer with the open question's id (asked_at read from the ledger, even before a push) → `answer work-ledger-api 2`", res and res["ok"] is True and answers()[-1:] == ["answer work-ledger-api 2"] and len(answers()) == n_a + 1, str(res) + str(answers()[-2:]))
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
+res = send_cmd(ans(6, issued=1789210950))
+T.check("R6 (1.52) answer without `question` issued 50 s before the question (phone clock within the margin) → answered", res and res["ok"] is True and len(answers()) == n_a + 2, str(res))
+_log6 = (rdir2 / "relay.log").read_text()
+T.check("R6 (1.52) the relay.log line of an answer says which question it answers, or «senza id domanda» without one",
+        "6f1c2d3e-0052-4000-8000-000000000505: answer ledger-api da phone-pixel9 · domanda q-1789211000-1 →" in _log6
+        and "6f1c2d3e-0052-4000-8000-000000000506: answer ledger-api da phone-pixel9 · senza id domanda →" in _log6
+        and "6f1c2d3e-0052-4000-8000-000000000503: allow_all ledger-api da phone-pixel9 · domanda q-1789210500-1 →" in _log6, _log6[-600:])
+# R105 (1.119, supervisor-chat-vuota-04-11): la riga di transcript dice la pagina chiesta — una pagina vuota e' normale
+# dopo «after», non alla prima lettura, e senza l'argomento il log non le distingueva
+send_cmd(ans(7, op="transcript", arg="50:after=abc.0"))
+send_cmd(ans(8, op="transcript", arg="50"))
+_log105 = (rdir2 / "relay.log").read_text()
+T.check("R105 (1.119) the relay.log line of a transcript says the page asked for («· 50:after=<id>», «· 50»)",
+        "6f1c2d3e-0052-4000-8000-000000000507: transcript ledger-api da phone-pixel9 · 50:after=abc.0 →" in _log105
+        and "6f1c2d3e-0052-4000-8000-000000000508: transcript ledger-api da phone-pixel9 · 50 →" in _log105, _log105[-600:])
+ledger.write_text(ledger_before)
+(state_dir / "waiting" / "S-L").write_text(json.dumps({"tool": "AskUserQuestion", "input": {}}))
+# R6 (1.10, 15/09, da claude-master-watch): answer con «text:<testo>» e «chat»
+# R10 (contratto 1.12, 16/09): modello ed effort dal polso, solo per la sessione, via `supervisor model|effort`;
+# il testo di un rifiuto e' la prima riga del comando, breve, così com'è
+RES = json.loads((FIX / "cmd-result-sample.json").read_text())["result"]
+res = send_cmd(CMDS[9])   # model field-notes claude-sonnet-5
+T.check("R10 (1.12) model → `model field-notes claude-sonnet-5`, /result ok with the command's line (as in the fixture)",
+        res and res["ok"] is True and res["text"] == RES[9]["text"] and "model field-notes claude-sonnet-5" in cm_calls(), str(res) + str(cm_calls()[-3:]))
+res = send_cmd(CMDS[10])   # effort atlas-shop low: occupata
+T.check("R10 (1.125) effort on a busy session → /result ok with «chosen, applies at the end of the turn», as in the fixture",
+        res and res["ok"] is True and res["text"] == RES[10]["text"], str(res))
+r = relay("push", "--dry-run"); dry10 = json.loads(r.stdout)
+T.check("R10 (1.12) /state carries choices: full model ids (as in session.model.id) with labels, and the five efforts",
+        dry10.get("choices") == json.loads((FIX / "state-1-question.json").read_text())["choices"], str(dry10.get("choices")))
+# R53 (15/10, contratto 1.69): il cambio dei permessi passa da `supervisor permissions`, come model ed effort
+_RS53 = {r["id"]: r for r in RES}
+_C53 = [c for c in CMDS if c["op"] == "permission_mode"]
+res = send_cmd(_C53[0])
+T.check("R53 (1.69) permission_mode → `permissions field-notes acceptEdits`, /result ok with the command's line (as in the fixture)",
+        res and res["ok"] is True and res["text"] == _RS53[_C53[0]["id"]]["text"] and "permissions field-notes acceptEdits" in cm_calls(), str(res) + str(cm_calls()[-3:]))
+res = send_cmd(_C53[1])
+T.check("R53 (1.69) a mode outside the session's Shift+Tab cycle → /result ok=false with the command's line",
+        res and res["ok"] is False and res["text"] == _RS53[_C53[1]["id"]]["text"], str(res))
+# R11 (contratto 1.13, 16/09): «Nuova sessione» dal polso col primo messaggio — launch, poi talk sulla sessione NATA
+# (che puo' chiamarsi diversamente dal progetto), e nel /result il suo nome come in sessions[].name
+fn = ws / "personal" / "field-notes"
+launch_adds.write_text(json.dumps(json.loads(alive.read_text()) + [{"pid": 12, "name": "field-notes-2", "tmux": "field-notes-2", "cwd": str(fn), "status": "idle", "waiting": False, "link": "", "account": "personal", "session_id": "S-F2", "attached": False, "started_at": 1789211000000}]))
+n_calls = len(cm_calls())
+res = send_cmd(dict(CMDS[11], arg=str(fn)))
+calls = cm_calls()[n_calls:]
+T.check("R11 (1.13) launch with text → `launch PATH --window`, then `talk` with the watch prefix to the NEW session field-notes-2, --no-wait",
+        any(c.startswith("launch ") and str(fn) in c for c in calls) and any(c.startswith("talk field-notes-2 Dall'utente via app.") and "check the draft for typos" in c and c.endswith("--no-wait") for c in calls), str(calls))
+T.check("R11 (1.13) /result ok with the fixture's text and `session` = field-notes-2, the name the watch will see in sessions[].name",
+        res and res["ok"] is True and res["text"] == RES[11]["text"] and res.get("session") == RES[11]["session"] == "field-notes-2", str(res))
+launch_adds.unlink()
+# R13 (contratto 1.17, 29/09): la coda di stanotte dall'app, via `supervisor night add|remove`
+led = ws / "work" / "clients" / "ledger-api"
+n_calls = len(cm_calls())
+res = send_cmd(dict(CMDS[12], arg=str(led)))
+T.check("R13 (1.17) night_add → `night add PATH PROMPT`, /result ok with the fixture's text and `job` = the new id",
+        res and res["ok"] is True and res["text"] == RES[12]["text"] and res.get("job") == RES[12]["job"] == "7b21d4e8"
+        and f"night add {led} Update the changelog for 2.4" in cm_calls()[n_calls:], str(res) + str(cm_calls()[n_calls:]))
+res = send_cmd(dict(CMDS[12], id="6f1c2d3e-0123-4000-8000-000000000201"))
+res2 = send_cmd(dict(CMDS[12], id="6f1c2d3e-0123-4000-8000-000000000202", arg=str(led), text="   "))
+res3 = send_cmd(dict(CMDS[12], id="6f1c2d3e-0123-4000-8000-000000000203", arg=str(led), text="FULL"))
+T.check("R13 (1.17) night_add refusals in plain words: a folder outside the published projects, an empty prompt (no `night` run for either), a full queue",
+        res and res["ok"] is False and "not a published project" in res["text"] and res2 and res2["ok"] is False and res2["text"] == "empty prompt: nothing to queue"
+        and res3 and res3["ok"] is False and res3["text"] == "tonight's queue is full (8 jobs): remove one first"
+        and len([c for c in cm_calls()[n_calls:] if c.startswith("night add")]) == 2, str(res) + str(res2) + str(res3))
+# 1.49 (09/10): arg «master» (workspace.root_session_name) → the job goes in the master's folder, workspace.root
+_c49 = next(c for c in CMDS if c["id"] == "6f1c2d3e-0490-4000-8000-000000000490")
+_r49 = next(r for r in RES if r["id"] == _c49["id"])
+n_calls = len(cm_calls())
+res = send_cmd(_c49)
+T.check("R13 (1.49) night_add with arg «master» → `night add <workspace.root> PROMPT`, /result as the fixture's …0490 (the master's name and account, job)",
+        res and res["ok"] is True and res["text"] == _r49["text"] and res.get("job") == _r49["job"]
+        and f"night add {os.path.realpath(ws)} {_c49['text']}" in cm_calls()[n_calls:], str(res) + str(cm_calls()[n_calls:]))
+res = send_cmd(CMDS[13])
+T.check("R13 (1.17) night_remove → `night remove ID`, /result ok with the fixture's text",
+        res and res["ok"] is True and res["text"] == RES[13]["text"] and "night remove 5d0e6b92" in cm_calls(), str(res))
+res = send_cmd(dict(CMDS[13], id="6f1c2d3e-0124-4000-8000-000000000201", arg="deadbeef"))
+res2 = send_cmd(dict(CMDS[13], id="6f1c2d3e-0124-4000-8000-000000000202", arg="a3f09c1e"))
+T.check("R13 (1.17) night_remove refusals in plain words: unknown id, job already started",
+        res and res["ok"] is False and res["text"] == "no job deadbeef in tonight's queue" and res2 and res2["ok"] is False and res2["text"] == "job a3f09c1e has already started: it cannot be removed", str(res) + str(res2))
+nq = state_dir / "night-queue.jsonl"
+nq.write_text(json.dumps({"id": "a3f09c1e", "dir": str(ws / "personal" / "atlas-shop"), "prompt": "fix the flaky tests", "account": "personal", "added": iso(1789207200), "started": 1789215000}) + "\n"
+              + json.dumps({"id": "7b21d4e8", "dir": str(led), "prompt": "Update the changelog", "account": "work", "added": iso(1789210620)}) + "\n")
+r = relay("push", "--dry-run"); dryn = json.loads(r.stdout)["night"]
+nq.unlink()
+T.check("R13 (1.17) push reads the queue file: queued 2, running = the started job's folder name, items in file order with started as epoch",
+        dryn["queued"] == 2 and dryn["running"] == "atlas-shop" and [(i["id"], i["name"], i["started"]) for i in dryn["items"]] == [("a3f09c1e", "atlas-shop", 1789215000), ("7b21d4e8", "ledger-api", None)] and dryn["items"][0]["added"] == 1789207200, str(dryn))
+# R14 (contratto 1.18, 29/09): diario, resoconto della notte e ripresa della quota anche all'app, come eventi con la sveglia
+def new_events(kind, before):
+    return [C.decrypt(v, k) for kk, v in sorted((STORE.get("events") or {}).items()) if kk not in before and C.decrypt(v, k)["kind"] == kind]
+
+
+today = time.strftime("%Y-%m-%d")
+before, n_fcm = set(STORE.get("events") or {}), len(CALLS["fcm"])
+seq0 = int(json.loads((rdir2 / "last-state.json").read_text()).get("seq") or 0)
+r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--send"], capture_output=True, text=True, env=ENV, timeout=120)
+ev = new_events("recap", before)
+T.check("R14 (1.18) recap --send → one `recap` event: title «Diario del dd/mm», body = the plain diary as printed (no Telegram HTML), ref = the day, key after the push seq (a push in background may take a number first); FCM with kind recap",
+        r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Diario del " + time.strftime("%d/%m") and ev[0]["ref"] == today and "<b>" not in ev[0]["body"]
+        and ev[0]["body"].splitlines()[0] == r.stdout.splitlines()[0] and int(ev[0]["key"].split("_")[1]) > seq0 and ev[0]["session"] is None
+        and ev_ok(ev[0]) and CALLS["fcm"][n_fcm:] and CALLS["fcm"][-1]["message"]["data"]["kind"] == "recap", r.stdout[-300:] + r.stderr[-300:] + str(ev))
+nq = state_dir / "night-queue.jsonl"
+nq.write_text(json.dumps({"id": "c0ffee01", "dir": str(ws / "personal" / "atlas-shop"), "prompt": "fix the flaky tests", "account": "personal", "model": "", "effort": "", "max_turns": 5, "added": iso(1789207200)}) + "\n")
+before = set(STORE.get("events") or {})
+r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night.py"), "run", "--send"], capture_output=True, text=True, timeout=120,
+                   env=dict(ENV, CM_CLAUDE_BIN=str(T.ROOT / "tests" / "lib" / "fake-claude.sh"), CM_NIGHT_FREE_MB="4000"))
+ev = new_events("night_report", before)
+T.check("R14 (1.18) night run --send → one `night_report` event: title «Notte: 1 lavori, 1 riusciti», body = the Telegram summary, ref = today",
+        r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Notte: 1 lavori, 1 riusciti" and ev[0]["ref"] == today
+        and ev[0]["body"].startswith("Turno di notte: 1 lavori eseguiti") and "ok atlas-shop" in ev[0]["body"] and "✓" not in ev[0]["body"], r.stdout[-300:] + r.stderr[-300:] + str(ev))
+nq.unlink(missing_ok=True)
+CORE = f"import importlib.util as u; s = u.spec_from_file_location('c', {str(T.SCRIPTS / 'cm-core.py')!r}); m = u.module_from_spec(s); s.loader.exec_module(m); "
+before = set(STORE.get("events") or {})
+r = subprocess.run([sys.executable, "-c", CORE + "print(m.relay_event('quota', '✓ quota personal tornata', 'reset 13:10\\n' + 'riga\\n' * 3000, account='personal'))"],
+                   capture_output=True, text=True, env=ENV, timeout=60)
+ev = new_events("quota", before)
+T.check("R14 (1.18) relay_event quota (the guard's resume): account set, body cut at a line end within 4000 characters, no «…»",
+        r.stdout.strip() == "True" and len(ev) == 1 and ev[0]["account"] == "personal" and len(ev[0]["body"]) <= 4000 and ev[0]["body"].endswith("riga") and "…" not in ev[0]["body"], r.stdout + r.stderr + str(ev)[:300])
+T.check("R14 (1.18) cut_lines: whole when it fits; else whole lines only; one line longer than the cap cut at a word end",
+        S.cut_lines("a\nb", 10) == "a\nb" and S.cut_lines("aaaa\nbbbb\ncccc", 10) == "aaaa\nbbbb" and S.cut_lines("one two three", 8) == "one two", S.cut_lines("aaaa\nbbbb\ncccc", 10))
+write_cfg(enabled=False)
+before = set(STORE.get("events") or {})
+r = subprocess.run([sys.executable, "-c", CORE + "print(m.relay_event('quota', 't', 'b'))"], capture_output=True, text=True, env=ENV, timeout=60)
+write_cfg()
+T.check("R14 (1.18) relay off → relay_event does nothing and says so (Telegram goes on as before)", r.stdout.strip() == "False" and set(STORE.get("events") or {}) == before, r.stdout + r.stderr)
+# R15 (contratto 1.19, 29/09): «Condividi» dal telefono — op report, immagine cifrata in /share/<id>, `share` nello stato
+IMG = bytes(range(256)) * 40
+atlas = ws / "personal" / "atlas-shop"
+sid = CMDS[14]["arg"]
+http("PUT", f"/share/{sid}.json", C.encrypt({"mime": "image/jpeg", "data": base64.b64encode(IMG).decode()}, k))
+n_calls = len(cm_calls())
+res = send_cmd(CMDS[14])
+calls = [c for c in cm_calls()[n_calls:] if c.startswith("report ")]
+T.check("R15 (1.19) report with an image → `report <session folder> <temp .jpg> <text> --session <tmux>`, the bytes intact, /result = the fixture's text",
+        res and res["ok"] is True and res["text"] == RES[14]["text"] and len(calls) == 1 and calls[0].startswith(f"report {atlas} ") and ".jpg the client says" in calls[0]
+        and calls[0].endswith("--session atlas-shop") and (tmp / "report-img").read_bytes() == IMG, str(res) + str(calls))
+box15 = sorted((state_dir / "inbox" / "atlas-shop").glob("*.json"), key=lambda q: json.loads(q.read_text())["created"])
+rec15 = json.loads(box15[-1].read_text()) if box15 else {}
+T.check("R15 (0319ab, 21:43) the report's message in the session's inbox has origin «relay», like the prompts",
+        rec15.get("text", "").startswith("segnalazione:") and rec15.get("origin") == "relay", str(rec15))
+T.check("R15 (1.19) after the command /share/<id> is deleted and the temporary file is gone",
+        sid not in (STORE.get("share") or {}) and not any((rdir2 / "share-tmp").glob("*")), str(list((STORE.get("share") or {}))) + str(list((rdir2 / "share-tmp").glob("*"))))
+res = send_cmd(CMDS[15])
+T.check("R15 (1.19) text only → `report <folder> - <text> --session field-notes`, «sent to field-notes»",
+        res and res["ok"] is True and res["text"] == RES[15]["text"] and f"report {ws / 'personal' / 'field-notes'} - add the Tuesday meeting notes to the draft --session field-notes" in cm_calls(), str(res) + str(cm_calls()[-2:]))
+n_calls = len(cm_calls())
+res = send_cmd(CMDS[16])
+bad = "6f1c2d3e-0125-4000-8000-00000000b001"
+http("PUT", f"/share/{bad}.json", C.encrypt({"mime": "nonsense", "data": "aGk="}, k))   # 1.28: ogni formato, ma un tipo vero (tipo/sottotipo)
+res2 = send_cmd(dict(CMDS[14], id="6f1c2d3e-0125-4000-8000-000000000201", arg=bad))
+res3 = send_cmd(dict(CMDS[14], id="6f1c2d3e-0125-4000-8000-000000000202", arg="0000-missing"))
+big = "6f1c2d3e-0125-4000-8000-00000000b002"
+http("PUT", f"/share/{big}.json", {"v": 1, "enc": "A" * 10000001})
+res4 = send_cmd(dict(CMDS[14], id="6f1c2d3e-0125-4000-8000-000000000203", arg=big))
+res5 = send_cmd(dict(CMDS[15], id="6f1c2d3e-0126-4000-8000-000000000201", text="  "))
+T.check("R15 (1.19) refusals in plain words, no report run: a gone session (as in the fixture), a mime that is not type/subtype, a missing node, a blob over 10 MB, nothing to send; the bad nodes deleted",
+        res and res["ok"] is False and res["text"] == RES[16]["text"] and res2 and res2["text"] == "file missing or unreadable" and res3 and res3["text"] == "image missing or unreadable"
+        and res4 and res4["text"] == "too large" and res5 and res5["text"] == "empty report: nothing to send"
+        and not any(c.startswith("report ") for c in cm_calls()[n_calls:]) and bad not in (STORE.get("share") or {}) and big not in (STORE.get("share") or {}), str([res, res2, res3, res4, res5]))
+old, fresh = "6f1c2d3e-0125-4000-8000-00000000b003", "6f1c2d3e-0125-4000-8000-00000000b004"
+http("PUT", f"/share/{old}.json", {"v": 1, "enc": "x"}); http("PUT", f"/share/{fresh}.json", {"v": 1, "enc": "x"})
+(rdir2 / "share-seen.json").write_text(json.dumps({old: time.time() - 700}))
+(rdir2 / "prune-at").unlink(missing_ok=True)   # 08/10: le pulizie una volta ogni 10 minuti; qui e' ora
+relay("push")
+T.check("R15 (1.19) push prunes a /share node first seen more than 10 minutes ago, keeps a fresh one (remembered in share-seen.json)",
+        old not in (STORE.get("share") or {}) and fresh in (STORE.get("share") or {}) and fresh in json.loads((rdir2 / "share-seen.json").read_text()), str(list(STORE.get("share") or {})))
+_SH15 = {"max_bytes": 10000000, "any": True, "parts": True, "max_parts_bytes": 52428800, "multi": 5}   # 1.48: parts and max_parts_bytes; 1.50: multi
+T.check("R15 (1.19) /state carries share {max_bytes: 10000000, any: true, parts: true, max_parts_bytes: 52428800, multi: 5}, also when there is nothing else (its presence turns «Share» on in the app)",
+        json.loads(relay("push", "--dry-run").stdout).get("share") == _SH15 and S.build_state({}, 1)["share"] == _SH15 and F1["share"] == _SH15, "")
+# R17 (30/09, dal telefono): «x» chiusa e «work-x» viva nella stessa cartella hanno lo stesso nome corto — vince la
+# viva, la chiusa non entra; e un prompt a una sessione non viva non e' «delivered»
+good_bak = good_json.read_text()
+good_json.write_text(json.dumps({"sessioni": [GOOD_ORBIT, {"nome": "work-atlas-shop", "cartella": str(atlas), "account": "work", "visto": "2026-09-30T17:30:33"}]}))
+relay("push")
+names17 = json.loads((rdir2 / "last-state.json").read_text())["names"]
+ses17 = [(x["name"], x["state"]) for x in json.loads(relay("push", "--dry-run").stdout)["sessions"] if x["name"] == "atlas-shop"]
+good_json.write_text(good_bak)
+T.check("R17 a closed session with the same short name as a live one (other account, same folder) stays out: one atlas-shop, live (not gone), and its name maps to the live tmux",
+        names17.get("atlas-shop") == "atlas-shop" and len(ses17) == 1 and ses17[0][1] != "gone", str(names17) + str(ses17))
+rows_alive("ledger-api", "atlas-shop")
+n_calls = len(cm_calls())
+res = send_cmd(dict(CMDS[1], id="6f1c2d3e-0002-4000-8000-000000000301", session="field-notes"))
+res2 = send_cmd(dict(CMDS[1], id="6f1c2d3e-0002-4000-8000-000000000302", op="resume", session="field-notes", arg=None))
+T.check("R17 prompt and resume to a session that is not running → ok false «field-notes is not running: nothing sent», no talk",
+        res and res["ok"] is False and res["text"] == "field-notes is not running: nothing sent" and res2 and res2["ok"] is False and res2["text"] == res["text"]
+        and not any(c.startswith("talk field-notes") for c in cm_calls()[n_calls:]), str(res) + str(res2))
+(tmp / "talk-saved").write_text("x")
+res = send_cmd(dict(CMDS[1], id="6f1c2d3e-0002-4000-8000-000000000303"))
+(tmp / "talk-saved").unlink()
+T.check("R17 talk only saved it in the inbox (the session closed meanwhile) → ok false, the message waits there",
+        res and res["ok"] is False and res["text"] == "atlas-shop closed meanwhile: the message waits in its inbox and arrives when it restarts", str(res))
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+# R18 (contratto 1.21, 30/09): il tasto Stop — op interrupt via `supervisor interrupt`; `ops` nello stato
+aw18 = json.loads((rdir2 / "awaiting.json").read_text()) if (rdir2 / "awaiting.json").exists() else {}
+(rdir2 / "awaiting.json").write_text(json.dumps(dict(aw18, **{"atlas-shop": int(time.time())})))
+n_calls = len(cm_calls())
+res = send_cmd(CMDS[17])
+res2 = send_cmd(CMDS[18])
+T.check("R18 (1.21) interrupt → `interrupt <tmux>`: ok «atlas-shop: stopped» and the session leaves awaiting; nothing running → ok false «field-notes: nothing to stop» (as in the fixture)",
+        res and res["ok"] is True and res["text"] == RES[17]["text"] and "interrupt atlas-shop --wait 8" in cm_calls()[n_calls:]
+        and "interrupt field-notes" in cm_calls()[n_calls:] and "atlas-shop" not in json.loads((rdir2 / "awaiting.json").read_text()) and res2 and res2["ok"] is False and res2["text"] == RES[18]["text"], str(res) + str(res2))
+n_calls = len(cm_calls())
+res = send_cmd(dict(CMDS[17], id="6f1c2d3e-0128-4000-8000-000000000301", session="orbit-docs"))
+T.check("R18 (1.21) interrupt on a gone session → ok false «orbit-docs is not running», no interrupt run",
+        res and res["ok"] is False and res["text"] == "orbit-docs is not running" and not any(c.startswith("interrupt") for c in cm_calls()[n_calls:]), str(res))
+T.check("R18 (1.21) /state carries ops = the relay's allow-list, with interrupt (the app shows Stop only when it is there)",
+        json.loads(relay("push", "--dry-run").stdout).get("ops") == R_OPS and "interrupt" in R_OPS and F1["ops"] == R_OPS, str(R_OPS))
+# R19 (contratto 1.22, 30/09): la chat vera per il telefono — op transcript dal jsonl della sessione, a pagine
+import re as _re19
+tdir19 = home / ".claude" / "projects" / _re19.sub(r"[^A-Za-z0-9]", "-", str((ws / "personal" / "field-notes").resolve()))
+tdir19.mkdir(parents=True, exist_ok=True)
+(tdir19 / "S-F.jsonl").write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+res = send_cmd(CMDS[19])
+res2 = send_cmd(CMDS[20])
+T.check("R19 (1.22) transcript «20» → the fixture's JSON: user prompts only (no reminders, notifications, sidechain), assistant texts, one tool entry per call with note and error, the closed turn with start, end and tokens",
+        res and res["ok"] is True and res["text"] == RES[19]["text"], (res or {}).get("text", "")[:300])
+T.check("R19 (1.22) transcript «20:after=a4.0» → only what came after that entry (the fixture's second page), more false",
+        res2 and res2["ok"] is True and res2["text"] == RES[20]["text"] and [e["id"] for e in json.loads(res2["text"])["entries"]] == ["u2.0", "q1.0", "a6.0", "a6.1", "a6.2", "a7.0", "a7.1", "p1.0", "w1.0", "q1789207361000", "img1.0", "q1789207365000", "a5.0", "a8.0"], (res2 or {}).get("text", "")[:200])
+p19 = json.loads(send_cmd(dict(CMDS[19], id="6f1c2d3e-0130-4000-8000-000000000301", arg="2:before=a4.0"))["text"])
+bad = [send_cmd(dict(CMDS[19], id=f"6f1c2d3e-0130-4000-8000-00000000030{i}", arg=a)) for i, a in ((2, "x"), (3, "5:after=nope"))]
+none19 = send_cmd(dict(CMDS[19], id="6f1c2d3e-0130-4000-8000-000000000304", session="atlas-shop-none"))
+f19 = {e["id"]: e["files"] for e in json.loads(res["text"])["entries"]}
+T.check("R19 (1.22) files: a png written (path made absolute from the session's cwd, mime, size null when absent), no file for a .py edit or a failed write, the PDF of SendUserFile, the image archived by `supervisor report`",
+        [x["mime"] for x in f19["a6.0"]] == ["image/png"] and f19["a6.0"][0]["path"].endswith("/field-notes/docs/cover.png") and f19["a6.0"][0]["size"] is None
+        and f19["a6.1"] is None and f19["a6.2"] is None and [x["mime"] for x in f19["a7.0"]] == ["application/pdf"]
+        and f19["a7.1"][0]["path"].endswith("/docs/reports/2026-09-12-checkout-is-grey.jpg") and all(v is None for k, v in f19.items() if not k.startswith(("a6", "a7"))), str(f19))
+u19 = [(e["id"], e["origin"], e["text"]) for e in json.loads(res["text"])["entries"] if e["role"] == "user"]
+T.check("R19 (1.22) origin: pc for what was typed in the terminal; the relay's prompt delivered through the socket (a peer message, twice) is one user entry, prefix stripped, origin phone; another session's message is left out",
+        u19[:4] == [("u1.0", "pc", "Add the Tuesday meeting notes to the draft"), ("u2.0", "pc", "Also fix the typo in the title"), ("q1.0", "pc", "and push when done"), ("p1.0", "phone", "Also add the attendees list")]
+        and all(e["origin"] is None for e in json.loads(res["text"])["entries"] if e["role"] != "user"), str(u19))
+T.check("R19 (1.36) the prompt from the web app (device «web», through the socket) is one user entry, prefix stripped, origin web",
+        ("w1.0", "web", "Also add the room booking") in u19, str(u19))
+n_calls = len(cm_calls())
+res21 = send_cmd(CMDS[21])
+T.check("R19 (1.22) a prompt with device «phone» → talk with the phone's prefix (not the watch's), «delivered» as in the fixture",
+        res21 and res21["ok"] is True and res21["text"] == RES[21]["text"] and any(c.startswith("talk atlas-shop Dall'utente via telefono.") and c.endswith("also add the attendees list --no-wait") for c in cm_calls()[n_calls:]), str(res21) + str(cm_calls()[n_calls:]))
+n_calls = len(cm_calls())
+res31 = send_cmd(CMDS[31])
+T.check("R19 (1.36) a prompt with device «web» → talk with the web app's prefix (never «polso»), «delivered» as in the fixture",
+        res31 and res31["ok"] is True and res31["text"] == RES[31]["text"] and any(c.startswith("talk atlas-shop Dall'utente via web app.") and c.endswith("check the cart totals too --no-wait") for c in cm_calls()[n_calls:]), str(res31) + str(cm_calls()[n_calls:]))
+q19 = {e["id"]: (e["queued"], e["note"], e["text"]) for e in json.loads(res["text"])["entries"] if e["role"] == "user"}
+T.check("R19 (1.22) typed while a turn runs: shown from the enqueue, with the time it was written; when it enters the turn the same entry stops being queued (no duplicate); one still waiting stays queued; a pasted image gives its text and «1 image(s)»; «[Request interrupted …]» and «[Cross-session delivery notice]» are not the person's messages",
+        q19.get("q1789207361000") == (False, None, "then tag the release") and q19.get("q1789207365000") == (True, None, "still waiting in the queue")
+        and q19.get("img1.0") == (False, "1 image(s)", "this is how the header looks now") and not any(t.startswith("[") for _, _, t in q19.values())
+        and sum(1 for _, _, t in q19.values() if t == "then tag the release") == 1, str(q19))
+T.check("R19 (1.22) «2:before=a4.0» → the two entries before it, more true; a bad arg, an unknown id and a session that is not running → ok false in plain words",
+        [e["id"] for e in p19["entries"]] == ["a1.1", "a3.0"] and p19["more"] is True and bad[0]["ok"] is False and "expected n" in bad[0]["text"]
+        and bad[1]["ok"] is True and json.loads(bad[1]["text"]).get("reset") is True and none19["ok"] is False and none19["text"] == "atlas-shop-none is not running", str(p19) + str(bad) + str(none19))
+# R55 (contratto 1.72, 15/10): «Mostra tutto» sotto un passaggio — op diff con l'id della voce, sulla stessa trascrizione
+_a8_54 = next(e for e in json.loads(RES[19]["text"])["entries"] if e["id"] == "a8.0")
+d54 = [send_cmd({"id": f"6f1c2d3e-0710-4000-8000-00000000071{i}", "op": "diff", "session": "field-notes", "arg": a, "issued": 1789211000 + i, "by": "phone-pixel8"})
+       for i, a in enumerate(("a8.0", "a6.1", "nope", "a b"))]
+T.check("R55 (1.72) diff a8.0 → ok, text = that entry's diff whole (as in the fixture's page); an Edit without a structured result, an unknown id and a bad arg → ok false in plain words",
+        d54[0] and d54[0]["ok"] is True and json.loads(d54[0]["text"]) == _a8_54["diff"]
+        and [(x or {}).get("text") for x in d54[1:]] == ["no diff for a6.1", "no entry nope in the transcript", "diff a b: expected the id of a transcript entry"], str(d54))
+# R55 (1.72): la vista «Modifiche» di una cartella fuori da git (field-notes) e di una sessione chiusa (orbit-docs, dal registro)
+c54 = [send_cmd({"id": f"6f1c2d3e-0720-4000-8000-00000000072{i}", "op": "changes", "session": s_, "arg": a, "issued": 1789211100 + i, "by": "phone-pixel8"})
+       for i, (s_, a) in enumerate((("field-notes", None), ("field-notes", "file=/home/dev/storefront/src/checkout/totals.ts"),
+                                    ("field-notes", "file=../../.ssh/id_ed25519"), ("field-notes", "everything"), ("orbit-docs", None)))]
+v54 = json.loads(c54[0]["text"]) if c54[0] and c54[0]["ok"] else {}
+T.check("R55 (1.72) changes on a folder outside git → source transcript, repo and base null: one file per path from the conversation's passages (a8.0: totals.ts, outside the folder so absolute, size null), totals = the sum",
+        {k_: v54.get(k_) for k_ in ("source", "repo", "base", "cut")} == {"source": "transcript", "repo": None, "base": None, "cut": False}
+        and v54.get("files") == [{"path": "/home/dev/storefront/src/checkout/totals.ts", "status": "modified", "added": 2, "removed": 1, "size": None,
+                                  "hunks": _a8_54["diff"]["hunks"], "cut": False}]
+        and v54.get("totals") == {"files": 1, "added": 2, "removed": 1} and isinstance(v54.get("at"), int), str(c54[0])[:400])
+T.check("R55 (1.72) changes file=<path as listed> → that file alone; a path not among the changes and a bad arg → ok false in plain words; a closed session (from the registry) still answers",
+        c54[1] and c54[1]["ok"] is True and json.loads(c54[1]["text"])["totals"] == {"files": 1, "added": 2, "removed": 1}
+        and [(x or {}).get("text") for x in c54[2:4]] == ["../../.ssh/id_ed25519 is not among the changes", "changes everything: expected nothing or file=<path>"]
+        and c54[4] and c54[4]["ok"] is True and json.loads(c54[4]["text"])["source"] == "transcript", str(c54[1:]))
+# R22 (contratto 1.24, 02/10): op file — il telefono apre un file che compare nei `files` della trascrizione
+import base64 as _b64, os as _os22
+_fx = (FIX / "transcript-sample.jsonl").read_text().replace("/home/demo/workspaces", str(ws.resolve()))
+(tdir19 / "S-F.jsonl").write_text(_fx)
+fn22 = (ws / "personal" / "field-notes").resolve()
+(fn22 / "docs").mkdir(parents=True, exist_ok=True)
+png22 = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
+(fn22 / "docs" / "cover.png").write_bytes(png22)
+fcmd = [dict(c, arg=c["arg"].replace("/home/demo/workspaces", str(ws.resolve()))) for c in CMDS[22:24]]
+r22 = send_cmd(fcmd[0])
+doc22 = (STORE.get("file") or {}).get(fcmd[0]["id"])
+blob22 = C.decrypt(doc22, k) if doc22 else {}
+T.check("R22 (1.24) file: a path listed in the session's transcript → /file/<cmd id> as {v, enc}, plain {mime, data base64} byte for byte; /result as in the fixture",
+        r22 and r22["ok"] is True and r22["text"] == RES[22]["text"] and set(doc22 or {}) == {"v", "enc"}
+        and blob22.get("mime") == "image/png" and _b64.b64decode(blob22.get("data") or "") == png22, str(r22) + str(blob22)[:120])
+r22b = send_cmd(fcmd[1])
+T.check("R22 (1.24) a path not in the transcript (as in the fixture) → «not in the transcript», nothing written to /file",
+        r22b and r22b["ok"] is False and r22b["text"] == RES[23]["text"] and fcmd[1]["id"] not in (STORE.get("file") or {}), str(r22b))
+pdf22 = str(fn22 / "docs" / "minutes.pdf")
+r22c = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000201", arg=pdf22))
+(fn22 / "docs" / "minutes.pdf").write_bytes(_os22.urandom(1_300_000))
+r22d = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000202", arg=pdf22))
+r22e = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000203", session="atlas-shop-none"))
+T.check("R22 (1.24) refusals in plain words: a listed file that is missing, a listed non-image over the cap («too large: <bytes> max <bytes>», 1.34), a session that is not running",
+        r22c and r22c["text"] == "missing or unreadable" and r22d and r22d["text"] == f"too large: 1300000 max {RL.FILE_ONE_MAX}" and r22e and r22e["text"] == "no session atlas-shop-none", str([r22c, r22d, r22e]))
+from PIL import Image as _Im22
+rep22 = (ws / "personal" / "atlas-shop").resolve() / "docs" / "reports"   # l'immagine archiviata da `supervisor report`
+rep22.mkdir(parents=True, exist_ok=True)
+_Im22.frombytes("RGB", (1600, 1600), _os22.urandom(1600 * 1600 * 3)).save(rep22 / "2026-09-12-checkout-is-grey.jpg", "JPEG", quality=95)
+jpg22 = str(rep22 / "2026-09-12-checkout-is-grey.jpg")
+r22f = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000204", arg=jpg22))
+doc22f = (STORE.get("file") or {}).get("6f1c2d3e-0140-4000-8000-000000000204") or {}
+blob22f = C.decrypt(doc22f, k) if doc22f else {}
+T.check("R22 (1.24) a listed image over the cap is reduced to a JPEG that fits (enc ≤ 1 500 000)",
+        _os22.path.getsize(jpg22) > 1_200_000 and r22f and r22f["ok"] is True and blob22f.get("mime") == "image/jpeg"
+        and len(doc22f.get("enc") or "") <= 1_500_000 and _b64.b64decode(blob22f.get("data") or "")[:2] == b"\xff\xd8", f"{_os22.path.getsize(jpg22)} {r22f} {len(doc22f.get('enc') or '')}")
+T.check("R22 (1.24) /state ops carries file", "file" in json.loads(relay("push", "--dry-run").stdout).get("ops", []), "")
+# R29 (contratto 1.34, 04/10): il file a pezzi — con parts true meta e pezzi da ~1 MB, fino a 25 MB
+big29 = _os22.urandom(2 * 1024 * 1024 + 12345)
+(fn22 / "docs" / "minutes.pdf").write_bytes(big29)
+r29 = send_cmd(dict(fcmd[0], id="6f1c2d3e-0210-4000-8000-000000000210", arg=pdf22, parts=True), wait=40)
+node29 = (STORE.get("file") or {}).get("6f1c2d3e-0210-4000-8000-000000000210") or {}
+meta29 = C.decrypt(node29.get("meta"), k) if node29.get("meta") else {}
+parts29 = node29.get("parts") or {}
+parts29 = [parts29[str(i)] if isinstance(parts29, dict) else parts29[i] for i in range(len(parts29))]
+import hashlib as _h29
+joined29 = b"".join(C.decrypt_raw(x, k) for x in parts29)
+T.check("R29 (1.34) parts true → /file/<id>/meta {v, enc} of {n, size, sha256, mime, name} and /file/<id>/parts/0..n-1, raw bytes of 1 MB each; joined they are the file (sha256 checks)",
+        r29 and r29["ok"] is True and meta29 == {"n": 3, "size": len(big29), "sha256": _h29.sha256(big29).hexdigest(), "mime": "application/pdf", "name": "minutes.pdf"}
+        and len(parts29) == 3 and joined29 == big29 and all(set(x) == {"v", "enc"} for x in parts29), str(r29) + str(meta29))
+with open(fn22 / "docs" / "minutes.pdf", "wb") as _f29:
+    _f29.truncate(25 * 1024 * 1024 + 1)
+r29b = send_cmd(dict(fcmd[0], id="6f1c2d3e-0210-4000-8000-000000000211", arg=pdf22, parts=True), wait=40)
+T.check("R29 (1.34) over 25 MB → «too large: <bytes> max 26214400», nothing written", r29b and r29b["ok"] is False and r29b["text"] == f"too large: {25 * 1024 * 1024 + 1} max 26214400"
+        and "6f1c2d3e-0210-4000-8000-000000000211" not in (STORE.get("file") or {}), str(r29b))
+FP = json.loads((FIX / "file-parts.json").read_text())
+_kfp = bytes.fromhex(FP["key"])
+T.check("R29 (1.34) fixture file-parts.json: meta opens with the test key to its plain, the parts open to the file in order, sha256 of the joined bytes = meta.sha256",
+        C.decrypt(FP["meta"], _kfp) == FP["meta_plain"] and b"".join(C.decrypt_raw(x, _kfp) for x in FP["parts"]) == FP["file"].encode()
+        and _h29.sha256(FP["file"].encode()).hexdigest() == FP["meta_plain"]["sha256"] and FP["meta_plain"]["n"] == len(FP["parts"]) == 2, "")
+_one = _os22.urandom(RL.FILE_ONE_MAX)
+T.check("R29 (1.34) FILE_ONE_MAX, the «max» of the old way, is a file that still fits one {v, enc} under the cap", len(C.encrypt({"mime": "application/octet-stream", "data": _b64.b64encode(_one).decode()}, k)["enc"]) <= 1_500_000, str(RL.FILE_ONE_MAX))
+old22, fresh22 = "6f1c2d3e-0140-4000-8000-00000000f001", "6f1c2d3e-0140-4000-8000-00000000f002"
+http("PUT", f"/file/{old22}.json", {"v": 1, "enc": "x"}); http("PUT", f"/file/{fresh22}.json", {"v": 1, "enc": "x"})
+(rdir2 / "file-seen.json").write_text(json.dumps({old22: time.time() - 700}))
+(rdir2 / "prune-at").unlink(missing_ok=True)
+relay("push")
+T.check("R22 (1.24) push prunes a /file node not read for more than 10 minutes, keeps a fresh one",
+        old22 not in (STORE.get("file") or {}) and fresh22 in (STORE.get("file") or {}), str(list(STORE.get("file") or {})))
+# R31 (contratto 1.37, 05/10, la master al servizio dell'app): approvazioni, decisioni, consiglio di fable-director,
+# doppioni e sessioni finite
+tasks31 = tmp / "tasks.json"
+tasks31.write_text(json.dumps([
+    {"id": "atlas-release-2-4", "plan": None, "state": "awaiting_ok", "lane": "closed", "title": "Release 2.4 of atlas-shop", "project": str(ws / "personal" / "atlas-shop"),
+     "request": {"what": "tag v2.4 and push to origin main", "where": "production (shop.example.com)", "at": 1789210600}},
+    {"id": "notes-pr", "plan": None, "state": "awaiting_ok", "lane": "closed", "title": "Open the PR of the notes", "project": str(ws / "personal" / "field-notes"),
+     "request": {"what": "push the branch notes", "where": "github fork", "at": 1789210500}}]))
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": "atlas-shop", "state": "awaiting_ok",
+    "contract": {"task": {"where": {"session": "atlas-shop"}}}, "approvals": [{"what": "tag v2.4 and push to origin main", "by_": None}]}))
+(state_dir / "needs-you").mkdir(parents=True, exist_ok=True)
+(state_dir / "needs-you" / "S-A.json").write_text(json.dumps({"reason": "ok per il push", "at": 1789210600, "name": "atlas-shop"}))
+# 01/11 (ok_variabile): l'ok del tocco si scrive nel processo del relay, su un registro vero: non passa piu' dalla CLI
+_c31 = {"schema_version": 1, "task": {"id": "atlas-release-2-4", "title": "Release 2.4", "plan": None, "where": {"project": str(ws / "personal" / "atlas-shop"), "session": "atlas-shop", "host": "local", "account": None},
+        "check": {"cmd": "true", "cwd": None, "timeout_s": 30}, "perimeter": [], "lane": "closed", "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
+_t31 = lambda *a, **k: subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), *a], capture_output=True, text=True, env=ENV, timeout=30, **k)  # noqa: E731
+_t31("add", "-", input=json.dumps(_c31))
+_t31("wait-ok", "atlas-release-2-4", "--what", "tag v2.4", "--where", "production")
+_oks31 = lambda: [(a["by_"], a["text"]) for a in json.loads(_t31("show", "atlas-release-2-4", "--json").stdout)["approvals"] if a["by_"]]  # noqa: E731
+n_calls = len(cm_calls())
+r31a = send_cmd(CMDS[32])
+r31b = send_cmd(CMDS[33])
+T.check("R31 (1.37) approve of a task waiting for an ok → `task approve <task> --by <by> --text \"<text> (dal telefono)\"`, as in the fixture; a task not waiting → refused, nothing recorded",
+        r31a and r31a["ok"] is True and r31a["text"] == RES[32]["text"] and ("phone-pixel8", "ok, go ahead (dal telefono)") in _oks31()
+        and r31b and r31b["ok"] is False and r31b["text"] == RES[33]["text"] and not any(c.startswith("task approve atlas-old-task") for c in cm_calls()), str([r31a, r31b]) + str(cm_calls()[n_calls:]))
+# R63 (1.76, P4, 22/10): «Approva» risveglia — talk alla sessione responsabile e alla master (staccati), il «ferma per te» della sessione tolto
+T.check("R63 (1.76) after the ok: `talk atlas-shop «l'utente ha approvato atlas-release-2-4 alle HH:MM: tag v2.4 … Prosegui, e chiudi con task done …» --no-wait`, `talk master «… atlas-shop ha ricevuto il via.»`, and needs-you/S-A.json removed",
+        T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha approvato atlas-release-2-4 alle ") and ": tag v2.4 and push to origin main. Prosegui, e chiudi con task done atlas-release-2-4. --no-wait" in c for c in cm_calls()[n_calls:]), 10)
+        and T.wait_until(lambda: any(c.startswith("talk master l'utente ha approvato atlas-release-2-4 alle ") and c.endswith("; atlas-shop ha ricevuto il via. --no-wait") for c in cm_calls()[n_calls:]), 10)
+        and T.wait_until(lambda: not (state_dir / "needs-you" / "S-A.json").exists(), 10), str(cm_calls()[n_calls:]))
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
+# R66 (1.80, 23/10): «Fatto» dall'app — op attention_done
+(state_dir / "needs-you" / "S-A.json").write_text(json.dumps({"reason": "installa l'APK 1.31", "at": 1789210600, "name": "atlas-shop", "expires_at": 1789297000}))
+n66 = len(cm_calls())
+r66a = send_cmd(CMDS[76])
+r66b = send_cmd(CMDS[77])
+T.check("R66 (1.80) attention_done needs_you atlas-shop → the file goes, «l'utente ha segnato «fatto» alle HH:MM (…): installa l'APK 1.31. Riprendi.» to atlas-shop, result ok as in the fixture; an unknown ref → ok false",
+        r66a and r66a["ok"] is True and r66a["text"] == RES[76]["text"] and not (state_dir / "needs-you" / "S-A.json").exists()
+        and T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha segnato «fatto» alle ") and "installa l'APK 1.31. Riprendi. --no-wait" in c for c in cm_calls()[n66:]), 10)
+        and r66b and r66b["ok"] is False and r66b["text"] == RES[77]["text"], str((r66a, r66b, cm_calls()[n66:])))
+n63 = len(cm_calls())
+r63 = send_cmd(dict(CMDS[32], id="6f1c2d3e-0370-4000-8000-000000000371"))   # un id nuovo: il bus non ripete un comando gia' fatto
+T.check("R63 (1.76) a task with no session: the ok is recorded and the answer is positive; only the master is told, nobody else",
+        r63 and r63["ok"] is True and T.wait_until(lambda: any(c.startswith("talk master ") for c in cm_calls()[n63:]), 10)
+        and not any(c.startswith("talk ") and not c.startswith("talk master ") for c in cm_calls()[n63:]), str(cm_calls()[n63:]))
+(tmp / "task-show.json").unlink()
+n_calls = len(cm_calls())
+r31c = send_cmd(CMDS[34])
+talk31 = [c for c in cm_calls()[n_calls:] if c.startswith("talk master ")]
+T.check("R31 (1.37) decision → `talk master` with the text, the project and where it comes from, --no-wait; «decision sent to the master» as in the fixture",
+        r31c and r31c["ok"] is True and r31c["text"] == RES[34]["text"] and len(talk31) == 1 and "«Prices always include VAT on the checkout page»" in talk31[0]
+        and "dal telefono (progetto atlas-shop)" in talk31[0] and talk31[0].endswith("--no-wait"), str(r31c) + str(talk31))
+(tmp / "talk-saved").write_text("x")
+r31d = send_cmd(dict(CMDS[34], id="6f1c2d3e-0372-4000-8000-000000000373", arg=None, device="web"))
+(tmp / "talk-saved").unlink()
+r31e = send_cmd(dict(CMDS[34], id="6f1c2d3e-0372-4000-8000-000000000374", text="  "))
+T.check("R31 (1.37) decision with the master closed → kept in its inbox, said so; an empty decision → refused",
+        r31d and r31d["ok"] is True and "inbox" in r31d["text"] and r31e and r31e["ok"] is False and r31e["text"] == "empty decision: nothing to save", str([r31d, r31e]))
+# R35 (contratto 1.42, 07/10, modalita' live dell'app): il prompt a voce porta le istruzioni vocali dopo il prefisso del
+# dispositivo; l'approve dal polso in modalita' live vale solo con la doppia conferma
+_voice34 = json.loads((T.SCRIPTS.parent / "messages" / "it.json").read_text()).get("relay.prompt_voice")
+_alive_bak34 = alive.read_text()
+alive.write_text(json.dumps(json.loads(_alive_bak34) + [{"pid": 10, "name": "master", "tmux": "master", "cwd": str(ws / "personal" / "atlas-shop"), "status": "idle", "waiting": False,
+                                                       "link": None, "account": "personal", "session_id": "S-M", "attached": False, "started_at": 1789120000000}]))
+n_calls = len(cm_calls())
+r34a = send_cmd(CMDS[37])
+talk34 = [c for c in cm_calls()[n_calls:] if c.startswith("talk master ")]
+T.check("R35 (1.42) prompt with voice true → talk with the phone's prefix, then the voice instructions, then the text, --no-wait; «delivered» as in the fixture",
+        r34a and r34a["ok"] is True and r34a["text"] == RES[37]["text"] and _voice34 == "Dall'utente a voce, in modalità live: rispondi in 2 o 3 frasi, senza tabelle, percorsi né codice; se proponi seguiti, Prossimi numerati; chiudi con la riga Watch."
+        and len(talk34) == 1 and talk34[0] == "talk master " + json.loads((T.SCRIPTS.parent / "messages" / "it.json").read_text())["relay.prompt_prefix_phone"] + " " + _voice34 + " which session is closest to a release? --no-wait",
+        str(r34a) + str(talk34))
+n_calls = len(cm_calls())
+r34b = send_cmd(dict(CMDS[37], id="6f1c2d3e-0380-4000-8000-000000000383", voice=False))
+talk34b = [c for c in cm_calls()[n_calls:] if c.startswith("talk master ")]
+T.check("R35 (1.42) voice false or absent → the prompt as before, no voice instructions",
+        r34b and r34b["ok"] is True and len(talk34b) == 1 and "modalità live" not in talk34b[0], str(r34b) + str(talk34b))
+alive.write_text(_alive_bak34)
+n_calls = len(cm_calls())
+r34c = send_cmd(CMDS[38])
+T.check("R35 (1.42) approve via live with 2 confirmations → `task approve <task> --by <by> --text \"<text> (dal telefono, modalità live, doppia conferma)\"`, as in the fixture",
+        r34c and r34c["ok"] is True and r34c["text"] == RES[38]["text"] and ("phone-pixel8", "ok (dal telefono, modalità live, doppia conferma)") in _oks31(),
+        str(r34c) + str(cm_calls()[n_calls:]))
+n_calls = len(cm_calls())
+r34d = send_cmd(CMDS[39])
+r34e = [send_cmd(dict(CMDS[39], id=f"6f1c2d3e-0382-4000-8000-00000000038{i}", **kw)) for i, kw in ((4, {"confirmations": None}), (5, {"confirmations": True}), (6, {"confirmations": "2"}))]
+_c34 = dict(CMDS[39]); _c34.pop("confirmations"); _c34["id"] = "6f1c2d3e-0382-4000-8000-000000000387"
+r34e.append(send_cmd(_c34))
+T.check("R35 (1.42) approve via live with 1 confirmation → refused as in the fixture; missing, null, true or a string → refused the same; nothing recorded",
+        r34d and r34d["ok"] is False and r34d["text"] == RES[39]["text"] and all(r and r["ok"] is False and r["text"] == RES[39]["text"] for r in r34e)
+        and not any(c.startswith("task approve") for c in cm_calls()[n_calls:]), str([r34d] + r34e) + str(cm_calls()[n_calls:]))
+adv31 = tmp / "fd-sessions"; adv31.mkdir(exist_ok=True)
+_now31 = int(time.time())
+_m31 = json.loads((FIX / "state-1-question.json").read_text())["choices"]["models"]
+(adv31 / "S-A.json").write_text(json.dumps({"session_id": "S-A", "ctx_tokens": 36000, "advice": {"model": _m31[1]["id"], "effort": "high", "reason": "Checkout refactor:\nFable high",
+                                            "switch_cost_tokens": 36000, "at": _now31, "source": "fable-director", "when": "now", "differs": True}}))
+(adv31 / "S-F.json").write_text(json.dumps({"session_id": "S-F", "advice": {"model": "claude-unknown-9", "effort": "high", "reason": "x", "switch_cost_tokens": 1, "at": _now31, "when": "now", "differs": True}}))
+_m1m31 = next((m["id"] for m in _m31 if "[" in m["id"]), None)
+(adv31 / "S-L.json").write_text(json.dumps({"session_id": "S-L", "advice": {"model": _m1m31.split("[")[0], "effort": "low", "reason": "base id", "switch_cost_tokens": 1, "at": _now31, "when": "next_task", "differs": False}}))
+write_cfg(advice_dir=str(adv31))
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+d31 = json.loads(relay("push", "--dry-run").stdout)
+s31 = {x["name"]: x for x in d31["sessions"]}
+T.check("R31 (1.37) advice from fable-director's snapshot <advice_dir>/<session_id>.json: {model, effort, reason on one line, switch_cost_tokens, at, source, when, differs}; a model outside the choices and an advice older than advice_max_age_s → no field",
+        s31["atlas-shop"].get("advice") == {"model": _m31[1]["id"], "effort": "high", "reason": "Checkout refactor: Fable high", "switch_cost_tokens": 36000, "at": _now31, "source": "fable-director", "when": "now", "differs": True}
+        and "advice" not in s31["field-notes"], json.dumps({k: v.get("advice") for k, v in s31.items()}))
+T.check("R31 (07/10) an advice with the base id («claude-opus-5») is kept when the choices carry the window («claude-opus-5[1m]»), as Tune.sameModel in the app",
+        _m1m31 is not None and (s31["ledger-api"].get("advice") or {}).get("model") == _m1m31.split("[")[0], json.dumps(s31["ledger-api"].get("advice")))
+(adv31 / "S-F.json").write_text(json.dumps({"session_id": "S-F", "advice": {"model": _m31[1]["id"], "effort": "low", "reason": "old", "switch_cost_tokens": 1, "at": _now31 - 30000, "when": "now", "differs": False}}))
+T.check("R31 (1.37) an advice older than advice_max_age_s (6 h) → no field",
+        "advice" not in {x["name"]: x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"]}["field-notes"], "")
+T.check("R31 (1.37) approvals from the registry's tasks in awaiting_ok, the oldest first, deploy true when what or where names production",
+        d31["approvals"] == [{"task": "notes-pr", "title": "Open the PR of the notes", "what": "push the branch notes", "where": "github fork", "deploy": False, "requested_at": 1789210500, "wid": "w815c4806d7"},
+                             {"task": "atlas-release-2-4", "title": "Release 2.4 of atlas-shop", "what": "tag v2.4 and push to origin main", "where": "production (shop.example.com)", "deploy": True, "requested_at": 1789210600, "wid": "wd2f87e85e2"}], str(d31["approvals"]))
+tasks31.unlink()
+T.check("R31 (1.37) without tasks waiting approvals is an empty list (always present); ops carries approve and decision",
+        json.loads(relay("push", "--dry-run").stdout)["approvals"] == [] and {"approve", "decision"} <= set(d31["ops"]), "")
+# R67 (1.81, 23/10 23:11, supervisor-app «scelte con tasti»): un compito che chiede una scelta — options in approvals[], approve con choice
+tasks31.write_text(json.dumps([{"id": "atlas-checkout-layout", "plan": None, "state": "awaiting_ok", "lane": "closed", "title": "Checkout layout of atlas-shop", "project": str(ws / "personal" / "atlas-shop"),
+                                "request": {"what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "at": 1789211700, "options": ["Strada A", "Strada B"]}}]))
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-checkout-layout", "session": "atlas-shop", "state": "approved", "contract": {"task": {"where": {"session": "atlas-shop"}}},
+    "approvals": [{"what": "pick the checkout layout", "by_": None, "options": ["Strada A", "Strada B"], "choice": None}, {"what": None, "by_": "phone-pixel8", "options": None, "choice": "Strada B"}]}))
+d67 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R67 (1.81) approvals[] carries options (the labels, in order) for a task whose request has them; state-2 shows one",
+        d67["approvals"] == [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789211700, "options": ["Strada A", "Strada B"], "wid": "w4b90c5f596"}]
+        and (F2["approvals"] or [{}])[0].get("options") == ["Strada A", "Strada B"], str(d67["approvals"]))
+_t31("add", "-", input=json.dumps({"schema_version": 1, "task": dict(_c31["task"], id="atlas-checkout-layout")}))
+_t31("wait-ok", "atlas-checkout-layout", "--what", "pick", "--where", "branch", "--options", "Strada A|Strada B")
+n67 = len(cm_calls())
+r67a = send_cmd(CMDS[78])
+r67b = send_cmd(CMDS[79])
+r67c = send_cmd(dict(CMDS[78], id="6f1c2d3e-0782-4000-8000-000000000782", choice=None))
+T.check("R67 (1.81) approve with a choice among the options → `task approve … --choice Strada B`, «approved <task> (Strada B)» as in the fixture, the session woken with «; scelta: Strada B»; a label not among them → refused as in the fixture; no choice → «choose one of …»; nothing recorded for the refused ones",
+        r67a and r67a["ok"] is True and r67a["text"] == RES[78]["text"] and [(a["by_"], a["text"], a["choice"]) for a in json.loads(_t31("show", "atlas-checkout-layout", "--json").stdout)["approvals"] if a["by_"]] == [("phone-pixel8", "ok (dal telefono)", "Strada B")]
+        and T.wait_until(lambda: any(c.startswith("talk atlas-shop l'utente ha approvato atlas-checkout-layout alle ") and ": pick the checkout layout; scelta: Strada B. Prosegui, e chiudi con task done atlas-checkout-layout. --no-wait" in c for c in cm_calls()[n67:]), 10)
+        and r67b and r67b["ok"] is False and r67b["text"] == RES[79]["text"] and r67c and r67c["ok"] is False and r67c["text"] == "atlas-checkout-layout: choose one of Strada A, Strada B"
+        , str((r67a, r67b, r67c, cm_calls()[n67:])))
+tasks31.unlink()
+(tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
+# R69 (1.82, 24/10, «ogni scheda cliccabile» del rapporto della notte): transcript di una conversazione chiusa, dal suo id
+_d69 = home / ".claude" / "projects" / "-closed-demo"
+_d69.mkdir(parents=True, exist_ok=True)
+(_d69 / f"{CMDS[80]['sid']}.jsonl").write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+r69a, r69b = send_cmd(CMDS[80]), send_cmd(CMDS[81])
+r69c = send_cmd(dict(CMDS[80], id="6f1c2d3e-0802-4000-8000-000000000802", sid="../../etc/passwd"))
+T.check("R69 (1.82) transcript with session null and sid → that conversation's page as in the fixture (closed: no live session needed); an unknown sid or one that is not a file name → «no transcript for …»",
+        r69a and r69a["ok"] is True and r69a["text"] == RES[80]["text"] and r69b and r69b["ok"] is False and r69b["text"] == RES[81]["text"]
+        and r69c and r69c["ok"] is False and r69c["text"].startswith("no transcript for "), str((r69a and r69a["text"][:120], r69b, r69c)))
+_nr69 = json.loads((FIX / "night-report-sample.json").read_text())
+T.check("R69 (1.82) night-report-sample: session_id on a closed session (atlas-shop) and on a night_job (e5f6a7b8), the same id as the transcript fixture; absent elsewhere, never null",
+        {(t["kind"], t["id"]): t.get("session_id") for t in _nr69["timeline"] if "session_id" in t} == {("session", "atlas-shop"): CMDS[80]["sid"], ("night_job", "e5f6a7b8"): "7d2a9e14-58c3-4b6f-8e01-3a9c4f2b6d18"}
+        and all(t.get("session_id", "x") is not None for t in _nr69["timeline"]), "")
+(_d69 / f"{CMDS[80]['sid']}.jsonl").unlink()   # la ricerca e la cronologia (R25, R27) leggono tutte le trascrizioni
+# R70 (1.83, 24/10, le domande dei server MCP sul telefono): /state.elicitations, l'evento elicitation, l'op elicit
+_prev70 = {k: v for k, v in st2.items() if k != "elicitations"}
+_ev70, _ = S.events_between(_prev70, st2, 1789214300)
+_fx70 = [e for e in json.loads((FIX / "events-sample.json").read_text()) if e["kind"] == "elicitation"]
+T.check("R70 (1.83) a new question of an MCP server → one elicitation event each (title the server, body the question, ref its id), the first as in events-sample; no event when it was already there",
+        [e for e in _ev70 if e["kind"] == "elicitation"][:1] == _fx70 and [e["ref"] for e in _ev70] == ["e-4f1c2a9b7d30", "e-9a0b1c2d3e4f"]
+        and S.events_between(st2, st2, 1789214400)[0] == [], str(_ev70))
+T.check("R70 (1.83) without questions there is no elicitations field; fit_state never drops them; ops carries elicit",
+        "elicitations" not in S.build_state(dict(SRC2, elicitations=[]), 1789214400) and S.build_state(dict(SRC2, state_max_kb=1), 1789214400)["elicitations"] == F2["elicitations"]
+        and "elicit" in R_OPS and "elicit" not in RL.PASSIVE_OPS, "")
+_eld70 = state_dir / "elicit"
+_eld70.mkdir(parents=True, exist_ok=True)
+_now70 = int(time.time())
+for _e70 in F2["elicitations"]:
+    _r70 = dict(_e70, session="atlas-shop", session_id="sid-unknown", asked_at=_now70, expires_at=_now70 + 120)
+    (_eld70 / f"{_e70['id']}.json").write_text(json.dumps(_r70))
+(_eld70 / "e-0ld000000000.json").write_text(json.dumps(dict(_r70, id="e-0ld000000000", expires_at=_now70 - 5)))
+_d70 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R70 (1.83) push: the open questions from state/elicit, oldest first, with the state's session name and without session_id; an expired one is deleted",
+        [(e["id"], e["session"], e["mode"]) for e in _d70.get("elicitations") or []] == [("e-4f1c2a9b7d30", "atlas-shop", "form"), ("e-9a0b1c2d3e4f", "atlas-shop", "url")]
+        and all("session_id" not in e for e in _d70["elicitations"]) and (_d70["elicitations"] or [{}])[0].get("fields") == F2["elicitations"][0]["fields"]
+        and not (_eld70 / "e-0ld000000000.json").exists(), str(_d70.get("elicitations")))
+r70b = send_cmd(CMDS[83])
+r70a = send_cmd(CMDS[82])
+r70c = send_cmd(CMDS[84])
+_ans70 = json.loads((_eld70 / "e-4f1c2a9b7d30.answer.json").read_text()) if (_eld70 / "e-4f1c2a9b7d30.answer.json").exists() else {}
+T.check("R70 (1.83) elicit accept with valid values → «answered <server> (<id>)» as in the fixture and the answer file with origin relay for the hook; a value not among the options and a link → refused as in the fixture",
+        r70a and r70a["ok"] is True and r70a["text"] == RES[82]["text"] and r70b and r70b["ok"] is False and r70b["text"] == RES[83]["text"]
+        and r70c and r70c["ok"] is False and r70c["text"] == RES[84]["text"]
+        and _ans70.get("origin") == "relay" and _ans70.get("action") == "accept" and _ans70.get("content") == CMDS[82]["content"] and _ans70.get("by") == "phone-pixel8",
+        str((r70a, r70b, r70c, _ans70)))
+shutil.rmtree(_eld70)
+# R72 (contratto 1.84, 24/10): i suggerimenti della master, la chiusura con lo stato salvato e «Riprendi» con --resume
+CM184 = [c for c in CMDS if c["id"].startswith("6f1c2d3e-084")]
+RS184 = {r["id"]: r for r in RES if r["id"].startswith("6f1c2d3e-084")}
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+_last72 = (rdir2 / "last-state.json").read_bytes() if (rdir2 / "last-state.json").exists() else None   # rimesso alla fine: i test dopo leggono i nomi
+_sg72 = tmp / "suggestions.json"   # accanto alla config, come la lista dei ricorrenti
+_now72 = int(time.time())
+_pr72 = {x["id"]: x["prompt"] for x in SRC2["suggestions"]}   # 1.88: il prompt sta nel file, non nello stato
+_sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 - i, expires_at=_now72 + 3600) for i, x in enumerate(F2["suggestions"])]
+                             + [dict(F2["suggestions"][0], prompt="x", id="s-old0000000", key="old", at=_now72 - 99, expires_at=_now72 - 1)], "never": []}))
+_d72 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
+        [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-28:-25] == ["suggestion", "close_preview", "close"] and all(s["ops"][-28:-25] == R_OPS[-28:-25] for s in (F1, F2, F3))
+        and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
+_n72 = len(cm_calls())
+r72a = send_cmd(CM184[0])
+r72u = send_cmd(CM184[1])
+_left72 = json.loads(_sg72.read_text())["items"]
+T.check("R72 (1.84, 1.87) suggest_unknown_is_gone: accept → its prompt to master as a prompt from the phone, labelled «[dai suggerimenti]», «sent to master» as in the fixture, the item gone; an id no longer there → ok «already gone» as in the fixture, so the app drops the card",
+        r72a and r72a["ok"] is True and r72a["text"] == RS184[CM184[0]["id"]]["text"] == "sent to master" and r72u and r72u["ok"] is True and r72u["text"] == RS184[CM184[1]["id"]]["text"] == "already gone"
+        and any(c.startswith("talk master Dall'utente via telefono.") and c.endswith("[dai suggerimenti] " + _pr72[CM184[0]["arg"]] + " --no-wait") for c in cm_calls()[_n72:])
+        and [x["id"] for x in _left72 if x["expires_at"] > _now72] == [x["id"] for x in F2["suggestions"] if x["id"] != CM184[0]["arg"]], str((r72a, r72u, cm_calls()[_n72:])))
+# R74 (contratto 1.88, 27/10): choose con una delle options, discuss che lascia la voce, una scelta che non c'e'
+CM188 = {c["id"]: c for c in CMDS if c["id"].startswith("6f1c2d3e-088")}
+RS188 = {r["id"]: r for r in RES if r["id"].startswith("6f1c2d3e-088")}
+_sg72.write_text(json.dumps({"items": [dict(x, at=_now72 - i, expires_at=_now72 + 3600) for i, x in enumerate(SRC3["suggestions"])], "never": []}))
+_n74, _l74 = len(cm_calls()), len(led_rows())
+_r74 = [send_cmd(c) for c in CM188.values()]
+_left74 = {x["id"] for x in json.loads(_sg72.read_text())["items"]}
+_talk74 = [c for c in cm_calls()[_n74:] if c.startswith("talk master ")]
+T.check("R74 (1.88) suggest_queue_refill choose and discuss: results as in the fixture; a label outside options → ok false and the item stays; discuss sends «talk it over» with the text and the item stays; choose sends the prompt with the choice in place of {choice} and drops the item",
+        [(r["ok"], r["text"]) for r in _r74] == [(RS188[c]["ok"], RS188[c]["text"]) for c in CM188] and len(_talk74) == 2
+        and _talk74[0].endswith("[dai suggerimenti] " + RL.M("relay.suggestion_discuss") + " " + next(x for x in SRC3["suggestions"] if x["id"] == "s-6b5f8a0c76")["text"] + " --no-wait")
+        and _talk74[1].endswith("[dai suggerimenti] For the pricing page the maintainer picks Full: go ahead --no-wait")
+        and "s-6b5f8a0c76" in _left74 and "s-1c0a7e5f21" not in _left74, str((_r74, _talk74)))
+_led74 = [r for r in led_rows()[_l74:] if r.get("event") == "suggestion"]
+T.check("R74 (1.88) the ledger rows carry kind, source and the choice (the 14-day rate per kind comes from them)",
+        [(r["action"], r.get("kind"), r.get("source"), r.get("choice")) for r in _led74] == [("discussed", "proposal", "master", None), ("chosen", "choice", "master", "Full")], str(_led74))
+os.environ["CM_SUGGESTIONS"] = str(_sg72)   # come il relay vero: il file accanto alla sua config
+_fp72a = RL.sources_print()
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-suggest.py"), "clear", "--kind", "quota"], env=dict(os.environ), capture_output=True)
+_fp72b = RL.sources_print()
+_sg72.write_text(json.dumps({"items": [dict(F2["suggestions"][0], at=int(time.time()), expires_at=int(time.time()) + 1)], "never": []}))
+_fp72c = RL.sources_print()
+time.sleep(2.1)
+T.check("R72 (1.87) suggest_unknown_is_gone: suggestions.json is in the push fingerprint — after suggest clear and when a suggestion expires the light beat does not republish the old state",
+        _fp72a != _fp72b and RL.sources_print() != _fp72c and "suggestions.json:" in _fp72a, str((_fp72a[-80:], _fp72b[-80:], _fp72c[-80:])))
+del os.environ["CM_SUGGESTIONS"]
+_fn72 = ws / "personal" / "field-notes"
+_fn72.mkdir(parents=True, exist_ok=True)
+subprocess.run(["git", "init", "-q", str(_fn72)], check=True)
+(_fn72 / "notes.md").write_text("x")
+(_fn72 / "draft.txt").write_text("y")
+_dirty72 = sorted(ln[3:] for ln in subprocess.run(["git", "-C", str(_fn72), "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines())
+_n72 = len(cm_calls())
+r72p = send_cmd(CM184[2])
+_pv72 = json.loads(r72p["text"]) if r72p and r72p["ok"] else {"sessions": []}
+T.check("R72 (1.84) close_preview: field-notes closable with what will be saved (session_id, git status of its folder), atlas-shop blocked busy, ledger-api blocked by its question; the text as in the fixture; nothing closed",
+        [(x["name"], x["closable"], x["blocked_by"]) for x in _pv72["sessions"]] == [("field-notes", True, None), ("atlas-shop", False, "busy"), ("ledger-api", False, "question")]
+        and _pv72["sessions"][0]["save"]["session_id"] == "S-F" and _pv72["sessions"][0]["save"]["dirty_n"] == len(_dirty72) and sorted(_pv72["sessions"][0]["save"]["dirty"]) == _dirty72
+        and [x["save"] for x in _pv72["sessions"][1:]] == [None, None] and r72p["text"] == RS184[CM184[2]["id"]]["text"]
+        and not any(c.startswith("close ") for c in cm_calls()[_n72:]), str(r72p))
+r72c = send_cmd(CM184[3])
+_sv72 = json.loads((state_dir / "closed" / "field-notes.json").read_text()) if (state_dir / "closed" / "field-notes.json").exists() else {}
+T.check("R72 (1.84) close: only the closable one is closed (`close field-notes`), its state saved first (session_id, dirty, outcome, next, closed_at, by); the busy one stays with its reason; the text as in the fixture",
+        r72c and r72c["ok"] is True and r72c["text"] == RS184[CM184[3]["id"]]["text"] == "closed: field-notes\natlas-shop not closed: it is working"
+        and "close field-notes" in cm_calls()[_n72:] and "close atlas-shop" not in cm_calls()[_n72:]
+        and _sv72.get("session_id") == "S-F" and _sv72.get("dirty_n") == len(_dirty72) and _sv72.get("tmux") == "field-notes" and isinstance(_sv72.get("closed_at"), int)
+        and _sv72.get("by") == "phone-pixel8" and {"outcome", "next", "cwd", "account"} <= set(_sv72), str((r72c, _sv72)))
+_n72 = len(cm_calls())
+r72e = send_cmd(CM184[4])
+r72b = send_cmd(CM184[5])
+T.check("R72 (1.84) refused as in the fixture: close_preview with no session; close of a busy session only → ok false with its reason, nothing closed",
+        r72e and r72e["ok"] is False and r72e["text"] == RS184[CM184[4]["id"]]["text"] and r72b and r72b["ok"] is False and r72b["text"] == RS184[CM184[5]["id"]]["text"]
+        and not any(c.startswith("close ") for c in cm_calls()[_n72:]), str((r72e, r72b)))
+shutil.rmtree(_fn72 / ".git")
+rows_alive("ledger-api", "atlas-shop")
+_g72 = next((x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"] if x["name"] == "field-notes"), {})
+T.check("R72 (1.84) a session closed from the app leaves the registry's snapshot but stays gone in the state, with closed {at, session_id, outcome, next, dirty_n, dirty} from its save",
+        _g72.get("state") == "gone" and _g72.get("closed", {}).get("session_id") == "S-F" and _g72["closed"]["at"] == _sv72["closed_at"] and _g72["closed"]["dirty_n"] == len(_dirty72)
+        and sorted(_g72["closed"]["dirty"]) == _dirty72 and list(_g72["closed"]) == ["at", "session_id", "outcome", "next", "dirty_n", "dirty"], str(_g72))
+_orb72 = next((x for x in json.loads(relay("push", "--dry-run").stdout)["sessions"] if x["name"] == "orbit-docs"), {})
+T.check("R72 (1.84) a session closed at the PC carries closed {at, session_id} only: what the relay knows",
+        _orb72.get("closed") == {"at": _orb72.get("since"), "session_id": None}, str(_orb72.get("closed")))
+_tr72 = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(_fn72)) / "S-F.jsonl"
+_trb72 = _tr72.read_bytes() if _tr72.exists() else None   # una trascrizione dei test prima: via per la prova senza
+_tr72.unlink(missing_ok=True)
+_n72 = len(cm_calls())
+r72n = send_cmd(dict(CMDS[8], id="6f1c2d3e-0849-4000-8000-000000000849", session="field-notes"))
+_tr72.parent.mkdir(parents=True, exist_ok=True)
+_tr72.write_bytes(_trb72 or b'{"type":"user","sessionId":"S-F"}\n')
+r72r = send_cmd(dict(CMDS[8], id="6f1c2d3e-0850-4000-8000-000000000850", session="field-notes"))
+_l72 = [c for c in cm_calls()[_n72:] if c.startswith("launch ")]
+T.check("R72 (1.84) reopen of a session closed from the app: without its saved conversation on disk → refused, never --continue; with it → `launch <folder> --window --account personal --resume S-F` and the save goes",
+        r72n and r72n["ok"] is False and "S-F" in r72n["text"] and r72r and r72r["ok"] is True and r72r["text"] == "reopened field-notes (personal): same conversation"
+        and _l72 == [f"launch {_fn72} --window --account personal --resume S-F"] and not (state_dir / "closed" / "field-notes.json").exists(), str((r72n, r72r, _l72)))
+if _trb72 is None:
+    _tr72.unlink()
+for _f72 in ("notes.md", "draft.txt"):
+    (_fn72 / _f72).unlink()
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+if _last72 is not None:
+    (rdir2 / "last-state.json").write_bytes(_last72)
+rows_alive("ledger-api", "atlas-shop", "field-notes", **{"field-notes": {"started_at": 1789200000000}})
+_two31 = json.loads(alive.read_text())
+_two31.append(dict(_two31[2], pid=10, name="field-notes-2", tmux="field-notes-2", started_at=1789210000000, link=""))
+alive.write_text(json.dumps(_two31))
+d31b = json.loads(relay("push", "--dry-run").stdout)
+s31b = {x["name"]: x for x in d31b["sessions"]}
+T.check("R31 (1.37) duplicate_of: the session opened later on the same folder and the same conversation points to the first; the first and the others without the field",
+        s31b["field-notes-2"].get("duplicate_of") == "field-notes" and "duplicate_of" not in s31b["field-notes"] and "duplicate_of" not in s31b["atlas-shop"], json.dumps({k: v.get("duplicate_of") for k, v in s31b.items()}))
+write_cfg()
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+T.check("R32 (1.38) next_steps from the «Prossimi:» line: [{text, blocking}], «!» marks the item that unblocks stalled work and leaves the text; outcome.full carries the line without «!»; no line → no field",
+        [x for x in F1["sessions"] if x["name"] == "atlas-shop"][0].get("next_steps") == [{"text": "ok to deploy on staging", "blocking": True}, {"text": "review the test seeds", "blocking": False}]
+        and "Prossimi: ok to deploy on staging · review the test seeds" in [x for x in F1["sessions"] if x["name"] == "atlas-shop"][0]["outcome"]["full"]
+        and all("next_steps" not in x for x in F1["sessions"] if x["name"] != "atlas-shop")
+        and S.next_steps("**Prossimi:** `!a` · b · c · d") == [{"text": "a", "blocking": True}, {"text": "b", "blocking": False}, {"text": "c", "blocking": False}], "")
+# R33 (contratto 1.39, 05/10): i browser come dispositivi — kind web, otto posti, op unpair
+_dev33 = (rdir2 / "devices.json").read_text() if (rdir2 / "devices.json").exists() else "{}"
+_all33 = STORE.get("allowed") or {}
+(rdir2 / "devices.json").write_text(json.dumps({"phoneUid00000000000000000000": {"name": "Pixel 9", "paired_at": 1, "kind": "phone"},
+                                                "webUid000000000000000000000": {"name": "Safari on Mac", "paired_at": 2, "kind": "web"}}))
+http("PUT", "/allowed.json", {"phoneUid00000000000000000000": True, "webUid000000000000000000000": True})
+http("PUT", "/seen/webUid000000000000000000000.json", 1789210000000)
+r33a = send_cmd(CMDS[36])
+r33b = send_cmd(CMDS[35])
+_left33 = json.loads((rdir2 / "devices.json").read_text())
+r33c = send_cmd(dict(CMDS[35], id="6f1c2d3e-0390-4000-8000-000000000392", arg="phoneUid00000000000000000000"))
+T.check("R33 (1.39) unpair: an unknown uid refused as in the fixture; the browser's uid out of /allowed, /seen and devices.json, «removed <name>» as in the fixture; the last device refused",
+        r33a and r33a["ok"] is False and r33a["text"] == RES[36]["text"] and r33b and r33b["ok"] is True and r33b["text"] == RES[35]["text"]
+        and list(STORE.get("allowed") or {}) == ["phoneUid00000000000000000000"] and "webUid000000000000000000000" not in (STORE.get("seen") or {})
+        and list(_left33) == ["phoneUid00000000000000000000"] and r33c and r33c["ok"] is False and r33c["text"] == "cannot remove the last device"
+        and list(STORE.get("allowed") or {}) == ["phoneUid00000000000000000000"], str([r33a, r33b, r33c, STORE.get("allowed")]))
+# R33b (24/10, la master: «revoca dal relay il dispositivo Studio»): la stessa revoca dalla riga di comando
+(rdir2 / "devices.json").write_text(json.dumps({"phoneUid00000000000000000000": {"name": "Pixel 9", "paired_at": 1, "kind": "phone"},
+                                                "studioUid0000000000000000000": {"name": "Studio", "paired_at": 3, "kind": "web"}}))
+http("PUT", "/allowed.json", {"phoneUid00000000000000000000": True, "studioUid0000000000000000000": True})
+_rv = lambda *a: subprocess.run([sys.executable, str(T.SCRIPTS / "cm-relay.py"), "pair", *a], capture_output=True, text=True, env=ENV, timeout=30)  # noqa: E731
+_r33d, _r33e, _r33f, _r33g = _rv("--revoke", "studioUid0000000000000000000"), _rv("--revoke", "nobody"), _rv("--revoke", "phoneUid00000000000000000000"), _rv("--revoke")
+T.check("R33b relay pair --revoke UID: «removed Studio», out of /allowed and devices.json, exit 0; an unknown uid exit 1; the last device refused, exit 1; no uid → usage, exit 2; never a pairing",
+        _r33d.returncode == 0 and "removed Studio" in _r33d.stdout and list(STORE.get("allowed") or {}) == ["phoneUid00000000000000000000"]
+        and list(json.loads((rdir2 / "devices.json").read_text())) == ["phoneUid00000000000000000000"] and _r33e.returncode == 1 and _r33f.returncode == 1
+        and "cannot remove the last device" in _r33f.stderr and _r33g.returncode == 2 and "--revoke UID" in _r33g.stderr, str([(x.returncode, x.stdout, x.stderr[-200:]) for x in (_r33d, _r33e, _r33f, _r33g)]))
+(rdir2 / "devices.json").write_text(_dev33)
+http("PUT", "/allowed.json", _all33 or None) if _all33 else http("DELETE", "/allowed.json")
+T.check("R33 (1.39) eight places (PAIR_MAX_DEVICES) and kind web: a browser's pairing answer keeps its kind; state.devices shows it",
+        RL.PAIR_MAX_DEVICES == 8 and "web" in S.DEVICE_KINDS and any(d["kind"] == "web" and d["name"] == "Safari on Mac" for d in F1["devices"]) and "unpair" in F1["ops"], "")
+_ev31 = lambda tail: [{"event": "stop", "session_id": "s", "ts": iso(1), "last": "x", "esito": "", "tail": tail}]  # noqa: E731
+T.check("R31 (1.37) finished: the last message has «Esito:» and no «Prossimi:» (kernel rule 10); with «Prossimi:», without «Esito:» or with no stop → not finished",
+        S._finished(_ev31("Done.\nEsito: README rewritten")) and not S._finished(_ev31("Esito: half done\nProssimi: tests · docs"))
+        and not S._finished(_ev31("just talking")) and not S._finished([]), "")
+# R30 (contratto 1.35, 05/10, chiesto dall'app per il maintainer): la web app e l'API locale su 127.0.0.1 dentro serve —
+# ogni scambio di local-api.json rifatto sul relay vero, con la porta di prova al posto della 8765
+import socket as _so30, http.client as _hc30
+LA = json.loads((FIX / "local-api.json").read_text())
+_s30 = _so30.socket(); _s30.bind(("127.0.0.1", 0)); port30 = _s30.getsockname()[1]; _s30.close()
+web30 = tmp / "web-dist"; (web30 / "assets").mkdir(parents=True, exist_ok=True)
+(web30 / "index.html").write_text("<!doctype html><title>cm</title>"); (web30 / "assets" / "app.js").write_text("console.log(1)")
+(rdir2 / "web-token").write_text(LA["token"] + "\n")
+write_cfg(web={"enabled": True, "port": port30, "dir": str(web30)})
+relay("off"); relay("ensure")
+
+
+def web30_up():
+    try:
+        _so30.create_connection(("127.0.0.1", port30), timeout=1).close(); return True
+    except OSError:
+        return False
+
+
+T.check("R30 (1.35) relay.web.enabled → serve listens on 127.0.0.1:<relay.web.port> only", T.wait_until(web30_up, 8) and serve_pid() > 0, (rdir2 / "relay.log").read_text()[-300:])
+(rdir2 / "local").mkdir(exist_ok=True)
+(rdir2 / "local" / "state.json").write_text((FIX / "state-2-idle.json").read_text())
+
+
+def ws30(o):   # i percorsi demo della fixture sulla cartella di prova
+    return json.loads(json.dumps(o).replace("/home/demo/workspaces", str(ws.resolve())))
+
+
+(rdir2 / "local" / "events.json").write_text(json.dumps({e["key"]: e for e in ws30(json.loads((FIX / "events-sample.json").read_text()))}))
+bus30 = (set(STORE.get("result") or {}), set(STORE.get("file") or {}))
+
+
+def call30(req):
+    c = _hc30.HTTPConnection("127.0.0.1", port30, timeout=10)
+    h = {"Host": f"127.0.0.1:{port30}", **{k: v.replace(":8765", f":{port30}") for k, v in req["headers"].items()}}
+    body = json.dumps(ws30(req["body"])).encode() if "body" in req else None
+    c.request(req["method"], req["path"], body=body, headers=h)
+    r = c.getresponse()
+    if r.getheader("Content-Type", "").startswith("text/event-stream"):
+        lines = []
+        while len(lines) < 3:
+            lines.append(r.fp.readline().decode().rstrip("\n"))
+        c.close()
+        return r, lines
+    data = r.read(); c.close()
+    return r, data
+
+
+# 1.70: la trascrizione della sessione della fixture, con dimensione e mtime fissi (tx = «318-1789210000000000000»)
+tail70 = tmp / "tail70.jsonl"
+tail70.write_text("".join(json.dumps(x) + "\n" for x in [
+    {"type": "user", "uuid": "u70", "timestamp": "2026-09-12T10:00:00.000Z", "message": {"role": "user", "content": "review the test seeds"}},
+    {"type": "assistant", "uuid": "a70", "timestamp": "2026-09-12T10:00:05.000Z", "message": {"content": [{"type": "text", "text": "Seeds reviewed: 3 were flaky, fixed and green."}]}}]))
+os.utime(tail70, ns=(1789210000000000000, 1789210000000000000))
+
+
+for ex in LA["exchanges"]:
+    if ex["name"].startswith("tail"):   # una push del demone riscrive la mappa dalle sessioni finte: si rimette prima di ogni scambio
+        (rdir2 / "local" / "tail-paths.json").write_text(json.dumps({"f61903c0-ea6a-409c-a961-d01126a0f3ad": {"session": "atlas-shop", "path": str(tail70)}}))
+    r, data = call30(ex["request"])
+    want = ex["response"]
+    exp = json.loads((FIX / want["body_ref"]).read_text()) if "body_ref" in want else ws30(want.get("body"))
+    if want["status"] == 304:
+        got_ok = data == b""
+    elif want.get("first_event"):
+        got_ok = data[0] == f"event: {want['first_event']}" and json.loads(data[1][6:]) == exp
+    elif "body_base64" in want:
+        got_ok = data == base64.b64decode(want["body_base64"]) and r.getheader("Content-Disposition") == want["content_disposition"]
+    else:
+        got = json.loads(data)
+        got_ok = {k: v for k, v in got.items() if k not in want.get("vary", [])} == {k: v for k, v in exp.items() if k not in want.get("vary", [])} if isinstance(exp, dict) else got == exp
+        got_ok = got_ok and all(isinstance(got.get(k), int) for k in want.get("vary", []))
+    T.check(f"R30 (1.35) local-api.json «{ex['name']}»: {ex['request']['method']} {ex['request']['path'].split('?')[0]} → {want['status']} {want['content_type'].split(';')[0]}, body as in the fixture",
+            r.status == want["status"] and r.getheader("Content-Type") == want["content_type"] and got_ok and r.getheader("Access-Control-Allow-Origin") is None, f"{r.status} {r.getheader('Content-Type')} {str(data)[:300]}")
+n_calls = len(cm_calls())
+r30p, d30p = call30({"method": "POST", "path": "/api/cmd", "headers": {"Authorization": "Bearer " + LA["token"]}, "body": {"op": "prompt", "session": "atlas-shop", "arg": "local hello"}})
+T.check("R30 (1.36) a prompt through the local API without device is from the web app: the web app's prefix, by «web»",
+        r30p.status == 200 and json.loads(d30p)["ok"] is True and any(c.startswith("talk atlas-shop Dall'utente via web app.") and "local hello" in c for c in cm_calls()[n_calls:])
+        and "da web (locale)" in (rdir2 / "relay.log").read_text(), str(d30p) + str(cm_calls()[n_calls:]))
+_sid30 = LA["exchanges"][7]["request"]["path"].rsplit("/", 1)[1]
+T.check("R30 (1.35) the local attachment is used by report and then deleted; the report got the bytes", not list((rdir2 / "local" / "share").glob(f"{_sid30}*")) and (tmp / "report-img").read_bytes() == base64.b64decode(LA["exchanges"][7]["request"]["body"]["data"]), str(list((rdir2 / "local" / "share").iterdir())))
+T.check("R30 (1.35) a local command goes through the same path (relay.log marks it «locale»), and leaves nothing on the bus (/result, /file)",
+        f"cmd {LA['exchanges'][8]['request']['body']['id']}: report atlas-shop da phone-pixel8 (locale)" in (rdir2 / "relay.log").read_text()
+        and (set(STORE.get("result") or {}), set(STORE.get("file") or {})) == bus30, (rdir2 / "relay.log").read_text()[-400:])
+tok30 = LA["token"]
+_get = lambda path, h=None: call30({"method": "GET", "path": path, "headers": h if h is not None else {"Authorization": "Bearer " + tok30}})  # noqa: E731
+r1, d1 = _get("/"); r2, d2 = _get("/assets/app.js", {}); r3, d3 = _get("/chat/atlas-shop", {}); r4, _ = _get("/assets/missing.js", {}); r5, _ = _get("/../config.json", {})
+T.check("R30 (1.35) static files from relay.web.dir on / without a token: index.html, assets with their type, app routes → index.html, a missing asset 404, no way out of the folder",
+        r1.status == 200 and d1.startswith(b"<!doctype") and r1.getheader("Content-Type").startswith("text/html") and r2.status == 200 and "javascript" in r2.getheader("Content-Type")
+        and r3.status == 200 and d3 == d1 and r4.status == 404 and r5.status == 404, f"{r1.status} {r2.status} {r3.status} {r4.status} {r5.status}")
+r6, d6 = call30({"method": "POST", "path": "/api/cmd", "headers": {"Authorization": "Bearer " + tok30, "Origin": "http://evil.example"}, "body": {"op": "screen", "session": "atlas-shop"}})
+r7, d7 = call30({"method": "POST", "path": "/api/cmd", "headers": {"Authorization": "Bearer nope"}, "body": {"op": "screen", "session": "atlas-shop"}})
+r8, d8 = call30({"method": "POST", "path": "/api/cmd", "headers": {"Authorization": "Bearer " + tok30}, "body": {"op": "rm", "session": "atlas-shop"}})
+r9, d9 = _get("/api/events?since=x"); r10, d10 = call30({"method": "POST", "path": "/api/state?t=" + tok30, "headers": {}, "body": {}})
+T.check("R30 (1.35) refusals: another Origin 403, a wrong token 401, the token in the query only for GET, an op outside the allow-list → CmdResult ok false with a fresh id, a bad since 400",
+        r6.status == 403 and r7.status == 401 and r10.status == 401 and r8.status == 200 and json.loads(d8)["ok"] is False and len(json.loads(d8)["id"]) == 36 and r9.status == 400, f"{r6.status} {r7.status} {r10.status} {d8} {r9.status}")
+c30 = _hc30.HTTPConnection("127.0.0.1", port30, timeout=10)
+c30.request("GET", "/api/stream?t=" + tok30, headers={"Host": f"127.0.0.1:{port30}"})
+rs30 = c30.getresponse()
+first30 = [rs30.fp.readline() for _ in range(3)]
+relay("push")
+nxt30 = [rs30.fp.readline().decode() for _ in range(2)]
+c30.close()
+T.check("R30 (1.35) a push rewrites the local state and the stream sends it (event: state, the state just pushed)",
+        nxt30[0].startswith("event: state") and json.loads(nxt30[1][6:])["host"] == "crostini-test"
+        and {"ledger-api", "atlas-shop", "field-notes"} <= {x["name"] for x in json.loads(nxt30[1][6:])["sessions"]}, str(nxt30)[:200])
+_ev30 = json.loads((rdir2 / "local" / "events.json").read_text())
+T.check("R30 (1.35) the events of a push go to the local copy too, the old ones (beyond events_days) pruned", all(e["ts"] > time.time() - 8 * 86400 for e in _ev30.values()), str(list(_ev30)[:5]))
+fid30 = "6f1c2d3e-0350-4000-8000-000000000350"
+(rdir2 / "local" / "file").mkdir(exist_ok=True)
+(rdir2 / "local" / "file" / f"{fid30}.json").write_text(json.dumps({"path": str(fn22 / "docs" / "cover.png"), "mime": "image/png", "name": "cover.png"}))
+os.utime(rdir2 / "local" / "file" / f"{fid30}.json", (time.time() - 700, time.time() - 700))
+T.check("R30 (1.35) a requested file older than 10 minutes is no longer served", _get(f"/api/file/{fid30}")[0].status == 404, "")
+r = relay("web", "--no-open")
+T.check("R30 (1.35) relay web prints http://127.0.0.1:<port>/?t=<token>", r.returncode == 0 and f"http://127.0.0.1:{port30}/?t={tok30}" in r.stdout, r.stdout + r.stderr)
+opened30, opener30 = tmp / "opened", tmp / "fake-open.sh"
+opener30.write_text(f'#!/bin/sh\necho "$@" > {opened30}\n'); opener30.chmod(0o755)
+r = relay("web", env=dict(ENV, CM_RELAY_OPEN=str(opener30)))
+T.check("R30 (1.35) relay web opens the address in the browser", r.returncode == 0 and T.wait_until(lambda: opened30.exists() and f"/?t={tok30}" in opened30.read_text(), 4), r.stdout + r.stderr)
+write_cfg()
+relay("off"); relay("ensure")
+T.check("R30 (1.35) without relay.web.enabled nothing listens, and relay web says how to turn it on (exit 2)", T.wait_until(lambda: not web30_up(), 5) and relay("web", "--no-open").returncode == 2, "")
+pid1 = serve_pid()   # il daemon riavviato due volte qui sopra: R6 piu' avanti controlla che resti questo
+# R23 (contratto 1.25, 02/10): op slash — un comando slash digitato nel pannello della sessione, solo dalla lista
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+n_calls = len(cm_calls())
+r23 = send_cmd(CMDS[24])
+r23b = send_cmd(CMDS[25])
+T.check("R23 (1.25) slash compact with its text → typed in the pane: `talk field-notes /compact <text> --via tmux --no-wait`, no prefix; /result as in the fixture",
+        r23 and r23["ok"] is True and r23["text"] == RES[24]["text"]
+        and "talk field-notes /compact keep the meeting notes and the open questions --via tmux --no-wait" in cm_calls()[n_calls:], str(r23) + str(cm_calls()[n_calls:]))
+T.check("R23 (1.25) a command not in relay.slash_commands (as in the fixture) → «not allowed: model», nothing typed",
+        r23b and r23b["ok"] is False and r23b["text"] == RES[25]["text"] and not any(c.startswith("talk field-notes /model") for c in cm_calls()[n_calls:]), str(r23b))
+n_calls = len(cm_calls())
+r23c = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000201", session="atlas-shop"))
+r23d = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000202", session="ledger-api"))
+r23e = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000203", session="nessuna"))
+r23f = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000204", arg="/exit", text=None))
+T.check("R23 (1.25, 1.120) a busy session and one on a dialog → «<name> is busy», a missing one → «no session <name>», nothing typed; /exit (with its slash) for a session without a window goes the way of close (`supervisor close`), nothing typed",
+        r23c and r23c["text"] == "atlas-shop is busy" and r23d and r23d["text"] == "ledger-api is busy" and r23e and r23e["text"] == "no session nessuna"
+        and r23f and r23f["ok"] is True and r23f["text"] == "closed: field-notes" and "close field-notes" in cm_calls()[n_calls:]
+        and [c for c in cm_calls()[n_calls:] if c.startswith("talk ")] == [], str([r23c, r23d, r23e, r23f]) + str(cm_calls()[n_calls:]))
+n_calls = len(cm_calls())
+r23g = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000205", arg="cost", text=None))
+T.check("R23 a command that opens a panel (cost): `panel field-notes --wait 6` reads and closes it, its text comes back in /result; compact and exit never wait for a panel",
+        r23g and r23g["ok"] is True and r23g["text"].startswith("sent /cost to field-notes\n\n") and "Total cost:            $0.42" in r23g["text"]
+        and "panel field-notes --wait 6" in cm_calls()[n_calls:] and not any(c.startswith("panel") for c in cm_calls()[:n_calls][-12:]), str(r23g) + str(cm_calls()[n_calls:]))
+st23 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R23 (1.25) /state carries slash = relay.slash_commands without «/», and ops carries slash",
+        st23.get("slash") == ["compact", "clear", "exit", "context", "cost"] and "slash" in st23.get("ops", []) and F1["slash"] == st23["slash"], str(st23.get("slash")))
+# R24 (contratto 1.26, 02/10): op projects — l'elenco completo per «Lancia», dal piu' recente; fit_state tiene i recenti
+import os as _os24, re as _re24
+(ws / "personal" / "sketchbook").mkdir(parents=True, exist_ok=True)   # nessuna trascrizione: last_used null
+for _proj, _conf, _t in (("personal/atlas-shop", ".claude", 1789210700), ("work/clients/ledger-api", ".claude-pixel", 1789210500),
+                         ("work/own/orbit-docs", ".claude-pixel", 1789203600), ("personal/field-notes", ".claude", 1789120000)):
+    _d = home / _conf / "projects" / _re24.sub(r"[^A-Za-z0-9]", "-", str((ws / _proj).resolve()))
+    _d.mkdir(parents=True, exist_ok=True)
+    if not list(_d.glob("*.jsonl")):
+        (_d / "r24.jsonl").write_text("{}\n")
+    for _f in _d.glob("*.jsonl"):
+        _os24.utime(_f, (_t, _t))
+r24 = send_cmd(CMDS[26])
+_got24 = json.loads((r24 or {}).get("text") or "{}")
+for _p in _got24.get("projects", []):
+    _p["path"] = _p["path"].replace(str(ws.resolve()), ROOT_WS).replace(str(ws), ROOT_WS)
+T.check("R24 (1.26) projects → every project of every account, most recent first and null last, the fields of state.projects, more false; as in the fixture",
+        r24 and r24["ok"] is True and _got24 == json.loads(RES[26]["text"]), json.dumps(_got24)[:400])
+_many = [{"path": f"/p/{i:03d}", "name": f"p{i:03d}", "account": "personal", "last_used": (1789000000 + i if i % 7 == 0 else None)} for i in range(98)]
+_fit24 = S.fit_state({"v": 1, "ts": 1, "host": "", "sessions": [], "quota": {}, "projects": [dict(p) for p in _many], "night": {"queued": 0, "running": None, "items": []},
+                      "recap": {"date": "", "items": []}, "choices": None, "share": {"max_bytes": 1}, "ops": [], "slash": []}, 1)
+_names24 = [p["name"] for p in _fit24["projects"]]
+T.check("R24 (1.26) fit_state cutting projects keeps the most recently used (not the first by name), still listed by name",
+        len(_names24) in (5, 10) and _names24 == sorted(_names24) and all(int(n[1:]) % 7 == 0 for n in _names24)
+        and int(_names24[-1][1:]) == max(i for i in range(98) if i % 7 == 0), str(_names24))
+T.check("R24 (1.26) /state ops carries projects", "projects" in json.loads(relay("push", "--dry-run").stdout).get("ops", []), "")
+# R25 (contratto 1.27, 03/10): op search — un testo in tutte le conversazioni, vive e chiuse degli ultimi 7 giorni
+import time as _t25
+_od25 = (ws / "work" / "own" / "orbit-docs").resolve()
+_d25 = home / ".claude-pixel" / "projects" / _re24.sub(r"[^A-Za-z0-9]", "-", str(_od25))
+_pfx25 = json.loads((T.SCRIPTS.parent / "messages" / "it.json").read_text())["relay.prompt_prefix_phone"]
+def _l25(kind, uid, ts, content, **kw):
+    return json.dumps(dict({"type": kind, "uuid": uid, "timestamp": ts, "isSidechain": False, "cwd": str(_od25),
+                            **({"origin": {"kind": "human"}} if kind == "user" else {}), "message": {"role": kind, "content": content}}, **kw), separators=(",", ":"))
+_long25 = "We went through the whole backlog again and the only thing that still blocks the release is the review of the migration scripts, which moved to TUESDAY after the client asked for one more pass on the data model and the exports."
+(_d25 / "C-O.jsonl").write_text("\n".join([
+    _l25("user", "c1", "2026-09-13T08:00:00.000Z", "Perché la riunione di Tuesday è saltata?\nRispondi breve."),
+    _l25("assistant", "c2", "2026-09-13T08:00:10.000Z", [{"type": "text", "text": _long25}]),
+    _l25("assistant", "c3", "2026-09-13T08:00:20.000Z", [{"type": "tool_use", "id": "x1", "name": "Bash", "input": {"command": "grep -rn Tuesday ."}}]),
+    _l25("assistant", "c4", "2026-09-13T08:00:30.000Z", [{"type": "text", "text": "subagent: Tuesday is fine"}], isSidechain=True),
+    _l25("user", "c5", "2026-09-13T08:01:00.000Z", _pfx25 + "\n\nmove the review to tuesday"),
+    _l25("user", "c6", "2026-09-13T08:01:30.000Z", [{"type": "tool_result", "tool_use_id": "x1", "content": "notes.md: Tuesday"}]),
+]) + "\n")
+(_d25 / "C-OLD.jsonl").write_text(_l25("user", "o1", "2026-09-01T08:00:00.000Z", "Tuesday, eight days ago") + "\n")
+_now25 = _t25.time()
+_os24.utime(_d25 / "C-O.jsonl", (_now25 - 86400, _now25 - 86400))
+_os24.utime(_d25 / "C-OLD.jsonl", (_now25 - 8 * 86400, _now25 - 8 * 86400))
+(tdir19 / "S-F.jsonl").write_text((FIX / "transcript-sample.jsonl").read_text().replace("/home/demo/workspaces", str(ws.resolve())))
+_os24.utime(tdir19 / "S-F.jsonl", (1789120000, 1789120000))   # vecchia ma viva: entra lo stesso
+rows_alive("field-notes")
+r25 = send_cmd(CMDS[27])
+T.check("R25 (04/10) serve fills the search cache in the background at start: the log says «cache pronta» with how many transcripts",
+        bool(re.search(r"search: cache pronta, \d+ trascrizioni in \d+ s", (rdir2 / "relay.log").read_text())), (rdir2 / "relay.log").read_text()[-300:])
+_got25 = json.loads((r25 or {}).get("text") or "{}")
+for _h in _got25.get("hits", []):
+    _h["project"] = _h["project"].replace(str(ws.resolve()), ROOT_WS).replace(str(ws), ROOT_WS)
+T.check("R25 (1.27) search «tuesday» → user and assistant entries of the live session (even with an old transcript) and of a closed one of the last 7 days, newest first; no tool call, tool result, subagent or 8-day-old transcript; the relay's prefix stripped; case and accents ignored; as in the fixture",
+        r25 and r25["ok"] is True and _got25 == json.loads(RES[27]["text"]), json.dumps(_got25, ensure_ascii=False)[:600])
+_h25 = {h["entry"]: h for h in _got25.get("hits", [])}
+T.check("R25 (1.27) snippet: at most 160 characters around the word, newlines joined into spaces, no «…», match = [start, end] of the word in it",
+        all(len(h["snippet"]) <= 160 and "\n" not in h["snippet"] and "…" not in h["snippet"] and h["snippet"][h["match"][0]:h["match"][1]].lower() == "tuesday" for h in _got25.get("hits", []))
+        and _h25.get("c2.0", {}).get("snippet", "") != _long25 and len(_h25.get("c2.0", {}).get("snippet", "")) == 160 and _h25.get("c1.0", {}).get("snippet") == "Perché la riunione di Tuesday è saltata? Rispondi breve.", str(_h25)[:400])
+_acc25 = json.loads(send_cmd(dict(CMDS[27], id="6f1c2d3e-0170-4000-8000-000000000171", arg="PERCHE"))["text"])
+_bad25 = [send_cmd(dict(CMDS[27], id=f"6f1c2d3e-0170-4000-8000-00000000017{i}", arg=a)) for i, a in ((2, "   "), (3, "x" * 201))]
+T.check("R25 (1.27) «PERCHE» finds «Perché»; an empty text and one over 200 characters → ok false «bad query»",
+        [h["entry"] for h in _acc25["hits"]] == ["c1.0"] and _acc25["hits"][0]["match"] == [0, 6] and all(b and b["ok"] is False and b["text"].startswith("bad query") for b in _bad25), str(_acc25) + str(_bad25))
+_many25 = "\n".join(_l25("assistant", f"m{i:03d}", f"2026-09-14T08:{i // 60:02d}:{i % 60:02d}.000Z", [{"type": "text", "text": f"zanzibar note number {i}"}]) for i in range(70))
+(_d25 / "C-MANY.jsonl").write_text(_many25 + "\n")
+_os24.utime(_d25 / "C-MANY.jsonl", (_now25 - 3600, _now25 - 3600))
+_m25 = json.loads(send_cmd(dict(CMDS[27], id="6f1c2d3e-0170-4000-8000-000000000174", arg="zanzibar"))["text"])
+T.check("R25 (1.27) over 50 hits → the 50 newest, more true", len(_m25["hits"]) == 50 and _m25["more"] is True and _m25["hits"][0]["entry"] == "m069.0" and _m25["hits"][-1]["entry"] == "m020.0", str([h["entry"] for h in _m25["hits"]][:3]))
+T.check("R25 (1.27) /state ops carries search", "search" in json.loads(relay("push", "--dry-run").stdout).get("ops", []), "")
+# R26 (contratto 1.28, 03/10): file di ogni formato dal telefono — i byte nella cartella della sessione, la sessione avvisata
+PDF = b"%PDF-1.4\n" + bytes(range(256)) * 8
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+sid26 = CMDS[28]["arg"]
+http("PUT", f"/share/{sid26}.json", C.encrypt({"mime": "application/pdf", "data": base64.b64encode(PDF).decode(), "name": "../../Preventivo  cliente?.pdf"}, k))
+n_calls = len(cm_calls())
+r26 = send_cmd(CMDS[28])
+inbox26 = atlas / ".claude-master-inbox"
+saved26 = sorted(inbox26.glob("*-Preventivo cliente.pdf"))
+_log26 = "\n".join(cm_calls()[n_calls:])   # il messaggio va a capo: una chiamata occupa piu' righe del registro
+talk26 = [_log26[_log26.index("talk atlas-shop "):]] if "talk atlas-shop " in _log26 else []
+T.check("R26 (1.28) a PDF with a dirty name → /result as in the fixture; the bytes intact in <session folder>/.claude-master-inbox/<stamp>-<clean name>, not readable by others; no report run",
+        r26 and r26["ok"] is True and r26["text"] == RES[28]["text"] and len(saved26) == 1 and saved26[0].read_bytes() == PDF and (saved26[0].stat().st_mode & 0o077) == 0
+        and not any(c.startswith("report ") for c in cm_calls()[n_calls:]), str(r26) + str(list(inbox26.glob("*"))))
+T.check("R26 (1.28) the inbox has a .gitignore «*» (never in a commit), and /share/<id> is deleted",
+        (inbox26 / ".gitignore").read_text() == "*\n" and sid26 not in (STORE.get("share") or {}), "")
+T.check("R26 (1.28) the session is told with the phone's prefix: file name, type, size, absolute path, then the text",
+        len(talk26) == 1 and "Dall'utente via telefono." in talk26[0] and f"ti ho mandato il file Preventivo cliente.pdf (application/pdf, 2 KB): {saved26[0] if saved26 else '?'}" in talk26[0]
+        and (CMDS[28]["text"] + " --no-wait") in talk26[0], str(talk26))
+sid26b = "6f1c2d3e-0180-4000-8000-00000000c001"
+http("PUT", f"/share/{sid26b}.json", C.encrypt({"mime": "text/plain", "data": base64.b64encode(b"hello").decode()}, k))
+r26b = send_cmd(dict(CMDS[28], id="6f1c2d3e-0180-4000-8000-000000000181", arg=sid26b, text=""))
+sid26c = "6f1c2d3e-0180-4000-8000-00000000c002"
+http("PUT", f"/share/{sid26c}.json", C.encrypt({"mime": "application/zip", "data": base64.b64encode(b"PK").decode(), "name": "..//\x01"}, k))
+r26c = send_cmd(dict(CMDS[28], id="6f1c2d3e-0180-4000-8000-000000000182", arg=sid26c))
+sid26d = "6f1c2d3e-0180-4000-8000-00000000c003"
+http("PUT", f"/share/{sid26d}.json", C.encrypt({"mime": "application/zip", "data": base64.b64encode(b"PK").decode(), "name": "x" * 121}, k))
+r26d = send_cmd(dict(CMDS[28], id="6f1c2d3e-0180-4000-8000-000000000183", arg=sid26d))
+T.check("R26 (1.28) no name → «file» with the type's extension, no text needed; a name that cleans to nothing or over 120 characters → ok false «bad name»",
+        r26b and r26b["ok"] is True and r26b["text"] == "sent file.txt to atlas-shop" and any(inbox26.glob("*-file.txt"))
+        and r26c and r26c["ok"] is False and r26c["text"] == "bad name" and r26d and r26d["text"] == "bad name", str([r26b, r26c, r26d]))
+T.check("R26 (1.28) /state share.any = true (the app shows «File» only with this relay)", json.loads(relay("push", "--dry-run").stdout).get("share", {}).get("any") is True and F1["share"]["any"] is True, "")
+# R42 (contratto 1.48, 09/10): un file dal dispositivo a pezzi — /share/<id>/parts/<k> e /share/<id>/meta, fino a 50 MB
+import hashlib as _h42
+SP = json.loads((FIX / "share-parts.json").read_text())
+_ksp = bytes.fromhex(SP["key"])
+T.check("R42 (1.48) fixture share-parts.json: meta opens with the test key to its plain, the parts open to the file in order, sha256 and size of the joined bytes = meta",
+        C.decrypt(SP["meta"], _ksp) == SP["meta_plain"] and b"".join(C.decrypt_raw(x, _ksp) for x in SP["parts"]) == SP["file"].encode()
+        and _h42.sha256(SP["file"].encode()).hexdigest() == SP["meta_plain"]["sha256"] and SP["meta_plain"]["size"] == len(SP["file"].encode())
+        and SP["meta_plain"]["n"] == len(SP["parts"]) == 3, "")
+
+
+def _parts42(sid, data, mime, name, part, skip=(), **over):
+    chunks = [data[i:i + part] for i in range(0, len(data), part)] or [b""]
+    for i, c in enumerate(chunks):
+        if i not in skip:
+            http("PUT", f"/share/{sid}/parts/{i}.json", C.encrypt_raw(c, k))
+    meta = dict({"n": len(chunks), "size": len(data), "sha256": _h42.sha256(data).hexdigest(), "mime": mime, "name": name}, **over)
+    http("PUT", f"/share/{sid}/meta.json", C.encrypt(meta, k))
+
+
+_c42 = {c["id"]: c for c in CMDS}
+_r42 = {r["id"]: r for r in RES}
+_ok42, _bad42 = "6f1c2d3e-0480-4000-8000-000000000480", "6f1c2d3e-0481-4000-8000-000000000481"
+_parts42(_c42[_ok42]["arg"], SP["file"].encode(), "text/plain", "notes.txt", SP["part_bytes"])
+r42a = send_cmd(_c42[_ok42])
+saved42 = sorted(inbox26.glob("*-notes.txt"))
+T.check("R42 (1.48) a text file in three parts → put back together, in the session's inbox byte for byte, /result as in the fixture's …0480; /share/<id> gone",
+        r42a and r42a["ok"] is True and r42a["text"] == _r42[_ok42]["text"] and len(saved42) == 1 and saved42[0].read_bytes() == SP["file"].encode()
+        and _c42[_ok42]["arg"] not in (STORE.get("share") or {}), str(r42a) + str(list(STORE.get("share") or {})))
+_parts42(_c42[_bad42]["arg"], b"x" * 40, "text/plain", "b.txt", 16, skip=(1,))
+r42b = send_cmd(_c42[_bad42])
+_bad42s = []
+for _n42, _over42 in enumerate(({"sha256": "0" * 64}, {"size": 39}, {"n": 51}, {"n": 0})):
+    _sid42 = f"6f1c2d3e-0482-4000-8000-0000000b{_n42:04d}"
+    _parts42(_sid42, b"y" * 40, "text/plain", "c.txt", 16, **_over42)
+    _bad42s.append((send_cmd(dict(_c42[_bad42], id=f"6f1c2d3e-0482-4000-8000-00000000c{_n42:03d}", arg=_sid42)) or {}).get("text"))
+_sid42 = "6f1c2d3e-0483-4000-8000-00000000b483"
+_parts42(_sid42, b"z", "application/zip", "big.zip", 16, size=50 * 1024 * 1024 + 1)
+r42c = send_cmd(dict(_c42[_bad42], id="6f1c2d3e-0483-4000-8000-000000000483", arg=_sid42))
+T.check("R42 (1.48) a part missing → «bad parts» as the fixture's …0481; another sha256, another size, n over 50 or 0 → «bad parts»; over 50 MB → «too large: 52428801 max 52428800»; every node gone",
+        r42b and r42b["ok"] is False and r42b["text"] == _r42[_bad42]["text"] == "bad parts" and _bad42s == ["bad parts"] * 4
+        and r42c and r42c["text"] == "too large: 52428801 max 52428800" and not [x for x in (STORE.get("share") or {}) if x.startswith("6f1c2d3e-048")],
+        str([r42b, _bad42s, r42c, list(STORE.get("share") or {})]))
+_big42 = _os22.urandom(2 * 1024 * 1024 + 12345)
+_sid42 = "6f1c2d3e-0484-4000-8000-00000000b484"
+_parts42(_sid42, _big42, "application/zip", "photos.zip", RL.FILE_PART_BYTES)
+r42d = send_cmd(dict(_c42[_ok42], id="6f1c2d3e-0484-4000-8000-000000000484", arg=_sid42, text=""), wait=40)
+saved42d = sorted(inbox26.glob("*-photos.zip"))
+T.check("R42 (1.48) a 2 MB zip in three 1 MB parts → the same bytes in the inbox", r42d and r42d["ok"] is True and len(saved42d) == 1 and saved42d[0].read_bytes() == _big42, str(r42d))
+_RU42 = load("cm-relay-setup").RULES["rules"]["share"]["$id"]
+_kre42 = re.compile(_RU42["parts"]["$k"][".validate"].split(".matches(/")[1].split("/)")[0])
+T.check("R42 (1.48) RTDB rules: meta and parts/<0..49> each within 1.5 MB, the single node of before still within 10 MB",
+        "1500000" in _RU42["meta"][".validate"] and "1500000" in _RU42["parts"]["$k"][".validate"] and "10000000" in _RU42[".validate"]
+        and all(_kre42.fullmatch(str(i)) for i in range(50)) and not any(_kre42.fullmatch(x) for x in ("50", "01", "-1", "a")), str(_RU42))
+# R44 relay-prefix-handoff (10/10, il maintainer: «Aggiungi la regola al relay» — una sessione su win ha letto il divieto di
+# SendMessage come divieto di passare un compito alla master): il prefisso dice come passarlo; a una sessione su un
+# altro host dice di scriverlo nella risposta; i prompt di prima, senza la frase, restano riconosciuti
+_co44 = load("cm-core")
+_h44, _hr44 = RL.M("relay.prompt_handoff"), RL.M("relay.prompt_handoff_remote")
+_loc44, _rem44 = RL.prefix_for({"device": "phone"}, "atlas-shop"), RL.prefix_for({"device": "phone"}, "win:video-supervisor")
+T.check("R44 relay-prefix-handoff: the phone's prefix to a local session says «supervisor talk master»; to win:… the remote sentence instead (write it in the answer)",
+        _h44 in _loc44 and "supervisor talk master" in _h44 and _hr44 in _rem44 and _h44 not in _rem44 and _rem44 == _loc44.replace(_h44, _hr44), _rem44)
+_old44 = {lang: json.loads((T.SCRIPTS.parent / "messages" / f"{lang}.json").read_text()) for lang in ("it", "en")}
+_forms44 = [(m["relay.prompt_prefix_phone"].replace(m["relay.prompt_handoff"], v), lang) for lang, m in _old44.items()
+            for v in ("", m["relay.prompt_handoff"], m["relay.prompt_handoff_remote"])]
+T.check("R44 relay-prefix-handoff: the transcript strips the prefix in its three forms (new, remote, before 10/10), it and en → origin phone, the bare text",
+        all(_co44._origin_of(f + " ciao") == ("ciao", "phone") for f, _ in _forms44), str([(_co44._origin_of(f + " ciao"), l) for f, l in _forms44])[:500])
+# R43 report-multi (contratto 1.50, 10/10, dall'app: «due allegati insieme vengono mostrati ancora su 2 post»): un
+# report con piu' id di /share in `arg` — tutti letti prima, poi un messaggio solo alla sessione, ogni nodo cancellato
+_c43 = {c["id"]: c for c in CMDS}
+_r43 = {r["id"]: r for r in RES}
+_ok43, _bad43 = "6f1c2d3e-0500-4000-8000-000000000500", "6f1c2d3e-0501-4000-8000-000000000501"
+_PNG43, _JPG43 = b"\x89PNG\r\n\x1a\n" + b"a" * 300, b"\xff\xd8\xff\xe0" + b"b" * 200
+_a43, _b43 = _c43[_ok43]["arg"].split(",")
+http("PUT", f"/share/{_a43}.json", C.encrypt({"mime": "image/png", "data": base64.b64encode(_PNG43).decode()}, k))
+_parts42(_b43, _JPG43, "image/jpeg", "b.jpg", 64)   # il secondo a pezzi (1.48): le due strade insieme
+n_calls = len(cm_calls())
+r43 = send_cmd(_c43[_ok43])
+_log43 = "\n".join(cm_calls()[n_calls:])
+_talks43 = _log43.count("talk atlas-shop ")
+_seg43 = atlas / "docs" / "segnalazioni"
+_day43 = time.strftime("%Y-%m-%d")
+_p43 = [_seg43 / f"{_day43}-two-screens-of-the-checkout.png", _seg43 / f"{_day43}-two-screens-of-the-checkout.jpg"]
+T.check("R43 report-multi (1.50): two ids (one single node, one in parts) → both images saved in the report folder, /result as the fixture's …0500 (today's date); both /share nodes gone",
+        r43 and r43["ok"] is True and r43["text"] == _r43[_ok43]["text"].replace("2026-10-10", _day43)
+        and [x.read_bytes() if x.is_file() else None for x in _p43] == [_PNG43, _JPG43]
+        and not {_a43, _b43} & set(STORE.get("share") or {}), str(r43) + str(list(_seg43.glob("*two-screens*"))))
+T.check("R43 report-multi (1.50): ONE message to the session — the phone's prefix, the text, then both paths in order; no report run",
+        _talks43 == 1 and "Dall'utente via telefono." in _log43 and "two screens of the checkout" in _log43
+        and str(_p43[0]) in _log43 and str(_p43[1]) in _log43 and _log43.index(str(_p43[0])) < _log43.index(str(_p43[1]))
+        and not any(c.startswith("report ") for c in cm_calls()[n_calls:]), _log43[-600:])
+_c43m, _e43m = _c43[_bad43]["arg"].split(",")
+http("PUT", f"/share/{_c43m}.json", C.encrypt({"mime": "image/png", "data": base64.b64encode(_PNG43).decode()}, k))
+n_calls = len(cm_calls())
+_before43 = sorted(_seg43.glob("*"))
+r43b = send_cmd(_c43[_bad43])
+T.check("R43 report-multi (1.50): the second id missing → the whole report refused as the fixture's …0501, nothing saved, no message; the first node deleted anyway",
+        r43b and r43b["ok"] is False and r43b["text"] == _r43[_bad43]["text"] and sorted(_seg43.glob("*")) == _before43
+        and not any(c.startswith("talk ") for c in cm_calls()[n_calls:]) and _c43m not in (STORE.get("share") or {}), str(r43b))
+_ids43 = [f"6f1c2d3e-0502-4000-8000-00000000c{i:03d}" for i in range(6)]
+for _i43 in _ids43:
+    http("PUT", f"/share/{_i43}.json", C.encrypt({"mime": "image/png", "data": base64.b64encode(_PNG43).decode()}, k))
+r43c = send_cmd(dict(_c43[_ok43], id="6f1c2d3e-0502-4000-8000-000000000502", arg=",".join(_ids43)))
+_d43, _f43 = "6f1c2d3e-0503-4000-8000-00000000d503", "6f1c2d3e-0503-4000-8000-00000000f503"
+http("PUT", f"/share/{_d43}.json", C.encrypt({"mime": "image/png", "data": base64.b64encode(_PNG43).decode()}, k))
+http("PUT", f"/share/{_f43}.json", C.encrypt({"mime": "application/pdf", "data": base64.b64encode(PDF).decode(), "name": "offerta.pdf"}, k))
+r43d = send_cmd(dict(_c43[_ok43], id="6f1c2d3e-0503-4000-8000-000000000503", arg=f"{_d43},{_f43}", text="screen and offer"))
+T.check("R43 report-multi (1.50): six ids → «too many attachments: at most 5», every node gone; an image and a PDF → «sent <image path>, offerta.pdf to atlas-shop», the PDF in the inbox",
+        r43c and r43c["ok"] is False and r43c["text"] == "too many attachments: at most 5" and not set(_ids43) & set(STORE.get("share") or {})
+        and r43d and r43d["ok"] is True and r43d["text"] == f"sent docs/segnalazioni/{_day43}-screen-and-offer.png, offerta.pdf to atlas-shop"
+        and any(inbox26.glob("*-offerta.pdf")), str([r43c, r43d]))
+T.check("R43 report-multi (1.50): /state share.multi = 5, as in the three state fixtures",
+        json.loads(relay("push", "--dry-run").stdout).get("share", {}).get("multi") == 5 and F1["share"]["multi"] == 5, "")
+# R27 (contratto 1.29, 03/10): op timeline — la cronologia delle sessioni per il riepilogo del telefono
+# ledger-api (chiusa, account work): due test (verde e rosso), un commit, un esito e un compito, fra since e l'istante
+_la = (ws / "work" / "clients" / "ledger-api").resolve()
+_tl = home / ".claude-pixel" / "projects" / _re24.sub(r"[^A-Za-z0-9]", "-", str(_la))
+_tl.mkdir(parents=True, exist_ok=True)
+def _l27(kind, uid, t, content, **kw):
+    from datetime import datetime as _dt, timezone as _tz
+    return json.dumps(dict({"type": kind, "uuid": uid, "timestamp": _dt.fromtimestamp(t, _tz.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "isSidechain": False,
+                            "cwd": str(_la), "message": {"role": kind, "content": content}}, **kw), separators=(",", ":"))
+(_tl / "S-L27.jsonl").write_text("\n".join([
+    _l27("user", "l1", 1789205000, "add the invoices endpoint", origin={"kind": "human"}),
+    _l27("assistant", "l2", 1789205600, [{"type": "tool_use", "id": "x1", "name": "Bash", "input": {"command": "python3 tests/api-verify.py 2>&1 | tail -1"}}]),
+    _l27("user", "l3", 1789205660, [{"type": "tool_result", "tool_use_id": "x1", "is_error": False, "content": "3/4 OK, FAIL: A2 invoices"}]),
+    _l27("assistant", "l4", 1789206600, [{"type": "tool_use", "id": "x2", "name": "Bash", "input": {"command": "python3 tests/api-verify.py"}}]),
+    _l27("user", "l5", 1789206660, [{"type": "tool_result", "tool_use_id": "x2", "is_error": False, "content": "4/4 OK"}]),
+    _l27("assistant", "l6", 1789207800, [{"type": "text", "text": "Done.\n\nEsito: invoices endpoint added, api suite green\nTipo: fatto"}]),
+]) + "\n")
+_g27 = lambda *a, t=None: subprocess.run(["git", "-C", str(_la), *a], capture_output=True, text=True, env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+    GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", **({"GIT_AUTHOR_DATE": f"@{t}", "GIT_COMMITTER_DATE": f"@{t}"} if t else {})))  # noqa: E731
+if not (_la / ".git").exists():
+    _g27("init", "-q", "-b", "main")
+    (_la / "api.py").write_text("x")
+    _g27("add", "api.py")
+    _g27("commit", "-qm", "feat(api): invoices endpoint", t=1789207000)
+import sqlite3 as _sq27
+_db27 = Path(str(cfg)).parent / "tasks.db"
+_tk27 = {"schema_version": 1, "task": {"id": "invoices", "title": "Invoices endpoint", "plan": None, "where": {"project": str(_la), "session": None, "host": "local", "account": None},
+         "check": {"cmd": "true", "cwd": None, "timeout_s": 10}, "perimeter": [], "lane": "open", "depends_on": [], "route": "session", "hold": False,
+         "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
+subprocess.run([str(T.SCRIPTS / "supervisor"), "task", "add", "-"], input=json.dumps(_tk27), capture_output=True, text=True, env=dict(os.environ, **ENV))
+subprocess.run([str(T.SCRIPTS / "supervisor"), "task", "done", "invoices"], capture_output=True, text=True, env=dict(os.environ, **ENV))
+_c27 = _sq27.connect(str(_db27)); _c27.execute("UPDATE results SET at=1789208000 WHERE task='invoices'"); _c27.commit(); _c27.close()
+rows_alive("field-notes")
+r27 = send_cmd(CMDS[29])
+_got27 = json.loads((r27 or {}).get("text") or "{}")
+def _nowait27(tl):
+    return {**tl, "sessions": [dict(x, events=[e for e in x["events"] if e.get("kind") != "wait"]) for x in tl["sessions"]]}
+
+
+T.check("R27 (1.29) timeline from an epoch → the live session (prompts typed, queued and from the phone) and a closed one with a red and a green test, a commit, an outcome and a task; project relative to the root as in state.sessions; nothing after the instant asked; as in the fixture",
+        r27 and r27["ok"] is True and _nowait27(_got27) == _nowait27(json.loads(RES[29]["text"])), json.dumps(_got27, ensure_ascii=False)[:500])
+_w27 = [(x["session"], e["at"], e["ok"]) for x in _got27["sessions"] for e in x["events"] if e.get("kind") == "wait"]
+T.check("R27 (1.96) the waits the pushes of this test recorded show in the timeline as events of kind wait, once: ledger-api's question since its asked_at; the fixture carries one",
+        _w27 == [("ledger-api", 1789210500, None)] and any(e.get("kind") == "wait" for x in json.loads(RES[29]["text"])["sessions"] for e in x["events"]), str(_w27))
+_one27 = json.loads(send_cmd(dict(CMDS[29], id="6f1c2d3e-0190-4000-8000-000000000191", session="field-notes"))["text"])
+_bad27 = [send_cmd(dict(CMDS[29], id=f"6f1c2d3e-0190-4000-8000-00000000019{i}", arg=a)) for i, a in ((2, "yesterday"), (3, "8d"))]
+T.check("R27 (1.29) one session by its name; a bad arg and more than 7 days → ok false in plain words",
+        [x["session"] for x in _one27["sessions"]] == ["field-notes"] and all(b and b["ok"] is False and "expected 90m, 6h, 2d" in b["text"] for b in _bad27), str(_one27)[:200] + str(_bad27))
+T.check("R27 (1.29) /state ops carries timeline", "timeline" in json.loads(relay("push", "--dry-run").stdout).get("ops", []), "")
+# R28 (contratto 1.31, 04/10): pair_add dal telefono — il relay apre da solo un pair --add e risponde con QR e codice
+_dev28 = (rdir2 / "devices.json").read_text(); _all28 = STORE.get("allowed") or {}
+(rdir2 / "devices.json").write_text(json.dumps({"u2": {"name": "Pixel 9", "paired_at": 1}, "u3": {"name": "Pixel Watch 5", "paired_at": 1}}))
+http("PUT", "/allowed.json", {"u2": True, "u3": True})
+_k28 = C.load_key(rdir2)
+CMD28 = {"id": "6f1c2d3e-0200-4000-8000-000000000200", "op": "pair_add", "session": None, "arg": None, "issued": 1789210850, "by": "phone-pixel8"}
+r28 = send_cmd(CMD28, wait=40)
+_inv = json.loads((r28 or {}).get("text") or "{}") if (r28 or {}).get("ok") else {}
+_node28 = _inv.get("code") or ""
+T.check("R28 (1.31) pair_add → ok, text {qr, code, exp}: a six-digit code whose /pair node carries mode «add», exp in the future; qr null or with m «add»",
+        r28 and r28["ok"] is True and re.fullmatch(r"\d{6}", _node28) and ((STORE.get("pair") or {}).get(_node28) or {}).get("mode") == "add"
+        and _inv.get("exp", 0) > time.time() and (_inv.get("qr") is None or _inv["qr"].get("m") == "add"), str(r28))
+r28b = send_cmd(dict(CMD28, id="6f1c2d3e-0200-4000-8000-000000000201"), wait=40)
+T.check("R28 (1.31) a second pair_add while the first is open → ok false «a pairing is already open»", r28b and r28b["ok"] is False and "already open" in r28b["text"], str(r28b))
+if _node28:
+    _tp, _tpub = C.pair_keys(); _kt = C.shared_key(_tp, STORE["pair"][_node28]["pc_pub"])
+    http("PUT", f"/pair/{_node28}/watch.json", {"watch_pub": _tpub, "uid": "u7", "name": "Pixel Tablet", "check": C.check_code(_kt, _node28)})
+    T.wait_until(lambda: set((STORE.get("pair") or {}).get(_node28, {})) == {"ok"}, 15)
+    _ok28 = (STORE.get("pair") or {}).get(_node28, {}).get("ok") or {}
+    T.check("R28 (1.31) the tablet answers the invite → the 1.30 confirmation with the relay's key, the key unchanged, u7 added to u2 and u3",
+            _ok28.get("key") and C.decrypt(_ok28["key"], _kt) == {"key": _k28.hex()} and C.load_key(rdir2) == _k28
+            and STORE.get("allowed") == {"u2": True, "u3": True, "u7": True}, str(_ok28)[:200] + str(STORE.get("allowed")))
+    T.wait_until(lambda: subprocess.run(["pgrep", "-f", "cm-relay.py pair --add"], capture_output=True).returncode != 0, 10)
+_u28 = ("u2", "u3", "u7", "u8", "u9", "u10", "u11", "u12")   # 1.39: otto posti
+http("PUT", "/allowed.json", {u: True for u in _u28})
+(rdir2 / "devices.json").write_text(json.dumps({u: {"name": u, "paired_at": 1} for u in _u28}))
+r28c = send_cmd(dict(CMD28, id="6f1c2d3e-0200-4000-8000-000000000202"), wait=40)
+T.check("R28 (1.31) already 8 devices (1.39) → ok false «already 8 devices», no pairing started", r28c and r28c["ok"] is False and "already 8 devices" in r28c["text"], str(r28c))
+(rdir2 / "devices.json").write_text(_dev28); http("PUT", "/allowed.json", _all28 or {})
+T.check("R28 (1.31) /state ops carries pair_add", "pair_add" in json.loads(relay("push", "--dry-run").stdout).get("ops", []), "")
+T.check("R14 (1.18) events-sample: a recap, a night_report and the quota resume, with the shape of the other events",
+        [e["kind"] for e in EV if e["kind"] in ("recap", "night_report", "quota")][-3:] == ["recap", "night_report", "quota"] and all(ev_ok(e) for e in EV)
+        and next(e for e in EV if e["kind"] == "recap")["ref"] == "2026-09-12", str([e["kind"] for e in EV])[:300])
+T.check("R34 (1.40) events-sample: restart_failed, a restart that did not succeed (no session, ref = the session's name), with the shape of the other events",
+        (_rf := next((e for e in EV if e["kind"] == "restart_failed"), {})) and _rf["session"] is None and _rf["ref"] == "field-notes" and ev_ok(_rf), str(_rf))
+_rs = next((e for e in EV if e["kind"] == "relay_stale"), {})
+T.check("R38 (1.45) events-sample: relay_stale, no session and no ref, with the shape of the other events",
+        _rs and _rs["session"] is None and _rs["ref"] is None and _rs["title"].startswith("state stopped") and ev_ok(_rs), str(_rs))
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+r = relay("push", "--dry-run"); dry11 = json.loads(r.stdout)
+p_atlas = next(p_ for p_ in dry11["projects"] if p_["name"] == "atlas-shop")
+newest = int(max(f.stat().st_mtime for f in tdir_a.iterdir() if f.suffix == ".jsonl"))
+T.check("R11 (1.13) projects[].last_used = the newest transcript of that folder (epoch s); null where there is none",
+        p_atlas.get("last_used") == newest and all("last_used" in p_ for p_ in dry11["projects"]) and any(p_["last_used"] is None for p_ in dry11["projects"]), str(dry11["projects"]))
+relay("push")   # 08/10: la mappa nome → tmux viene dall'ultima push vera; il --dry-run sopra non la scrive (su WSL, piu' veloce, nessuna push del demone cadeva in mezzo)
+ans = dict(CMDS[0], id="6f1c2d3e-0011-4000-8000-000000000101", arg="text:ship it tonight")
+res = send_cmd(ans)
+T.check("R6 answer text:<text> → `answer work-ledger-api --text <text>`, «answered 3. ship it tonight»", res and res["ok"] is True and res["text"] == "answered 3. ship it tonight" and "answer work-ledger-api --text ship it tonight" in cm_calls(), str(res) + str(cm_calls()[-2:]) + " names=" + str(json.loads((rdir2 / "last-state.json").read_text()).get("names")) + " log=" + "|".join((rdir2 / "relay.log").read_text().splitlines()[-6:]))
+res = send_cmd(dict(ans, id="6f1c2d3e-0011-4000-8000-000000000102", arg="chat"))
+T.check("R6 answer chat → `answer work-ledger-api --chat`, «answered 4. Chat about this»", res and res["ok"] is True and res["text"] == "answered 4. Chat about this" and "answer work-ledger-api --chat" in cm_calls(), str(res))
+n_a = len([c for c in cm_calls() if c.startswith("answer work-ledger-api") and "--show" not in c])
+res = send_cmd(dict(ans, id="6f1c2d3e-0011-4000-8000-000000000103", arg="text:  "))
+res2 = send_cmd(dict(ans, id="6f1c2d3e-0011-4000-8000-000000000104", arg="maybe"))
+T.check("R6 answer «text:» empty → ok false «empty text»; an arg that is neither a number, text: nor chat → ok false, nothing run, the daemon stays up", res and res["ok"] is False and res["text"] == "empty text" and res2 and res2["ok"] is False and res2["text"] == "answer maybe: expected a number, text:<text> or chat" and len([c for c in cm_calls() if c.startswith("answer work-ledger-api") and "--show" not in c]) == n_a and serve_pid() == pid1, str(res) + str(res2))
+n_ans = len([c for c in cm_calls() if c == "answer work-ledger-api 1"])
+http("PUT", f"/cmd/{CMDS[0]['id']}.json", C.encrypt(CMDS[0], k))
+T.wait_until(lambda: CMDS[0]["id"] not in (STORE.get("cmd") or {}), 8)
+time.sleep(1)
+T.check("R6 the same id again → ignored (no second `answer`), /cmd cleaned", len([c for c in cm_calls() if c == "answer work-ledger-api 1"]) == n_ans and CMDS[0]["id"] not in (STORE.get("cmd") or {}), str(cm_calls()[-3:]))
+res = send_cmd({"id": "6f1c2d3e-0009-4000-8000-000000000009", "op": "mode", "session": "atlas-shop", "arg": "plan", "issued": 1, "by": "watch"})
+T.check("R6 an op outside the allow-list → ok false «op mode not allowed», nothing run", res and res["ok"] is False and res["text"] == "op mode not allowed", str(res))
+http("PUT", "/cmd/garbage.json", {"v": 1, "enc": "bm90aGluZw=="})
+T.wait_until(lambda: "garbage" not in (STORE.get("cmd") or {}), 5)
+T.check("R6 an undecipherable command is discarded (deleted, no result)", "garbage" not in (STORE.get("cmd") or {}) and "garbage" not in (STORE.get("result") or {}), str(STORE.get("cmd")))
+# rete giu': il daemon riconnette e poi serve ancora
+fail = tmp / "rtdb-fail"; fail.write_text("x")
+os.environ["FAKE_RTDB_FAIL"] = str(fail)
+time.sleep(1)
+r = relay("status")
+fail.unlink()
+T.wait_until(lambda: "riconness" in (rdir2 / "relay.log").read_text(), 8)
+T.check("R6 RTDB down (503) → the daemon logs the reconnection with backoff and stays alive", "riconnessione" in (rdir2 / "relay.log").read_text() and serve_pid() == pid1, (rdir2 / "relay.log").read_text()[-400:])
+os.environ.pop("FAKE_RTDB_FAIL", None)
+T.wait_until(lambda: "riconnesso" in (rdir2 / "relay.log").read_text(), 12)
+res = send_cmd(dict(CMDS[3], id="6f1c2d3e-0004-4000-8000-0000000000cc"), wait=12)
+T.check("R6 after the network is back a command is served again", res and res["ok"], str(res) + (rdir2 / "relay.log").read_text()[-300:])
+# R101 (03/11/2026, supervisor-relay-stream-muto-03-11): lo stream di /cmd resta aperto ma muto, senza nemmeno i
+# keep-alive (18 volte dal 02/11): il daemon se ne accorgeva dopo 90 s e i comandi arrivavano fino a 84 s dopo. Ora lo
+# riapre dopo stream_silence_s (qui 4 s, keep-alive finto ogni 2 s) e il comando scritto nel frattempo arriva
+mute = tmp / "rtdb-mute"; mute.write_text("x")
+os.environ["FAKE_RTDB_MUTE"] = str(mute)
+_n101 = (rdir2 / "relay.log").read_text().count("riconnesso")
+time.sleep(2.5)   # lo stream aperto adesso e' gia' muto
+_t101 = time.time()
+res101 = send_cmd(dict(CMDS[3], id="6f1c2d3e-0004-4000-8000-0000000001a1"), wait=15)
+_s101 = round(time.time() - _t101, 1)
+mute.unlink(); os.environ.pop("FAKE_RTDB_MUTE", None)
+T.check("R101 a /cmd stream left open but silent (no keep-alive): the daemon reopens it after stream_silence_s and the command written meanwhile is served within seconds, not after 90 s",
+        res101 and res101["ok"] and _s101 < 10 and (rdir2 / "relay.log").read_text().count("riconnesso") > _n101 and serve_pid() == pid1,
+        str((res101, _s101)) + (rdir2 / "relay.log").read_text()[-300:])
+r = relay("status")
+T.check("R6 status: enabled, firebase url, key ok, service account ok, serve alive with the pid, last push time", r.returncode == 0 and "abilitato" in r.stdout and URL in r.stdout and f"VIVO pid {pid1}" in r.stdout and "chiave:           ok" in r.stdout and "service account:  ok" in r.stdout, r.stdout + r.stderr)
+r = relay("install")
+T.check("R6 install: two cron lines (relay ensure, and the heartbeat as a plain `touch` of push-req/cron: no Python every minute)", r.returncode == 0 and "relay ensure" in cron.read_text() and "touch " + str(rdir2 / "push-req" / "cron") in cron.read_text() and "relay push" not in cron.read_text() and cron.read_text().count("* * * * *") == 2, cron.read_text() + r.stdout)
+r = relay("off")
+T.check("R6 off: the daemon stops, the cron stays", r.returncode == 0 and T.wait_until(lambda: serve_pid() == 0, 4) and "relay ensure" in cron.read_text(), r.stdout + r.stderr)
+relay("ensure")
+r = relay("uninstall")
+T.check("R6 uninstall: daemon stopped and cron lines removed", r.returncode == 0 and T.wait_until(lambda: serve_pid() == 0, 4) and "supervisor relay" not in cron.read_text(), r.stdout + cron.read_text())
+# 0.4.20: senza crontab (o cryptography) install e pair si fermano prima di scrivere o chiedere: esce 5, comando da lanciare
+ENV_NOCRON = dict(ENV, CM_CRONTAB_CMD=str(tmp / "no-such-crontab"))
+before = cron.read_text()
+r = relay("install", env=ENV_NOCRON)
+T.check("R6 install without crontab → exit 5, message with `apt install cron`, crontab untouched", r.returncode == 5 and "apt install cron" in r.stderr and cron.read_text() == before, f"rc={r.returncode} " + r.stdout + r.stderr)
+r = relay("pair", "--timeout", "2", env=ENV_NOCRON)
+T.check("R6 pair without crontab → exit 5 before printing a code, /pair untouched", r.returncode == 5 and "apt install cron" in r.stderr and not re.search(r"\b\d{6}\b", r.stdout), f"rc={r.returncode} " + r.stdout + r.stderr)
+
+# R7: hook e bot chiamano push --async
+def hook(ev, payload, env=None):
+    return subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), ev], input=json.dumps(payload), capture_output=True, text=True, env=env or ENV, timeout=30)
+
+
+def state_puts():
+    return len([x for x in CALLS["requests"] if x == ("PUT", "/state.json")])
+
+
+n0 = state_puts()
+r = hook("PermissionRequest", {"session_id": "S-A", "cwd": str(ws / "personal" / "atlas-shop"), "tool_name": "Bash", "tool_input": {"command": "rm -rf build", "description": "clean"}})
+wf = json.loads((state_dir / "waiting" / "S-A").read_text())
+T.check("R7 PermissionRequest: waiting/<sid> is JSON {tool, input{command, description}}; a push follows (async) → a new PUT of /state", r.returncode == 0 and wf["tool"] == "Bash" and wf["input"]["command"] == "rm -rf build" and T.wait_until(lambda: state_puts() > n0, 15), r.stdout + r.stderr + str(wf))
+r = relay("push", "--dry-run")
+dry7 = json.loads(r.stdout)
+a7 = next(s_ for s_ in dry7["sessions"] if s_["name"] == "atlas-shop")
+T.check("R7 …and /state now shows atlas-shop waiting on a permission with tier high (rm -rf) and the question text from the screen", a7["state"] == "waiting" and a7["question"]["kind"] == "permission" and a7["question"]["tier"] == "high", str(a7["question"]))
+(state_dir / "waiting" / "S-A").unlink()
+r = hook("PermissionRequest", {"session_id": "S-F", "cwd": str(ws / "personal" / "field-notes"), "tool_name": "AskUserQuestion",
+                               "tool_input": {"questions": [{"question": "Procedo con il deploy di prova?", "header": "Deploy", "options": [{"label": "Sì", "description": "vai"}, {"label": "No", "description": "aspetta"}]}]}})
+wf2 = json.loads((state_dir / "waiting" / "S-F").read_text())
+r = relay("push", "--dry-run"); dry7b = json.loads(r.stdout)
+f7 = next(s_ for s_ in dry7b["sessions"] if s_["name"] == "field-notes")
+T.check("R7b AskUserQuestion before the dialog is on screen (answer --show finds nothing): waiting/<sid> keeps question + option labels from the payload, and /state carries text and options 1-2 with kind ask", wf2["input"]["question"] == "Procedo con il deploy di prova?" and wf2["input"]["options"] == ["Sì", "No"] and f7["state"] == "waiting" and f7["question"]["text"] == "Procedo con il deploy di prova?" and [o["label"] for o in f7["question"]["options"]] == ["Sì", "No"] and f7["question"]["kind"] == "ask", str(wf2) + str(f7["question"]))
+(state_dir / "waiting" / "S-F").unlink()
+n0 = state_puts()
+r = hook("UserPromptSubmit", {"session_id": "S-A", "cwd": str(ws / "personal" / "atlas-shop"), "prompt": "vai"})
+T.check("R7 UserPromptSubmit: a «prompt» row in the ledger (turn_started), no push", r.returncode == 0 and any(json.loads(l).get("event") == "prompt" and json.loads(l).get("session_id") == "S-A" for l in ledger.read_text().splitlines()) and state_puts() == n0, ledger.read_text()[-200:])
+n0 = state_puts()
+r = hook("Stop", {"session_id": "S-A", "cwd": str(ws / "personal" / "atlas-shop"), "last_assistant_message": "Fatto.\nEsito: seed rivisti.\nWatch: Seed rivisti"})
+T.check("R7 Stop: ledger row with watch, then a push", r.returncode == 0 and T.wait_until(lambda: state_puts() > n0, 15) and any(json.loads(l).get("watch") == "Watch: Seed rivisti" for l in ledger.read_text().splitlines()), r.stdout + r.stderr)
+n0 = state_puts()
+hook("SessionEnd", {"session_id": "S-F", "cwd": str(ws / "personal" / "field-notes"), "reason": "other"})
+T.check("R7 SessionEnd → push", T.wait_until(lambda: state_puts() > n0, 15), "")
+# PostToolUse (14/09, dall'app): la domanda risposta da tastiera o telefono deve sparire anche dall'orologio in
+# background, che si sveglia solo con FCM, cioe' con un evento: il push dopo l'hook ha lo stato senza domanda → answered
+# il finto bus scrive STORE da un altro thread mentre il test lo scorre: si scorre una copia (22-23/09: la release
+# si e' fermata due volte su «dictionary changed size during iteration»)
+def answered_count(name):
+    return sum(1 for v in list((STORE.get("events") or {}).values()) if (lambda e: e.get("kind") == "answered" and e.get("session") == name)(C.decrypt(v, k) or {}))
+
+
+(state_dir / "waiting" / "S-A").write_text(json.dumps({"tool": "Bash", "input": {"command": "make test"}}))
+relay("push")
+a0, n0 = answered_count("atlas-shop"), state_puts()
+r = hook("PostToolUse", {"session_id": "S-A", "cwd": str(ws / "personal" / "atlas-shop"), "tool_name": "Bash"})
+T.check("R7 PostToolUse with the waiting flag → flag removed, a push, and an «answered» event for the session (FCM wakes the watch)",
+        r.returncode == 0 and not (state_dir / "waiting" / "S-A").exists() and T.wait_until(lambda: answered_count("atlas-shop") > a0, 15) and state_puts() > n0, r.stdout + r.stderr)
+def settle(rounds=24):
+    """Aspetta che il conto delle PUT resti fermo: le push asincrone gia' partite vanno esaurite prima di
+    misurare, altrimenti la loro scrittura sembra quella dell'hook."""
+    prev = -1
+    for _ in range(rounds):
+        cur = state_puts()
+        if cur == prev:
+            return
+        prev = cur
+        time.sleep(1.5)
+
+
+settle()
+write_cfg(enabled=False)
+settle(8)   # e anche dopo lo spegnimento: un figlio partito un attimo prima ha gia' letto la config
+n0 = state_puts()
+r = hook("Stop", {"session_id": "S-A", "cwd": str(ws / "personal" / "atlas-shop"), "last_assistant_message": "x"})
+time.sleep(2.5)
+T.check("R7 relay.enabled=false: the hook does not push", r.returncode == 0 and state_puts() == n0, "")
+write_cfg()
+os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_RELAY_CM": str(fake_cm)})
+n0 = state_puts()
+(rdir2 / "awaiting.json").write_text(json.dumps({"atlas-shop": int(time.time())}))
+r = relay("push", "--dry-run"); dryaw = json.loads(r.stdout)
+a_aw = next(s_ for s_ in dryaw["sessions"] if s_["name"] == "atlas-shop")
+T.check("R7b (1.2) a session awaiting a wrist prompt is «awaiting» and its tool is read too (before: only busy ones, so the card had no activity)", a_aw["state"] == "awaiting" and "tool" in a_aw, str((a_aw["state"], a_aw["tool"])))
+# la voce scade quando il turno finisce (uno stop dopo il prompt) o dopo awaiting_max_s: senza questo la
+# sessione restava «awaiting» per sempre, col turno e il tool di ore prima (dal vivo 14/09 08:22)
+sent = time.time() - 60
+(rdir2 / "awaiting.json").write_text(json.dumps({"atlas-shop": sent}))
+with open(ledger, "a") as f:
+    f.write(json.dumps({"ts": iso(time.time()), "event": "stop", "session_id": "S-A", "cwd": str(ws / "personal" / "atlas-shop"), "account": "personal", "pid": 8, "last": "fine turno", "tail": "fine turno", "esito": ""}) + "\n")
+r = relay("push", "--dry-run"); dry_done = json.loads(r.stdout)
+a_done = next(s_ for s_ in dry_done["sessions"] if s_["name"] == "atlas-shop")
+T.check("R7c the awaiting entry expires when the turn ends (a stop after the prompt): the session is no longer «awaiting» and awaiting.json is cleaned", a_done["state"] != "awaiting" and json.loads((rdir2 / "awaiting.json").read_text()) == {}, str(a_done["state"]) + str((rdir2 / "awaiting.json").read_text()))
+(rdir2 / "awaiting.json").write_text(json.dumps({"atlas-shop": time.time() - 3600}))
+r = relay("push", "--dry-run"); dry_old = json.loads(r.stdout)
+a_old = next(s_ for s_ in dry_old["sessions"] if s_["name"] == "atlas-shop")
+T.check("R7c an entry older than relay.awaiting_max_s expires as well", a_old["state"] != "awaiting" and json.loads((rdir2 / "awaiting.json").read_text()) == {}, str(a_old["state"]))
+(rdir2 / "awaiting.json").write_text("{}")
+
+# R8 (16/09, passo 3 del ritiro di Telegram): il bus non prende → il polso non riceve, e dopo la soglia l'avviso
+# passa da Telegram; quando torna a funzionare la scorta si spegne
+write_cfg(telegram_fallback_after_s=1)
+(rdir2 / "last-state.json").unlink(missing_ok=True)   # senza stato precedente ogni sessione e' un evento «launched»
+(rdir2 / "fallback.json").unlink(missing_ok=True)
+TG_CALLS["sendMessage"].clear()
+failr = tmp / "rtdb-fail-2"; failr.write_text("x")
+os.environ["FAKE_RTDB_FAIL"] = str(failr)   # il finto RTDB gira in QUESTO processo: l'ambiente e' il suo
+r = relay("push")
+down = json.loads((rdir2 / "fallback.json").read_text()) if (rdir2 / "fallback.json").is_file() else {}
+T.check("R8 the bus refuses → fallback.json records since when the watch is not receiving, and the push fails loudly", r.returncode != 0 and float(down.get("since") or 0) > 0, r.stdout + r.stderr + str(down))
+time.sleep(1.2)
+r = relay("push")
+T.check("R8 past relay.telegram_fallback_after_s the notice goes to Telegram, with the minutes and the events", any("ledger-api" in c.get("text", "") for c in TG_CALLS["sendMessage"]), str(TG_CALLS["sendMessage"])[:400])
+failr.unlink(); os.environ.pop("FAKE_RTDB_FAIL", None)
+r = relay("push")
+T.check("R8 the bus works again → fallback.json is gone (the fallback switches off)", r.returncode == 0 and not (rdir2 / "fallback.json").exists(), r.stdout + r.stderr)
+
+# R16 (contratto 1.20, 29/09): il bus funziona ma nessun dispositivo legge → dopo la soglia Telegram. Letto = /seen/<uid>
+# scritto dopo l'evento (ora del server, in ms); solo gli uid accoppiati; senza nessun /seen resta il ripiego R8
+def unseen_run(seen):
+    STORE["seen"] = seen
+    (rdir2 / "last-state.json").unlink(missing_ok=True)   # ogni sessione torna «launched»: eventi nuovi
+    TG_CALLS["sendMessage"].clear()
+    r1 = relay("push")
+    time.sleep(1.2)
+    r2 = relay("push")
+    return r1, r2, [c.get("text", "") for c in TG_CALLS["sendMessage"]]
+
+
+devs16 = list(json.loads((rdir2 / "devices.json").read_text()))
+STORE.pop("seen", None)
+r1, r2, tg = unseen_run({})
+T.check("R16 (1.20) no device writes /seen (an app that does not know it) → no Telegram, no pending.json: only the R8 fallback applies",
+        r1.returncode == 0 and r2.returncode == 0 and tg == [] and not (rdir2 / "pending.json").exists(), str(tg) + r1.stderr[-200:])
+r1, r2, tg = unseen_run({devs16[0]: int(time.time() * 1000) + 5000})
+T.check("R16 (1.20) a paired device read after the events (server time in ms) → seen, no Telegram, pending.json empty",
+        tg == [] and json.loads((rdir2 / "pending.json").read_text()) == [], str(tg))
+r1, r2, tg = unseen_run({devs16[0]: int((time.time() - 3600) * 1000), "u-revoked": int(time.time() * 1000)})
+T.check("R16 (1.20) no paired device read since the events (an unpaired uid does not count) → past the threshold one Telegram notice with the events, pending emptied",
+        len(tg) == 1 and tg[0].startswith("Nessun dispositivo legge gli avvisi da 60 minuti") and "ledger-api" in tg[0] and json.loads((rdir2 / "pending.json").read_text()) == [], str(tg)[:400])
+TG_CALLS["sendMessage"].clear()
+relay("push")
+T.check("R16 (1.20) the same events are not sent twice", TG_CALLS["sendMessage"] == [], str(TG_CALLS["sendMessage"])[:200])
+STORE.pop("seen", None)
+(rdir2 / "pending.json").unlink(missing_ok=True)
+
+
+# R9 (contratto 1.11, 16/09): ogni sessione porta modello, effort e contesto, letti dalla sua trascrizione;
+# senza trascrizione i tre campi ci sono e sono null — mai stimati
+import re as _re9
+tdir9 = home / ".claude" / "projects" / _re9.sub(r"[^A-Za-z0-9]", "-", str((ws / "personal" / "atlas-shop").resolve()))
+tdir9.mkdir(parents=True, exist_ok=True)
+with open(tdir9 / "S-A.jsonl", "w") as f9:
+    f9.write(json.dumps({"type": "attachment", "attachment": {"type": "model", "identity": {"modelId": "claude-opus-5[1m]", "marketingName": "Opus 5 (1M context)"}}}) + "\n")
+    f9.write(json.dumps({"type": "assistant", "effort": "high", "message": {"model": "claude-opus-5", "usage": {"input_tokens": 0, "cache_read_input_tokens": 250_000, "cache_creation_input_tokens": 0}}}) + "\n")
+r = relay("push", "--dry-run"); dry9 = json.loads(r.stdout)
+a9 = next(s_ for s_ in dry9["sessions"] if s_["name"] == "atlas-shop")
+l9 = next(s_ for s_ in dry9["sessions"] if s_["name"] == "ledger-api")
+T.check("R9 (1.11) the session with a transcript carries model {id,label}, effort and context (250k of 1M → 25 %)",
+        a9["model"] == {"id": "claude-opus-5[1m]", "label": "Opus 5"} and a9["effort"] == "high" and a9["context"] == 25, str({k: a9.get(k) for k in ("model", "effort", "context")}))
+T.check("R9 (1.11) a session without a readable transcript has the three fields as null, not missing and not guessed",
+        ("model" in l9 and "effort" in l9 and "context" in l9) and l9["model"] is None and l9["effort"] is None and l9["context"] is None, str({k: l9.get(k) for k in ("model", "effort", "context")}))
+
+# R21 (30/09, dal telefono: prompt e risposte non nell'ordine dato): i comandi che arrivano insieme (il put iniziale dopo
+# una riconnessione) si eseguono in ordine di `issued`, non di chiave (uuid casuali)
+_env21 = dict(os.environ)
+os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home)})
+RL = load("cm-relay")
+os.environ.clear(); os.environ.update(_env21)
+cmds21 = {"z-first-key": C.encrypt({"op": "prompt", "issued": 1789210903}, k), "a-last-key": C.encrypt({"op": "answer", "issued": 1789210905}, k),
+          "m-mid": C.encrypt({"op": "prompt", "issued": 1789210904}, k), "b-plain": {"op": "screen", "issued": 1789210901}}
+T.check("R21 commands that arrive together run in the order they were issued, not in key order — the person's commands first, the passive reads (screen) after",
+        [c for c, _ in RL.in_order(cmds21)] == ["z-first-key", "m-mid", "a-last-key", "b-plain"], str([c for c, _ in RL.in_order(cmds21)]))
+cmds21b = {"t-old": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "20", "issued": 1789210910}, k),
+           "t-new": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "20:after=x", "issued": 1789210914}, k),
+           "t-other": C.encrypt({"op": "transcript", "session": "field-notes", "arg": "20", "issued": 1789210911}, k),
+           "p-1": C.encrypt({"op": "prompt", "session": "atlas-shop", "arg": "go", "issued": 1789210912}, k)}
+_env21 = dict(os.environ); os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home)})
+got21 = [c for c, _ in RL.in_order(cmds21b)]
+os.environ.clear(); os.environ.update(_env21)
+sup = (STORE.get("result") or {}).get("t-old")
+T.check("R21 several reads of the same session waiting together → only the newest runs; the older one gets «superseded» at once; the prompt goes first",
+        got21 == ["p-1", "t-other", "t-new"] and sup and C.decrypt(sup, k)["ok"] is False and C.decrypt(sup, k).get("superseded") is True
+        and C.decrypt(sup, k)["text"] == "sostituita da una lettura più recente della stessa sessione", str(got21) + str(C.decrypt(sup, k) if sup else sup)[:160])
+
+# 04/11 (supervisor-relay-pagina-before-04-11): «Carica i messaggi precedenti» superata dalle after= della chat aperta
+cmds21c = {"t-before": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "50:before=e-120", "issued": 1789210920}, k),
+           "t-after": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "200:after=e-300", "issued": 1789210921}, k),
+           "t-after2": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "200:after=e-301", "issued": 1789210922}, k),
+           "t-before-old": C.encrypt({"op": "transcript", "session": "atlas-shop", "arg": "50:before=e-170", "issued": 1789210919}, k)}
+_env21 = dict(os.environ); os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home)})
+got21c = [c for c, _ in RL.in_order(cmds21c)]
+os.environ.clear(); os.environ.update(_env21)
+_res21c = STORE.get("result") or {}
+T.check("R21 a page of older messages (before=) and the after= of the open chat, same session, in a row: the newest before= runs and gets its page, the newest after= too; only the older of each is superseded",
+        got21c == ["t-before", "t-after2"] and "t-before" not in _res21c and "t-after" in _res21c and "t-before-old" in _res21c
+        and C.decrypt(_res21c["t-after"], k).get("superseded") is True, str(got21c) + str(sorted(_res21c)))
+
+# R31 (07/10, piano prestazioni, fase 0): le righe di misura nel log dei test vivi e `relay stats` su un log di esempio
+_log31 = (rdir2 / "relay.log").read_text()
+_push31 = [l for l in _log31.splitlines() if " push: " in l and " · origine " in l]
+T.check("R31 every push writes one measure line: origin, wait, lock, collect, publish, overhead, ts→put, cpu (own + children)",
+        _push31 and all(RL.STATS_PUSH.match(l) for l in _push31), (_push31 or ["-"])[-1])
+T.check("R31 the debounced push (--async) says where it came from (cron by default, hook from the hooks)",
+        any(" · origine cron · " in l or " · origine hook · " in l or " · origine cmd · " in l for l in _push31), str(_push31[-3:]))
+_cmd31 = [l for l in _log31.splitlines() if " cmd " in l and " · fila " in l]
+T.check("R31 every command line separates the queue from the run (fila, esecuzione); issued, when there, marked as the device clock",
+        _cmd31 and all(RL.STATS_CMD.match(l) for l in _cmd31) and any("(orologio del dispositivo)" in l for l in _cmd31), (_cmd31 or ["-"])[-1])
+_log31b = tmp / "stats31" / "relay.log"; _log31b.parent.mkdir(parents=True, exist_ok=True)
+_log31b.write_text(
+    "2026-10-07T16:20:00 push: 6 sessioni, 0 eventi · origine cron · attesa 2,0 s · lock 0,0 s · raccolta 8,0 s · pubblicazione 1,0 s · contorno 1,0 s · ts→put 8,0 s · cpu 3,0+4,0 s\n"
+    "2026-10-07T16:20:30 push: 6 sessioni, 1 eventi · origine hook · attesa 16,5 s · lock 14,5 s · raccolta 10,0 s · pubblicazione 1,5 s · contorno 0,5 s · ts→put 10,0 s · cpu 5,0+6,0 s\n"
+    "2026-10-07T16:21:00 cmd a1: prompt master da Pixel → ok delivered · fila 12,0 s · esecuzione 1,0 s · issued 13,0 s (orologio del dispositivo)\n"
+    "2026-10-07T16:21:01 cmd a1: esito scritto · prompt · dall'arrivo 13,4 s · put 0,4 s\n"
+    "2026-10-07T16:21:05 arrivo: abc123 2,5 s dopo la push\n"
+    "2026-10-07T17:00:00 push: 6 sessioni, 0 eventi · origine cron · attesa 2,0 s · lock 0,0 s · raccolta 5,0 s · pubblicazione 1,0 s · contorno 0,0 s · ts→put 5,0 s · cpu 2,0+2,0 s\n")
+_cfg31 = json.loads(cfg.read_text()); _cfg31.setdefault("relay", {})["log"] = str(_log31b)
+_cfg31p = tmp / "config31.json"; _cfg31p.write_text(json.dumps(_cfg31))
+_r31 = relay("stats", "--since", "2026-10-07T16:00", "--until", "2026-10-07T16:30", env={**os.environ, "CC_SUPERVISOR_CONFIG": str(_cfg31p)})
+_o31 = _r31.stdout
+T.check("R31 relay stats: the window keeps two pushes (16:20-16:30), duration = lock + collect + publish + overhead (10,0 and 26,5), lock max 14,5, cpu 7,0/11,0",
+        _r31.returncode == 0 and "n     2" in _o31 and "max    26.5" in _o31 and "max    14.5" in _o31 and "max    11.0" in _o31 and "origine: cron 1, hook 1" in _o31, _o31 + _r31.stderr)
+T.check("R31 relay stats: a prompt's queue, run and arrival-to-result; the state's age at arrival from /seen",
+        "prompt: fila s" in _o31 and "max    12.0" in _o31 and "prompt: dall'arrivo all'esito s" in _o31 and "max    13.4" in _o31 and "max     2.5" in _o31, _o31)
+_old31 = RL.LOG_MAX_BYTES
+try:
+    RL.LOG_MAX_BYTES = 10
+    _rl31 = tmp / "rot31" / "relay.log"; _rl31.parent.mkdir(parents=True, exist_ok=True); _rl31.write_text("x" * 50 + "\n")
+    _R31 = dict(RL.R); RL.R["log"] = str(_rl31)
+    RL.log("riga nuova")
+finally:
+    RL.LOG_MAX_BYTES = _old31; RL.R.clear(); RL.R.update(_R31)
+T.check("R31 the log rotates past LOG_MAX_BYTES: the old lines go to relay.log.1, the new line starts relay.log",
+        _rl31.with_name("relay.log.1").read_text().startswith("x" * 50) and _rl31.read_text().endswith("riga nuova\n"), "")
+
+
+# R35 (08/10, dall'app: una risposta di 10.721 caratteri arrivava tagliata a 4000, a meta' parola)
+CO35 = load("cm-core")
+_w35 = ("parola " * 4000).strip()   # 27.999 caratteri
+_t35, _c35 = CO35.cut_text(_w35, CO35.ENTRY_TEXT_MAX)
+_e35 = CO35._entry("x.0", "assistant", "a" * 10721, 1)
+T.check("R35 an entry of 10,721 characters arrives whole (the cap is 20,000), cut false",
+        CO35.ENTRY_TEXT_MAX == 20000 and len(_e35["text"]) == 10721 and _e35["cut"] is False, str(len(_e35["text"])))
+T.check("R35 over the cap the text stops at the last whole word, cut true",
+        _c35 is True and len(_t35) <= 20000 and _t35.endswith("parola") and _w35.startswith(_t35), _t35[-20:])
+_b35, _bc35 = CO35.cut_text("è" * 25000, CO35.ENTRY_TEXT_MAX)
+T.check("R35 never over ENTRY_BYTES_MAX in UTF-8, so one entry alone always fits a 60 KB page",
+        _bc35 is True and len(_b35.encode()) <= CO35.ENTRY_BYTES_MAX, str(len(_b35.encode())))
+
+
+# R36 (08/10, piano prestazioni, fase 1): un worker per le push, il ripiego che non accoda, il lavoro dopo il lock
+import fcntl as _f36
+import threading as _th36
+_push36, _R36, _retry36, _push_fn36 = RL._push, dict(RL.R), RL.PUSH_RETRY_S, RL.push
+_calls36 = []
+try:
+    RL.R["debounce_s"] = 0.2
+    def _slow36(origin="?", requested=None, **kw):
+        _calls36.append(origin); time.sleep(1.2)
+    RL.push = _slow36
+    for _f in RL.push_req_dir().iterdir():
+        _f.unlink()
+    _w36 = RL.PushWorker(); _w36.start()
+    RL.push_request("hook")
+    T.wait_until(lambda: len(_calls36) == 1, 5)
+    for _i in range(10):   # dieci richieste durante la push lenta
+        RL.push_request("cron" if _i % 2 else "hook"); time.sleep(0.05)
+    time.sleep(3.5)
+    _n36 = len(_calls36)
+    _w36.stop.set(); _w36.join(2)
+    T.check("R36 ten requests during a slow push → exactly one more push (one running, at most one waiting)", _n36 == 2, str(_calls36))
+    _calls36.clear()
+    _fail36 = [True]
+    def _flaky36(origin="?", requested=None, **kw):
+        _calls36.append(origin)
+        if _fail36[0]:
+            _fail36[0] = False; raise OSError("bus giu'")
+    RL.push, RL.PUSH_RETRY_S = _flaky36, (0.2,)
+    _w36 = RL.PushWorker(); _w36.start()
+    RL.push_request("cmd")
+    T.wait_until(lambda: len(_calls36) >= 2, 5); time.sleep(0.6)
+    _w36.stop.set(); _w36.join(2)
+    T.check("R36 a failed push is retried until it goes through, then the worker rests (no request lost, no loop)", len(_calls36) == 2, str(_calls36))
+finally:
+    RL.push, RL.PUSH_RETRY_S = _push_fn36, _retry36
+    RL.R.clear(); RL.R.update(_R36)
+_ran36 = []
+RL._push = lambda dry_run=False, now=None, m=None: _ran36.append(1)
+try:
+    (RL.rdir() / "push-request").write_text("2.000000")
+    _got36 = RL.push(origin="hook", stamp="1.000000")
+finally:
+    RL._push = _push36
+T.check("R36 without the daemon a queued push that finds a newer request after the lock leaves without collecting", _got36 is None and not _ran36, str(_ran36))
+_post36 = []
+def _fake36(dry_run=False, now=None, m=None):
+    t = time.time()
+    m.update(ts=t, collected=t, put_at=t, published=t, events=0)
+    def post():
+        with open(str(RL.rdir() / "push.lock"), "w") as _l:
+            try:
+                _f36.flock(_l, _f36.LOCK_EX | _f36.LOCK_NB); _post36.append("free"); _f36.flock(_l, _f36.LOCK_UN)
+            except OSError:
+                _post36.append("held")
+    m["post"] = post
+    return {"sessions": []}
+RL._push = _fake36
+try:
+    RL.push(origin="cmd")
+finally:
+    RL._push = _push36
+T.check("R36 FCM, notices and prunes run after the push lock is released", _post36 == ["free"], str(_post36))
+(RL.rdir() / "prune-at").unlink(missing_ok=True)
+T.check("R36 prunes at most once every 10 minutes", RL.prune_due(time.time()) is True and RL.prune_due(time.time()) is False, "")
+T.check("R36 (1.43) the published state carries published_at, at or after ts", _pub4.get("published_at") and float(_pub4["published_at"]) >= float(_pub4["ts"]), str({x: _pub4.get(x) for x in ("ts", "published_at")}))
+_hk36 = rdir2 / "push-req" / "hook"
+_t36 = time.time() - 1
+_r36 = hook("UserPromptSubmit", {"session_id": "sid-36", "cwd": str(home), "prompt": "ciao"})
+T.check("R36 UserPromptSubmit asks for a push (push-req/hook touched)", _r36.returncode == 0 and _hk36.exists() and _hk36.stat().st_mtime >= _t36, _r36.stderr[-300:])
+OF36 = load("cm-offload")
+T.check("R36 heavy run on this machine runs at low priority: nice -n 10 and ionice -c3 around the command",
+        OF36.low_priority("make test") == ("nice -n 10 " + ("ionice -c3 " if shutil.which("ionice") else "") + "sh -c 'make test'"), OF36.low_priority("make test"))
+
+
+# R37 (1.44, 08/10): op night, il rapporto della notte cosi' com'e', e night.report nello stato
+_nr37 = tmp / "night37"; _nr37.mkdir(exist_ok=True)
+_dir37 = RL.night_report_dir
+RL.night_report_dir = lambda: _nr37
+try:
+    _empty37 = RL.night_report(None)
+    _sample37 = (FIX / "night-report-sample.json").read_text()
+    (_nr37 / "2026-10-07.json").write_text(_sample37)
+    _ok37 = RL.night_report(None)
+    _no37 = RL.night_report("2026-10-01")
+    _day37 = RL.night_report("2026-10-07")
+    _latest37 = RL.night_report_latest()
+finally:
+    RL.night_report_dir = _dir37
+_crs37 = json.loads((FIX / "cmd-result-sample.json").read_text())
+_res37 = {r["id"]: r for r in _crs37["result"] if isinstance(r, dict)}
+T.check("R37 (1.44) night with no report → «no night report yet»", _empty37 == (False, "no night report yet"), str(_empty37))
+T.check("R37 (1.44) night null → the last report as it is on disk; the same JSON as the fixture's …0383 result",
+        _ok37[0] is True and json.loads(_ok37[1]) == json.loads(_sample37) == json.loads(_res37["6f1c2d3e-0383-4000-8000-000000000383"]["text"]), str(_ok37)[:120])
+T.check("R37 (1.44) night for a day without a report → «no night report for 2026-10-01», as the fixture's …0384",
+        _no37 == (False, _res37["6f1c2d3e-0384-4000-8000-000000000384"]["text"]) and _day37[0] is True, str(_no37))
+T.check("R37 (1.44) night is a passive read (it wakes nobody, it never triggers a push) and is in ops", "night" in RL.PASSIVE_OPS and "night" in RL.OPS, "")
+_st37 = S.build_state({"night_report": _latest37}, 1)
+T.check("R37 (1.44) /state night.report = {date, generated_at} of the last report; absent without reports",
+        _st37["night"].get("report") == {"date": "2026-10-07", "generated_at": json.loads(_sample37)["generated_at"]} and "report" not in S.build_state({}, 1)["night"], str(_st37["night"]))
+
+
+# R38 (08/10, dopo lo stato fermo dalle 10:47 alle 11:49): ensure riavvia un demone con il codice vecchio; la guardia
+import fcntl as _f38
+_save38 = {n: getattr(RL, n) for n in ("serve_alive", "serve_stop", "push", "emit", "_load")}
+_calls38 = {"stop": 0, "push": [], "emit": [], "tg": []}
+class _Bot38:
+    def send(self, text, watch_quiet=False):
+        _calls38["tg"].append(text)
+_popen38 = RL.subprocess.Popen
+_rdir38 = RL.rdir
+_d38 = tmp / "relay38"; _d38.mkdir(exist_ok=True)
+try:
+    RL.rdir = lambda: _d38   # una cartella sua: il relay di prova di R6/R30 e' ancora vivo e pubblica in rdir2
+    RL.serve_alive = lambda: 0 if _calls38["stop"] else 4242
+    def _stop38():
+        _calls38["stop"] += 1; return True
+    RL.serve_stop = _stop38
+    RL.subprocess.Popen = lambda *a, **kw: None
+    RL.write_json(RL.serve_status_path(), {"pid": 4242, "code": "cm-relay.py:1:1"})
+    RL.guard_path().unlink(missing_ok=True)
+    RL.ensure()
+    _g38 = RL.read_json(RL.guard_path(), {})
+    T.check("R38 ensure: the live daemon runs older code than the disk → stopped and started again, «codice cambiato» in the log",
+            _calls38["stop"] == 1 and _g38.get("cause") == "code" and "codice cambiato" in RL.log_path().read_text(), str(_g38))
+    RL.push = lambda **kw: _calls38["push"].append(kw.get("origin"))
+    RL.emit = lambda kind, title, body, **kw: _calls38["emit"].append((kind, title, body))
+    RL._load = lambda name: _Bot38() if name == "cm-bot" else _save38["_load"](name)
+    RL.guard_path().unlink(missing_ok=True)
+    _now38 = time.time()
+    RL.write_json(RL.rdir() / "last-state.json", {"state": {"published_at": _now38 - 400}, "pushed_at": _now38 - 412})
+    RL.guard(_now38)
+    RL.guard(_now38 + 60)
+    T.check("R38 guard: the state older than 180 s → a direct push (origin «guardia»), Telegram told once, not every minute",
+            _calls38["push"] == ["guardia", "guardia"] and len(_calls38["tg"]) == 1 and "fermo" in _calls38["tg"][0], str(_calls38))
+    RL.write_json(RL.rdir() / "last-state.json", {"state": {"published_at": _now38 + 100}})
+    RL.guard(_now38 + 120)
+    T.check("R38 guard: when the state moves again → one event relay_stale (1.45) with since when and why; the episode closed",
+            len(_calls38["emit"]) == 1 and _calls38["emit"][0][0] == "relay_stale" and "8 min" in _calls38["emit"][0][1]
+            and "push diretta" in _calls38["emit"][0][2] and not RL.guard_path().exists(), str(_calls38["emit"]))
+    _calls38["push"].clear(); _calls38["tg"].clear()
+    RL.write_json(RL.rdir() / "last-state.json", {"state": {"published_at": _now38 - 400}})
+    RL.write_json(RL.guard_path(), {"since": _now38 - 400, "cause": "push", "lock_since": _now38 - 300})
+    with open(str(RL.rdir() / "push.lock"), "w") as _l38:
+        _f38.flock(_l38, _f38.LOCK_EX)
+        RL.guard(_now38)
+        _f38.flock(_l38, _f38.LOCK_UN)
+    _g38 = RL.read_json(RL.guard_path(), {})
+    T.check("R38 guard: the push lock held for more than 180 s → no waiting and no push, cause «lock», said once",
+            not _calls38["push"] and _g38.get("cause") == "lock" and len(_calls38["tg"]) == 1 and "lock" in _calls38["tg"][0], str(_g38) + str(_calls38["tg"]))
+finally:
+    for _n, _v in _save38.items():
+        setattr(RL, _n, _v)
+    RL.subprocess.Popen = _popen38
+    RL.guard_path().unlink(missing_ok=True)
+    RL.rdir = _rdir38
+
+
+# R39 (08/10, battito leggero): il battito del cron ripubblica lo stato pronto se le sorgenti non sono cambiate
+_save39 = {n: getattr(RL, n) for n in ("rdir", "rtdb", "key", "_push", "push")}
+_d39 = tmp / "relay39"; _d39.mkdir(exist_ok=True)
+_puts39, _full39 = [], []
+try:
+    RL.rdir = lambda: _d39
+    RL.key = lambda: k
+    RL.rtdb = lambda method, path, body=None, params=None: _puts39.append((method, path, body))
+    def _fullpush39(dry_run=False, now=None, m=None):
+        _full39.append(1); t = time.time()
+        m.update(ts=t, collected=t, put_at=t, published=t, events=0)
+        return {"sessions": []}
+    RL._push = _fullpush39
+    def _setup39(state="idle", age=10):
+        st = {"v": 1, "ts": time.time() - age, "sessions": [{"name": "x", "state": state}]}
+        RL.write_json(_d39 / "last-state.json", {"state": st, "full": dict(st), "seq": 3})
+        RL.write_json(RL.beat_path(), {"fp": RL.sources_print(), "full_at": time.time() - age})
+    _setup39()
+    _t39 = time.time()
+    RL.push(origin="cron", light=True)
+    _pub39 = C.decrypt(_puts39[-1][2], k) if _puts39 else {}
+    T.check("R39 heartbeat with nothing changed: no collect, the ready state put again with a new published_at, origin «battito» in the log",
+            not _full39 and _puts39 and _puts39[-1][1] == "state" and float(_pub39.get("published_at") or 0) >= _t39 - 0.01
+            and "origine battito" in RL.log_path().read_text(), str(_full39) + str(_pub39)[:120])
+    _setup39()
+    (Path(cm_state_dir39 := RL.cm.expand(RL.CFG["state_dir"])) / "waiting").mkdir(parents=True, exist_ok=True)
+    (Path(cm_state_dir39) / "waiting" / "sid-39").write_text("{}")
+    RL.push(origin="cron", light=True)
+    (Path(cm_state_dir39) / "waiting" / "sid-39").unlink()
+    T.check("R39 a source changed (a question waiting) → the full collect", len(_full39) == 1, str(_full39))
+    _setup39(age=400)
+    RL.push(origin="cron", light=True)
+    T.check("R39 the last full collect older than 5 minutes → the full collect anyway", len(_full39) == 2, str(_full39))
+    _setup39(state="busy", age=150)
+    RL.push(origin="cron", light=True)
+    T.check("R39 a session at work and the last collect older than 2 minutes → the full collect", len(_full39) == 3, str(_full39))
+    _setup39(state="busy", age=60)
+    RL.push(origin="cron", light=True)
+    T.check("R39 a session at work but a collect 1 minute ago → the light heartbeat", len(_full39) == 3, str(_full39))
+    _setup39()
+    with open(Path(cm_state_dir39) / "ledger.jsonl", "a") as _lf39:
+        _lf39.write('{"event": "watch-cmd", "op": "transcript"}\n')
+    RL.push(origin="cron", light=True)
+    T.check("R39 a new ledger line alone (a chat read) does not force the full collect: the state changes come with a hook", len(_full39) == 3, str(_full39))
+    _light39 = []
+    RL.push = lambda **kw: _light39.append(kw.get("light"))
+    for _f in RL.push_req_dir().iterdir():
+        _f.unlink()
+    _save_deb39 = RL.R.get("debounce_s"); RL.R["debounce_s"] = 0.1
+    _w39 = RL.PushWorker(); _w39.start()
+    RL.push_request("cron"); T.wait_until(lambda: len(_light39) == 1, 5)
+    RL.push_request("hook"); RL.push_request("cron"); T.wait_until(lambda: len(_light39) == 2, 5)
+    _w39.stop.set(); _w39.join(2)
+    RL.R["debounce_s"] = _save_deb39
+    T.check("R39 the worker tries the light heartbeat only when the cron alone asked (a hook in between → full push)", _light39 == [True, False], str(_light39))
+finally:
+    for _n, _v in _save39.items():
+        setattr(RL, _n, _v)
+
+# R40 (1.46, 08/10): op agenda, the open decisions and work of relay.agenda_file (TSV), on request, never in /state;
+# 1.47 (09/10): columns 6 and 7 (detail, until), the state «scartato», «chiuso» read as «fatto», and each row's key
+_AG40 = ("# Decisions and open work\n#\n# state\tscope\tblocks\ttitle\tref\tdetail\tuntil\n"
+         "aperto\tagenzia\towner\tConfirm the 6 client ids with a candidate\t.claude/to-decide-client-id.md\n\n"
+         "aperto\tpersonale\tclaude\tMove the docs site to the new host\torbit-docs\r\n"
+         "  # an indented comment\n"
+         "sospeso\tagenzia\tterzi\tStaging of atlas-shop not reachable from the CLI\t\tThe host blocks SSH from the office.\\nAsk the provider to open port 22.\t2026-10-12\n"
+         "chiuso\tpostazione\tnessuno\tBackups of the workstation every night\tcrontab\n"
+         "scartato\tpersonale\tnessuno\tA second dashboard for the quotas\t\t\tnot-a-date\n")
+_ag40 = tmp / "agenda40.tsv"
+_ag40.write_bytes(_AG40.encode())
+_rel40 = RL.CFG.setdefault("relay", {})
+_saved40 = _rel40.get("agenda_file")
+try:
+    _rel40["agenda_file"] = str(_ag40)
+    _ok40 = RL.agenda_list()
+    _rel40["agenda_file"] = ""
+    _none40 = RL.agenda_list()
+    _rel40["agenda_file"] = str(tmp / "missing-agenda.tsv")
+    _gone40 = RL.agenda_list()
+finally:
+    _rel40["agenda_file"] = _saved40
+_res40 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"] if isinstance(r, dict)}
+_cmd40 = {c["id"]: c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"] if isinstance(c, dict)}
+T.check("R40 (1.47) agenda → {rows: [{key, state, scope, blocks, title, ref, detail, until}], more} in file order, comments and blank lines out, "
+        "detail with real line breaks, until only as a date, «chiuso» as «fatto»; the fixture's …0386 result",
+        _ok40[0] is True and json.loads(_ok40[1]) == json.loads(_res40["6f1c2d3e-0386-4000-8000-000000000386"]["text"]), str(_ok40)[:300])
+T.check("R40 (1.46) no agenda_file, or a file that is not there → «no agenda file», as the fixture's …0387",
+        _none40 == _gone40 == (False, _res40["6f1c2d3e-0387-4000-8000-000000000387"]["text"]), str((_none40, _gone40)))
+T.check("R40 (1.46) agenda is a passive read in ops, and /state does not carry it", "agenda" in RL.PASSIVE_OPS and "agenda" in RL.OPS
+        and "agenda" not in json.loads(relay("push", "--dry-run").stdout), "")
+
+# R41 (1.47, 09/10): op agenda_set — Fatto, Rimanda, Rimuovi, Passa on a copy of the agenda; backup, lock, nothing else moves
+_ag41 = tmp / "agenda41.tsv"
+_ag41.write_bytes(_AG40.encode())
+_rel41 = RL.CFG.setdefault("relay", {})
+_saved41 = (_rel41.get("agenda_file"), RL.AGENDA_BACKUPS, RL.AGENDA_LOCK_S)
+_bk41 = RL.rdir() / "agenda-backup"
+shutil.rmtree(_bk41, ignore_errors=True)
+try:
+    _rel41["agenda_file"] = str(_ag41)
+    _keys41 = [r["key"] for r in json.loads(RL.agenda_list()[1])["rows"]]
+    _out41 = {}
+    for _cid in sorted(c for c in _cmd40 if _cmd40[c]["op"] == "agenda_set"):
+        _before = _ag41.read_bytes()
+        _out41[_cid] = (RL.execute(_cmd40[_cid]), _before, _ag41.read_bytes())
+    _lines41 = _ag41.read_bytes().decode().splitlines(keepends=True)
+    _orig41 = _AG40.splitlines(keepends=True)
+    _bks41 = sorted(b.read_bytes() for b in _bk41.glob("agenda-*.tsv"))
+    # one writer at a time: with the lock held elsewhere, «agenda busy» and the file untouched
+    _held = open(str(RL.rdir() / "agenda.lock"), "w")
+    fcntl.flock(_held, fcntl.LOCK_EX)
+    RL.AGENDA_LOCK_S = 0.3
+    _k_now = json.loads(RL.agenda_list()[1])["rows"][0]["key"]
+    _busy41 = (RL.agenda_set({"action": "done"}, _k_now), _ag41.read_bytes() == "".join(_lines41).encode())
+    fcntl.flock(_held, fcntl.LOCK_UN); _held.close()
+    RL.AGENDA_BACKUPS = 2
+    _newest41 = _ag41.read_bytes()
+    RL.agenda_set({"action": "pass", "blocks": "owner"}, _k_now)
+    _left41 = sorted(_bk41.glob("agenda-*.tsv"))
+    _capped41 = (len(_left41), _left41[-1].read_bytes() == _newest41)
+    # the owner's name comes from relay.agenda_owner: Passa takes it, and «owner» is then refused
+    _rel41["agenda_owner"] = "someone"
+    _k_now = json.loads(RL.agenda_list()[1])["rows"][1]["key"]
+    _owner41 = (json.loads(RL.agenda_list()[1])["owner"], RL.agenda_set({"action": "pass", "blocks": "owner"}, _k_now),
+                json.loads(RL.agenda_set({"action": "pass", "blocks": "someone"}, _k_now)[1])["row"]["blocks"])
+finally:
+    _rel41["agenda_file"], RL.AGENDA_BACKUPS, RL.AGENDA_LOCK_S = _saved41
+    _rel41.pop("agenda_owner", None)
+_okids41 = [c for c in sorted(_out41) if _res40[c]["ok"]]
+T.check("R41 (1.47) the keys of agenda are the ones the fixture's agenda_set commands use",
+        all(_cmd40[c]["arg"] in _keys41 for c in _okids41), str((_keys41, [_cmd40[c]["arg"] for c in _okids41])))
+T.check("R41 (1.47) agenda_set: every fixture command gives the fixture's result (…0470-…0477)",
+        all(_out41[c][0] == (_res40[c]["ok"], _res40[c]["text"]) for c in _out41) and len(_out41) == 8,
+        str({c[-4:]: _out41[c][0] for c in _out41})[:600])
+T.check("R41 (1.47) done → state fatto, snooze → sospeso with until in column 7 (padded), remove → scartato, pass → column 3; "
+        "only those lines change, comments, blank lines and the CRLF line end stay",
+        _lines41[3] == "fatto\tagenzia\towner\tConfirm the 6 client ids with a candidate\t.claude/to-decide-client-id.md\n"
+        and _lines41[5] == "sospeso\tpersonale\tclaude\tMove the docs site to the new host\torbit-docs\t\t2026-10-20\r\n"
+        and _lines41[7] == "sospeso\tagenzia\tclaude\tStaging of atlas-shop not reachable from the CLI\t\tThe host blocks SSH from the office.\\nAsk the provider to open port 22.\t2026-10-12\n"
+        and _lines41[9] == "scartato\tpersonale\tnessuno\tA second dashboard for the quotas\t\t\tnot-a-date\n"
+        and _lines41[8] == "scartato\tpostazione\tnessuno\tBackups of the workstation every night\tcrontab\n"
+        and [l for i, l in enumerate(_lines41) if i not in (3, 5, 7, 8)] == [l for i, l in enumerate(_orig41) if i not in (3, 5, 7, 8)],
+        "".join(_lines41))
+T.check("R41 (1.47) a refused command (stale key, bad action, bad date, bad blocks) leaves the file as it was",
+        all(_out41[c][1] == _out41[c][2] for c in _out41 if not _res40[c]["ok"]), "")
+T.check("R41 (1.47) a backup before each write, byte for byte the file as it was",
+        len(_bks41) == len(_okids41) and _bks41 == sorted(_out41[c][1] for c in _okids41), str(len(_bks41)))
+T.check("R41 (1.47) with the lock held elsewhere → «agenda busy», file untouched; backups capped at AGENDA_BACKUPS, the newest kept",
+        _busy41 == ((False, "agenda busy"), True) and _capped41 == (2, True), str((_busy41, _capped41)))
+T.check("R41 (1.47) relay.agenda_owner names the owner: agenda says it in `owner`, Passa writes it, «owner» is then refused",
+        _owner41 == ("someone", (False, "bad blocks: owner"), "someone"), str(_owner41))
+T.check("R41 (1.47) agenda_set is a command in ops, not a passive read", "agenda_set" in RL.OPS and "agenda_set" not in RL.PASSIVE_OPS, "")
+
+# R44 (14/10, gli spunti della valutazione di Kaya, «Passa tutti e 7»): contratti 1.53-1.58
+# 1.53 opzioni spiegate
+o44 = [S.option_of(i, lb, {"Merge now (Recommended)": "Fast-forward main and push", "Wait": ""}) for i, lb in enumerate(["Merge now (Recommended)", "Wait"])]
+T.check("R44 (1.53) an option keeps its description and «(Recommended)» becomes recommended: true with a clean label; without them the two fields are absent",
+        o44 == [{"n": 1, "label": "Merge now", "description": "Fast-forward main and push", "recommended": True}, {"n": 2, "label": "Wait"}], str(o44))
+# 1.54 modalita' dei permessi
+t44 = tmp / "t44.jsonl"
+t44.write_text(json.dumps({"type": "user", "permissionMode": "default", "message": {"role": "user", "content": "x"}}) + "\n"
+               + json.dumps({"type": "permission-mode", "permissionMode": "acceptEdits", "sessionId": "S"}) + "\n")
+_tof = RL.core.transcript_of
+RL.core.transcript_of = lambda row: str(t44) if row.get("session_id") == "S" else ""
+pm44 = (RL.core.permission_mode({"session_id": "S"}), RL.core.permission_mode({"session_id": "none"}))
+RL.core.transcript_of = _tof
+st44 = S.build_session({"name": "x", "tmux": "x", "status": "idle", "session_id": "S"}, {"runtime": {"x": {"permission_mode": "acceptEdits"}}})
+st44b = S.build_session({"name": "x", "tmux": "x", "status": "idle", "session_id": "S"}, {})
+T.check("R44 (1.54) permission_mode: the last value in the transcript's tail (acceptEdits after default), None without a transcript; in the state only when known",
+        pm44 == ("acceptEdits", None) and st44.get("permission_mode") == "acceptEdits" and "permission_mode" not in st44b, str(pm44) + str(st44.get("permission_mode")))
+# 1.55 risolta al terminale
+r44 = tmp / "r44"
+r44.mkdir()
+_rd, _ls, _pf = RL.rdir, RL.last_sessions, RL.prefixes
+RL.rdir, RL.prefixes = (lambda: r44), (lambda: ())
+RL.last_sessions = lambda: {"alfa": {"question": {"id": "q-100-1", "text": "Deploy now?"}}, "beta": {"question": {"id": "q-200-1", "text": "Push?"}},
+                            "gamma": {"question": {"id": "q-300-1", "text": "Old?"}}}
+(r44 / "answered.json").write_text(json.dumps({"q-200-1": 1789210000}))
+rows44 = [{"name": "alfa", "status": "idle"}, {"name": "beta", "status": "idle"}, {"name": "gamma", "status": "waiting"}]
+res44 = RL.resolved_of({"gamma": {"asked_at": 300}}, rows44, 1789211000)
+later44 = RL.resolved_of({}, [{"name": "beta", "status": "idle"}], 1789211000 + RL.RESOLVED_KEEP_S + 1)
+RL.rdir, RL.last_sessions, RL.prefixes = _rd, _ls, _pf
+s44 = S.build_session({"name": "alfa", "tmux": "alfa", "status": "idle"}, {"resolved": res44})
+T.check("R44 (1.55) a question gone without an answer from a device → resolved {id, text, at}; one answered from the phone or still open is not; after RESOLVED_KEEP_S it leaves; in the state with by «terminal»",
+        res44 == {"alfa": {"id": "q-100-1", "text": "Deploy now?", "at": 1789211000}} and later44 == {}
+        and s44.get("resolved") == {"id": "q-100-1", "text": "Deploy now?", "at": 1789211000, "by": "terminal"}, str(res44) + str(later44))
+# 1.56 anteprime senza segreti
+red44 = [S.redact_preview(x) for x in ("curl -H 'Authorization: Bearer abcdefghijklmnop123' https://x", "export API_KEY=sk-abcdefghijklmnopqrstuv",
+                                         "mysql --password hunter22 db", "git push https://me:pw1234@github.com/a/b", "git log --oneline -3")]
+T.check("R44 (1.56) redact_preview hides a bearer token, a key in a variable, an option's password and the password in a URL; a plain command is untouched",
+        red44 == ["curl -H 'Authorization: Bearer •••' https://x", "export API_KEY=•••", "mysql --password ••• db", "git push https://•••@github.com/a/b", "git log --oneline -3"], str(red44))
+q44 = S.build_session({"name": "x", "tmux": "x", "status": "waiting", "waiting": True},
+                      {"questions": {"x": {"tool": "Bash", "text": "Bash export TOKEN=abcdef123456", "options": ["Yes", "No"], "asked_at": 1789210000}}})["question"]
+T.check("R44 (1.56) a question with a secret carries preview (redacted), text stays whole; an event gets preview only when something was hidden",
+        q44["preview"] == "Bash export TOKEN=•••" and q44["text"] == "Bash export TOKEN=abcdef123456"
+        and S.preview_of("▶ x", "work/x") == {} and S.preview_of("? x", "token=abcdef1234") == {"preview": {"title": "? x", "body": "token=•••"}}, str(q44))
+# 2 prompt doppioni
+d44 = tmp / "d44"
+d44.mkdir()
+_rd, _win = RL.rdir, RL.R.get("duplicate_prompt_s")
+RL.rdir = lambda: d44
+RL.R["duplicate_prompt_s"] = 60
+first = RL.duplicate_prompt("alfa", "fai  il deploy")
+RL.duplicate_prompt("alfa", "fai il deploy", record=True)
+again, other = RL.duplicate_prompt("alfa", "fai il deploy"), RL.duplicate_prompt("beta", "fai il deploy")
+RL.R["duplicate_prompt_s"] = 0
+off = RL.duplicate_prompt("alfa", "fai il deploy")
+RL.rdir = _rd
+RL.R["duplicate_prompt_s"] = _win
+T.check("R44 (14/10) the same text to the same session within 60 s after a delivery → seconds since (not sent again); before the delivery, to another session or with the window at 0 → None",
+        first is None and isinstance(again, int) and again >= 1 and other is None and off is None, str((first, again, other, off)))
+# 1.58 quota: le tre strade
+q58 = tmp / "q58"
+q58.mkdir()
+_rd, _jc, _cfgsd = RL.rdir, RL._json_cmd, RL.CFG["state_dir"]
+RL.rdir = lambda: q58
+RL.CFG["state_dir"] = str(q58)
+RL._json_cmd = lambda *a, **kw: ([{"name": "work-ledger-api", "tmux": "work-ledger-api", "account": "work", "cwd": str(ws), "status": "idle"}]
+                                 if a[0] == "sessions" else {"work": {"cinque_ore_pct": 100, "settimana_pct": 40, "reset_cinque_ore": 1789220000, "reset_settimanale": 1789600000}})
+ok58 = RL.quota_route({}, "ledger-api", "work-ledger-api", "at_reset")
+g58 = json.loads((q58 / "guard.json").read_text())
+bad58 = RL.quota_route({}, "ledger-api", "work-ledger-api", "later")
+win58 = RL.quota_window("work")
+RL.rdir, RL._json_cmd = _rd, _jc
+RL.CFG["state_dir"] = _cfgsd
+T.check("R44 (1.58) quota_route at_reset → the guard resumes this session at the 5-hour reset (guard.json resume_at, resume_names), said with the time; an unknown route → the contract's text; other_account picks the other configured account",
+        ok58[0] is True and g58["work"]["resume_at"] == 1789220000 and g58["work"]["resume_names"] == ["work-ledger-api"] and win58 == ("5h", 1789220000)
+        and bad58 == (False, "quota_route later: expected other_model, other_account, at_reset or pass:<session>") and RL.other_account("work") == "personal", str(ok58) + str(g58) + str(bad58))
+T.check("R44 (1.58) quota_route is a command in ops", "quota_route" in RL.OPS and "quota_route" not in RL.PASSIVE_OPS, "")
+# 1.85 (25/10/2026): il limite di un modello → «continua con Opus 5.5»; nessuna quota finita propone piu' «pass»
+q85 = tmp / "q85"
+q85.mkdir()
+_tr85 = q85 / "t.jsonl"
+_now85 = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+_syn85 = lambda txt: json.dumps({"type": "assistant", "timestamp": _now85, "message": {"model": "<synthetic>", "role": "assistant", "content": [{"type": "text", "text": txt}]}})  # noqa: E731
+_tr85.write_text(json.dumps({"type": "assistant", "timestamp": _now85, "message": {"model": "claude-fable-5-1", "content": [{"type": "text", "text": "You've reached your Fable limit earlier"}]}}) + "\n"
+                 + json.dumps({"type": "user", "timestamp": _now85, "message": {"content": "go"}}) + "\n"
+                 + _syn85("You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.") + "\n")
+_rd, _jc, _em, _am = RL.rdir, RL._json_cmd, RL.emit, RL.attention_mark
+got85, att85 = [], []
+_acc85 = {"v": "work"}
+RL.rdir = lambda: q85
+RL._json_cmd = lambda *a, **kw: ([{"name": "work-ledger-api", "tmux": "work-ledger-api", "account": _acc85["v"], "cwd": str(ws), "status": "idle", "session_id": "sid85"}]
+                                 if a[0] == "sessions" else {"work": {"cinque_ore_pct": 1, "settimana_pct": 3, "reset_cinque_ore": 1789220000, "reset_settimanale": 1789600000}})
+RL.emit = lambda kind, title, body, **kw: got85.append((kind, title, kw))
+RL.attention_mark = lambda *a, **kw: att85.append(a)
+_429 = "rate_limit: 429 This request would exceed your account's rate limit. Please try again later."
+RL.quota_limit("work-ledger-api", _429, str(_tr85))
+RL.quota_limit("work-ledger-api", _429, str(_tr85))   # lo stesso limite: nessun secondo evento
+(q85 / "quota-limits.json").unlink()
+RL.quota_limit("work-ledger-api", "You've reached your Opus 5.5 limit · resets 11:10pm (Europe/Rome)", "")
+(q85 / "quota-limits.json").unlink()
+RL.quota_limit("work-ledger-api", _429, str(q85 / "missing.jsonl"))   # nessun modello nel testo ne' nella trascrizione → 5 ore
+RL.rdir, RL._json_cmd, RL.emit, RL.attention_mark = _rd, _jc, _em, _am
+x85 = [g[2]["extra"] for g in got85]
+_om85 = RL.other_model()   # Opus dalla lista tune.models della config di prova
+_t85 = RL.M("relay.event_quota_model", name="ledger-api", model="Fable")
+T.check("R85 (1.85) quota_limit: the hook's 429 says no model, the transcript's last <synthetic> message does («reached your Fable limit») → window model, title «Fable limit reached», other_model «Opus 5.5» first, no at_reset without a time, no pass; once per limit",
+        len(got85) == 3 and got85[0][1] == _t85 and "Fable" in _t85 and x85[0] == {"reset_at": None, "window": "model", "other_account": "personal", "other_model": _om85[1], "actions": ["other_model", "other_account"]}
+        and _om85[0].startswith("claude-opus") and att85 and att85[0][3] == _t85, str(got85))
+_r85 = x85[1]["reset_at"] if len(x85) > 1 else None
+T.check("R85b (1.85) the limit of Opus itself → no other_model; the time in the message → reset_at and at_reset, said in the title",
+        len(x85) > 1 and x85[1]["window"] == "model" and x85[1]["other_model"] is None and x85[1]["actions"] == ["other_account", "at_reset"]
+        and time.strftime("%H:%M", time.localtime(_r85)) == "23:10" and got85[1][1] == RL.M("relay.event_quota_model_reset", name="ledger-api", model="Opus 5.5", t="23:10"), str(got85[1:2]))
+T.check("R85c (1.85) a quota stop without a model limit → the window from the quota (five hours), actions other_account and at_reset: «pass» is never proposed",
+        len(x85) > 2 and x85[2]["window"] == "5h" and x85[2]["actions"] == ["other_account", "at_reset"] and x85[2]["other_model"] is None, str(x85[2:]))
+_n85 = time.mktime((2026, 10, 25, 20, 0, 0, 0, 0, -1))
+T.check("R85d (1.85) reset_from_text: «resets 3:10pm» today, «resets 4am» tomorrow, «resets at 23:10» in 24 h, none → None",
+        time.localtime(RL.reset_from_text("resets 3:10pm", _n85 - 6 * 3600)).tm_hour == 15 and RL.reset_from_text("resets 4am", _n85) == time.mktime((2026, 10, 26, 4, 0, 0, 0, 0, -1))
+        and RL.reset_from_text("resets at 23:10", _n85) == time.mktime((2026, 10, 25, 23, 10, 0, 0, 0, -1)) and RL.reset_from_text("Run /usage-credits to continue", _n85) is None
+        and RL.LIMIT_MODEL.search("would exceed your account's rate limit") is None, "")
+_old85 = q85 / "old.jsonl"
+_old85.write_text(json.dumps({"type": "assistant", "timestamp": "2026-01-01T00:00:00.000Z", "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "You've reached your Fable limit."}]}}) + "\n")
+T.check("R85e (1.85) limit_text: an old <synthetic> limit (hours ago) does not count; the hook's own text with the model wins without reading",
+        RL.limit_text(_429, str(_old85), tries=1) == _429 and RL.limit_text("reached your Fable limit", "/nonexistent") == "reached your Fable limit", "")
+# quota_route other_model: `supervisor model` poi «continua»; un rifiuto del cambio → la sua prima riga, nessun talk
+_rc85, _tk85, _pa85 = RL.run_cm, RL.relay_talk, RL.push_async
+calls85 = []
+_model_rc = {"v": 0}
+RL._json_cmd = lambda *a, **kw: [{"name": "work-ledger-api", "tmux": "work-ledger-api", "account": "work", "cwd": str(ws), "status": "idle"}]
+RL.run_cm = lambda *a, **kw: (calls85.append(("cm",) + a), (_model_rc["v"], "work-ledger-api: model claude-opus-5-5[1m]" if _model_rc["v"] == 0 else "work-ledger-api is busy\nmore"))[1]
+RL.relay_talk = lambda name, text, *o: (calls85.append(("talk", name, text)), (0, "sent"))[1]
+RL.push_async = lambda *a, **kw: None
+ok85 = RL.quota_route({}, "ledger-api", "work-ledger-api", "other_model")
+_model_rc["v"] = 3
+no85 = RL.quota_route({}, "ledger-api", "work-ledger-api", "other_model")
+bad85 = RL.quota_route({}, "ledger-api", "work-ledger-api", "later")
+RL.run_cm, RL.relay_talk, RL.push_async, RL._json_cmd = _rc85, _tk85, _pa85, _jc
+T.check("R85f (1.85) quota_route other_model: `supervisor model <session> claude-opus-5-5[1m]`, then «continue» to the session → «ledger-api continues with Opus 5.5»; a refused switch → its first line and no talk",
+        ok85 == (True, RL.M("relay.cmd_quota_model", name="ledger-api", model=_om85[1])) and calls85[0] == ("cm", "model", "work-ledger-api", _om85[0])
+        and calls85[1][0] == "talk" and calls85[1][1] == "work-ledger-api" and calls85[1][2].endswith(" " + RL.M("relay.quota_model_prompt"))
+        and no85 == (False, "work-ledger-api is busy") and [c[0] for c in calls85] == ["cm", "talk", "cm"]
+        and bad85 == (False, "quota_route later: expected other_model, other_account, at_reset or pass:<session>"), str((ok85, no85, calls85)))
+
+# R45 (contratto 1.59, 14/10, il manutentore: «quando cambio una chat vedo per qualche secondo il testo vecchio»): /tail/<id>
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+(tdir_a / "S-A.jsonl").write_text("\n".join(json.dumps({"type": "assistant", "uuid": f"t{i}", "timestamp": "2026-09-12T10:00:00.000Z",
+                                                       "message": {"content": [{"type": "text", "text": f"voce {i}"}]}}) for i in range(40)) + "\n")
+(rdir2 / "tail-seen.json").unlink(missing_ok=True)
+r45 = relay("push")
+tail45 = {kk: C.decrypt(v, k) for kk, v in (STORE.get("tail") or {}).items()}
+a45 = tail45.get("S-A") or {}
+T.check("R45 (1.59) after a push /tail/<id> of a live session with a transcript: encrypted {session, id, tx, at, entries, more}, the last 30 entries, more true",
+        r45.returncode == 0 and a45.get("session") == "atlas-shop" and a45.get("id") == "S-A" and [e["text"] for e in a45.get("entries") or []] == [f"voce {i}" for i in range(10, 40)]
+        and a45.get("more") is True and a45.get("tx"), r45.stderr[-300:] + str(list(tail45)) + str({x: a45.get(x) for x in ("session", "id", "more", "tx")}))
+tp45 = json.loads((rdir2 / "local" / "tail-paths.json").read_text()) if (rdir2 / "local" / "tail-paths.json").is_file() else {}
+T.check("R45 (1.70) the push also notes each live session's transcript in local/tail-paths.json, for GET /api/tail/<id>",
+        (tp45.get("S-A") or {}).get("session") == "atlas-shop" and str(tp45["S-A"]["path"]).endswith("S-A.jsonl"), str(tp45))
+n45 = len([x for x in CALLS["requests"] if x == ("PATCH", "/tail.json")])
+relay("push")
+T.check("R45 (1.59) a second push with the transcript unchanged writes no /tail", len([x for x in CALLS["requests"] if x == ("PATCH", "/tail.json")]) == n45, str(CALLS["requests"][-6:]))
+rows_alive("ledger-api", "field-notes")
+relay("push")
+T.check("R45 (1.59) a session that is no longer live loses its /tail node", "S-A" not in (STORE.get("tail") or {}), str(list(STORE.get("tail") or {})))
+
+
+# R46 (contratto 1.61, 14/10, dall'analisi dei concorrenti): turno fallito al telefono, con il motivo e «continua»
+f46 = tmp / "f46"
+f46.mkdir()
+_rd, _jc, _em = RL.rdir, RL._json_cmd, RL.emit
+got46 = []
+RL.rdir = lambda: f46
+RL._json_cmd = lambda *a, **kw: [{"name": "atlas-shop", "tmux": "atlas-shop", "account": "personal"}]
+RL.emit = lambda kind, title, body, **kw: got46.append((kind, title, body, kw))
+RL.turn_failed("atlas-shop", "api_error: 529 overloaded_error (request id req_abc, key sk-abcdefghijklmnopqrstuv)")
+RL.turn_failed("atlas-shop", "api_error: 529 overloaded_error again")
+RL.rdir, RL._json_cmd, RL.emit = _rd, _jc, _em
+k46 = got46[0][3] if got46 else {}
+T.check("R46 (1.61) turn_failed: one event per session per minute, the reason in one line with the key hidden, continue_text for the button",
+        len(got46) == 1 and got46[0][0] == "turn_failed" and "529 overloaded_error" in got46[0][1] and "sk-abc" not in got46[0][1]
+        and k46["extra"]["reason"].endswith("key •••)") and k46["extra"]["continue_text"] and k46["session"] == "atlas-shop" and k46["ref"] == "atlas-shop", str(got46))
+RL.rdir, RL._json_cmd, RL.emit = (lambda: f46), (lambda *a, **kw: [{"name": "field-notes", "tmux": "field-notes", "account": "personal"}]), (lambda kind, title, body, **kw: got46.append((kind, title, body, kw)))
+RL.turn_failed("field-notes", "server_error: API Error: 529 overloaded (key sk-abcdefghijklmnopqrstuv) " + "x" * 300)   # 22/10 (0.8.41): il testo mostrato in chat
+RL.rdir, RL._json_cmd, RL.emit = _rd, _jc, _em
+_r46b = got46[1][3]["extra"]["reason"] if len(got46) > 1 else ""
+T.check("R46b (0.8.41) the reason composed by the hook (type: rendered error text) reaches the phone cut at 160 characters, the key hidden",
+        len(got46) == 2 and _r46b.startswith("server_error: API Error: 529 overloaded (key •••)") and "sk-abc" not in _r46b and len(_r46b) <= 161, _r46b)
+
+
+# R47 (contratto 1.62, 14/10): telefono e orologio zitti quando la sessione e' usata al PC
+row47 = {"name": "atlas-shop", "tmux": "atlas-shop", "status": "busy", "session_id": "S-A", "account": "personal"}
+s47 = lambda **kw: S.build_session(dict(row47, **kw), {"_now": 1789210800})  # noqa: E731
+T.check("R47 (1.62) at_pc only when attached with a key pressed in the last 120 s; detached, idle for longer or without the datum → absent (it rings)",
+        s47(attached=True, pc_activity=1789210750).get("at_pc") is True and "at_pc" not in s47(attached=False, pc_activity=1789210750)
+        and "at_pc" not in s47(attached=True, pc_activity=1789210600) and "at_pc" not in s47(attached=True), "")
+prev47 = {"sessions": [dict(S.build_session(dict(row47, status="busy"), {"_now": 1789210800}), state="busy")]}
+cur47 = {"sessions": [dict(S.build_session(dict(row47, status="idle", attached=True, pc_activity=1789210790), {"_now": 1789210800}), state="idle",
+                           outcome={"short": "done", "full": "done", "at": 1789210790})]}
+ev47, _ = S.events_between(prev47, cur47, 1789210800, 1)
+T.check("R47 (1.62) an event of a session used at the PC carries quiet: true", ev47 and all(e.get("quiet") is True for e in ev47 if e["session"] == "atlas-shop"), str(ev47))
+
+
+# R48 (contratto 1.63, 14/10): «manda alle HH:MM» — il prompt con `at` va nella coda della sessione
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+relay("ensure")   # R6 uninstall ha fermato il demone: R48 e R49 mandano comandi sul bus
+T.wait_until(lambda: serve_pid() > 0, 10)
+at48 = int(time.time()) + 3600
+n48 = len(cm_calls())
+res48 = send_cmd({"id": "6f1c2d3e-0630-4000-8000-000000000630", "op": "prompt", "session": "atlas-shop", "arg": "tag the release", "at": at48, "device": "phone", "issued": int(time.time()), "by": "phone-pixel8"})
+bad48 = send_cmd({"id": "6f1c2d3e-0631-4000-8000-000000000631", "op": "prompt", "session": "atlas-shop", "arg": "tag the release", "at": int(time.time()) + 30 * 86400, "issued": int(time.time()), "by": "phone-pixel8"})
+T.check("R48 (1.63) a prompt with `at` → `queue atlas-shop <prefix + text> --at-epoch <at>`, «scheduled for HH:MM»; an `at` past 7 days → refused, nothing queued",
+        res48 and res48["ok"] is True and res48["text"].startswith("scheduled for " + time.strftime("%H:%M", time.localtime(at48)))
+        and any(c.startswith("queue atlas-shop Dall'utente via telefono.") and c.endswith(f"tag the release --at-epoch {float(at48)}") for c in cm_calls()[n48:])
+        and bad48 and bad48["ok"] is False and bad48["text"] == "at: expected an epoch in the next 7 days"
+        and sum(1 for c in cm_calls()[n48:] if c.startswith("queue ")) == 1, str(res48) + str(bad48) + str(cm_calls()[n48:]))
+Q48 = load("cm-queue")
+_t48 = time.mktime((2026, 10, 14, 20, 0, 0, 0, 0, -1))
+T.check("R48 (1.63) queue --at HH:MM: today when still ahead, tomorrow when past; a bad time → None",
+        Q48.at_of("21:30", _t48) == time.mktime((2026, 10, 14, 21, 30, 0, 0, 0, -1)) and Q48.at_of("07:15", _t48) == time.mktime((2026, 10, 15, 7, 15, 0, 0, 0, -1))
+        and Q48.at_of("25:00", _t48) is None and Q48.at_of("nove", _t48) is None, "")
+
+
+# R49 (contratto 1.64, 14/10): cartella nuova dal telefono, creata solo con la conferma
+par49 = str((ws / "personal").resolve())
+new49 = Path(par49) / "brand-new"
+p49 = lambda n, **kw: send_cmd(dict({"id": f"6f1c2d3e-0640-4000-8000-0000000006{n:02d}", "op": "project_new", "session": None, "arg": par49, "text": "brand-new",  # noqa: E731
+                                     "issued": int(time.time()), "by": "phone-pixel8"}, **kw))
+n49 = len(cm_calls())
+ask49 = p49(1)
+T.check("R49 (1.64) project_new without confirm → ok false «confirm: create <full path>», nothing created, nothing launched",
+        ask49 and ask49["ok"] is False and ask49["text"] == f"confirm: create {new49}" and not new49.exists() and not any(c.startswith("launch ") for c in cm_calls()[n49:]), str(ask49))
+bad49 = (p49(2, arg="/tmp", confirm=True), p49(3, text="../escape", confirm=True), p49(4, text=".hidden", confirm=True))
+T.check("R49 (1.64) a parent outside the published projects' parents, a name with a path or starting with a dot → refused, nothing created",
+        [b["ok"] for b in bad49] == [False] * 3 and "is not a parent folder" in bad49[0]["text"] and bad49[1]["text"].startswith("bad project name") and bad49[2]["text"].startswith("bad project name")
+        and not (Path("/tmp") / "brand-new").exists(), str(bad49))
+ok49 = p49(5, confirm=True)
+again49 = p49(6, confirm=True)
+T.check("R49 (1.64) with confirm: the folder is created and launched (`launch <path> --window`); the same name again → «already exists»",
+        ok49 and ok49["ok"] is True and new49.is_dir() and ok49["text"].startswith(f"created {new49}") and any(c == f"launch {new49} --window" for c in cm_calls()[n49:])
+        and again49 and again49["ok"] is False and again49["text"] == f"{new49} already exists", str(ok49) + str(again49) + str(cm_calls()[n49:]))
+T.check("R49 (1.64) the state lists project_parents and project_new is in ops", par49 in (json.loads(relay("push", "--dry-run").stdout).get("project_parents") or []) and "project_new" in RL.OPS, "")
+
+
+# R50 (contratto 1.66, 14/10): «Serve te», una lista sola dalla piu' vecchia
+a50 = tmp / "a50"
+a50.mkdir()
+_rd, _pf = RL.rdir, RL.prefixes
+RL.rdir, RL.prefixes = (lambda: a50), (lambda: ())
+RL.attention_mark("turn_failed", "atlas-shop", "atlas-shop", "⚠ atlas-shop: turn failed — 529", now=1789210100)
+RL.attention_mark("task_red", "field-notes", "t-7", "✗ t-7: check red", now=1789210200)
+RL.attention_mark("quota_limit", "gone-one", "gone-one", "⛔ gone-one: limit", now=1789210300)
+rows50 = [{"name": "atlas-shop", "status": "busy", "session_id": "S-A"}, {"name": "field-notes", "status": "idle", "session_id": "S-F"}]
+open50 = RL.attention_open(rows50, [])
+after50 = RL.attention_open(rows50, [{"event": "prompt", "session_id": "S-A", "ts": iso(1789210150)}])
+RL.attention_mark("task_red", "field-notes", "t-7", "", remove=True)
+green50 = RL.attention_open(rows50, [])
+RL.rdir, RL.prefixes = _rd, _pf
+T.check("R50 (1.66) open items: a quota limit of a session no longer live drops; a failed turn closes at the next prompt; a red task when it turns green",
+        [x["kind"] for x in open50] == ["turn_failed", "task_red"] and [x["kind"] for x in after50] == ["task_red"] and green50 == [], str((open50, after50, green50)))
+st50 = S.build_state(dict(SRC1, attention=[{"kind": "turn_failed", "session": "atlas-shop", "ref": "atlas-shop", "title": "⚠ atlas-shop: turn failed", "since": 1789210000}]), 1789210800, fit=False)
+T.check("R50 (1.66) state.attention: the open question and the open items together, oldest first; a question carries its id and its preview",
+        [(x["kind"], x["session"]) for x in st50["attention"]] == [("turn_failed", "atlas-shop"), ("question", "ledger-api")]
+        and st50["attention"][1]["ref"] == "q-1789210500-1" and "•••" in st50["attention"][1]["title"], str(st50.get("attention")))
+
+
+# R51 (contratto 1.65, 14/10): un prompt a una sessione chiusa con reopen → talk --reopen, che la riapre e consegna
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+n51 = len(cm_calls())
+res51 = send_cmd({"id": "6f1c2d3e-0650-4000-8000-000000000650", "op": "prompt", "session": "orbit-docs", "arg": "pick up the pricing page", "reopen": True,
+                  "device": "phone", "issued": int(time.time()), "by": "phone-pixel8"})
+plain51 = send_cmd({"id": "6f1c2d3e-0651-4000-8000-000000000651", "op": "prompt", "session": "orbit-docs", "arg": "pick up the pricing page",
+                    "device": "phone", "issued": int(time.time()), "by": "phone-pixel8"})
+T.check("R51 (1.65) prompt with reopen to a closed session → `talk … --no-wait --reopen`, «orbit-docs was closed: reopened and delivered»; without reopen → «is not running», nothing sent",
+        res51 and res51["ok"] is True and res51["text"] == "orbit-docs was closed: reopened and delivered"
+        and any(c.startswith("talk ") and c.endswith("pick up the pricing page --no-wait --reopen") for c in cm_calls()[n51:])
+        and plain51 and plain51["ok"] is False and "is not running" in plain51["text"] and sum(1 for c in cm_calls()[n51:] if c.startswith("talk ")) == 1, str(res51) + str(plain51) + str(cm_calls()[n51:]))
+
+
+# R64 (1.80, 23/10): le richieste si chiudono da sole — condizione (--until), scadenza, sessione sparita
+NY = load("cm-needsyou")
+T.check("R64 needs-you parses --until and --expires (30m, 2h, 1d, 90s), refuses an unknown option, a bad duration or a missing value",
+        NY.parse_args(["Lancia", "pin", "set", "--until", "supervisor pin status --json | grep -q true", "--expires", "2h"])[:3] == (["Lancia", "pin", "set"], "supervisor pin status --json | grep -q true", 7200)
+        and NY.parse_duration("30m") == 1800 and NY.parse_duration("1d") == 86400 and NY.parse_duration("90s") == 90 and NY.parse_duration("2x") is None
+        and bool(NY.parse_args(["x", "--list"])[4]) and bool(NY.parse_args(["x", "--expires", "presto"])[4]) and bool(NY.parse_args(["x", "--until"])[4]), str(NY.parse_args(["x", "--list"])))
+ny64 = state_dir / "needs-you"
+ny64.mkdir(parents=True, exist_ok=True)
+for f64 in ny64.glob("*.json"):
+    f64.unlink()
+rows64 = [{"name": "atlas-shop", "tmux": "atlas-shop", "status": "idle", "session_id": "S-A"}, {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P"},
+          {"name": "field-notes", "tmux": "field-notes", "status": "idle", "session_id": "S-F"}]
+now64 = time.time()
+(ny64 / "S-A.json").write_text(json.dumps({"reason": "imposta il PIN", "at": int(now64) - 100, "name": "atlas-shop", "until": "test -f " + str(tmp / "pin-ok"), "cwd": str(tmp), "expires_at": int(now64) + 3600}))
+(ny64 / "S-P.json").write_text(json.dumps({"reason": "login su win", "at": int(now64) - 7200, "name": "pix-docs", "expires_at": int(now64) - 10}))
+(ny64 / "S-F.json").write_text(json.dumps({"reason": "ancora valida", "at": int(now64) - 100, "name": "field-notes", "expires_at": int(now64) + 3600}))
+(ny64 / "S-GONE.json").write_text(json.dumps({"reason": "sessione sparita", "at": int(now64) - 200000, "name": "old"}))
+os.utime(ny64 / "S-GONE.json", (now64 - 200000, now64 - 200000))
+(ny64 / "S-NEW-GONE.json").write_text(json.dumps({"reason": "sparita da poco", "at": int(now64), "name": "fresh"}))
+n64 = len(cm_calls())
+got64 = RL.needs_you_of(rows64, now64)
+T.check("R64 (1.80) needs_you_of: a request whose --until command still fails stays (checked_at, last_rc 1); an expired one goes with a talk to its session; a valid one stays; the file of a session gone for a day is pruned, a fresh one kept but not shown",
+        set(got64) == {"atlas-shop", "field-notes"} and json.loads((ny64 / "S-A.json").read_text()).get("last_rc") == 1 and not (ny64 / "S-P.json").exists()
+        and T.wait_until(lambda: any(c.startswith("talk pix-docs pix-docs: la richiesta «login su win» è scaduta alle ") and c.endswith(" --no-wait") for c in cm_calls()[n64:]), 10)
+        and not (ny64 / "S-GONE.json").exists() and (ny64 / "S-NEW-GONE.json").exists(), str((sorted(got64), cm_calls()[n64:], sorted(p.name for p in ny64.glob("*.json")))))
+(tmp / "pin-ok").write_text("x")
+got64b = RL.needs_you_of(rows64, now64 + 30)   # entro il minuto: non si riprova
+got64c = RL.needs_you_of(rows64, now64 + 61)   # dopo un minuto: il comando esce 0 → via, talk alla sessione
+T.check("R64 the condition is tried at most once a minute; when it exits 0 the request goes, with a ledger row (needs-you-done, check) and «fatto alle HH:MM … Riprendi» to the session",
+        "atlas-shop" in got64b and "atlas-shop" not in got64c and not (ny64 / "S-A.json").exists()
+        and T.wait_until(lambda: any(c.startswith("talk atlas-shop atlas-shop: fatto alle ") and "«imposta il PIN» si è verificata" in c for c in cm_calls()[n64:]), 10)
+        and any(r.get("event") == "needs-you-done" and r.get("how") == "check" for r in led_rows()), str((sorted(got64b), sorted(got64c), cm_calls()[n64:])))
+for f64 in ny64.glob("*.json"):
+    f64.unlink()
+
+# R65 (1.80): closes/expires_at nello stato; «Fatto» dall'app chiude il turn_blocking di quel turno
+row65 = {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P", "account": "work"}
+led65 = [{"event": "stop", "session_id": "S-P", "ts": iso(1789210000), "tail": "Ho preparato tutto.\nDa te:\n1. Fai il login su win e rimandami il codice.\n2. altro"}]
+ny65 = {"pix-docs": {"reason": "login su win", "at": 1789210100, "until": "test -f x", "expires_at": 1789296500}}
+n65 = S.build_session(row65, {"ledger": led65, "needs_you": ny65, "_now": 1789210800})
+st65 = S.build_state(dict(SRC1, rows=[row65], ledger=led65, questions={}, needs_you=ny65), 1789210800, fit=False)
+a65 = (st65.get("attention") or [{}])[0]
+st65b = S.build_state(dict(SRC1, rows=[row65], ledger=led65, questions={}, needs_you={}), 1789210800, fit=False)
+d65 = S.build_session(row65, {"ledger": led65, "attention_dismissed": {"pix-docs": 1789210000}, "_now": 1789210800})
+d65b = S.build_session(row65, {"ledger": led65, "attention_dismissed": {"pix-docs": 1789209000}, "_now": 1789210800})
+T.check("R65 (1.80) session.needs_you carries until and expires_at; the attention item says closes «check» and expires_at; a turn_blocking item says closes «prompt»",
+        n65.get("needs_you") == {"reason": "login su win", "at": 1789210100, "until": True, "expires_at": 1789296500} and a65.get("kind") == "needs_you" and a65.get("closes") == "check" and a65.get("expires_at") == 1789296500
+        and [(x["kind"], x.get("closes")) for x in st65b.get("attention") or []] == [("turn_blocking", "prompt")], str((n65.get("needs_you"), a65, st65b.get("attention"))))
+T.check("R65 «Fatto» from the app (attention_dismissed: since = the turn's at) hides turn_blocking for that turn; an older dismissal does not",
+        "turn_blocking" not in d65 and d65b.get("turn_blocking", {}).get("text") == "Fai il login su win e rimandami il codice.", str((d65.get("turn_blocking"), d65b.get("turn_blocking"))))
+
+# R52 (contratto 1.68, 14/10): «ferma per te», la fine turno bloccante, i promemoria
+row52 = {"name": "pix-docs", "tmux": "pix-docs", "status": "idle", "session_id": "S-P", "account": "work"}
+led52 = [{"event": "stop", "session_id": "S-P", "ts": iso(1789210000), "tail": "Ho preparato tutto.\nDa te:\n1. Fai il login su win e rimandami il codice.\n2. altro"}]
+b52 = S.build_session(row52, {"ledger": led52, "_now": 1789210800})
+n52 = S.build_session(row52, {"ledger": led52, "needs_you": {"pix-docs": {"reason": "login su win", "at": 1789210100}}, "_now": 1789210800})
+led52b = [{"event": "stop", "session_id": "S-P", "ts": iso(1789210000), "tail": "Esito: pronto.\nProssimi: !ok al deploy · rivedi i test"}]
+p52 = S.build_session(row52, {"ledger": led52b, "_now": 1789210800})
+T.check("R52 (1.68) a turn ending with a «Da te» list or a «!» step → turn_blocking {text, at}; needs_you {reason, at} from `supervisor needs-you`",
+        b52.get("turn_blocking") == {"text": "Fai il login su win e rimandami il codice.", "at": 1789210000} and p52.get("turn_blocking", {}).get("text") == "ok al deploy"
+        and n52.get("needs_you") == {"reason": "login su win", "at": 1789210100}, str((b52.get("turn_blocking"), p52.get("turn_blocking"), n52.get("needs_you"))))
+st52 = S.build_state(dict(SRC1, rows=[row52], ledger=led52, questions={}, needs_you={"pix-docs": {"reason": "login su win", "at": 1789210100}}), 1789210800, fit=False)
+ev52, _ = S.events_between({"sessions": [dict(S.build_session(row52, {"ledger": [], "_now": 1789210800}))]}, st52, 1789210800, 1)
+T.check("R52 (1.68) state.attention has the needs_you item (and not also turn_blocking for the same session); an event needs_you «✋ pix-docs»",
+        [(x["kind"], x["title"]) for x in st52.get("attention") or []] == [("needs_you", "login su win")] and any(e["kind"] == "needs_you" and e["title"] == "✋ pix-docs" and e["body"] == "login su win" for e in ev52), str((st52.get("attention"), ev52)))
+r52 = tmp / "r52"
+r52.mkdir()
+_rd, _em = RL.rdir, RL.emit
+got52 = []
+RL.rdir, RL.emit = (lambda: r52), (lambda kind, title, body, **kw: got52.append((kind, title, kw.get("ref"))))
+full52 = {"attention": [{"kind": "needs_you", "session": "pix-docs", "ref": "pix-docs", "title": "login su win", "since": 1789210000}]}
+RL.attention_reminders(full52, 1789210000 + 300)   # vista per la prima volta a 5 min: niente
+RL.attention_reminders(full52, 1789210000 + 700)
+RL.attention_reminders(full52, 1789210000 + 800)
+RL.attention_reminders(full52, 1789210000 + 1900)
+RL.rdir, RL.emit = _rd, _em
+RL.rdir, RL.emit = (lambda: r52), (lambda kind, title, body, **kw: got52.append((kind, title, kw.get("ref"))))
+old52 = {"attention": [{"kind": "question", "session": "x", "ref": "q-1-1", "title": "old", "since": 1789000000}]}
+n_old52 = len(got52)
+RL.attention_reminders(old52, 1789210000)
+RL.attention_reminders(old52, 1789210060)
+RL.rdir, RL.emit = _rd, _em
+T.check("R52 (1.68) an item first seen already old (after a restart) does not fire its past reminders at once", len(got52) == n_old52, str(got52[n_old52:]))
+T.check("R52 (1.68) attention_reminder after 10 and after 30 minutes, once each, while the item is open",
+        [g[0] for g in got52] == ["attention_reminder", "attention_reminder"] and "(10 min)" in got52[0][1] and "(30 min)" in got52[1][1] and got52[0][2] == "pix-docs", str(got52))
+
+# R53 (15/10, contratto 1.69): il cambio della modalita' dei permessi dal telefono, via `supervisor permissions`
+T.check("R53 (1.69) permission_mode is in state.ops and is a command, not a passive read", "permission_mode" in RL.OPS and "permission_mode" not in RL.PASSIVE_OPS, "")
+st53 = S.build_session({"name": "x", "tmux": "x", "status": "idle", "session_id": "S"}, {"runtime": {"x": {"permission_mode": "auto", "permission_bypass": False}}})
+T.check("R53 (1.69) «auto» passes as permission_mode; permission_bypass absent when false",
+        st53.get("permission_mode") == "auto" and "permission_bypass" not in st53, str(st53))
+t53 = tmp / "t53.jsonl"
+t53.write_text(json.dumps({"type": "permission-mode", "permissionMode": "default", "sessionId": "S53"}) + "\n")
+tune53 = tmp / "tuned53.json"
+_tof, _cf = RL.core.transcript_of, RL.core._cfg
+RL.core.transcript_of = lambda row: str(t53)
+RL.core._cfg = lambda: {"tune": {"file": str(tune53)}}
+tune53.write_text(json.dumps({"S53": {"permission_mode": "plan", "at": time.time() + 5}}))
+pm53a = RL.core.permission_mode({"session_id": "S53"})
+tune53.write_text(json.dumps({"S53": {"permission_mode": "plan", "at": time.time() - 3600}}))
+pm53b = RL.core.permission_mode({"session_id": "S53"})
+RL.core.transcript_of, RL.core._cfg = _tof, _cf
+T.check("R53 (1.69) a change noted by `supervisor permissions` wins until the transcript writes something newer",
+        (pm53a, pm53b) == ("plan", "default"), str((pm53a, pm53b)))
+p53 = [subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", *a]) for a in (["--dangerously-skip-permissions"], ["--permission-mode", "bypassPermissions"], ["--permission-mode", "plan"])]
+time.sleep(0.3)
+b53 = [RL.core.permission_bypass({"pid": p.pid}) for p in p53] + [RL.core.permission_bypass({"pid": p53[0].pid, "host": "win"}), RL.core.permission_bypass({"pid": p53[2].pid}, "bypassPermissions")]
+for p in p53:
+    p.kill()
+T.check("R53 (1.69) permission_bypass: started with --dangerously-skip-permissions or --permission-mode bypassPermissions; not a plain plan session, not a pid of another host; true when already in bypass",
+        b53 == [True, True, False, False, True], str(b53))
+
+# R54 (16/10/2026, dal vivo il 15/10 alle 23:40): due `launch --bg` nella stessa cartella, due sessioni con lo stesso
+# nome nello stato, e l'app in crash all'avvio sulla chiave doppia. /state non pubblica mai due sessioni con lo stesso
+# nome: tiene il nome la sessione in tmux, poi la piu' vecchia; le altre prendono -2 come tmux
+def bg54(sid, name, at, account="personal"):
+    return {"pid": 40 + int(sid[-1]), "name": name, "tmux": "", "cwd": str(ws / "personal" / "atlas-shop"), "status": "idle", "waiting": False,
+            "link": "", "account": account, "session_id": sid, "attached": False, "started_at": at}
+
+
+rows_alive("atlas-shop")
+alive.write_text(json.dumps([bg54("S-P2", "work-plugins", 1789210500000, "work"), bg54("S-P1", "work-plugins", 1789210400000, "work"),
+                             json.loads(alive.read_text())[0], bg54("S-B3", "atlas-shop", 1789200000000)]))
+p54 = relay("push", "--dry-run")
+st54 = json.loads(p54.stdout) if p54.returncode == 0 and p54.stdout.strip().startswith("{") else {"sessions": []}
+names54 = {s_["id"]: s_["name"] for s_ in st54["sessions"]}
+T.check("R54 two --bg sessions with one name, and a --bg one with a tmux session's name: every published name is unique; the oldest --bg keeps «plugins», the tmux session keeps «atlas-shop», the others take -2",
+        {i: names54.get(i) for i in ("S-P1", "S-P2", "S-A", "S-B3")} == {"S-P1": "plugins", "S-P2": "plugins-2", "S-A": "atlas-shop", "S-B3": "atlas-shop-2"}
+        and len(set(names54.values())) == len(names54) == len(st54["sessions"]), str(names54) + p54.stderr[-300:])
+u54 = S.unique_names([{"name": "x", "tmux": "x", "status": "idle", "started_at": 2}, {"name": "pix-x", "tmux": "pix-x", "status": "idle", "started_at": 1},
+                      {"name": "pix-y", "tmux": "pix-y", "status": "dead"}, {"name": "y", "tmux": "y", "status": "dead"}], ("pix-",))
+T.check("R54 unique_names: the same folder on two accounts («x» and «pix-x», both in tmux) → the newer one is published as x-2 and keeps its tmux; two closed ones → the second is -2",
+        [(r["name"], r["tmux"]) for r in u54] == [("x-2", "x"), ("pix-x", "pix-x"), ("pix-y", "pix-y"), ("y-2", "y")], str(u54))
+rows_alive("ledger-api", "atlas-shop", "field-notes")
+
+# R55 (contratto 1.72, 15/10): cm-diff.py e' codice del relay — `ensure` riavvia il demone quando cambia
+T.check("R55 (1.72) cm-diff.py is in the relay code that `ensure` watches (a change restarts the daemon)", "cm-diff.py" in RL.CODE_FILES, str(RL.CODE_FILES))
+# R55 (1.72): la vista con git e il timeout, in processo (la sessione finta punta a un repository vero)
+G54 = ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "init.defaultBranch=main"]
+g54 = tmp / "shop54"
+g54.mkdir()
+subprocess.run(G54 + ["init", "-q", str(g54)], check=True)
+(g54 / "a.txt").write_text("a\n")
+subprocess.run(G54 + ["-C", str(g54), "add", "a.txt"], check=True)
+subprocess.run(G54 + ["-C", str(g54), "commit", "-q", "-m", "c"], check=True)
+(g54 / "a.txt").write_text("b\n")
+(g54 / ".env").write_text("TOKEN=abcdef123456\n")
+_sr54 = RL.session_row
+RL.session_row = lambda tm: {"tmux": tm, "name": tm, "status": "idle", "cwd": str(g54), "account": "personal", "session_id": "S-54"}
+ok54, t54 = RL.changes_op("shop54", "shop54", None)
+v54g = json.loads(t54) if ok54 else {}
+slow54 = tmp / "slow-git"
+slow54.write_text("#!/bin/sh\nexec sleep 5\n")
+slow54.chmod(0o755)
+_gb54, _gt54 = RL.DF.GIT_BIN, RL.DF.GIT_TIMEOUT_S
+RL.DF.GIT_BIN, RL.DF.GIT_TIMEOUT_S = str(slow54), 0.5
+to54 = RL.changes_op("shop54", "shop54", None)
+RL.DF.GIT_BIN, RL.DF.GIT_TIMEOUT_S = _gb54, _gt54
+RL.session_row = _sr54
+head54 = subprocess.run(["git", "-C", str(g54), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+T.check("R55 (1.72) changes with git → source git, repo the root, base the short HEAD; the edited file with its lines, the new .env with counts only",
+        (v54g.get("source"), v54g.get("repo"), v54g.get("base")) == ("git", str(g54.resolve()), head54)
+        and [(f["path"], f["status"], f["added"], f["removed"], bool(f["hunks"])) for f in v54g.get("files", [])] == [(".env", "added", 1, 0, False), ("a.txt", "modified", 1, 1, True)], t54[:300])
+T.check("R55 (1.72) git that does not answer in time → ok false «git did not answer in 5 s» (the app shows it with Riprova)", to54 == (False, "git did not answer in 5 s"), str(to54))
+T.check("R55 (1.72) changes and diff are in state.ops and are passive reads (no push after them, superseded like the other reads)",
+        {"changes", "diff"} <= set(RL.PASSIVE_OPS) and RL.OPS[RL.OPS.index("changes"):][:2] == ("changes", "diff"), str(RL.OPS[-3:]))
+# R55 (1.72): la pillola di /state — a fine turno, al piu' una volta al minuto; la sessione chiusa tiene l'ultimo valore
+r54p = tmp / "r54p"
+r54p.mkdir()
+plain54 = tmp / "plain54"
+plain54.mkdir()
+_rd54 = RL.rdir
+RL.rdir = lambda: r54p
+rows54 = [{"tmux": "shop54", "name": "shop54", "status": "idle", "cwd": str(g54), "session_id": "S-54"},
+          {"tmux": "notes54", "name": "notes54", "status": "idle", "cwd": str(plain54), "session_id": "S-55"},
+          {"tmux": "win54", "name": "win54", "status": "idle", "cwd": "D:\\w\\x", "host": "win", "session_id": "S-56"}]
+led54 = [{"event": "stop", "session_id": "S-54", "ts": iso(1789300000)}]
+pa54 = RL.changes_pills(rows54, led54, 1789300100)
+(g54 / "b.txt").write_text("1\n2\n3\n")
+led54b = led54 + [{"event": "stop", "session_id": "S-54", "ts": iso(1789300120)}]
+pb54, pc54 = RL.changes_pills(rows54, led54b, 1789300130), RL.changes_pills(rows54, led54b, 1789300170)
+(g54 / "c.txt").write_text("x\n")
+pd54 = RL.changes_pills(rows54, led54b, 1789300400)
+pe54 = RL.changes_pills([dict(rows54[0], status="dead")], led54b + [{"event": "stop", "session_id": "S-54", "ts": iso(1789300500)}], 1789300600)
+RL.rdir = _rd54
+T.check("R55 (1.72) the pill: {files, added, removed, at} with git, null outside git, none for a session on another host; a turn end 30 s after the last count waits, at 70 s it is counted again; no turn end, no count; a closed session keeps its last value",
+        pa54 == {"shop54": {"files": 2, "added": 2, "removed": 1, "at": 1789300100}, "notes54": None}
+        and pb54["shop54"] == pa54["shop54"] and pc54["shop54"] == {"files": 3, "added": 5, "removed": 1, "at": 1789300170}
+        and pd54["shop54"] == pc54["shop54"] and pe54 == {"shop54": pc54["shop54"]}, str([pa54, pb54, pc54, pd54, pe54]))
+st54 = S.build_session({"name": "x", "tmux": "x", "status": "idle"}, {"changes": {"x": {"files": 1, "added": 2, "removed": 0, "at": 5}}})
+T.check("R55 (1.72) build_session: changes from src, null for a session without a pill",
+        st54["changes"] == {"files": 1, "added": 2, "removed": 0, "at": 5} and S.build_session({"name": "y", "tmux": "y", "status": "idle"}, {})["changes"] is None,
+        str(st54.get("changes")))
+
+# R55 (decisione 3 dell'indice, 16/10): fuori da git la pillola porta i conteggi delle modifiche di Claude nella
+# conversazione corrente, ed e' null solo quando non ce ne sono: la pillola c'e' anche li' e apre la vista «transcript»
+t55 = tmp / "notes55.jsonl"
+_w55 = lambda u, ts, c, **k: json.dumps(dict(type=u[0] == "w" and "assistant" or "user", uuid=u, timestamp=ts, cwd=str(plain54), message={"content": c}, **k)) + "\n"  # noqa: E731
+with open(t55, "w") as f:
+    f.write(_w55("w1", "2026-10-16T08:00:00.000Z", [{"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": str(plain54 / "a.md"), "content": "uno\ndue\n"}}]))
+    f.write(_w55("r1", "2026-10-16T08:00:01.000Z", [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}],
+                 toolUseResult={"type": "create", "filePath": str(plain54 / "a.md"), "content": "uno\ndue\n", "structuredPatch": []}))
+    f.write(_w55("w2", "2026-10-16T08:00:02.000Z", [{"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": str(plain54 / "a.md")}}]))
+    f.write(_w55("r2", "2026-10-16T08:00:03.000Z", [{"type": "tool_result", "tool_use_id": "t2", "content": "ok"}],
+                 toolUseResult={"filePath": str(plain54 / "a.md"), "structuredPatch": [{"oldStart": 2, "oldLines": 1, "newStart": 2, "newLines": 1, "lines": ["-due", "+DUE"]}]}))
+    f.write(_w55("w3", "2026-10-16T08:00:04.000Z", [{"type": "tool_use", "id": "t3", "name": "Edit", "input": {"file_path": str(plain54 / ".env")}}]))
+    f.write(_w55("r3", "2026-10-16T08:00:05.000Z", [{"type": "tool_result", "tool_use_id": "t3", "content": "ok"}],
+                 toolUseResult={"filePath": str(plain54 / ".env"), "structuredPatch": [{"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "lines": ["-K=1", "+K=2"]}]}))
+r55p = tmp / "r55p"
+r55p.mkdir()
+_rd55, _to55 = RL.rdir, RL.core.transcript_of
+RL.rdir = lambda: r55p
+RL.core.transcript_of = lambda row: str(t55) if row.get("session_id") == "S-57" else ""
+row55 = {"tmux": "notes55", "name": "notes55", "status": "idle", "cwd": str(plain54), "session_id": "S-57"}
+led55 = [{"event": "stop", "session_id": "S-57", "ts": iso(1789400000)}]
+pa55 = RL.changes_pills([row55], led55, 1789400010)
+RL.rdir = lambda: tmp   # un ricordo a parte: changes_pills riscrive il suo con le sole righe che riceve
+pb55 = RL.changes_pills([dict(row55, tmux="empty55", session_id="S-58")], [{"event": "stop", "session_id": "S-58", "ts": iso(1789400000)}], 1789400010)
+RL.rdir, RL.core.transcript_of = _rd55, _to55
+T.check("R55 (1.72, decision 3) the pill outside git: the counts of Claude's changes in the conversation (a.md written then edited, .env edited: 2 files +4 −2), null only without changes",
+        pa55 == {"notes55": {"files": 2, "added": 4, "removed": 2, "at": 1789400010}} and pb55 == {"empty55": None}, str([pa55, pb55]))
+
+# R55 (revisione finale, 16/10): fuori da git la pillola non rilegge la trascrizione da capo a ogni fine turno — riprende
+# dai byte gia' contati (la trascrizione cresce solo in coda)
+with open(t55, "a") as f:
+    f.write(_w55("w4", "2026-10-16T08:01:00.000Z", [{"type": "tool_use", "id": "t4", "name": "Write", "input": {"file_path": str(plain54 / "b.md"), "content": "x\n"}}]))
+    f.write(_w55("r4", "2026-10-16T08:01:01.000Z", [{"type": "tool_result", "tool_use_id": "t4", "content": "ok"}],
+                 toolUseResult={"type": "create", "filePath": str(plain54 / "b.md"), "content": "x\n", "structuredPatch": []}))
+_te55, seen55 = RL.core.transcript_entries, []
+RL.core.transcript_entries = lambda path, offset=0, *a, **k: (seen55.append(offset), _te55(path, offset, *a, **k))[1]
+RL.rdir = lambda: r55p
+RL.core.transcript_of = lambda row: str(t55) if row.get("session_id") == "S-57" else ""
+pc55 = RL.changes_pills([row55], led55 + [{"event": "stop", "session_id": "S-57", "ts": iso(1789400100)}], 1789400110)
+RL.rdir, RL.core.transcript_of, RL.core.transcript_entries = _rd55, _to55, _te55
+T.check("R55 (1.72, decision 3) outside git the next pill reads only the new bytes of the transcript (offset > 0) and adds them: b.md written → 3 files +5 −2",
+        pc55 == {"notes55": {"files": 3, "added": 5, "removed": 2, "at": 1789400110}} and seen55 and min(seen55) > 0, str([pc55, seen55]))
+
+# R56 (16/10, relay al 50% di CPU): la chat aperta sul telefono e nella web app chiede `transcript` ogni pochi secondi,
+# e ogni richiesta lanciava `sessions --json --no-screen` (2,9 s sotto carico). Le righe restano in processo per
+# LIVE_ROWS_TTL_S; una sessione che non c'e' (appena lanciata) le rilegge subito.
+_jc56, _calls56 = RL._json_cmd, []
+RL._json_cmd = lambda *a, **kw: (_calls56.append(a), [{"tmux": "alfa56", "name": "alfa56", "cwd": "/x", "session_id": "S56"}])[1] if a[:1] == ("sessions",) else _jc56(*a, **kw)
+RL._LIVE.update(at=0.0, rows=None)
+a56 = RL.live_row("alfa56")
+a56["transcript"] = "/changed"
+b56 = RL.live_row("alfa56")
+n56 = len(_calls56)
+c56 = RL.live_row("beta56")
+n56b = len(_calls56)
+ok56, txt56 = RL.transcript_page("alfa56", "alfa56", "5")
+n56c = len(_calls56)
+RL._LIVE["at"] -= RL.LIVE_ROWS_TTL_S + 1
+RL.live_row("alfa56")
+n56d = len(_calls56)
+RL._json_cmd = _jc56
+RL._LIVE.update(at=0.0, rows=None)
+T.check("R56 live_row: one `sessions --json --no-screen` for repeated reads within the TTL (transcript included), a copy each time; an unknown name and an expired cache read again",
+        b56.get("session_id") == "S56" and "transcript" not in b56 and n56 == 1 and c56 is None and n56b == 2 and n56c == 2 and n56d == 3
+        and set(_calls56) == {("sessions", "--json", "--no-screen")}, str([b56, n56, n56b, n56c, n56d, ok56, txt56]))
+
+# R56: ogni chiamata HTTPS creava un contesto SSL nuovo (i certificati riletti: ~100 ms di CPU su questo PC): uno solo
+import ssl as _ssl56
+_uo56, _tk56, _bu56, _ctx56 = RL.urllib.request.urlopen, RL.token, RL.base_url, []
+
+
+class _Resp56:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return b"null"
+
+
+RL.urllib.request.urlopen = lambda req, timeout=None, context=None: (_ctx56.append(context), _Resp56())[1]
+RL.token, RL.base_url = (lambda: "t"), (lambda: "https://rtdb.example")
+try:
+    RL.rtdb("GET", "state"); RL.rtdb("PUT", "state", {"a": 1})
+finally:
+    RL.urllib.request.urlopen, RL.token, RL.base_url = _uo56, _tk56, _bu56
+T.check("R56 rtdb: the same SSLContext for every call", len(_ctx56) == 2 and isinstance(_ctx56[0], _ssl56.SSLContext) and _ctx56[0] is _ctx56[1], str(_ctx56))
+
+# R57 (16/10, dal telefono: «master: turno fallito» con Continua sotto una risposta riuscita, tornato dopo tre Continua):
+# l'app chiude il turno fallito solo con turn_started > ts, ma a turno finito turn_started e' null. Chiusa la voce di
+# attention.json, l'evento su /events torna senza continue_text (l'app lo ignora) e con settled_at
+_save57 = {n: getattr(RL, n) for n in ("rdir", "rtdb", "key", "prefixes", "local_only")}
+_d57 = tmp / "relay57"; _d57.mkdir(exist_ok=True)
+_puts57 = []
+t57 = int(time.time()) - 100   # recenti: local_events_add toglie quelli oltre relay.events_days
+try:
+    RL.rdir, RL.prefixes, RL.key, RL.local_only = (lambda: _d57), (lambda: ()), (lambda: k), (lambda: False)
+    RL.rtdb = lambda method, path, body=None, params=None: _puts57.append((method, path, body))
+    RL.attention_mark("turn_failed", "atlas-shop", "atlas-shop", "⚠ atlas-shop: turn failed — 500", now=t57)
+    RL.attention_mark("turn_failed", "field-notes", "field-notes", "⚠ field-notes: turn failed — 529", now=t57)
+    ev57 = {e["ref"]: dict(key=f"{t57}_00{i}", kind="turn_failed", ref=e["ref"], session=e["ref"], ts=t57, title="⚠", continue_text="go on")
+            for i, e in enumerate([{"ref": "atlas-shop"}, {"ref": "field-notes"}])}
+    RL.local_events_add(list(ev57.values()) + [dict(key=f"{t57 + 1}_009", kind="recap", ref=None, ts=t57 + 1, title="r")], t57 + 100)
+    rows57 = [{"name": "atlas-shop", "status": "idle", "session_id": "S-A"}, {"name": "field-notes", "status": "idle", "session_id": "S-F"}]
+    open57 = RL.attention_open(rows57, [])
+    n57 = len(_puts57)
+    RL.attention_open(rows57, [{"event": "prompt", "session_id": "S-A", "ts": iso(t57 + 50)}])
+    loc57 = RL.read_json(RL.local_dir() / "events.json", {})
+    pub57 = {kk: C.decrypt(v, k) for m, pth, b in _puts57[n57:] for kk, v in (b or {}).items()}
+    again57 = len(_puts57)
+    RL.attention_open(rows57, [{"event": "prompt", "session_id": "S-A", "ts": iso(t57 + 50)}])
+    again57b = len(_puts57)
+    # la voce di field-notes gia' chiusa prima della correzione: attention.json vuoto, l'evento ancora con il testo
+    RL.write_json(_d57 / "attention.json", [])
+    empty57 = RL.attention_open(rows57, [])
+    loc57b = RL.read_json(RL.local_dir() / "events.json", {})
+finally:
+    for n, v in _save57.items():
+        setattr(RL, n, v)
+T.check("R57 a failed turn still open: its event keeps continue_text, nothing rewritten",
+        len(open57) == 2 and n57 == 0, str((open57, _puts57)))
+T.check("R57 the failed turn closes at the next prompt: its event on /events and in events.json loses continue_text and gets settled_at; the other session's open one and the other kinds stay as they were; a second pass rewrites nothing",
+        list(pub57) == [f"{t57}_000"] and pub57[f"{t57}_000"].get("continue_text") is None and pub57[f"{t57}_000"].get("settled_at")
+        and loc57[f"{t57}_000"].get("continue_text") is None and loc57[f"{t57}_001"]["continue_text"] == "go on" and "settled_at" not in loc57[f"{t57 + 1}_009"]
+        and again57b == again57, str((pub57, loc57, _puts57)))
+T.check("R57 attention.json empty (the item closed before this release) and an event still with continue_text → rewritten anyway",
+        empty57 == [] and len(_puts57) == again57b + 1 and loc57b[f"{t57}_001"].get("continue_text") is None and loc57b[f"{t57}_001"].get("settled_at"), str((loc57b, _puts57)))
+
+# R58 (17/10): il comando del bus segnato in done-cmds PRIMA delle pulizie (la cancellazione di /share dopo un report):
+# un riavvio del demone in quel momento lo lasciava non segnato, e al ritorno la segnalazione partiva una seconda volta
+_save58 = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
+_ran58 = []
+
+
+def _run58(cmd, arrived=None):
+    _ran58.append(cmd["id"])
+    RL.mark_done_now()   # quello che fa share_report prima di cancellare /share
+    raise SystemExit(0)   # il SIGTERM del riavvio arriva qui
+
+
+try:
+    RL.run_cmd, RL.rtdb = _run58, (lambda *a, **kw: None)
+    (RL.rdir() / "done-cmds.json").unlink(missing_ok=True)
+    try:
+        RL.handle_cmd("c58", {"op": "report", "session": "x", "arg": "s58"}, [])
+    except SystemExit:
+        pass
+    done58 = json.loads((RL.rdir() / "done-cmds.json").read_text()) if (RL.rdir() / "done-cmds.json").exists() else []
+    again58 = RL.handle_cmd("c58", {"op": "report", "session": "x", "arg": "s58"}, list(done58))
+finally:
+    for n, v in _save58.items():
+        setattr(RL, n, v)
+T.check("R58 a restart during the report's cleanup: the command is already in done-cmds.json, and when /cmd comes back it is not run again",
+        done58 == ["c58"] and again58 is False and _ran58 == ["c58"] and RL._PENDING["cid"] is None, str((done58, again58, _ran58)))
+
+# R58b (03/11, supervisor-bug-notte-03-11): la rete cade mentre si scrive l'esito → il comando e' gia' in done-cmds;
+# quando /cmd torna (riconnessione o Riprova, stesso id) l'esito si scrive allora, e /cmd si cancella solo dopo
+_save58b = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
+_calls58b, _ran58b, _net58b = [], [], {"up": False}
+
+
+def _run58b(cmd, arrived=None):
+    _ran58b.append(cmd["id"])
+    return {"ok": True, "text": "fatto"}
+
+
+def _rtdb58b(method, path, *a, **kw):
+    if not _net58b["up"]:
+        raise OSError(101, "Network is unreachable")
+    _calls58b.append((method, path, a[0] if a else None))
+
+
+try:
+    RL.run_cmd, RL.rtdb = _run58b, _rtdb58b
+    RL._UNWRITTEN.clear()
+    done58b = []
+    first58b = RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)
+    down58b = RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)   # torna ma la rete e' ancora giu'
+    _net58b["up"] = True
+    back58b = RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)
+    put58b = [c for c in _calls58b if c[0] == "PUT"]
+    res58b = RL.C.decrypt(put58b[0][2], RL.key()) if put58b else None
+    later58b = len(_calls58b)
+    RL.handle_cmd("c58b", {"op": "prompt", "session": "x", "arg": "ciao"}, done58b)
+finally:
+    for n, v in _save58b.items():
+        setattr(RL, n, v)
+T.check("R58b the result not written (network down) is written when /cmd comes back with the network up, then /cmd deleted; the command runs once; with the network still down nothing is lost; a later return only deletes",
+        _ran58b == ["c58b"] and done58b == ["c58b"] and first58b is True and down58b is False and back58b is False
+        and [c[:2] for c in _calls58b[:2]] == [("PUT", "result/c58b"), ("DELETE", "cmd/c58b")] and res58b == {"ok": True, "text": "fatto"}
+        and [c[:2] for c in _calls58b[later58b:]] == [("DELETE", "cmd/c58b")] and "c58b" not in RL._UNWRITTEN, str((_ran58b, done58b, _calls58b, res58b)))
+
+# R59 (contratto 1.73, 18/10, pagina Studio dell'app): op studio a richiesta, mai in /state — le pratiche di
+# calendar.cases (valore stringa o {dir, name}), le scadenze dei prossimi 60 giorni con due, gli ultimi 3 esiti per
+# cartella (una volta sola anche con due pratiche sulla stessa); prompt con scope «studio» → il blocco [studio] prima del testo
+import datetime as _dt59
+_ws59 = ws / "personal"
+for _d in ("harbor-lease", "tax-2026"):
+    (_ws59 / _d).mkdir(parents=True, exist_ok=True)
+_ics59 = tmp / "studio59.ics"
+_ev59 = [("e1", "20260914", "File the defence brief", "c_7a1e0c5b9d21", ""), ("e2", "20261002", "Tax return: second instalment", "c_4b8f2a6e1c30", "-P1W"),
+         ("e3", "20261105", "Renew the office insurance", "", ""), ("e4", "20260901", "Past hearing", "c_7a1e0c5b9d21", ""),
+         ("e5", "20261120", "Too far ahead", "", ""), ("e6", "20260912", "Call the client about the appeal", "c_7a1e0c5b9d22", "")]
+_ics59.write_text("BEGIN:VCALENDAR\r\n" + "".join(
+    f"BEGIN:VEVENT\r\nUID:{u}\r\nDTSTART;VALUE=DATE:{d}\r\nSUMMARY:{t}\r\n" + (f"X-STUDIO-CASE:{c}\r\n" if c else "")
+    + (f"BEGIN:VALARM\r\nTRIGGER:{a}\r\nEND:VALARM\r\n" if a else "") + "END:VEVENT\r\n" for u, d, t, c, a in _ev59) + "END:VCALENDAR\r\n")
+(tmp / "studio59.env").write_text(f"CALENDAR_ICS_URL=file://{_ics59}\n")
+_now59 = 1789210840
+
+
+def _tx59(path, cwd, outs):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        f.write(json.dumps({"type": "user", "cwd": cwd, "timestamp": _dt59.datetime.fromtimestamp(outs[0][0] - 60, _dt59.timezone.utc).isoformat(), "message": {"role": "user", "content": "go on"}}) + "\n")
+        for at, text in outs:
+            f.write(json.dumps({"type": "assistant", "cwd": cwd, "timestamp": _dt59.datetime.fromtimestamp(at, _dt59.timezone.utc).isoformat(),
+                                "message": {"content": [{"type": "text", "text": f"Done.\n\nEsito: {text}"}]}}) + "\n")
+
+
+_slug59 = lambda d: re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(str(d)))  # noqa: E731
+_tx59(home / ".claude-pixel" / "projects" / _slug59(_ws59 / "harbor-lease") / "H1.jsonl", str(_ws59 / "harbor-lease"),
+      [(_now59 - 7200, "Exhibits indexed"), (_now59 - 3600, "Brief outline ready")])
+_tx59(home / ".claude" / "projects" / _slug59(_ws59 / "harbor-lease") / "H0.jsonl", str(_ws59 / "harbor-lease"),
+      [(_now59 - 70 * 86400, "Older than the window"), (_now59 - 90000, "Client documents received"), (_now59 - 86400, "Hearing date confirmed")])
+_tx59(home / ".claude" / "projects" / _slug59(_ws59 / "tax-2026") / "T0.jsonl", str(_ws59 / "tax-2026"), [(_now59 - 500000, "Receipts sorted by month")])
+_cal59 = RL.CFG.get("calendar")
+_save59 = {n: getattr(RL, n) for n in ("_json_cmd", "relay_talk", "is_live", "tmux_of")}
+_env59 = {k: os.environ.get(k) for k in ("CM_TODAY", "CM_RELAY_NOW")}
+_talk59 = []
+try:
+    os.environ.update(CM_TODAY="2026-09-12", CM_RELAY_NOW=str(_now59))
+    RL.CFG["calendar"] = dict(_cal59 or {}, url_file=str(tmp / "studio59.env"), cache_min=0, remind_days=3,
+                              studio_rule="at each step done, write it in the case log",
+                              cases={"c_7a1e0c5b9d21": {"dir": str(_ws59 / "harbor-lease"), "name": "Harbor lease dispute"},
+                                     "c_7a1e0c5b9d22": {"dir": str(_ws59 / "harbor-lease"), "name": "Harbor lease: appeal"},
+                                     "c_4b8f2a6e1c30": str(_ws59 / "tax-2026")})
+    RL._json_cmd = lambda *a, **kw: [{"name": "work-harbor", "tmux": "work-harbor", "account": "work", "cwd": str(_ws59 / "harbor-lease"), "session_id": "H1"}] if a[:1] == ("sessions",) else []
+    _ok59 = RL.studio_page()
+    _block59 = RL.studio_block()
+    RL.relay_talk, RL.is_live, RL.tmux_of = (lambda tm, text, *a: (_talk59.append(text), (0, "sent"))[1]), (lambda tm: True), (lambda s: s)
+    _r59 = [RL.execute({"op": "prompt", "session": "master", "arg": f"what is due this week? {n}", "device": "web", **sc})
+            for n, sc in ((1, {"scope": "studio"}), (2, {"scope": "nope"}), (3, {}))]
+    (tmp / "studio59.env").write_text(f"CALENDAR_ICS_URL=file://{tmp / 'missing59.ics'}\n")
+    _down59 = RL.studio_page()
+    RL.CFG["calendar"] = dict(RL.CFG["calendar"], url_file=str(tmp / "no-such59.env"))
+    _off59 = RL.studio_page()
+    _offblock59 = RL.studio_block()
+finally:
+    RL.CFG["calendar"] = _cal59
+    for n, v in _save59.items():
+        setattr(RL, n, v)
+    for k, v in _env59.items():
+        os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+_res59 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_cmd59 = {c["id"]: c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"]}
+_p59 = json.loads(_ok59[1]) if _ok59[0] else {}
+T.check("R59 (1.73) studio → {cases, deadlines, outcomes, error}: cases in the file's order with name from {dir, name} or the folder's last piece; "
+        "deadlines from today to 60 days, the nearest first, due inside the reminder window, also without a case; the fixture's …0740",
+        _ok59[0] is True and _p59 == json.loads(_res59["6f1c2d3e-0740-4000-8000-0000000000740"]["text"])
+        and _cmd59["6f1c2d3e-0740-4000-8000-0000000000740"]["op"] == "studio", str(_ok59)[:600])
+T.check("R59 (1.73) studio outcomes: the last 3 of a folder over both accounts, newest first, once for two cases on the same folder; a live session by its name, a closed one by the folder's; none older than 60 days",
+        [(o["project"], o["session"], o["short"]) for o in _p59.get("outcomes", [])] == [
+            ("personal/harbor-lease", "harbor", "Brief outline ready"), ("personal/harbor-lease", "harbor", "Exhibits indexed"),
+            ("personal/harbor-lease", "harbor-lease", "Hearing date confirmed"), ("personal/tax-2026", "tax-2026", "Receipts sorted by month")], str(_p59.get("outcomes")))
+T.check("R59 (1.73) calendar unreachable → ok true, the deadlines of the cached copy and error = cm-calendar's text; no calendar → ok true, the cases and outcomes, no deadlines, error «calendar off», as the fixture's …0741",
+        _down59[0] is True and json.loads(_down59[1])["deadlines"] == _p59.get("deadlines") and json.loads(_down59[1])["error"] == RL.M("calendar.unreachable")
+        and _off59[0] is True and json.loads(_off59[1]) == json.loads(_res59["6f1c2d3e-0741-4000-8000-0000000000741"]["text"]) == dict(_p59, deadlines=[], error="calendar off"), str((_down59[1][-200:], _off59)))
+T.check("R59 (1.73) studio is a passive read in ops, and /state does not carry it", "studio" in RL.PASSIVE_OPS and "studio" in RL.OPS
+        and "studio" not in json.loads(relay("push", "--dry-run").stdout), "")
+_want59 = ("[studio]\n" + RL.M("relay.studio_cases") + "\n"
+           f"- Harbor lease dispute → {RL.cm.contract(str(_ws59 / 'harbor-lease'))}\n- Harbor lease: appeal → {RL.cm.contract(str(_ws59 / 'harbor-lease'))}\n"
+           f"- tax-2026 → {RL.cm.contract(str(_ws59 / 'tax-2026'))}\n" + RL.M("relay.studio_deadlines", n=60) + "\n"
+           "- 12/09 Call the client about the appeal · Harbor lease: appeal\n- 14/09 File the defence brief · Harbor lease dispute\n"
+           "- 02/10 Tax return: second instalment · tax-2026\n- 05/11 Renew the office insurance\n"
+           + RL.M("relay.studio_rule", rule="at each step done, write it in the case log") + "\n[/studio]")
+T.check("R59 (1.73) prompt with scope studio: the sessions get prefix, the [studio] block, a blank line, then the text; an unknown scope or none: the text as today; all delivered",
+        _block59 == _want59 and len(_talk59) == 3 and _talk59[0] == RL.prefix_for({"device": "web"}) + " " + _want59 + "\n\nwhat is due this week? 1"
+        and _talk59[1:] == [RL.prefix_for({"device": "web"}) + f" what is due this week? {n}" for n in (2, 3)] and all(r[0] for r in _r59), str((_talk59, _r59))[:900])
+T.check("R59 (1.73) the block with the calendar off says so and still lists the cases",
+        _offblock59.startswith(_want59.split(RL.M("relay.studio_deadlines", n=60))[0]) and RL.M("relay.studio_deadlines_off") in _offblock59 and _offblock59.endswith("[/studio]"), _offblock59)
+
+# R60 (contratto 1.74, 21/10, pagina «Notte»: prima l'ultima notte, sotto le precedenti): op nights, l'elenco dei rapporti
+_nr60 = tmp / "night60"; _nr60.mkdir(exist_ok=True)
+_dir60 = RL.night_report_dir
+RL.night_report_dir = lambda: _nr60
+try:
+    _empty60 = RL.nights_list()
+    _v2 = json.loads((FIX / "night-report-sample.json").read_text())
+    (_nr60 / "2026-10-07.json").write_text(json.dumps({"schema": "team-supervisor/night-report", "v": 1, "generated_at": 1791333420, "date": "2026-10-07"}))
+    (_nr60 / "2026-10-08.json").write_text(json.dumps(dict(_v2, date="2026-10-08", generated_at=1791419820)))
+    (_nr60 / "2026-10-09.json").write_text("{rotto")
+    (_nr60 / "note.json").write_text("{}")
+    _two60 = RL.nights_list()
+finally:
+    RL.night_report_dir = _dir60
+_crs60 = json.loads((FIX / "cmd-result-sample.json").read_text())
+_res60 = {r["id"]: r for r in _crs60["result"] if isinstance(r, dict)}
+T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest first; a v1 report has title null; an unreadable file and a name that is not a date are skipped; the same JSON as the fixture's …0750",
+        _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
+        and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
+T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-31] == "nights"
+        and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
+
+# R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
+_res64 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_done64 = json.loads(_res64["6f1c2d3e-0760-4000-8000-0000000000760"]["text"])
+_abs64 = {"personal/atlas-shop": str(ws / "personal" / "atlas-shop"), "work/clients/ledger-api": str(ws / "work" / "clients" / "ledger-api"),
+          "personal/field-notes": str(ws / "personal" / "field-notes"), "work/own/orbit-docs": str(ws / "work" / "own" / "orbit-docs")}
+(tmp / "tasks-closed.json").write_text(json.dumps(dict(_done64, rows=[dict(x, project=_abs64[x["project"]], title=x["title"] + "\n") for x in _done64["rows"]])))
+n64 = len(cm_calls())
+_cmd64 = {c["id"]: c for c in CMDS}
+r64 = RL.execute(_cmd64["6f1c2d3e-0760-4000-8000-0000000000760"])     # execute(): la stessa via del bus, senza la chiave (riassegnata piu' su)
+r64b = RL.execute(_cmd64["6f1c2d3e-0762-4000-8000-0000000000762"])
+(tmp / "tasks-closed.json").unlink()
+r64c = RL.execute(_cmd64["6f1c2d3e-0761-4000-8000-0000000000761"])
+T.check("R64 (1.77) done → `task closed --json`; the same JSON as the fixture's …0760: rows with the proof (release, commit, file, check), project relative, title on one line, days, more false",
+        r64[0] is True and json.loads(r64[1]) == _done64 and "task closed --json" in cm_calls()[n64:], str(r64)[:300] + str(cm_calls()[n64:]))
+T.check("R64 (1.77) done with a day → `task closed 2026-02-09 --json`; a bad date is refused as in …0762; no registry → ok false «no task registry» as in …0761",
+        r64b[0] is False and r64b[1] == _res64["6f1c2d3e-0762-4000-8000-0000000000762"]["text"] and not any("task closed ieri" in c for c in cm_calls()[n64:])
+        and r64c[0] is False and r64c[1] == _res64["6f1c2d3e-0761-4000-8000-0000000000761"]["text"] and "task closed 2026-02-09 --json" in cm_calls()[n64:], str((r64b, r64c)))
+_big64 = dict(_done64, rows=[dict(_done64["rows"][0], task=f"t-{i:04d}", title="x" * 180) for i in range(400)])
+_rc64, _run64 = RL.run_cm, None
+RL.run_cm = lambda *a, **kw: (0, json.dumps(_big64))
+try:
+    _cut64 = json.loads(RL.done_list(None)[1])
+finally:
+    RL.run_cm = _rc64
+T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
+        _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-30] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-30:-28] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
+        F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
+
+# R61 (contratto 1.75, 21/10, home a tre colonne della web): hosts_status e published_today in /state
+import datetime as _dt  # noqa: E402
+import types as _types  # noqa: E402
+_now61 = time.time()
+_snaps61 = {"win": {"name": "win", "read_at": _now61 - 40, "last_ok_at": _now61 - 40,
+                    "status": {"load_pct": 83, "ram_gb": 15.9, "ram_free_gb": 3.9, "ram_total_b": 17063350272, "ram_free_b": 4298240000,
+                               "disk_free_gb": 15, "disk": {"path": "D:", "free_b": 94820073472, "total_b": 290911678464}}},
+            "old": {"name": "old", "read_at": _now61 - 40, "status": {"load_pct": 140, "ram_gb": 16.0, "ram_free_gb": 4.0, "disk_free_gb": 15}},
+            "down": {"name": "down", "read_at": _now61 - 30, "error": "unreachable", "detail": "timeout 60s", "status": {"load_pct": 5}},
+            "late": {"name": "late", "read_at": _now61 - 3600, "status": {"load_pct": 5}},
+            "never": {}}
+_hm61 = _types.SimpleNamespace(
+    S={"poll_idle_s": 600}, confirmed=lambda h, name="": h.get("ok", True), snap_path=lambda n: n, read_json=lambda n, d=None: _snaps61.get(n) or d,
+    hosts=lambda: {"local": {}, "win": {"kind": "windows-native"}, "old": {}, "down": {}, "late": {}, "never": {}, "pending": {"ok": False}, "cl": {"kind": "cloud"}})
+_old61 = list(RL._HM)
+RL._HM[:] = [_hm61]
+try:
+    _rows61 = [{"name": "win:bluey", "host": "win", "status": "idle"}, {"name": "win:gone", "host": "win", "status": "dead"},
+               {"name": "atlas", "status": "busy"}, {"name": "down:x", "host": "down", "status": "idle"}]
+    _hs61 = {h["name"]: h for h in RL.hosts_status(_rows61, _now61)}
+finally:
+    RL._HM[:] = _old61
+_keys61 = ["name", "up", "at", "error", "cpu", "ram_used", "ram_total", "disk_free", "disk_total", "sessions"]
+T.check("R61 (1.75) hosts_status: one entry per confirmed host of cm-hosts, local, unconfirmed and cloud left out, every key of the contract in order",
+        sorted(_hs61) == ["down", "late", "never", "old", "win"] and all(list(h) == _keys61 for h in _hs61.values()), str(_hs61)[:300])
+T.check("R61 (1.75) a host up: cpu = load_pct/100, RAM used = total - free and the disk of the sessions root, in bytes; at = the snapshot's read time; sessions = the live ones on that host",
+        _hs61["win"] == {"name": "win", "up": True, "at": int(_now61 - 40), "error": None, "cpu": 0.83, "ram_used": 17063350272 - 4298240000, "ram_total": 17063350272,
+                         "disk_free": 94820073472, "disk_total": 290911678464, "sessions": ["win:bluey"]}, str(_hs61["win"]))
+T.check("R61 (1.75) a helper from before 1.75: RAM from the GB, the disk null (its free space is the job root's, not the sessions'); cpu never above 1",
+        _hs61["old"]["cpu"] == 1.0 and _hs61["old"]["ram_total"] == 16 * 1024 ** 3 and _hs61["old"]["ram_used"] == 12 * 1024 ** 3
+        and (_hs61["old"]["disk_free"], _hs61["old"]["disk_total"]) == (None, None), str(_hs61["old"]))
+T.check("R61 (1.75) a host down: up false, error in plain words («ssh: timeout»), every number null; the stale reading (poller stopped) and no reading at all are down too",
+        _hs61["down"]["up"] is False and _hs61["down"]["error"] == "ssh: timeout" and all(_hs61["down"][k] is None for k in _keys61[4:9])
+        and _hs61["down"]["sessions"] == ["down:x"] and _hs61["late"]["error"] == "no reading for 60 min" and _hs61["late"]["up"] is False
+        and _hs61["never"] == {"name": "never", "up": False, "at": None, "error": "no reading yet", "cpu": None, "ram_used": None, "ram_total": None,
+                               "disk_free": None, "disk_total": None, "sessions": []}, str((_hs61["down"], _hs61["late"]["error"])))
+# git: un repository con un remoto nudo; un push e un tag oggi, un tag mai spinto, uno di ieri
+_g61 = tmp / "git61"; _bare61 = tmp / "git61.git"
+_genv = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
+for _c in (["git", "init", "-q", "--bare", str(_bare61)], ["git", "init", "-q", "-b", "main", str(_g61)],
+           ["git", "-C", str(_g61), "remote", "add", "origin", str(_bare61)], ["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "a"],
+           ["git", "-C", str(_g61), "tag", "v1.0.0"], ["git", "-C", str(_g61), "push", "-q", "origin", "main", "v1.0.0"],
+           ["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "b"], ["git", "-C", str(_g61), "tag", "v1.1.0"],
+           ["git", "-C", str(_g61), "checkout", "-q", "-b", "notte/x"], ["git", "-C", str(_g61), "push", "-q", "-u", "origin", "notte/x"]):
+    subprocess.run(_c, capture_output=True, env=_genv)
+subprocess.run(["git", "-C", str(_g61), "checkout", "-q", "main"], capture_output=True)
+subprocess.run(["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "c"], capture_output=True, env=_genv)
+subprocess.run(["git", "-C", str(_g61), "tag", "v1.2.0"], capture_output=True, env=_genv)   # mai spinto: il suo commit non sta su un ramo remoto
+_gp61 = RL.git_published(str(_g61), "personal/g61", RL._midnight(time.time()), time.time() + 5)
+_gp61b = RL.git_published(str(_g61), "personal/g61", time.time() + 60, time.time() + 120)
+T.check("R61 (1.75) git_published: the pushed branch (origin/<branch>, once even if pushed again) and the tags of the day whose commit is on a remote branch (text without the «v»); a tag never pushed is not published; nothing outside the window",
+        sorted((x["kind"], x["text"]) for x in _gp61) == [("push", "origin/main"), ("push", "origin/notte/x"), ("release", "1.0.0"), ("release", "1.1.0")]
+        and all(x["project"] == "personal/g61" and x["url"] is None for x in _gp61) and _gp61b == [], str(_gp61))
+T.check("R61 (1.75) the link only for a GitHub remote (ssh or https, with or without .git), never guessed",
+        RL._web_of("git@github.com:frsorrentino/supervisor.git") == RL._web_of("https://github.com/frsorrentino/supervisor") == "https://github.com/frsorrentino/supervisor"
+        and RL._web_of("https://gitlab.com/a/b.git") is None and RL._web_of("/tmp/x.git") is None, "")
+# deploy: solo un `firebase deploy` finito con «Deploy complete!»
+_tx61 = tmp / "deploy61.jsonl"
+_ts61 = lambda s: _dt.datetime.fromtimestamp(time.time() - s, _dt.timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
+def _tu61(i, cmd, s):
+    return json.dumps({"type": "assistant", "timestamp": _ts61(s), "cwd": ROOT_WS + "/work/own/orbit-docs", "message": {"content": [{"type": "tool_use", "id": i, "name": "Bash", "input": {"command": cmd}}]}})
+def _tr61(i, text, s, err=False):
+    return json.dumps({"type": "user", "timestamp": _ts61(s), "message": {"content": [{"type": "tool_result", "tool_use_id": i, "is_error": err, "content": text}]}})
+_ok61 = "=== Deploying to 'orbit-docs'...\n✔  Deploy complete!\n\nProject Console: https://console.firebase.google.com/project/orbit-docs/overview\nHosting URL: https://orbit-docs.web.app"
+_tx61.write_text("\n".join([_tu61("a", "cd site && npx firebase deploy --only hosting", 50), _tr61("a", _ok61, 40),
+                            _tu61("b", "firebase deploy --only functions", 30), _tr61("b", "Error: deploy failed", 29, True),
+                            _tu61("c", "echo 'firebase deploy' >> notes.txt", 20), _tr61("c", "Deploy complete!", 19),
+                            _tu61("d", "firebase deploy", 10)]) + "\n")
+_scan61 = {}
+_d61 = list(RL.transcript_deploys(str(_tx61), RL._midnight(time.time()), _scan61))
+with open(_tx61, "a") as _f:
+    _f.write(_tr61("d", "✔  Deploy complete!\nProject Console: https://console.firebase.google.com/project/orbit-docs/overview", 5) + "\n")
+_d61b = RL.transcript_deploys(str(_tx61), RL._midnight(time.time()), _scan61)
+T.check("R61 (1.75) transcript_deploys: a `firebase deploy` whose result says «Deploy complete!» is a deploy (text from --only, url the Hosting URL); a failed one and one inside quotes are not",
+        [(x["kind"], x["text"], x["url"], x["cwd"]) for x in _d61] == [("deploy", "hosting orbit-docs", "https://orbit-docs.web.app", ROOT_WS + "/work/own/orbit-docs")], str(_d61))
+T.check("R61 (1.75) the transcript is read once: the next call reads only what was appended and pairs the result with the command it left pending",
+        len(_d61b) == 2 and _d61b[1]["text"] == "firebase orbit-docs" and _d61b[1]["url"] is None and _scan61["offset"] == _tx61.stat().st_size, str(_d61b))
+# la copia su disco: di ieri non vale; vecchia di un minuto → un ricalcolo staccato, uno alla volta
+_rd61 = tmp / "relay61"; _rd61.mkdir(exist_ok=True)
+_rdir61, _popen61, _spawn61 = RL.rdir, RL.subprocess.Popen, []
+RL.rdir = lambda: _rd61
+RL.subprocess.Popen = lambda *a, **k: _spawn61.append(a[0])
+try:
+    _today61 = _dt.datetime.fromtimestamp(_now61).strftime("%Y-%m-%d")
+    _it61 = [{"at": int(_now61) - 10, "kind": "push", "project": "p", "text": "origin/main", "url": None}]
+    RL.write_json(RL.published_path(), {"day": _today61, "at": _now61 - 5, "items": _it61})
+    _c1 = RL.published_cached(_now61)
+    _n1 = len(_spawn61)
+    RL.write_json(RL.published_path(), {"day": "2000-01-01", "at": _now61 - 120, "items": _it61})
+    _c2 = RL.published_cached(_now61)
+    _c3 = RL.published_cached(_now61)
+finally:
+    RL.rdir, RL.subprocess.Popen = _rdir61, _popen61
+T.check("R61 (1.75) published_cached: a fresh copy of today is served as is with no recount; one from another day gives [] and one detached `published-refresh`, not two at once",
+        _c1 == _it61 and _n1 == 0 and _c2 == [] and _c3 == [] and len(_spawn61) == 1 and _spawn61[0][-1] == "published-refresh", str((_c1, _c2, _spawn61)))
+_pub61 = F2["published_today"]
+_st2n = S.build_state(dict(SRC2, needs_you={}), 1789214400)   # 1.84: le sessioni di state-2 senza la richiesta per la persona, tolta qui per il peso
+_big61 = S.build_state(dict(SRC2, decisions={}, prove={}, approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, published_today=[dict(_pub61[2], at=1789214000 - i, text=f"origin/notte/ramo-{i:02d}-" + "x" * 120) for i in range(40)]), 1789214400)
+T.check("R61 (1.75) /state carries at most 30 published items, and fit_state cuts them to the 10 most recent before touching projects or sessions",
+        len(S.build_state(dict(SRC2, published_today=[_pub61[0]] * 40), 1789214400, fit=False)["published_today"]) == 30
+        and [x["at"] for x in _big61["published_today"]] == [1789214000 - i for i in range(10)] and _big61["sessions"] == _st2n["sessions"]
+        and _big61["projects"] == st2["projects"] and S.size_of(_big61) <= 8192, str(S.size_of(_big61)))
+T.check("R61 (1.75) the fixtures: state-2-idle with win up and one publication of each kind, newest first; state-1-question with both lists empty; state-3-stale with win down («ssh: timeout», numbers null)",
+        [x["kind"] for x in _pub61] == ["deploy", "release", "push"] and [x["at"] for x in _pub61] == sorted((x["at"] for x in _pub61), reverse=True)
+        and F2["hosts_status"][0]["up"] is True and F1["hosts_status"] == [] and F1["published_today"] == []
+        and F3["hosts_status"][0]["up"] is False and F3["hosts_status"][0]["error"] == "ssh: timeout" and F3["published_today"] == [], "")
+T.check("R61 (1.75) a src without the two keys (an old caller) gives a /state without them; collect_sources passes both",
+        "hosts_status" not in S.build_state({}, 1) and "published_today" not in S.build_state({}, 1)
+        and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now, rows)' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+# R62 (contratto 1.76, 22/10, impegni sempre visibili): /state.commitments dal registro, l'evento task_stalled, le fixture
+_cm62 = F2["commitments"]
+T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalled running task of ledger-api (its session gone, red check, outcome deploy) and atlas-seo-pages just approved, waiting for atlas-shop; state-3 one paused, never stalled",
+        F1["commitments"] == [] and [(x["task"], x["state"], x["approved"], x["stalled"], x["waits"]) for x in _cm62] == [("ledger-migrations-011", "running", True, True, {"who": "person", "on": "ledger-api"}),
+                                                                                                                  ("atlas-seo-pages", "approved", True, False, {"who": "person", "on": "atlas-shop"})]
+        and _cm62[0]["check"] == {"outcome": "red", "at": 1789199760} and _cm62[0]["outcome_kind"] == "deploy" and _cm62[1]["session"] == F2["sessions"][0]["name"]
+        and F3["commitments"][0]["paused"]["reason"] == "after the client's review" and F3["commitments"][0]["stalled"] is False
+        and all(list(x) == ["task", "title", "short", "project", "session", "state", "lane", "plan", "approved", "approved_at", "approved_by", "age_s", "last_step", "idle_s", "next", "waits", "expected", "outcome_kind", "check", "paused", "stalled"] for s in (F2, F3) for x in s["commitments"]), str(_cm62)[:300])
+_ev62 = [e for e in EV if e["kind"] == "task_stalled"]
+T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
+        len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
+_small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "ok"})   # 06/11 (1.129): "ok", approval_close in ops   # small entries: the cut, not their size
+# 24/10: senza i ricorrenti — fit_state tiene il posto di published_at e il taglio a 10 non entrava piu'
+_big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], published_today=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
+T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
+        len(S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
+        and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == _st2n["sessions"] and _big62["projects"] == st2["projects"]
+        and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
+# R68 (23/10 23:42, supervisor-app: «win:bluey» nello stato, «win-bluey» nel registro): dentro lo stato vale il nome dello stato
+_row68 = {"name": "win:bluey", "tmux": "", "host": "win", "remote_name": "win-bluey", "account": "personal", "cwd": "D:/cm-sessions/personali/bluey", "status": "idle", "waiting": False,
+          "session_id": "S-WB", "channel": "remoto", "attached": None, "started_at": 1789214000000, "link": "", "socket": "", "registry": "", "low_priority": "off", "goal_status": None}
+_cm68 = [dict(_small62, task="bluey-emulatore", session="win-bluey", waits={"who": "win-bluey", "on": "person"}), dict(_small62, task="atlas-seo-pages", session="atlas-shop", waits={"who": "person", "on": "atlas-shop"})]
+_st68 = S.build_state(dict(SRC2, rows=SRC2["rows"] + [_row68], commitments=_cm68,
+                           attention=[{"kind": "task_red", "session": "win-bluey", "ref": "bluey-emulatore", "title": "bluey-emulatore: check red", "since": 1789214300}]), 1789214400, fit=False)
+T.check("R68 (23/10) a commitment or a task_red item whose session is the registry's remote name («win-bluey») carries the state's name («win:bluey», sessions[].name) in session and waits; local names untouched",
+        [(x["session"], x["waits"]) for x in _st68["commitments"]] == [("win:bluey", {"who": "win:bluey", "on": "person"}), ("atlas-shop", {"who": "person", "on": "atlas-shop"})]
+        and [(a["kind"], a["session"]) for a in _st68["attention"] if a["kind"] == "task_red"] == [("task_red", "win:bluey")] and "win:bluey" in {s["name"] for s in _st68["sessions"]},
+        str((_st68.get("commitments"), _st68.get("attention"), [s["name"] for s in _st68["sessions"]])))
+(tmp / "impegni.json").write_text(json.dumps([{"task": "atlas-release-2-4", "title": "Release 2.4\nof atlas-shop", "project": str(ws / "personal" / "atlas-shop"), "session": "atlas-shop", "state": "awaiting_ok",
+    "lane": "closed", "plan": None, "approved": False, "approved_at": None, "approved_by": None, "age_s": 200, "last_step": {"at": 1789210600, "kind": "state", "text": "awaiting_ok"}, "idle_s": 200,
+    "next": "l'ok a: tag v2.4", "waits": {"who": "atlas-shop", "on": "person"}, "expected": None, "outcome_kind": None, "check": None, "paused": None, "stalled": False}]))
+_d62 = json.loads(relay("push", "--dry-run").stdout)
+T.check("R62 (1.76) push: commitments from `task impegni --json`, project relative as sessions[].project, title on one line",
+        [(x["task"], x["project"], x["title"]) for x in _d62.get("commitments") or []] == [("atlas-release-2-4", "personal/atlas-shop", "Release 2.4 of atlas-shop")], str(_d62.get("commitments")))
+(tmp / "impegni.json").unlink()
+
+# R65 (contratto 1.79, 22/10, titolo breve: una riga sola nell'app, mai «…»): `short` negli impegni, nelle righe di done e dell'agenda
+(tmp / "impegni.json").write_text(json.dumps([dict(_small62, task="t-short", title="Release 2.4 of atlas-shop, the one with the new checkout", short="Release 2.4 of atlas-shop"),
+                                               {k: v for k, v in dict(_small62, task="t-derived", title="Move the docs site to the new host (orbit-docs)").items() if k != "short"}]))
+_d65 = json.loads(relay("push", "--dry-run").stdout)
+(tmp / "impegni.json").unlink()
+T.check("R65 (1.79) push: commitments carry `short` — the registry's when set, else derived from the title (whole words, at most 28, no «…»)",
+        [(x["task"], x["short"]) for x in _d65.get("commitments") or []] == [("t-short", "Release 2.4 of atlas-shop"), ("t-derived", "Move the docs site")], str(_d65.get("commitments")))
+T.check("R65 (1.79) the fixtures: every commitment of state-2/3 and the night report, every row of done …0760 and of agenda …0386 has a short of 1-28 characters without «…»",
+        all(0 < len(x["short"]) <= 28 and "…" not in x["short"] for s in (F2, F3) for x in s["commitments"])
+        and all(0 < len(x["short"]) <= 28 for x in json.loads(_res64["6f1c2d3e-0760-4000-8000-0000000000760"]["text"])["rows"])
+        and all(0 < len(x["short"]) <= 28 for x in json.loads(_res40["6f1c2d3e-0386-4000-8000-000000000386"]["text"])["rows"]), "")
+_ag65 = tmp / "agenda65.tsv"
+_ag65.write_bytes(("# state\tscope\tblocks\ttitle\tref\tdetail\tuntil\tshort\n"
+                   "aperto\tagenzia\towner\tConfirm the 6 client ids with a candidate\t.claude/to-decide.md\t\t\tClient ids to confirm\n"
+                   "aperto\tpersonale\tclaude\tMove the docs site to the new host\torbit-docs\n").encode())
+_rel65 = RL.CFG.setdefault("relay", {})
+_saved65 = _rel65.get("agenda_file")
+try:
+    _rel65["agenda_file"] = str(_ag65)
+    _rows65 = json.loads(RL.agenda_list()[1])["rows"]
+    _set65 = RL.agenda_set({"action": "done"}, _rows65[0]["key"])
+finally:
+    _rel65["agenda_file"] = _saved65
+T.check("R65 (1.79) agenda rows carry `short`: column 8 when written, else derived from the title; agenda_set keeps the column and answers with it",
+        [r["short"] for r in _rows65] == ["Client ids to confirm", "Move the docs site"] and _set65[0] is True and json.loads(_set65[1])["row"]["short"] == "Client ids to confirm"
+        and _ag65.read_text().splitlines()[1].endswith("\tClient ids to confirm"), str(_rows65) + str(_set65))
+
+# R71 (24/10, dal telefono del maintainer: due ok in Lavori invece che nella scheda della loro sessione): nel taglio restano prima
+# gli impegni con un ok da dare, poi gli altri; i pausati cadono per primi; l'ordine resta quello del registro
+_p71 = {"at": 1789210000, "reason": "r"}
+_cm71 = [dict(_small62, task=f"p-{i}", paused=_p71) for i in range(4)] + [dict(_small62, task=t) for t in ("run-1", "ok-a", "run-2", "ok-b")]
+_st71 = {"commitments": [dict(x) for x in _cm71], "approvals": [{"task": "ok-b"}, {"task": "ok-a"}]}
+S.keep_commitments(_st71, 5)
+_st71b = {"commitments": [dict(x) for x in _cm71], "approvals": []}
+S.keep_commitments(_st71b, 3)
+T.check("R71 (24/10) the cut keeps first the commitments with an ok to give, then the others; the paused ones fall first; the registry's order stays",
+        [x["task"] for x in _st71["commitments"]] == ["p-0", "run-1", "ok-a", "run-2", "ok-b"] and [x["task"] for x in _st71b["commitments"]] == ["run-1", "ok-a", "run-2"],
+        str(([x["task"] for x in _st71["commitments"]], [x["task"] for x in _st71b["commitments"]])))
+
+# R73 (contratto 1.84, 24/10): le fixture, il taglio, la quota di oggi, /exit dall'app, needs-you --task, suggest
+_by73 = {x["name"]: x for x in F1["sessions"] + F2["sessions"] + F3["sessions"]}
+T.check("R73 (1.84, 1.88) fixtures: state-2 three suggestions of different kinds, by rank then newest, one line, never «…»; four usage rows on two accounts, biggest first, share 0..1; atlas-shop's needs_you tied to a task, asked by master, also in attention; state-1 suggestions []",
+        len({x["kind"] for x in F2["suggestions"]}) == 3 and [(x["rank"], -x["at"]) for x in F2["suggestions"]] == sorted((x["rank"], -x["at"]) for x in F2["suggestions"])
+        and all("…" not in x["text"] and "\n" not in x["text"] for x in F2["suggestions"]) and F1["suggestions"] == []
+        and len(F2["usage_today"]) == 4 and len({x["account"] for x in F2["usage_today"]}) == 2 and [x["tokens"] for x in F2["usage_today"]] == sorted((x["tokens"] for x in F2["usage_today"]), reverse=True)
+        and all(0 <= x["share"] <= 1 for x in F2["usage_today"]) and F2["sessions"][0]["needs_you"]["task"] == "atlas-tv-pairing" and F2["sessions"][0]["needs_you"]["from"] == "master"
+        and [x["kind"] for x in F2["attention"]] == ["needs_you"], "")
+T.check("R73 (1.84) fixtures: state-3 orbit-docs closed from the app with two uncommitted files and its session_id; state-1 orbit-docs closed at the PC with {at, session_id}; no closed on live sessions",
+        F3["sessions"][0]["closed"] == {"at": 1789199000, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
+                                        "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"]}
+        and _by73["orbit-docs"]["state"] == "gone" and F1["sessions"][3]["closed"] == {"at": F1["sessions"][3]["since"], "session_id": F1["sessions"][3]["id"]}
+        and all("closed" not in x for s in (F1, F2) for x in s["sessions"] if x["state"] != "gone"), str(F3["sessions"][0].get("closed")))
+_big73 = S.build_state(dict(SRC2, suggestions=[dict(SRC2["suggestions"][0], id=f"s-{i:010d}", at=1789207200 - i) for i in range(15)],
+                            usage_today=[dict(F2["usage_today"][0], session=f"s{i}", tokens=1000 - i) for i in range(20)]), 1789214400, fit=False)
+_fit73 = S.fit_state(json.loads(json.dumps(_big73)), 1)
+T.check("R73 (1.84, 1.88) /state carries at most 12 suggestions, never the prompt, and 12 usage rows; fit_state cuts usage to the 5 biggest and suggestions to the 6 first, never further; the live session stays",
+        len(_big73["suggestions"]) == 12 and all("prompt" not in x for x in _big73["suggestions"]) and len(_big73["usage_today"]) == 12 and [x["session"] for x in _fit73["usage_today"]] == [f"s{i}" for i in range(5)]
+        and [x["id"] for x in _fit73["suggestions"]] == [f"s-{i:010d}" for i in range(6)] and [x["name"] for x in _fit73["sessions"]] == ["atlas-shop"], str(S.size_of(_fit73)))
+# la quota di oggi dalle trascrizioni: dalla mezzanotte, un messaggio una volta, i subagenti con la loro sessione, la quota per account
+_u73 = tmp / "usage73"
+_now73 = int(time.time())
+_mid73 = RL._midnight(_now73)
+_iso73 = lambda t: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(t))  # noqa: E731
+_ln73 = lambda t, mid, n, cwd="/w/alpha": json.dumps({"type": "assistant", "cwd": cwd, "timestamp": _iso73(t), "message": {"id": mid, "usage": {"input_tokens": n, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})  # noqa: E731
+for _acc73, _sid73, _lines73 in (("personal", "sid-a", [_ln73(_mid73 - 60, "m0", 500), _ln73(_mid73 + 60, "m1", 100), _ln73(_mid73 + 61, "m1", 100), _ln73(_mid73 + 70, "m2", 50)]),
+                                 ("personal", "sid-b", [_ln73(_mid73 + 80, "m3", 50, "/w/beta")]),
+                                 ("work", "sid-c", [_ln73(_mid73 + 90, "m4", 30, "/w/gamma")])):
+    _p73 = _u73 / _acc73 / "projects" / "-w-x" / f"{_sid73}.jsonl"
+    _p73.parent.mkdir(parents=True, exist_ok=True)
+    _p73.write_text("\n".join(_lines73) + "\n")
+_sa73 = _u73 / "personal" / "projects" / "-w-x" / "sid-a" / "subagents" / "agent-1.jsonl"
+_sa73.parent.mkdir(parents=True, exist_ok=True)
+_sa73.write_text(_ln73(_mid73 + 100, "m5", 50) + "\n" + _ln73(_mid73 + 101, "m6", 7))   # l'ultima riga senza a capo: ancora in scrittura
+_acc73s, _rd73 = RL.CFG["accounts"], RL.rdir
+try:
+    RL.CFG["accounts"] = {"personal": {"config_dir": str(_u73 / "personal")}, "work": {"config_dir": str(_u73 / "work")}}
+    RL.rdir = lambda: _u73
+    _o73 = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73)
+    with open(_sa73, "a") as _fh73:
+        _fh73.write("\n")
+    _o73b = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73 + 1)
+    _o73c = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73 + RL.USAGE_CACHE_S + 1)
+finally:
+    RL.CFG["accounts"], RL.rdir = _acc73s, _rd73
+T.check("R73 (1.84) usage_today: tokens since local midnight, one message counted once, subagents with their session, the name from the state (else the folder), share of the account; biggest first",
+        _o73 == [{"session": "alpha-shop", "account": "personal", "tokens": 200, "share": 0.8}, {"session": "beta", "account": "personal", "tokens": 50, "share": 0.2},
+                 {"session": "gamma", "account": "work", "tokens": 30, "share": 1.0}], str(_o73))
+T.check("R73 (1.84) usage_today: within USAGE_CACHE_S the cached list as is; after it only the new bytes are read (the line that was still being written)",
+        _o73b == _o73 and _o73c[0] == {"session": "alpha-shop", "account": "personal", "tokens": 207, "share": round(207 / 257, 3)}, str(_o73c))
+# /exit dall'app: i controlli di close (anche il lavoro in sottofondo), lo stato salvato, poi il comando digitato
+_row73 = {"tmux": "field-notes", "name": "field-notes", "status": "idle", "waiting": False, "attached": True, "pid": 4242, "cwd": str(tmp), "account": "personal", "session_id": "S-F"}
+_sv73 = dict(json=RL._json_cmd, talk=RL.relay_talk, allowed=RL.slash_allowed, kids=RL._children, cdir=RL.closed_dir, last=RL.last_sessions, run=RL.run_cm)
+_typed73 = []
+try:
+    RL._json_cmd = lambda *a, **k: [_row73]
+    RL.relay_talk = lambda *a: (_typed73.append(a), (0, "consegnato"))[1]
+    RL.slash_allowed = lambda: ["exit", "compact"]
+    RL.closed_dir = lambda: tmp / "closed73"
+    RL.last_sessions = lambda: {"field-notes": {"state": "idle", "outcome": {"short": "README rewritten"}, "next": "Open the PR"}}
+    RL.run_cm = lambda *a, **k: (1, "")
+    RL._children = lambda pid: [(4243, "node"), (4244, "bash")]
+    _bg73 = RL.slash_send({"by": "phone-pixel8"}, "field-notes", "field-notes", "exit")
+    _typed_bg73 = list(_typed73)
+    RL._children = lambda pid: [(4243, "node")]
+    _ok73 = RL.slash_send({"by": "phone-pixel8"}, "field-notes", "field-notes", "exit")
+    _cl73 = RL.close_check("field-notes", [_row73])[0]
+    RL.last_sessions = lambda: {"field-notes": {"state": "idle", "outcome": {"short": "README rewritten"}, "next": "an old recap line", "next_steps": [{"text": "open the PR", "blocking": False}]}}
+    _cs73 = RL.close_check("field-notes", [dict(_row73, attached=False)])[0]
+finally:
+    RL._json_cmd, RL.relay_talk, RL.slash_allowed, RL._children, RL.closed_dir, RL.last_sessions, RL.run_cm = (
+        _sv73["json"], _sv73["talk"], _sv73["allowed"], _sv73["kids"], _sv73["cdir"], _sv73["last"], _sv73["run"])
+_svf73 = json.loads((tmp / "closed73" / "field-notes.json").read_text()) if (tmp / "closed73" / "field-notes.json").exists() else {}
+T.check("R73 (1.84) /exit from the app: a shell among the claude process's children → refused «a job is running in the background», nothing typed; without it the state is saved (attached is fine: it is typed in the pane) and /exit typed",
+        _bg73 == (False, "field-notes not closed: a job is running in the background") and _typed_bg73 == [] and _ok73[0] is True
+        and [a[1] for a in _typed73] == ["/exit"] and _svf73.get("outcome") == "README rewritten" and _svf73.get("next") == "Open the PR" and _svf73.get("session_id") == "S-F"
+        and _cl73["blocked_by"] == "attached" and _cl73["closable"] is False, str((_bg73, _ok73, _typed73, _svf73)))
+T.check("R73 (1.84) the save's next is the first step of the last outcome when there is one, else the recap's next",
+        _cs73["save"]["next"] == "open the PR" and _svf73.get("next") == "Open the PR", str(_cs73))
+_oc73 = S._outcome([{"event": "stop", "ts": iso(1789210000), "tail": "Release 0.8.62 published.\nProssimi: deposit · live test", "esito": ""}])
+T.check("R73 (24/10) without a Watch or Esito line the short outcome is the message's last line, never the «Prossimi:» line",
+        _oc73["short"] == "Release 0.8.62 published." and "Prossimi:" in _oc73["full"], str(_oc73))
+# needs-you --task: la richiesta va sulla sessione del compito, con task e from; senza sessione viva resta su chi chiede
+_db73 = tmp / "tasks73.db"
+os.environ["CM_TASKS_DB"] = str(_db73)
+NY = load("cm-needsyou")
+_con73 = load("cm-tasks").connect()
+for _tid73, _ses73 in (("atlas-tv-pairing", "atlas-shop"), ("solo-master", None)):
+    _con73.execute("INSERT INTO tasks (id, session, contract, state, created_at) VALUES (?, ?, ?, 'approved', 1)",
+                   (_tid73, _ses73, json.dumps({"task": {"where": {"project": str(tmp), "session": _ses73}}})))
+_con73.commit()
+_m73 = {"tmux": "master", "name": "master", "session_id": "S-M"}
+_t73 = {"tmux": "atlas-shop", "name": "atlas-shop", "session_id": "S-A73"}
+NY.own_row = lambda: _m73
+NY.session_row = lambda name: _t73 if name == "atlas-shop" else None
+_nyd73 = Path(NY.cm.expand(NY.CFG["state_dir"])) / "needs-you"
+_rc73 = NY.main(["Type", "the", "pairing", "code", "--task", "atlas-tv-pairing"])
+_rec73 = json.loads((_nyd73 / "S-A73.json").read_text()) if (_nyd73 / "S-A73.json").exists() else {}
+_rc73b = NY.main(["a login", "--task", "solo-master"])
+_rec73b = json.loads((_nyd73 / "S-M.json").read_text()) if (_nyd73 / "S-M.json").exists() else {}
+_rc73c = NY.main(["x", "--task", "no-such-task"])
+del os.environ["CM_TASKS_DB"]
+T.check("R73 (1.84) needs-you --task: on the task's session with task and from (who asked); a task without a live session stays on the asker with task only; an unknown task → exit 2, nothing written",
+        _rc73 == 0 and _rec73.get("reason") == "Type the pairing code" and _rec73.get("task") == "atlas-tv-pairing" and _rec73.get("from") == "master" and _rec73.get("name") == "atlas-shop"
+        and _rc73b == 0 and _rec73b.get("task") == "solo-master" and "from" not in _rec73b and _rc73c == 2, str((_rec73, _rec73b)))
+for _f73 in ("S-A73.json", "S-M.json"):
+    (_nyd73 / _f73).unlink(missing_ok=True)
+# supervisor suggest: add, never (saltato in silenzio), later (nascosto fino al giro dopo), clear --kind, i rifiuti
+_sgp73 = tmp / "suggest73.json"
+_env73 = dict(ENV, CM_SUGGESTIONS=str(_sgp73))
+_sg73 = lambda *a: subprocess.run([str(T.SCRIPTS / "supervisor"), "suggest", *a], capture_output=True, text=True, env=_env73, timeout=20)  # noqa: E731
+_a73 = _sg73("add", "--kind", "cleanup", "--key", "cleanup:x", "--text", "Close the paused tasks", "--prompt", "close them")
+_b73 = _sg73("add", "--kind", "quota", "--key", "quota:y", "--text", "Weekly quota at 80 %", "--prompt", "plan the week", "--ttl", "2h")
+os.environ["CM_SUGGESTIONS"] = str(_sgp73)
+SG = load("cm-suggest")
+_later73 = SG.act(_b73.stdout.strip(), "later")[0]
+_vis73 = [x["key"] for x in SG.for_state()]
+_never73 = SG.act(_a73.stdout.strip(), "never")[0]
+_again73 = _sg73("add", "--kind", "cleanup", "--key", "cleanup:x", "--text", "Close the paused tasks", "--prompt", "close them")
+_round73 = _sg73("add", "--kind", "quota", "--key", "quota:y", "--text", "Weekly quota at 85 %", "--prompt", "plan the week")
+_vis73b = [(x["key"], x["text"]) for x in SG.for_state()]
+_bad73 = [_sg73("add", "--kind", "other", "--key", "k", "--text", "t", "--prompt", "p").returncode, _sg73("add", "--kind", "quota", "--key", "k", "--text", "cut…", "--prompt", "p").returncode,
+          _sg73("add", "--kind", "quota", "--key", "k", "--text", "t", "--prompt", "p", "--ttl", "soon").returncode]
+_clr73 = _sg73("clear", "--kind", "quota")
+_vis73c = SG.for_state()
+_unk73 = SG.act("s-nope", "accept")[0]
+del os.environ["CM_SUGGESTIONS"]
+T.check("R73 (1.84) suggest: add prints the id; later hides it until the same key comes back (with the new text); never makes add skip the key silently (exit 0, no output); bad kind, «…» and a bad ttl refused; clear --kind empties that kind; an id no longer there is «gone» (1.87)",
+        _a73.returncode == 0 and _a73.stdout.strip().startswith("s-") and _later73 == "hidden" and _vis73 == ["cleanup:x"] and _never73 == "never"
+        and _again73.returncode == 0 and _again73.stdout == "" and _vis73b == [("quota:y", "Weekly quota at 85 %")] and all(rc != 0 for rc in _bad73)
+        and _clr73.returncode == 0 and _vis73c == [] and _unk73 == "gone" and json.loads(_sgp73.read_text())["never"] == ["cleanup:x"], str((_vis73, _vis73b, _again73.stdout, _bad73)))
+
+# R86 (contratto 1.86, 26/10, grafici 2A e 2B di Utilizzo): la settimana dal rinnovo nello stato
+_q86 = S.build_quota({"a": {"settimana_pct": 30, "reset_settimanale": 1789610400,
+                            "settimana_punti": [[1789005600, 0.4], [1789005601 + 3599, 2.6], [1789005600 + 2 * 3600, 3.2], [1789005600 + 3 * 3600 + 10, 7.5], [1789005000, 99], [1789610401, 99], "x"],
+                            "settimana_origini": {"sessioni": 12.0, "automazioni": 3.0, "richieste": 15.0, "completo": True, "eq": {}}},
+                      "b": {"settimana_pct": 10, "reset_settimanale": 1789610400, "settimana_punti": [],
+                            "settimana_origini": {"sessioni": 5.0, "automazioni": 1.0, "richieste": 4.0, "completo": False}},
+                      "c": {"settimana_pct": 10, "reset_settimanale": None, "settimana_punti": [[1789005600, 3]]}})
+T.check("R86 (1.86) build_quota: w7_points {start = reset_w7 - 7 days, steps [[hour from start, pct]] only when the pct changes, samples outside the week ignored}; w7_origins only when the count is complete; no reset or no samples → both absent",
+        _q86["a"]["w7_points"] == {"start": 1789005600, "steps": [[0, 0], [1, 3], [3, 8]]} and _q86["a"]["w7_origins"] == {"sessions": 12.0, "automations": 3.0, "requests": 15.0}
+        and "w7_points" not in _q86["b"] and "w7_origins" not in _q86["b"] and "w7_points" not in _q86["c"] and "w7_origins" not in _q86["c"], json.dumps(_q86))
+_st86 = {"v": 1, "ts": 1, "host": "", "sessions": [], "quota": json.loads(json.dumps(_q86)), "projects": [dict(p) for p in _many[:10]],
+         "night": {"queued": 0, "running": None, "items": []}, "recap": {"date": "", "items": [{"project": "p", "done": "d" * 900, "next": ""}]},
+         "choices": None, "share": {"max_bytes": 1}, "ops": [], "slash": []}
+_fit86 = S.fit_state(json.loads(json.dumps(_st86)), 0.1)
+T.check("R86 (1.86) fit_state never drops the week: w7_points and w7_origins stay in a state that stays over its cap",
+        _fit86["quota"]["a"].get("w7_points") == _q86["a"]["w7_points"] and _fit86["quota"]["a"]["w7_origins"] == _q86["a"]["w7_origins"], json.dumps(_fit86["quota"]))
+
+# R87 (28/10): la barra di stato parte ogni pochi secondi come «/bin/sh -c <statusLine.command>», figlia di claude:
+# non e' un lavoro in sottofondo e non blocca la chiusura; una shell vera accanto la blocca ancora
+_u87 = tmp / "u87"
+_sl87 = 'bash "/opt/fd/scripts/statusline-ctx.sh"'
+(_u87 / "personal").mkdir(parents=True, exist_ok=True)
+(_u87 / "personal" / "settings.json").write_text(json.dumps({"statusLine": {"type": "command", "command": _sl87, "refreshInterval": 5}}))
+_row87 = {"tmux": "field-notes", "name": "field-notes", "status": "idle", "waiting": False, "attached": False, "pid": 4242, "cwd": str(tmp), "account": "personal", "session_id": "S-F"}
+_cmd87 = {4244: ["/bin/sh", "-c", _sl87], 4245: ["bash", "/opt/fd/scripts/statusline-ctx.sh"], 4246: ["/bin/bash", "-c", "sleep 600"]}
+_sv87 = dict(acc=RL.CFG["accounts"], kids=RL._children, cmdl=RL._cmdline, last=RL.last_sessions)
+try:
+    RL.CFG["accounts"] = {"personal": {"config_dir": str(_u87 / "personal")}}
+    RL.last_sessions = lambda: {"field-notes": {"state": "idle"}}
+    RL._cmdline = lambda pid: _cmd87.get(pid, [])
+    RL._children = lambda pid: [(4243, "node"), (4244, "sh")]
+    _sl87a = RL.close_check("field-notes", [_row87])[0]
+    RL._children = lambda pid: [(4243, "node"), (4244, "sh"), (4246, "bash")]
+    _sl87b = RL.close_check("field-notes", [_row87])[0]
+finally:
+    RL.CFG["accounts"], RL._children, RL._cmdline, RL.last_sessions = _sv87["acc"], _sv87["kids"], _sv87["cmdl"], _sv87["last"]
+T.check("R87 close_ignores_statusline (28/10): the status line command of the settings, run as a child of claude, is not a job in the background → closable; a real shell beside it still blocks",
+        _sl87a["closable"] is True and _sl87a["blocked_by"] is None and _sl87b["blocked_by"] == "background", str((_sl87a, _sl87b)))
+
+# R88 (contratto 1.89, 28/10): per ogni dispositivo l'ultimo comando (Cmd.uid) e l'ultimo arrivo, in
+# device-activity.json: restano dopo la rotazione di relay.log, solo per gli uid accoppiati
+_r88 = tmp / "r88"
+_r88.mkdir(parents=True, exist_ok=True)
+(_r88 / "devices.json").write_text(json.dumps({"phoneUid00000000000000000000": {"name": "Pixel 9", "paired_at": 1}, "webUid000000000000000000000": {"name": "Chrome", "paired_at": 2, "kind": "web"}}))
+_sv88 = dict(rdir=RL.rdir, ex=RL.execute, pa=RL.push_async, last=RL.last_sessions, sd=RL.seen_devices)
+try:
+    RL.rdir = lambda: _r88
+    RL.execute = lambda cmd: (True, "ok")
+    RL.push_async = lambda *a, **k: None
+    RL.last_sessions = lambda: {}
+    RL.run_cmd({"id": "c1", "op": "screen", "session": "x", "by": "web", "uid": "webUid000000000000000000000"})
+    RL.run_cmd({"id": "c2", "op": "screen", "session": "x", "by": "?", "uid": "strangerUid000000000000000"})
+    RL.run_cmd({"id": "c3", "op": "screen", "session": "x", "by": "phone-pixel8"})
+    _a88a = json.loads((_r88 / "device-activity.json").read_text())
+    RL.seen_devices = lambda: {"phoneUid00000000000000000000": 1789210790.0}
+    RL.seen_cached(time.time())
+    _a88b = json.loads((_r88 / "device-activity.json").read_text())
+    _d88 = S.build_devices(json.loads((_r88 / "devices.json").read_text()), {}, _a88b)
+finally:
+    RL.rdir, RL.execute, RL.push_async, RL.last_sessions, RL.seen_devices = _sv88["rdir"], _sv88["ex"], _sv88["pa"], _sv88["last"], _sv88["sd"]
+T.check("R88 relay_device_last_seen (1.89): a command with the uid of a paired device stores its time (a stranger's uid and a command without uid store nothing); a new /seen stores the arrival; build_devices gives cmd_at and the arrival as seen",
+        set(_a88a) == {"webUid000000000000000000000"} and time.time() - _a88a["webUid000000000000000000000"]["cmd"] < 60
+        and _a88b["phoneUid00000000000000000000"] == {"arrival": 1789210790.0} and _a88b["webUid000000000000000000000"] == _a88a["webUid000000000000000000000"]
+        and _d88 == [{"uid": "phoneUid00000000000000000000", "name": "Pixel 9", "kind": None, "seen": 1789210790},
+                     {"uid": "webUid000000000000000000000", "name": "Chrome", "kind": "web", "seen": None, "cmd_at": int(_a88a["webUid000000000000000000000"]["cmd"])}],
+        str((_a88a, _a88b, _d88)))
+
+# R89 (contratto 1.90, 28/10): quanto pesa la macchina e cosa fare — il blocco system di /state e l'op sys_kill
+_sy89 = F3["system"]
+_ops89 = [json.loads((FIX / f"{n}.json").read_text())["ops"] for n in ("state-1-question", "state-2-idle", "state-3-stale")]
+T.check("R89 system_advice (1.90) the fixtures: state-3 carries system {at, cores, load1, load_per_core, mem_total_mb, mem_available_mb, level, load_level, mem_level, stuck (1.91), consumers, advice}, red, four groups, the reds first; every action an op of the state; state-1 and state-2 without it (old relay); sys_kill in ops",
+        list(_sy89) == ["at", "cores", "load1", "load_per_core", "mem_total_mb", "mem_available_mb", "level", "load_level", "mem_level", "stuck", "consumers", "advice"]
+        and _sy89["level"] == "red" and sorted(c["group"] for c in _sy89["consumers"]) == ["chrome_bridge", "claude", "other", "relay"]
+        and all(list(a) == ["id", "kind", "level", "text", "action"] for a in _sy89["advice"])
+        and [a["level"] for a in _sy89["advice"]] == sorted([a["level"] for a in _sy89["advice"]], key=lambda x: x != "red")
+        and all(a["action"] is None or (a["action"]["op"] in F3["ops"] and set(a["action"]) == {"op", "arg", "label"}) for a in _sy89["advice"])
+        and "system" not in F1 and "system" not in F2 and all("sys_kill" in o for o in _ops89), json.dumps(_sy89)[:300])
+_big89 = S.build_state(dict(SRC3, system=dict(_sy89, advice=_sy89["advice"] * 2), state_max_kb=5), 1789200000)
+T.check("R89 system_advice (1.90) build_state keeps at most 5 advice; over the cap fit_state leaves the first two (reds first), then drops the consumers, before the gone sessions it keeps",
+        len(S.build_state(dict(SRC3, system=dict(_sy89, advice=_sy89["advice"] * 2)), 1789200000, fit=False)["system"]["advice"]) == 5
+        and _big89["system"]["advice"] == _sy89["advice"][:2] and _big89["system"]["consumers"] == [], json.dumps(_big89.get("system"))[:300])
+_p89 = subprocess.Popen(["bash", "-c", "exec -a 'node /x/chrome-bridge/server/index.js --launch' sleep 300"])
+time.sleep(0.5)
+_st89 = Path(f"/proc/{_p89.pid}/stat").read_text()
+_st89 = _st89[_st89.rindex(")") + 2:].split()[19]
+_me89 = os.path.basename(Path("/proc/self/cmdline").read_bytes().split(b"\0")[0].decode())
+_sv89 = dict(jc=RL._json_cmd, lw=RL.ledger_write, pa=RL.push_async)
+_led89 = []
+try:
+    RL._json_cmd = lambda *a, **k: []
+    RL.ledger_write = lambda ev, **kw: _led89.append(dict(kw, event=ev))
+    RL.push_async = lambda *a, **k: None
+    RL.system_status([], {})
+    _sys89 = RL.SY.CFG["system"]
+    RL.SY.CFG["system"] = dict(_sys89, orphan_parents=["init", "systemd", _me89])   # nel test il padre «ammesso» e' questo python
+    _r89a = RL.execute({"id": "s1", "op": "sys_kill", "arg": "1:1", "by": "web"})
+    _r89b = RL.execute({"id": "s2", "op": "sys_kill", "arg": f"{_p89.pid}:999", "by": "web"})
+    _alive89 = _p89.poll() is None
+    _r89c = RL.execute({"id": "s3", "op": "sys_kill", "arg": f"{_p89.pid}:{_st89}", "by": "web"})
+    try:
+        _p89.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        pass
+finally:
+    RL._json_cmd, RL.ledger_write, RL.push_async = _sv89["jc"], _sv89["lw"], _sv89["pa"]
+    if RL.SY is not None and "_sys89" in globals():
+        RL.SY.CFG["system"] = _sys89
+    if _p89.poll() is None:
+        _p89.kill()
+T.check("R89 system_advice (1.90) sys_kill: a pid that is not among the advice, or the right pid with another procStart, is refused and nothing is touched; the advised one is closed and written in the ledger",
+        _r89a[0] is False and "1:1" in _r89a[1] and _r89b[0] is False and _alive89
+        and _r89c[0] is True and str(_p89.pid) in _r89c[1] and _p89.returncode is not None
+        and [x["event"] for x in _led89] == ["sys-kill"] and _led89[0]["kind"] == "orphan_proc" and _led89[0]["ok"] is True, str((_r89a, _r89b, _r89c, _led89)))
+
+# R90 (contratto 1.91, 28/10): i processi bloccati sul ponte grafico — stuck in system e l'op sys_unit_stop «Ferma il ciclo»
+_sy90 = F3["system"]
+_lp90 = _sy90["advice"][0]
+T.check("R90 system_stuck (1.91) the fixture: stuck {count, since, rss_mb, units}; load_per_core leaves the stuck out ((load1 - count) / cores); stuck_loop first with sys_unit_stop, stuck as words only; sys_unit_stop right after sys_kill in every ops",
+        list(_sy90["stuck"]) == ["count", "since", "rss_mb", "units"] and _sy90["load_per_core"] == round((_sy90["load1"] - _sy90["stuck"]["count"]) / _sy90["cores"], 2)
+        and _lp90["kind"] == "stuck_loop" and _lp90["action"]["op"] == "sys_unit_stop"
+        and next(a for a in _sy90["advice"] if a["kind"] == "stuck")["action"] is None and all(o[o.index("sys_kill") + 1] == "sys_unit_stop" for o in _ops89 + [F3["ops"]]), json.dumps(_sy90)[:300])
+_log90 = tmp / "systemctl90.log"
+_fk90 = tmp / "systemctl90"
+_fk90.write_text(f"#!/bin/sh\necho \"$*\" >> {_log90}\n")
+_fk90.chmod(0o755)
+_sv90 = dict(ss=RL.system_status, jc=RL._json_cmd, lw=RL.ledger_write, pa=RL.push_async, env=os.environ.get("CM_SYSTEMCTL"))
+_led90 = []
+try:
+    os.environ["CM_SYSTEMCTL"] = str(_fk90)
+    if RL.SY is None:
+        RL.SY = RL._load("cm-system")
+    RL.system_status = lambda rows, runtime, fresh=False: {"advice": [_lp90]} if fresh else {}
+    RL._json_cmd = lambda *a, **k: []
+    RL.ledger_write = lambda ev, **kw: _led90.append(dict(kw, event=ev))
+    RL.push_async = lambda *a, **k: None
+    _r90a = RL.execute({"id": "u1", "op": "sys_unit_stop", "arg": "ssh.service", "by": "web"})
+    _r90b = RL.execute({"id": "u2", "op": "sys_unit_stop", "arg": _lp90["action"]["arg"], "by": "web"})
+finally:
+    RL.system_status, RL._json_cmd, RL.ledger_write, RL.push_async = _sv90["ss"], _sv90["jc"], _sv90["lw"], _sv90["pa"]
+    if _sv90["env"] is None:
+        os.environ.pop("CM_SYSTEMCTL", None)
+    else:
+        os.environ["CM_SYSTEMCTL"] = _sv90["env"]
+_sv90b = (RL.SY, RL._SYS_LAST)
+_calls90 = []
+try:
+    RL.SY = type("SYfake", (), {"status": staticmethod(lambda *a, **k: _calls90.append(1) or {"at": len(_calls90)}), "stop_units": staticmethod(lambda u: True)})
+    RL._SYS_LAST = (0.0, None)
+    _m90 = [RL.system_status([], {}), RL.system_status([], {}), RL.system_status([], {}, fresh=True)]
+finally:
+    RL.SY, RL._SYS_LAST = _sv90b
+T.check("R90 system_stuck (1.91) the cost: one reading a minute at most — a second push within 55 s reuses the last one, fresh=True (sys_kill, sys_unit_stop) reads again",
+        _m90 == [{"at": 1}, {"at": 1}, {"at": 2}] and len(_calls90) == 2, str(_m90))
+T.check("R90 system_stuck (1.91) sys_unit_stop: units that are not the advised ones are refused and nothing runs; the advised ones get `systemctl --user stop --no-block` each, written in the ledger",
+        _r90a[0] is False and "ssh.service" in _r90a[1] and _r90b[0] is True
+        and _log90.read_text().splitlines() == [f"--user stop --no-block {u}" for u in _lp90["action"]["arg"].split(",")]
+        and [x["event"] for x in _led90] == ["sys-unit-stop"], str((_r90a, _r90b, _led90, _log90.read_text() if _log90.exists() else "")))
+
+# R91 (28/10): l'impronta del codice copre ogni modulo che il demone tiene caricato — dal vivo la 0.8.76 (solo cm-system.py)
+# non riavviava il demone, e /state restava col testo vecchio
+_loaded91 = sorted(set(re.findall(r'_load\("(cm-[a-z-]+)"\)', (T.SCRIPTS / "cm-relay.py").read_text())))
+T.check("R91 code_print covers every module the daemon keeps loaded (cm-system among them): a change to one of them restarts the daemon",
+        "cm-system.py" in RL.CODE_FILES and all(f"{n}.py" in RL.CODE_FILES for n in ("cm-relay-state", "cm-relay-crypto", "cm-diff", "cm-core", "cm-system")), str((RL.CODE_FILES, _loaded91)))
+
+# R92 (28/10, note di claude-observe: «no entry … in the transcript» ×525, «X is not running» e «X: no transcript» su
+# decine di sessioni): la chat del telefono non deve fallire a ogni giro per uno stato normale
+_tx92 = tmp / "r92.jsonl"
+_tx92.write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+_all92 = [e["id"] for e in json.loads(RL.transcript_read(str(_tx92), 200, None, None)[1])["entries"]]
+_sv92 = dict(lr=RL.live_row, sr=RL.session_row, tof=RL.core.transcript_of)
+try:
+    _a92 = RL.transcript_read(str(_tx92), 5, "after", "gone-entry.0")
+    RL.live_row = lambda tm: None
+    RL.session_row = lambda tm: {"tmux": tm, "name": tm, "status": "dead", "cwd": "/x", "account": "personal", "session_id": "S-closed"} if tm == "chiusa92" else None
+    RL.core.transcript_of = lambda row: str(_tx92) if row.get("session_id") == "S-closed" else ""
+    _b92 = RL.transcript_page("chiusa92", "chiusa92", "5")
+    _c92 = RL.transcript_page("mai92", "mai92", "5")
+    RL.live_row = lambda tm: {"tmux": tm, "name": tm, "status": "idle", "cwd": "/x", "session_id": ""}
+    _d92 = RL.transcript_page("nuova92", "nuova92", "5")
+finally:
+    RL.live_row, RL.session_row, RL.core.transcript_of = _sv92["lr"], _sv92["sr"], _sv92["tof"]
+_ja92 = json.loads(_a92[1]) if _a92[0] else {}
+T.check("R92 (1.93) transcript «n:after=<id>» with an id no longer in the transcript (a new conversation, a restart) → ok, the last n entries and reset true: the app replaces its list instead of failing at every poll",
+        _a92[0] is True and _ja92.get("reset") is True and [e["id"] for e in _ja92["entries"]] == _all92[-5:], str(_a92)[:300])
+T.check("R92 (1.93) transcript of a session that is no longer running but is in the registry → its conversation read-only; a name nowhere → still «is not running»",
+        _b92[0] is True and [e["id"] for e in json.loads(_b92[1])["entries"]] == _all92[-5:] and _c92 == (False, "mai92 is not running"), str((_b92[:1], _c92)))
+T.check("R92 (1.93, 1.119) transcript of a live session with no transcript yet (just started) → refused with the reason, never an empty page with ok (the app would put it in place of the entries it has)",
+        _d92 == (False, "no transcript yet for nuova92"), str(_d92))
+
+# R93 (contratto 1.95, 29/10): plugin e skill — il riassunto in /state, l'elenco intero e gli aggiornamenti dall'app
+_res93 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_cmd93 = [c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"] if str(c.get("op", "")).startswith("plugin")]
+_full93 = json.loads(_res93[_cmd93[0]["id"]]["text"])
+_calls93 = []
+_fake93 = type("PLfake", (), {
+    "collect": staticmethod(lambda: _full93), "summary": staticmethod(lambda st: {"checked_at": st["checked_at"], "accounts": []}),
+    "update": staticmethod(lambda acc, pid: (_calls93.append(("u", acc, pid)), (pid != "needs-command@some-market",
+        f"{pid} updated" if pid != "needs-command@some-market" else
+        f"{pid}: the marketplace asks to confirm a command, to confirm at the PC (claude plugin update {pid})"))[1]),
+    "update_all": staticmethod(lambda acc: (_calls93.append(("a", acc)), (True, "nothing to update"))[1])})
+_sv93 = dict(pl=RL.PL, sp=RL.plugins_check_spawn, pa=RL.push_async, lang=RL.CFG.get("language"))
+_sp93 = []
+try:
+    RL.PL = _fake93
+    RL.CFG["language"] = "en"   # i testi delle fixture sono in inglese
+    RL.plugins_check_spawn = lambda force=False: _sp93.append(force)
+    RL.push_async = lambda *a, **k: None
+    _r93 = [RL.execute(dict(c)) for c in _cmd93]
+finally:
+    RL.PL, RL.plugins_check_spawn, RL.push_async = _sv93["pl"], _sv93["sp"], _sv93["pa"]
+    RL.CFG["language"] = _sv93["lang"]
+T.check("R93 plugins_state (1.95) the ops: plugins (a passive read, the whole list), plugin_check (starts a forced check), plugin_update «account:id», plugin_update_all «account»: results as in the fixture",
+        [(ok, txt) for ok, txt in _r93] == [(_res93[c["id"]]["ok"], _res93[c["id"]]["text"]) for c in _cmd93] and _sp93 == [True]
+        and _calls93 == [("u", "personal", "chrisbanes-skills@chrisbanes-skills"), ("u", "personal", "needs-command@some-market"), ("a", "work")]
+        and "plugins" in RL.PASSIVE_OPS and "plugin_update" not in RL.PASSIVE_OPS,
+        str([(c["op"], r, (_res93[c["id"]]["ok"], _res93[c["id"]]["text"][:80])) for c, r in zip(_cmd93, _r93) if (r[0], r[1]) != (_res93[c["id"]]["ok"], _res93[c["id"]]["text"])] + [_sp93, _calls93])[:900])
+T.check("R93 plugins_state (1.95) the fixture: state-3 carries plugins {checked_at, accounts: [{account, updates}]}; the full list (op plugins) has plugins {id, name, marketplace, scope, installed, latest, update} and skills {name, version, source}",
+        list(F3["plugins"]) == ["checked_at", "accounts"] and all(list(a) == ["account", "updates"] for a in F3["plugins"]["accounts"])
+        and all(list(p) == ["id", "name", "marketplace", "scope", "installed", "latest", "update"] for a in _full93["accounts"] for p in a["plugins"])
+        and all(list(sk) == ["name", "version", "source"] for a in _full93["accounts"] for sk in a["skills"]) and "plugins" not in F1, json.dumps(F3["plugins"]))
+
+# R94 (contratto 1.96, 29/10): i numeri delle viste KPI — l'op kpi (una lettura) e le attese registrate a ogni push
+_res94 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_s94 = json.loads(_res94["6f1c2d3e-0899-4000-8000-000000000899"]["text"])
+T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six kpi_* blocks in their shape; kpi is a passive read in every ops, never in /state",
+        list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
+        and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
+        and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-19] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+_r94 = tmp / "r94"
+_r94.mkdir(parents=True, exist_ok=True)
+_sv94 = RL.rdir
+try:
+    RL.rdir = lambda: _r94
+    RL._kpi().record_waits(S.build_state(SRC1, 1789200000, fit=False), 1789200000, RL.rdir())
+    _w94 = [json.loads(l) for l in (_r94 / "waits.jsonl").read_text().splitlines()]
+    _o94 = RL.kpi_op()
+finally:
+    RL.rdir = _sv94
+T.check("R94 kpi_waits (1.96) the waits of state-1 open in waits.jsonl (ledger-api's question since its asked_at); op kpi answers ok with every block, the sources it cannot read null",
+        [(w["event"], w["session"], w["kind"], w["since"]) for w in _w94 if w["session"] == "ledger-api"] == [("start", "ledger-api", "question", 1789210500)]
+        and _o94[0] is True and list(json.loads(_o94[1])) == list(_s94), str(_w94)[:300] + str(_o94)[:200])
+
+# R95 (29/10, relay al 36% di un core con i figli): nel demone le letture lente si ricordano finche' non cambia un loro
+# file o scade il tempo; un comando che cambia qualcosa svuota la memoria prima e dopo; fuori dal demone niente memoria
+_q95 = lambda: sum(1 for c in cm_calls() if c.startswith("quota --json"))   # noqa: E731
+_i95 = lambda: sum(1 for c in cm_calls() if c.startswith("task impegni"))   # noqa: E731
+_sv95 = dict(on=RL.MEMO_ON, ex=RL.execute, pa=RL.push_async, rd=RL.rdir)
+_r95 = tmp / "r95"
+_r95.mkdir(parents=True, exist_ok=True)
+try:
+    RL.MEMO_ON = False
+    a0 = _q95(); RL.collect_sources(); RL.collect_sources(); off95 = _q95() - a0
+    RL.MEMO_ON = True
+    RL._MEMO.clear()
+    a1, b1 = _q95(), _i95(); RL.collect_sources(); RL.commitments_list(); RL.collect_sources(); RL.commitments_list()
+    on95, imp95 = _q95() - a1, _i95() - b1
+    # il registro: una lettura da un'altra connessione (che cambia le date dei file) non svuota la memoria ne' cambia
+    # l'impronta del battito; una scrittura si'
+    import sqlite3 as _sq95
+    _db95 = RL._tasks_db_files()[0]
+    _db95.parent.mkdir(parents=True, exist_ok=True)
+    _c95 = _sq95.connect(str(_db95)); _c95.execute("PRAGMA journal_mode=WAL"); _c95.execute("CREATE TABLE IF NOT EXISTS r95 (x)"); _c95.commit(); _c95.close()
+    RL.commitments_list(); _fpw95 = RL.sources_print()
+    _c95 = _sq95.connect(str(_db95)); _c95.execute("SELECT count(*) FROM r95").fetchone(); _c95.close()
+    os.utime(_db95, ns=(time.time_ns(), time.time_ns() + 2 * 10**9))
+    b3 = _i95(); RL.commitments_list(); walr95 = (_i95() - b3, RL.sources_print() == _fpw95)
+    _c95 = _sq95.connect(str(_db95)); _c95.execute("INSERT INTO r95 VALUES (1)"); _c95.commit(); _c95.close()
+    b4 = _i95(); RL.commitments_list(); walw95 = (_i95() - b4, RL.sources_print() == _fpw95)
+    dep95 = walw95[0]
+    _nw95 = tmp / "r95-none.db-wal"
+    _ew95 = tmp / "r95-empty.db-wal"
+    _ew95.write_bytes(b"")
+    walg95 = RL._mtime(_nw95) == RL._mtime(_ew95) == (0,)   # sqlite lo toglie alla chiusura: assente = vuoto
+    # la quota: un file della statusline cambiato si rilegge, ma non prima di 120 s dall'ultima lettura
+    _qd95 = Path(RL.cm.expand((RL.CFG.get("quota") or {}).get("source") or "~/.claude/fable-director"))
+    _qd95.mkdir(parents=True, exist_ok=True)
+    _qf95 = _qd95 / "quota-r95.json"
+    _qf95.write_text("{}")
+    RL._MEMO.pop("quota", None)
+    q0 = _q95(); RL.collect_sources()
+    _qf95.write_text('{"x": 1}')
+    RL.collect_sources(); qy95 = _q95() - q0
+    _h95 = RL._MEMO["quota"]
+    RL._MEMO["quota"] = (_h95[0] - 130, _h95[1], _h95[2])
+    RL.collect_sources(); qo95 = _q95() - q0
+    RL.collect_sources(); qs95 = _q95() - q0
+    _qf95.unlink()
+    _seen95 = []
+    RL.rdir = lambda: _r95
+    RL.push_async = lambda *a, **k: None
+    RL.execute = lambda cmd: (_seen95.append(len(RL._MEMO)), (True, "ok"))[1]
+    RL._LIVE.update(at=0.0, rows=None)
+    _cs95 = RL.collect_sources()
+    full95 = len(RL._MEMO)
+    _lv95 = (RL._LIVE["rows"] is not None and time.time() - RL._LIVE["at"] < 5
+             and {r.get("tmux") for r in RL._LIVE["rows"]} >= {r.get("tmux") for r in _cs95["rows"] if r.get("status") != "dead"} and RL.LIVE_ROWS_TTL_S == 120)
+    RL.run_cmd({"id": "c95a", "op": "transcript", "session": "x", "by": "web"})
+    pas95 = len(RL._MEMO)
+    RL.run_cmd({"id": "c95b", "op": "approve", "session": "x", "by": "web"})
+    act95 = len(RL._MEMO)
+finally:
+    RL.MEMO_ON, RL.execute, RL.push_async, RL.rdir = _sv95["on"], _sv95["ex"], _sv95["pa"], _sv95["rd"]
+T.check("R95 (29/10) outside the daemon every push reads quota again; in the daemon twice → once; impegni read again when tasks.db changes",
+        off95 == 2 and on95 == 1 and imp95 == 1 and dep95 == 1, str((off95, on95, imp95, dep95)))
+T.check("R95 (29/10) the task registry by sqlite's data_version: a read from another connection (which dates the files) changes neither the memory nor the beat's fingerprint; a write changes both; a missing -wal is an empty one",
+        walr95 == (0, True) and walw95 == (1, False) and walg95, str((walr95, walw95, walg95)))
+T.check("R95 (29/10) quota: a changed statusline file is read again, but not before 120 s from the last read; then the same files keep the memory",
+        (qy95, qo95, qs95) == (1, 2, 2), str((qy95, qo95, qs95)))
+T.check("R95 (29/10) a passive op keeps the memory; an op that changes something finds it empty and leaves it empty",
+        full95 >= 3 and _seen95[0] == full95 and pas95 == full95 and _seen95[1] == 0 and act95 == 0, str((full95, _seen95, pas95, act95)))
+# le pubblicazioni: dopo il minuto un ricalcolo solo se un ref git e' cambiato, comunque ogni PUBLISHED_FULL_S
+_g95 = tmp / "r95-repo"
+_g95.mkdir(exist_ok=True)
+subprocess.run(["git", "init", "-q", str(_g95)], capture_output=True)
+subprocess.run(["git", "-C", str(_g95), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], capture_output=True)
+_sp95, _pp95 = [], RL.subprocess.Popen
+_now95 = time.time()
+_day95 = _dt.datetime.fromtimestamp(_now95).strftime("%Y-%m-%d")
+def _pub95(age, rows):
+    RL.write_json(RL.published_path(), {"day": _day95, "at": _now95 - age, "items": []})
+    (_r95 / "published-refresh.lock").unlink(missing_ok=True)
+    n = len(_sp95)
+    RL.subprocess.Popen = lambda *a, **k: _sp95.append(a[0])
+    try:
+        RL.published_cached(_now95, rows)
+    finally:
+        RL.subprocess.Popen = _pp95
+    return len(_sp95) - n
+try:
+    RL.rdir = lambda: _r95
+    _rows95 = [{"cwd": str(_g95), "status": "idle"}]
+    p1 = _pub95(90, _rows95); p2 = _pub95(90, _rows95)
+    subprocess.run(["git", "-C", str(_g95), "tag", "v1"], capture_output=True)
+    p3 = _pub95(90, _rows95); p4 = _pub95(400, _rows95); p7 = _pub95(90, _rows95); p5 = _pub95(90, None); p6 = _pub95(30, _rows95)
+finally:
+    RL.rdir = _sv95["rd"]
+T.check("R95 (29/10) published_cached: a minute old, a recount only when a git ref of the live folders changed (first time yes, same refs no, a new tag yes); after 5 minutes always; without rows as before; under a minute never",
+        (p1, p2, p3, p4, p7, p5, p6) == (1, 0, 1, 1, 0, 1, 0), str((p1, p2, p3, p4, p7, p5, p6)))
+# sessions: nel demone con la CLI vera cm-sessions gira in processo; con una CLI sostituita, o se il modulo fallisce, la CLI
+_s95 = lambda: sum(1 for c in cm_calls() if c.startswith("sessions --json"))   # noqa: E731
+class _M95:
+    fail = False
+    def collect(self, screen):
+        if self.fail:
+            raise RuntimeError("boom")
+        return [{"tmux": "in-proc", "name": "in-proc", "screen": screen}]
+    def remote_rows(self):
+        return [{"tmux": "win:far", "host": "win"}]
+_m95 = _M95()
+_sv95b = dict(bin=RL.CM_BIN, load=RL._load, on=RL.MEMO_ON)
+try:
+    RL.MEMO_ON = True
+    c0 = _s95(); fake95 = RL.sessions_rows(); cfake95 = _s95() - c0
+    RL.CM_BIN = str(RL.HERE / "supervisor")
+    RL._load = lambda name: _m95 if name == "cm-sessions" else _sv95b["load"](name)
+    RL._SESS.update(key=None, mod=None)
+    c1 = _s95(); inp95 = RL.sessions_rows(); cinp95 = _s95() - c1
+    _m95.fail = True
+    RL.CM_BIN = _sv95b["bin"]   # il ripiego chiama la CLI: quella finta del test
+    RL.sessions_rows()   # con la CLI finta non si passa dal modulo: si torna alla vera per provare il ripiego
+    RL.CM_BIN = str(RL.HERE / "supervisor")
+    _fb95 = RL._json_cmd
+    RL._json_cmd = lambda *a, **k: [{"tmux": "via-cli"}] if a[:2] == ("sessions", "--json") else _fb95(*a, **k)
+    back95 = RL.sessions_rows()
+    RL._json_cmd = _fb95
+finally:
+    RL.CM_BIN, RL._load, RL.MEMO_ON = _sv95b["bin"], _sv95b["load"], _sv95b["on"]
+    RL._SESS.update(key=None, mod=None)
+T.check("R95 (29/10) sessions for the push: with a replaced CLI the CLI; with the real one in the daemon cm-sessions in process (screen read, remote rows after), no CLI; a module that fails falls back to the CLI",
+        cfake95 == 1 and isinstance(fake95, list) and inp95 == [{"tmux": "in-proc", "name": "in-proc", "screen": True}, {"tmux": "win:far", "host": "win"}] and cinp95 == 0
+        and back95 == [{"tmux": "via-cli"}], str((cfake95, inp95, cinp95, back95)))
+_led95 = [{"session_id": f"S{i % 7}", "n": i} for i in range(200)]
+T.check("R95 (29/10) every push hands its live rows to live_row (the web app's transcript reads), kept 120 s", _lv95, "")
+_LV95 = dict(RL._LIVE)
+RL._LIVE.update(at=time.time(), rows=[{"tmux": "fresh-row"}])
+k0 = sum(1 for c in cm_calls() if c.startswith("sessions --json"))
+_lr95a = RL.live_rows()
+RL._LIVE.update(at=time.time() - 200)
+_lr95b = RL.live_rows()
+k1 = sum(1 for c in cm_calls() if c.startswith("sessions --json")) - k0
+RL._LIVE.update(_LV95)
+T.check("R95 (29/10) the app's reads (timeline, kpi) take the last push's live rows while fresh, with no CLI; older than 120 s → one `sessions --json --no-screen`",
+        _lr95a == [{"tmux": "fresh-row"}] and k1 == 1 and _lr95b != _lr95a, str((_lr95a, k1)))
+T.check("R95 (29/10) the ledger rows of a session from the index are those of a full scan, also after the list grows",
+        all(S._events_of(_led95, f"S{k}") == [r for r in _led95 if r["session_id"] == f"S{k}"] for k in range(8))
+        and (_led95.append({"session_id": "S3", "n": 999}) or S._events_of(_led95, "S3")[-1]["n"] == 999) and S._events_of(_led95, "") == [], "")
+
+# R96 (29/10, note di claude-observe: «win:workspace-61 is not running» ×22, «supervisor-app-2 is not running»): una
+# sessione appena chiusa che il registro non ha (una di win, un nome «-2») — la chat aperta sul telefono la chiede
+# ancora: la riga vista nelle righe vive di prima porta alla sua trascrizione (per win la copia locale)
+_tx96 = tmp / "r96-win.jsonl"
+_tx96.write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+_all96 = [e["id"] for e in json.loads(RL.transcript_read(str(_tx96), 200, None, None)[1])["entries"]]
+_rows96 = [{"tmux": "", "name": "win:workspace-61", "host": "win", "remote_name": "workspace-61", "status": "idle",
+            "cwd": "C:/w", "account": "personal", "session_id": "S-win96", "transcript": str(_tx96)},
+           {"tmux": "supervisor-app-2", "name": "supervisor-app-2", "status": "idle", "cwd": "/x", "account": "personal",
+            "session_id": "S-loc96"}]
+_live96 = {"rows": _rows96}
+_sv96 = dict(jc=RL._json_cmd, tof=RL.core.transcript_of, live=dict(RL._LIVE))
+try:
+    RL._json_cmd = lambda *a, **k: ({"sessioni": []} if a[:1] == ("registry",) else copy.deepcopy(_live96["rows"]))
+    _tof96 = _sv96["tof"]
+    RL.core.transcript_of = lambda row: str(_tx96) if row.get("session_id") == "S-loc96" else _tof96(row)
+    RL._LIVE.update(at=0.0, rows=None)
+    _seen96 = RL.live_rows()   # le righe vive di una push: le due sessioni ci sono
+    _live96["rows"] = []       # poi si chiudono
+    RL._LIVE.update(at=0.0, rows=None)
+    _a96 = RL.transcript_page("win:workspace-61", "win:workspace-61", "5")
+    _b96 = RL.transcript_page("supervisor-app-2", "supervisor-app-2", "5")
+    _c96 = RL.transcript_page("mai96", "mai96", "5")
+finally:
+    RL._json_cmd, RL.core.transcript_of = _sv96["jc"], _sv96["tof"]
+    RL._LIVE.update(_sv96["live"])
+T.check("R96 (29/10) transcript of a win session that just closed (seen in the live rows before, not in the registry) → its conversation from the local copy, read-only",
+        _a96[0] is True and [e["id"] for e in json.loads(_a96[1])["entries"]] == _all96[-5:], str(_a96)[:300])
+T.check("R96 (29/10) transcript of a local «-2» session that just closed and is not in the registry → its conversation; a name never seen → still «is not running»",
+        _b96[0] is True and [e["id"] for e in json.loads(_b96[1])["entries"]] == _all96[-5:] and _c96 == (False, "mai96 is not running"), str((_b96[:1], _c96)))
+
+# R97 (30/10, relay a 1,5 GB dopo 17 ore, 1,28 GB in 33 arene da 35 MB): richieste della web app in fila su EXEC_LOCK,
+# ognuna col suo thread e la sua arena. In un processo a parte: mallopt e RSS sono di tutto il processo
+_mem97 = """
+import importlib.util as u, re, sys, threading, time
+s = u.spec_from_file_location("cm_relay", sys.argv[1]); RL = u.module_from_spec(s); sys.modules["cm_relay"] = RL; s.loader.exec_module(RL)
+def rss():
+    return int([l for l in open("/proc/self/status") if l.startswith("VmRSS")][0].split()[1]) // 1024
+def arenas():
+    n, name = 0, None
+    for l in open("/proc/self/smaps"):
+        if re.match(r"^[0-9a-f]+-", l):
+            name = l.split()[5] if len(l.split()) > 5 else ""
+        elif l.startswith("Rss:") and name == "" and int(l.split()[1]) >= 8192:
+            n += 1
+    return n
+if sys.argv[2] == "cura":
+    RL.malloc_setup()
+big = bytes(30 * 1024 * 1024)   # il primo blocco grande liberato alza le soglie dinamiche di glibc
+del big
+size = int("2048")   # non una costante: il compilatore piegherebbe b"x" * 2048
+lock, gate = threading.Lock(), threading.Barrier(8)
+def req():
+    gate.wait()   # tutti vivi insieme, in fila sul lock
+    with lock:
+        blocks = [b"x" * size for _ in range(10000)]
+        del blocks
+ts = [threading.Thread(target=req) for _ in range(8)]
+[t.start() for t in ts]; [t.join() for t in ts]
+print(arenas(), rss())
+"""
+_p97 = {m: subprocess.run([sys.executable, "-c", _mem97, str(T.SCRIPTS / "cm-relay.py"), m], capture_output=True, text=True, timeout=120).stdout.split() for m in ("senza", "cura")}
+T.check("R97 (30/10) eight requests queued on a lock: without malloc_setup each keeps its 20 MB in its arena; with it the memory goes back",
+        len(_p97["senza"]) == 2 and len(_p97["cura"]) == 2 and int(_p97["senza"][0]) >= 5 and int(_p97["senza"][1]) >= 120
+        and int(_p97["cura"][0]) <= 2 and int(_p97["cura"][1]) < 80, str(_p97))
+_sv97 = dict(trim=RL._trim, every=RL.TRIM_EVERY_S)
+_n97 = []
+try:
+    RL._trim, RL.TRIM_EVERY_S = (lambda: _n97.append(1)), 0.1
+    _w97 = RL.PushWorker()
+    _w97.pending = lambda after=0.0: (0.0, "", set())
+    _w97.start(); time.sleep(1.2); _w97.stop.set(); _w97.join()
+finally:
+    RL._trim, RL.TRIM_EVERY_S = _sv97["trim"], _sv97["every"]
+_src97 = (T.SCRIPTS / "cm-relay.py").read_text()
+T.check("R97 (30/10) the push worker gives the freed memory back on its clock; serve sets malloc up before its threads",
+        2 <= len(_n97) <= 11 and _src97.index("malloc_setup()   # prima dei thread") < _src97.index("search_warm_async()   # 04/10"), str(_n97))
+
+# R98 (1.97, 30/10): l'ordine unico delle sezioni della home: si salva sul relay, sopravvive ai riavvii (un file), e torna al predefinito
+_ho = RL.home_order_op
+_hop = RL.rdir() / "home-order.json"
+_hop.unlink(missing_ok=True)
+_h0 = RL.home_order_read()
+_ha = _ho('["suggestions","sessions","nuova-di-domani"]')
+_hb, _hdisk = RL.home_order_read(), json.loads(_hop.read_text())
+_bad = ['[1,2]', '{"a":1}', '"sessions"', 'non json', '["a","a"]', json.dumps(["x" * 33]), json.dumps([f"k{i}" for i in range(17)]), '[""]']
+_hbad = [_ho(b)[0] for b in _bad]
+_hc = RL.home_order_read()
+_hd = _ho("")
+_he = RL.home_order_read(), _hop.exists()
+_ho('["a"]'); _hf = _ho(None), RL.home_order_read()
+_ho('["a"]'); _hg = _ho("[]"), RL.home_order_read()
+_hop.write_text("[1,2]"); _hh = RL.home_order_read(); _hop.unlink()
+T.check("R98 (1.97) op home_order: an array of any keys saved in home-order.json and read back; nothing saved → None",
+        _h0 is None and _ha[0] is True and _hb == _hdisk == ["suggestions", "sessions", "nuova-di-domani"], str((_h0, _ha, _hb)))
+T.check("R98 (1.97) home_order refused: not an array of strings, not JSON, duplicates, a key over 32, over 16 keys, an empty key; the saved order stays",
+        _hbad == [False] * len(_bad) and _hc == _hb, str(_hbad))
+T.check("R98 (1.97) home_order with arg empty, absent or [] goes back to the default, the file gone; a broken file reads as the default",
+        _hd[0] is True and _he == (None, False) and _hf[0][0] is True and _hf[1] is None and _hg[0][0] is True and _hg[1] is None and _hh is None, str((_hd, _he, _hf, _hg, _hh)))
+T.check("R98 (1.97) home_order is a command in ops (not passive: its push carries the new order); state.home_order only when set",
+        "home_order" in RL.OPS and "home_order" not in RL.PASSIVE_OPS and "home_order" not in F1 and F2["home_order"][0] == "suggestions"
+        and S.build_state(dict(SRC2, home_order=["a"]), 1789210800)["home_order"] == ["a"], "")
+T.check("R98 (1.97) the push reads the saved order", 'home_order": home_order_read()' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+
+# R99 (31/10/2026, nota 8f2a8108): il /clear era partito ma il telefono leggeva solo «Traceback (most recent call last):»
+_saved = RL.relay_talk, RL._json_cmd, RL.slash_allowed
+RL._json_cmd = lambda *a: [{"tmux": "field-notes", "name": "field-notes", "status": "idle"}]
+RL.slash_allowed = lambda: ["clear"]
+RL.relay_talk = lambda *a: (1, 'Traceback (most recent call last):\n  File "x.py", line 1, in <module>\nFileNotFoundError: [Errno 2] no such file\n')
+_r99 = RL.slash_send({"text": None}, "field-notes", "field-notes", "clear")
+RL.relay_talk = lambda *a: (1, "first line\nsecond line")
+_r99b = RL.slash_send({"text": None}, "field-notes", "field-notes", "clear")
+RL.relay_talk, RL._json_cmd, RL.slash_allowed = _saved
+T.check("R99 (31/10) a command that crashes gives the phone the exception, not the word Traceback; an ordinary error keeps its first line",
+        _r99 == (False, "FileNotFoundError: [Errno 2] no such file") and _r99b == (False, "first line"), str([_r99, _r99b]))
+T.check("R99 no failure path of the relay's commands still picks the first line by hand",
+        not re.search(r'splitlines\(\)\[0\] if out else "|splitlines\(\) or \[[^\]]*\]\)\[0\]', (T.SCRIPTS / "cm-relay-cmds.py").read_text()), "")
+
+
+# R100 (03/11/2026, supervisor-relay-ingresso-web-03-11): Da decidere fermo su «in arrivo dal PC» nella PWA. Lo stream
+# di /cmd eseguiva tutto nel suo thread e run_cmd teneva EXEC_LOCK anche per le letture: una timeline da 31 s alle 12:57
+# ha fatto arrivare i comandi dietro con issued 25-40 s, con la fila a 0,0 s
+_sv100 = dict(ex=RL.execute, pa=RL.push_async, last=RL.last_sessions, rtdb=RL.rtdb)
+_ran100, _t100 = [], {}
+
+
+def _ex100(cmd):
+    _ran100.append((cmd["op"], cmd["id"], round(time.time() - _t100["0"], 2)))
+    if cmd["op"] == "timeline":
+        time.sleep(2.0)   # la lettura lenta
+    if cmd["op"] == "projects":
+        time.sleep(0.6)
+    return (True, "ok")
+
+
+try:
+    RL.execute, RL.push_async, RL.last_sessions = _ex100, (lambda *a, **k: None), (lambda: {})
+    RL.rtdb = lambda *a, **k: None   # rdir resta: la chiave sta li'
+    # 1. run_cmd: un comando dell'utente non aspetta una lettura lenta; due letture restano una alla volta
+    _t100["0"] = time.time()
+    _done100 = {}
+
+    def _go100(c):
+        RL.run_cmd(c)
+        _done100[c["id"]] = round(time.time() - _t100["0"], 2)
+    _th100 = [threading.Thread(target=_go100, args=({"id": "t1", "op": "timeline", "session": ""},))]
+    _th100[0].start(); time.sleep(0.2)
+    for c in ({"id": "p1", "op": "prompt", "session": "x", "arg": "ciao"}, {"id": "r1", "op": "projects", "session": ""},
+              {"id": "d1", "op": "decisioni", "session": ""}):
+        _th100.append(threading.Thread(target=_go100, args=(c,))); _th100[-1].start()
+    [t.join() for t in _th100]
+    # 2. lo stream smista e non esegue: la risposta passa davanti alla timeline lenta; delle letture accumulate
+    #    uguali della stessa sessione resta l'ultima
+    _ran100.clear(); _served100 = []
+    _done_list100 = []
+    _lanes100 = RL.CmdLanes(_done_list100, _served100.append)
+    _t100["0"] = time.time()
+    _lanes100.put({"s1": {"op": "timeline", "session": "", "issued": time.time()}}, time.time())
+    time.sleep(0.1)
+    _tput = time.time()
+    _lanes100.put({"s2": {"op": "kpi", "session": "", "issued": time.time()}}, time.time())
+    _lanes100.put({"s3": {"op": "kpi", "session": "", "issued": time.time() + 0.01}}, time.time())
+    _lanes100.put({"s4": {"op": "answer", "session": "x", "arg": "1", "issued": time.time()}}, time.time())
+    _lanes100.put({"s5": {"op": "decisioni", "session": "", "issued": time.time()}}, time.time())
+    _put_s100 = time.time() - _tput
+    _deadline = time.time() + 6
+    while len(_served100) < 4 and time.time() < _deadline:
+        time.sleep(0.05)
+    _at100 = {cid: at for _, cid, at in _ran100}
+    _lanes100.put({"s4": {"op": "answer", "session": "x", "arg": "1"}}, time.time())   # la riconnessione lo rimanda
+    time.sleep(0.3)
+    _lanes100.close()
+finally:
+    RL.execute, RL.push_async, RL.last_sessions, RL.rtdb = _sv100["ex"], _sv100["pa"], _sv100["last"], _sv100["rtdb"]
+T.check("R100 (03/11) run_cmd: a user command and a quick read (decisioni) do not wait for a slow read (2 s timeline); two slow reads still run one at a time",
+        _done100.get("p1", 9) < 0.6 and _done100.get("d1", 9) < 0.6 and _done100.get("r1", 0) >= 2.0 + 0.6 - 0.1, str(_done100))
+T.check("R100 the /cmd stream only dispatches: put returns at once, the answer and «decisioni» run while the slow timeline is still going, two queued «kpi» behind it (same slow lane): only the last runs, a command sent again after it ran does not run twice",
+        _put_s100 < 0.1 and _at100.get("s4", 9) < 0.5 and _at100.get("s5", 9) < 0.5 and "s2" not in _at100 and _at100.get("s3", 0) >= 2.0
+        and sorted(_served100) == ["s1", "s3", "s4", "s5"] and [c for _, c, _ in _ran100].count("s4") == 1
+        and sorted(_done_list100) == ["s1", "s3", "s4", "s5"], str((_put_s100, _ran100, _served100, _done_list100)))
+T.check("R100 the stream loop hands commands to the lanes and no longer runs handle_cmd itself",
+        "lanes.put(commands_from(ev, payload), arrived)" in (T.SCRIPTS / "cm-relay.py").read_text()
+        and "if handle_cmd(cid, doc, done, arrived):" not in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+
+
+# R102 (03/11/2026, supervisor-kpi-comandi-03-11, contratto 1.109): ogni comando del bus lascia il suo tempo di risposta,
+# da issued (orologio del dispositivo) all'esito scritto, per kpi_health.commands
+_sv102 = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
+_kp102 = RL.rdir() / "kpi-commands.jsonl"
+_kp102.unlink(missing_ok=True)
+_net102 = {"up": True}
+
+
+def _rtdb102(*a, **k):
+    if not _net102["up"]:
+        raise OSError(101, "Network is unreachable")
+
+
+try:
+    RL.run_cmd, RL.rtdb = (lambda cmd, arrived=None: {"ok": True, "text": "ok"}), _rtdb102
+    RL.handle_cmd("c102a", {"op": "agenda", "session": "", "issued": time.time() - 3}, [])
+    RL.handle_cmd("c102b", {"op": "agenda", "session": ""}, [])   # senza issued: niente campione
+    _net102["up"] = False
+    RL.handle_cmd("c102c", {"op": "agenda", "session": "", "issued": time.time() - 1}, [])   # esito non scritto: niente campione
+finally:
+    for n, v in _sv102.items():
+        setattr(RL, n, v)
+    RL._UNWRITTEN.clear()
+_s102 = [json.loads(x)["s"] for x in _kp102.read_text().splitlines()] if _kp102.exists() else []
+T.check("R102 a command with issued leaves one sample (issued → result written, ~3 s); none without issued, none when the result was not written",
+        len(_s102) == 1 and 2.9 <= _s102[0] < 5, str(_s102))
+
+
+# R103 (03/11/2026, supervisor-tocca-per-sessione-03-11, contratto 1.111): per sessione quante voci ha in Prova, Decidi,
+# Guarda e Segui, per il menu della sessione senza aprire quattro pagine
+_st103 = {x["name"]: x for x in st2["sessions"]}
+T.check("R103 state.sessions[].tocca with the four counts; a session with all zeros or none has no key",
+        _st103["atlas-shop"].get("tocca") == {"prove": 2, "decidi": 1, "guarda": 3, "segui": 1}
+        and all("tocca" not in x for n, x in _st103.items() if n != "atlas-shop"), json.dumps({n: x.get("tocca") for n, x in _st103.items()}))
+_sv103 = dict(tt=RL.tocca_tasks, rm=RL.results_mod, ld=RL._load)
+
+
+class _RS103:
+    @staticmethod
+    def unseen_by_session():
+        return {"work-ledger-api": 2, "atlas-shop": 1}
+
+
+class _SG103:
+    @staticmethod
+    def by_session():
+        return {"atlas-shop": 4}
+
+
+try:
+    RL.tocca_tasks = lambda: {"atlas-shop": {"prove": 3, "decidi": 0}, "work-ledger-api": {"prove": 0, "decidi": 2}}
+    RL.results_mod = lambda: _RS103
+    RL._load = lambda name: _SG103 if name == "cm-seguiti" else _sv103["ld"](name)
+    _t103 = RL.tocca_summary()
+finally:
+    RL.tocca_tasks, RL.results_mod, RL._load = _sv103["tt"], _sv103["rm"], _sv103["ld"]
+T.check("R103 tocca_summary: the four sources by session, keyed by the short name (account prefix off), zeros where a source has nothing",
+        _t103 == {"atlas-shop": {"prove": 3, "decidi": 0, "guarda": 1, "segui": 4}, "ledger-api": {"prove": 0, "decidi": 2, "guarda": 2, "segui": 0}}, json.dumps(_t103))
+
+
+# R104 (03/11/2026, supervisor-tocca-fixture-03-11): la fixture di state.tocca (1.113) per l'app
+_tc = F2.get("tocca") or {}
+T.check("R104 state-2-idle carries state.tocca {n, prove, decidi, today{n, items}}: n the sum, today with a pause of rule 1 and a test of rule 2; build_state publishes it under «tocca»",
+        set(_tc) == {"n", "prove", "decidi", "today"} and _tc["n"] == _tc["prove"] + _tc["decidi"] and _tc["today"]["n"] == len(_tc["today"]["items"]) == 2
+        and {(x["kind"], x["rule"]) for x in _tc["today"]["items"]} == {("pause", 1), ("prova", 2)}
+        and all(set(x) == {"task", "short", "kind", "rule", "at"} for x in _tc["today"]["items"]) and st2.get("tocca") == _tc
+        and "tocca" not in S.build_state(dict(SRC2, tocca_state=None), 1789214400), json.dumps(_tc))
+
+# R105 (04/11/2026, supervisor-chat-vuota-04-11, contratto 1.119): il maintainer dalla web app, «dopo la ricarica della PWA si
+# perdono i messaggi dei transcript, restano solo quelli dell'utente». La prima lettura («50») con ok e nessuna voce
+# sostituisce la lista dell'app: ora una sessione senza file e' un rifiuto col motivo; il nome corto dell'app trova la
+# sua tmux «pix-»; la copia di un transcript di win e' fatta da una lettura alla volta; il log dice la pagina chiesta
+_tx105 = tmp / "r105.jsonl"
+_tx105.write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
+_all105 = [e["id"] for e in json.loads(RL.transcript_read(str(_tx105), 200, None, None)[1])["entries"]]
+_rows105 = [{"tmux": "pix-alfa105", "name": "pix-alfa105", "status": "idle", "cwd": "/x", "account": "work", "session_id": "S-a105"},
+            {"tmux": "beta105", "name": "beta105", "status": "idle", "cwd": "/x", "account": "personal", "session_id": "S-b105"},
+            {"tmux": "pix-beta105", "name": "pix-beta105", "status": "idle", "cwd": "/y", "account": "work", "session_id": "S-pb105"},
+            {"tmux": "pix-gamma105", "name": "pix-gamma105", "status": "idle", "cwd": "/x", "account": "work", "session_id": "S-g105"},
+            {"tmux": "pro-gamma105", "name": "pro-gamma105", "status": "idle", "cwd": "/x", "account": "other", "session_id": "S-g2105"},
+            {"tmux": "delta105", "name": "delta105", "status": "idle", "cwd": "/x", "account": "personal", "session_id": "S-d105"},
+            {"tmux": "eps105", "name": "eps105", "status": "idle", "cwd": "/x", "account": "personal", "session_id": "S-e105"}]
+_sv105 = dict(jc=RL._json_cmd, tof=RL.core.transcript_of, pre=RL.prefixes, bysid=RL.transcript_by_sid, live=dict(RL._LIVE))
+try:
+    RL._json_cmd = lambda *a, **k: ({"sessioni": []} if a[:1] == ("registry",) else copy.deepcopy(_rows105))
+    RL.prefixes = lambda: ["", "pix-", "pro-"]
+    RL.core.transcript_of = lambda row: str(_tx105) if row.get("session_id") in ("S-a105", "S-b105") else ""
+    RL.transcript_by_sid = lambda sid: str(_tx105) if sid == "S-d105" else None
+    RL._LIVE.update(at=0.0, rows=None)
+    _a105 = RL.transcript_page("alfa105", "alfa105", "5")       # il nome corto dell'app, la mappa della push non lo traduce
+    _rb105 = RL.live_row("beta105")                              # «beta105» e «pix-beta105» vivi: vince il nome esatto
+    _rg105 = RL.live_row("gamma105")                             # due righe col nome corto «gamma105»: nessuna
+    _d105 = RL.transcript_page("delta105", "delta105", "5")     # il file della riga manca, quello per id c'e'
+    _e105 = RL.transcript_page("eps105", "eps105", "50")        # nessun file
+finally:
+    RL._json_cmd, RL.core.transcript_of, RL.prefixes, RL.transcript_by_sid = _sv105["jc"], _sv105["tof"], _sv105["pre"], _sv105["bysid"]
+    RL._LIVE.update(_sv105["live"])
+T.check("R105 (1.119) transcript with the short name the app shows («alfa105» for the tmux «pix-alfa105», not in the names map) → the conversation of that session",
+        _a105[0] is True and [e["id"] for e in json.loads(_a105[1])["entries"]] == _all105[-5:], str(_a105)[:300])
+T.check("R105 (1.119) the short name: the exact name wins («beta105» next to «pix-beta105»), and a short name two sessions share finds none",
+        (_rb105 or {}).get("tmux") == "beta105" and _rg105 is None, str((_rb105, _rg105)))
+T.check("R105 (1.119) a live session whose row points to no file: the file by its id in every account; no file at all → «no transcript yet for <name>», ok false, never an empty page",
+        _d105[0] is True and [e["id"] for e in json.loads(_d105[1])["entries"]] == _all105[-5:] and _e105 == (False, "no transcript yet for eps105"), str((_d105[:1], _e105)))
+
+# la copia del transcript di win: due letture insieme (la PWA ricaricata), il file di la' arriva a pezzi lenti
+HM105 = load("cm-hosts")
+_remote105 = b"".join(json.dumps({"type": "user", "n": i, "pad": "x" * 300}).encode() + b"\n" for i in range(400))
+
+
+_served105, _sizes105 = [], []
+
+
+class _Tail105:
+    def session_tail(self, name, offset, max_bytes=40000):
+        time.sleep(0.05)
+        data = _remote105[offset:offset + max_bytes]
+        _served105.append(len(data))
+        return {"sid": "S-w105", "size": len(_remote105), "offset": offset, "data": base64.b64encode(data).decode()}
+
+
+_sv105h = dict(ad=HM105.adapter, sd=HM105.state_dir)
+try:
+    HM105.adapter = lambda host: _Tail105()
+    HM105.state_dir = lambda: tmp / "st105"
+    _m105 = HM105.mirror_path("win", "S-w105")
+    _th105 = [threading.Thread(target=HM105.sync_transcript, args=("win", "w105", "S-w105")) for _ in range(3)]
+    [t.start() for t in _th105]
+    while any(t.is_alive() for t in _th105):   # chi legge la copia intanto: mai piu' corta di prima
+        _sizes105.append(_m105.stat().st_size if _m105.is_file() else 0)
+        time.sleep(0.005)
+    [t.join(60) for t in _th105]
+    _mb105 = _m105.read_bytes() if _m105.is_file() else b""
+finally:
+    HM105.adapter, HM105.state_dir = _sv105h["ad"], _sv105h["sd"]
+T.check("R105 (1.119) three copies of a win transcript at the same time → one at a time: the remote bytes travel once, the local copy never shrinks while it is read, and ends as the remote file byte for byte",
+        _mb105 == _remote105 and sum(_served105) == len(_remote105) and all(b >= a for a, b in zip(_sizes105, _sizes105[1:])),
+        f"{len(_mb105)} vs {len(_remote105)}, served {sum(_served105)}, shrinks {sum(1 for a, b in zip(_sizes105, _sizes105[1:]) if b < a)}")
+
+# R106 (04/11/2026, supervisor-approva-sessione-win-04-11, contratto 1.119): il maintainer, «perché la sua richiesta di approvazione
+# non appare qui?» — due compiti in attesa di ok con session «supervisor-app» mentre girava solo «win:supervisor-app»:
+# l'app abbina l'ok alla scheda con commitments[].session == sessions[].name e la scheda non aveva Approva
+_rows106 = [{"tmux": "", "name": "win:supervisor-app", "host": "win", "remote_name": "win-supervisor-app", "status": "idle", "session_id": "S-w106"},
+            {"tmux": "pix-alfa106", "name": "pix-alfa106", "status": "idle", "account": "work", "session_id": "S-a106"},
+            {"tmux": "beta106", "name": "beta106", "status": "idle", "account": "personal", "session_id": "S-b106"},
+            {"tmux": "", "name": "win:beta106", "host": "win", "remote_name": "beta106", "status": "idle", "session_id": "S-wb106"},
+            {"tmux": "", "name": "win:gamma106", "host": "win", "remote_name": "gamma106", "status": "idle", "session_id": "S-g106"},
+            {"tmux": "", "name": "lab:gamma106", "host": "lab", "remote_name": "gamma106", "status": "idle", "session_id": "S-l106"},
+            {"tmux": "delta106", "name": "delta106", "status": "dead", "session_id": "S-d106"}]
+_imp106 = [{"task": f"t{i}-106", "title": "x", "short": "x", "project": "", "session": s_} for i, s_ in
+           enumerate(["supervisor-app", "pix-alfa106", "alfa106", "beta106", "gamma106", "delta106", "mai106", None])]
+_sv106 = dict(live=dict(RL._LIVE), jc=RL._json_cmd, memo=RL._memo, pre=RL.prefixes, tt=RL.tocca_tasks, rm=RL.results_mod, ld=RL._load)
+try:
+    RL._LIVE.update(at=time.time(), rows=copy.deepcopy(_rows106))
+    RL.prefixes = lambda: ["", "pix-"]
+    RL._memo = lambda key, fn, **kw: fn()
+    RL._json_cmd = lambda *a, **k: copy.deepcopy(_imp106) if a[:2] == ("task", "impegni") else _sv106["jc"](*a, **k)
+    _c106 = {x["task"]: x.get("session") for x in RL.commitments_list()}
+    RL.tocca_tasks = lambda: {"supervisor-app": {"prove": 1, "decidi": 0}, "pix-alfa106": {"prove": 0, "decidi": 2}}
+    RL.results_mod = lambda: _RS103
+    RL._load = lambda name: type("SG0", (), {"by_session": staticmethod(lambda: {})})() if name == "cm-seguiti" else _sv106["ld"](name)
+    _RS103.unseen_by_session = staticmethod(lambda: {})
+    _t106 = RL.tocca_summary()
+finally:
+    RL._LIVE.update(_sv106["live"])
+    RL._json_cmd, RL._memo, RL.prefixes, RL.tocca_tasks, RL.results_mod, RL._load = _sv106["jc"], _sv106["memo"], _sv106["pre"], _sv106["tt"], _sv106["rm"], _sv106["ld"]
+T.check("R106 (1.119) commitments[].session is the name of the live session: a task of «supervisor-app» while only «win:supervisor-app» runs → «win:supervisor-app»; «pix-alfa106» and «alfa106» → «alfa106» (the state name)",
+        _c106["t0-106"] == "win:supervisor-app" and _c106["t1-106"] == "alfa106" and _c106["t2-106"] == "alfa106", json.dumps(_c106))
+T.check("R106 (1.119) the exact live name stays («beta106» runs here and on win: the task stays on «beta106»); a name two hosts share, a closed session or one never seen keep the registry name; no session stays null",
+        _c106["t3-106"] == "beta106" and _c106["t4-106"] == "gamma106" and _c106["t5-106"] == "delta106" and _c106["t6-106"] == "mai106" and _c106["t7-106"] is None, json.dumps(_c106))
+T.check("R106 (1.119) sessions[].tocca counts a task of «supervisor-app» on the card «win:supervisor-app», and «pix-alfa106» on «alfa106»",
+        _t106.get("win:supervisor-app", {}).get("prove") == 1 and _t106.get("alfa106", {}).get("decidi") == 2 and "supervisor-app" not in _t106, json.dumps(_t106))
+
+# R107 (04/11/2026, supervisor-chiudi-esito-04-11, contratto 1.120): il maintainer, «dobbiamo risolvere l'invio a vuoto di chiudi
+# quando la sessione è senza finestra» — relay.log alle 11:47: «slash <sessione> → ERR not closed: a job is running in
+# the background». Chiudi ha sempre un esito; una sessione occupata si chiude appena finisce o «comunque»; /exit senza
+# finestra passa da close
+_d107 = tmp / "r107"; _d107.mkdir()
+_base107 = {"status": "idle", "waiting": False, "attached": False, "cwd": str(tmp), "account": "personal"}
+_rows107 = [dict(_base107, tmux=n, name=n, pid=p, session_id="S-" + n, **kw) for n, p, kw in (
+    ("libera107", 5101, {}), ("occupata107", 5102, {"status": "busy"}), ("sotto107", 5103, {}), ("forza107", 5104, {"status": "busy"}),
+    ("lenta107", 5105, {"status": "busy"}), ("domanda107", 5106, {"status": "waiting", "waiting": True}), ("vista107", 5107, {"attached": True}))]
+_kids107 = {5103: [(6103, "bash")], 5104: [(6104, "bash")]}
+_run107, _talk107, _led107, _ledrows107 = [], [], [], []
+_sv107 = dict(json=RL._json_cmd, run=RL.run_cm, talk=RL.relay_talk, rdir=RL.rdir, cdir=RL.closed_dir, last=RL.last_sessions,
+              kids=RL._children, cmdl=RL._cmdline, pa=RL.push_async, lw=RL.ledger_write, lr=RL.core.ledger_rows, kill=RL.os.kill, allowed=RL.slash_allowed)
+_killed107 = []
+
+
+def _runcm107(*a, **k):
+    _run107.append(a)
+    if a[:1] == ("close",):
+        global _rows107
+        _rows107 = [r for r in _rows107 if r["tmux"] != a[1]]
+    return 0, ""
+
+
+try:
+    RL._json_cmd = lambda *a, **k: copy.deepcopy(_rows107) if a[:1] == ("sessions",) else _sv107["json"](*a, **k)
+    RL.run_cm = _runcm107
+    RL.relay_talk = lambda *a: (_talk107.append(a), (0, "consegnato"))[1]
+    RL.rdir = lambda: _d107
+    RL.closed_dir = lambda: _d107 / "closed"
+    RL.last_sessions = lambda: {}
+    RL._children = lambda pid: _kids107.get(pid, [])
+    RL._cmdline = lambda pid: ["bash", "-c", "sleep 600"]
+    RL.push_async = lambda *a, **k: None
+    RL.ledger_write = lambda ev, **f: _led107.append((ev, f.get("session"), f.get("armed")))
+    RL.core.ledger_rows = lambda: list(_ledrows107)
+    RL.os.kill = lambda pid, sig: _killed107.append(pid)
+    RL.slash_allowed = lambda: ["exit"]
+    _bad107 = RL.close_sessions({"by": "web", "when": "later"}, "libera107")
+    _now107 = RL.close_sessions({"by": "web"}, "libera107,occupata107,vista107")
+    _aft107 = RL.close_sessions({"by": "web", "when": "after"}, "occupata107,sotto107,domanda107,vista107,mai107")
+    _closing107 = RL.closing_of(_rows107)
+    _armed_a107 = sorted(RL.close_armed())
+    RL.close_tick()                                   # ancora occupate: niente
+    _tick0_107 = sorted(RL.close_armed())
+    _kids107.pop(5103)                                 # il sottofondo di sotto107 finisce
+    for r in _rows107:
+        if r["tmux"] == "occupata107":
+            r["status"] = "idle"                       # occupata107 si ferma
+    RL.close_tick()
+    _tick1_107 = sorted(RL.close_armed())
+    _run_before_force107 = len(_run107)
+    _frc107 = RL.close_sessions({"by": "web", "when": "force"}, "forza107,lenta107")
+    _f_int107 = [a for a in _run107[_run_before_force107:] if a[:1] == ("interrupt",)]
+    _f_talk107 = [a[0] for a in _talk107]
+    _armed_f107 = RL.close_armed()
+    for r in _rows107:
+        if r["tmux"] == "forza107":
+            r["status"] = "idle"                       # fermata: idle, ma il passaggio di consegne non e' ancora finito
+    _kids107.pop(5104, None)
+    RL.close_tick()
+    _tick2_107 = sorted(RL.close_armed())
+    _ledrows107.append({"event": "stop", "session_id": "S-forza107", "ts": iso(int(time.time()) + 2)})   # finito il turno
+    RL.close_tick(now=time.time() + 3)
+    _tick3_107 = sorted(RL.close_armed())
+    RL.close_tick(now=time.time() + RL.CLOSE_FORCE_S + 5)   # lenta107 ancora al lavoro alla scadenza: Esc e chiusa
+    _tick4_107 = sorted(RL.close_armed())
+    _ex107 = RL.slash_send({"by": "web"}, "domanda107", "domanda107", "exit")   # senza finestra: la strada di close
+finally:
+    RL._json_cmd, RL.run_cm, RL.relay_talk, RL.rdir, RL.closed_dir, RL.last_sessions = _sv107["json"], _sv107["run"], _sv107["talk"], _sv107["rdir"], _sv107["cdir"], _sv107["last"]
+    RL._children, RL._cmdline, RL.push_async, RL.ledger_write, RL.core.ledger_rows = _sv107["kids"], _sv107["cmdl"], _sv107["pa"], _sv107["lw"], _sv107["lr"]
+    RL.os.kill, RL.slash_allowed = _sv107["kill"], _sv107["allowed"]
+_closed107 = [a[1] for a in _run107 if a[:1] == ("close",)]
+T.check("R107 (1.120) close with an unknown `when` → refused with the valid values; when now (or absent): a free session closes, a busy or attached one is kept with the reason, in one answer",
+        _bad107[0] is False and "now, after, force" in _bad107[1]
+        and _now107 == (True, "closed: libera107\noccupata107 not closed: it is working\nvista107 not closed: it is attached to the PC"), str((_bad107, _now107)))
+T.check("R107 (1.120) when after: busy, background and question are armed (ok, «closes as soon as it finishes»); attached and gone are kept with the reason; state.sessions[].closing says it",
+        _aft107[0] is True and "occupata107 closes as soon as it finishes" in _aft107[1] and "sotto107 closes as soon as it finishes" in _aft107[1]
+        and "domanda107 closes as soon as it finishes" in _aft107[1] and "vista107 not closed: it is attached to the PC" in _aft107[1] and "mai107 not closed: it is not running" in _aft107[1]
+        and _armed_a107 == ["domanda107", "occupata107", "sotto107"] and _closing107.get("occupata107", {}).get("mode") == "after" and "libera107" not in _closing107, str((_aft107, _armed_a107, _closing107)))
+T.check("R107 (1.120) the armed closings fire when the session stops: nothing while busy; then the stopped one and the one whose background ended close, saved and in the ledger with armed after; the one still on a question waits",
+        _tick0_107 == ["domanda107", "occupata107", "sotto107"] and _tick1_107 == ["domanda107"] and {"occupata107", "sotto107"} <= set(_closed107)
+        and ("closed-from-app", "occupata107", "after") in _led107 and (_d107 / "closed" / "sotto107.json").is_file(), str((_tick0_107, _tick1_107, _closed107, _led107)))
+T.check("R107 (1.120) when force («Chiudi comunque», confirmed in the app): Esc to the turn, the background shell stopped, the handoff asked to the session, armed with a deadline",
+        _frc107[0] is True and "forza107: stopped, writing the handoff" in _frc107[1] and [a[1] for a in _f_int107] == ["forza107", "lenta107"]
+        and 6104 in _killed107 and _f_talk107[-2:] == ["forza107", "lenta107"] and _armed_f107["forza107"]["mode"] == "force"
+        and _armed_f107["forza107"]["deadline"] == _armed_f107["forza107"]["at"] + RL.CLOSE_FORCE_S, str((_frc107, _f_int107, _killed107, _talk107[-2:], _armed_f107)))
+T.check("R107 (1.120) a forced closing waits for the end of the handoff turn (a stop in the ledger after it was armed), then closes; at the deadline one still working gets Esc and closes anyway",
+        "forza107" in _tick2_107 and "forza107" not in _tick3_107 and "lenta107" in _tick3_107 and _tick4_107 == ["domanda107"] and "lenta107" in _closed107
+        and ("closed-from-app", "lenta107", "force") in _led107, str((_tick2_107, _tick3_107, _tick4_107, _closed107)))
+T.check("R107 (1.120) /exit for a session without a window goes the way of close: an answer with the reason (here a question is waiting), nothing typed in the pane",
+        _ex107 == (False, "domanda107 not closed: a question is waiting") and not any(a[1].startswith("/exit") for a in _talk107 if len(a) > 1), str(_ex107))
+
+_fx107 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_fc107 = {c["id"]: c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"]}
+T.check("R107 (1.120) the fixture for the app: close with when after and when force, the texts exactly as the relay writes them",
+        _fc107["6f1c2d3e-1120-4000-8000-000000001120"]["when"] == "after" and _fc107["6f1c2d3e-1121-4000-8000-000000001121"]["when"] == "force"
+        and _fx107["6f1c2d3e-1120-4000-8000-000000001120"]["text"] == RL.M("relay.cmd_close_armed", name="atlas-shop", s=RL.CLOSE_FORCE_S)
+        and _fx107["6f1c2d3e-1121-4000-8000-000000001121"]["text"] == RL.M("relay.cmd_close_forcing", name="atlas-shop", s=RL.CLOSE_FORCE_S), "")
+_st107 = S.build_state(dict(SRC2, closing={"atlas-shop": {"mode": "force", "at": 1789214398, "deadline": 1789214578}}), 1789214400)
+_cl107 = {x["name"]: x.get("closing") for x in _st107["sessions"]}
+T.check("R107 (1.120) state.sessions[].closing {mode, at, deadline} only on the session with an armed closing; absent on the others",
+        _cl107.get("atlas-shop") == {"mode": "force", "at": 1789214398, "deadline": 1789214578} and sum(1 for v in _cl107.values() if v) == 1, json.dumps(_cl107))
+
+T.finish()

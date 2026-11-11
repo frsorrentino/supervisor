@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# supervisor — dispatcher. Un eseguibile, un sottocomando per script.
+#
+# Trova la propria radice dal proprio percorso (non dallo shim: lo shim la
+# risolve e poi esegue QUESTO file, quindi qui si sa gia' dove si sta).
+# I sottocomandi non ancora portati escono con 64 e dicono in quale fase del
+# piano arrivano e cosa usare oggi: meglio un no chiaro che un comando a meta'.
+set -u
+CM_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+export CM_ROOT
+S="$CM_ROOT/scripts"
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+
+# Windows nativo (Git Bash, MSYS, Cygwin; test del 27/09/2026): tmux e /proc non ci sono, python3 e' spesso l'alias
+# dello Store e la console e' cp1252. Una riga chiara e uscita 3, prima di ogni python: prima uscivano traceback
+# (WinError 193, UnicodeEncodeError) o «nessuna sessione» con la sessione aperta. WSL riporta Linux: li' funziona.
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    case "$cmd" in
+      version|--version|-v|root) ;;
+      *)
+        if printf '%s' "${LANG:-}" | grep -qi '^it' \
+          || grep -qi '"language" *: *"ital' "$HOME/.claude/settings.json" 2>/dev/null; then
+          echo "supervisor richiede Linux o macOS con tmux; su Windows usalo dentro WSL2." >&2
+        else
+          echo "supervisor needs Linux or macOS with tmux; on Windows use it inside WSL2." >&2
+        fi
+        exit 3 ;;
+    esac ;;
+esac
+
+unported() {  # <cmd> <fase> <equivalente legacy>
+  python3 "$S/cm-config.py" --msg cli.unported "cmd=$1" "phase=$2" "legacy=$3" >&2
+  exit 64
+}
+
+case "$cmd" in
+  init)     exec python3 "$S/cm-config.py" init "$@" ;;
+  setup|installa)         exec python3 "$S/cm-setup.py" "$@" ;;   # 11/11: l'installazione completa in un comando, guidata e ripetibile
+  doctor)   exec python3 "$S/cm-config.py" doctor "$@" ;;
+  rendiconto|statement)   exec python3 "$S/cm-conti.py" "$@" ;;   # 02/11 (1.103): cosa si e' fatto per un cliente in un mese
+  rimasto|behind)         exec python3 "$S/cm-seguiti.py" rimasto "$@" ;;   # 02/11 (1.102): quello che il codice ha lasciato indietro
+  altrove|elsewhere)      exec python3 "$S/cm-seguiti.py" altrove "$@" ;;   # 02/11 (1.102): lo stesso difetto altrove, in sola lettura
+  remind|ricorda)         exec python3 "$S/cm-seguiti.py" remind "$@" ;;    # 02/11 (1.102): un promemoria scatta una volta
+  prima-raccolta|first-collection) exec python3 "$S/cm-raccolta.py" "$@" ;;   # 02/11 (1.100): una volta sola, quello che aspetta il cron
+  config)   # config [--sh|--get KEY|--path|--dump-defaults]
+            [ $# -gt 0 ] || set -- --path
+            exec python3 "$S/cm-config.py" "$@" ;;
+  root)     printf '%s\n' "$CM_ROOT" ;;
+  version|--version|-v)
+            sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$CM_ROOT/.claude-plugin/plugin.json" ;;
+  help|--help|-h)
+            python3 "$S/cm-config.py" --msg cli.usage ;;
+  launch|lancia)          exec "$S/cm-launch.sh" "$@" ;;
+  close|chiudi)           exec "$S/cm-close.sh" "$@" ;;
+  registry|registro)      exec "$S/cm-registry.sh" "$@" ;;
+  sessions|sessioni)      exec python3 "$S/cm-sessions.py" "$@" ;;
+  color|colore)           exec "$S/cm-color.sh" "$@" ;;
+  attach|attacca)         exec "$S/cm-attach.sh" "$@" ;;
+  quota|quote)            exec python3 "$S/cm-quota.py" "$@" ;;
+  statusline)             exec python3 "$S/cm-statusline.py" "$@" ;;   # 14/10: la quota senza fable-director
+  needs-you|serve-te)     exec python3 "$S/cm-needsyou.py" "$@" ;;
+  attese|waits)          exec python3 "$S/cm-attese.py" "$@" ;;
+  monitor|monitors|monitora) exec python3 "$S/cm-monitor.py" "$@" ;;   # 09/11 (1.132): i Monitoraggi, valori da script   # 07/11 (1.130): ogni domanda che aspetta, con id e link
+  bg|sfondo)              exec python3 "$S/cm-jobs.py" "$@" ;;   # 06/11: lavori lunghi che sopravvivono alla sessione   # 14/10 (1.68): la sessione e' ferma per l'utente
+  talk|parla-con)         exec python3 "$S/cm-talk.py" talk "$@" ;;
+  wait|aspetta)           exec python3 "$S/cm-talk.py" wait "$@" ;;
+  interrupt|interrompi)   exec python3 "$S/cm-talk.py" interrupt "$@" ;;
+  panel|pannello)         exec python3 "$S/cm-talk.py" panel "$@" ;;   # 02/10: legge e chiude il pannello aperto da un comando slash
+  report|segnala)         exec "$S/cm-report.sh" "$@" ;;
+  restart|riavvia)        exec "$S/cm-restart.sh" "$@" ;;
+  queue|coda)             exec python3 "$S/cm-queue.py" "$@" ;;
+  next|prossima)          exec python3 "$S/cm-next.py" "$@" ;;
+  calendar|calendario)    exec python3 "$S/cm-calendar.py" "$@" ;;   # 16/10: scadenze da un calendario .ics
+  park|parcheggia)        exec python3 "$S/cm-park.py" park "$@" ;;
+  unpark|riprendi)        exec python3 "$S/cm-park.py" unpark "$@" ;;
+  cloud|nuvola)           CM_SUBCOMMAND=cloud exec "$S/cm-cloud.sh" "$@" ;;
+  follow|segui)           CM_SUBCOMMAND=follow exec "$S/cm-cloud.sh" "$@" ;;
+  desk|sportello)         CM_SUBCOMMAND=desk exec "$S/cm-cloud.sh" "$@" ;;
+  restore|ripristina)     exec "$S/cm-restore.sh" "$@" ;;
+  tile|affianca|riaffianca) exec python3 "$S/cm-tile.py" tile "$@" ;;
+  merge|unisci)           exec python3 "$S/cm-tile.py" merge "$@" ;;
+  move|sposta)            exec python3 "$S/cm-tile.py" move "$@" ;;
+  layout)                 exec python3 "$S/cm-tile.py" layout "$@" ;;
+  bot)                    exec python3 "$S/cm-bot.py" "$@" ;;
+  relay)                  exec python3 "$S/cm-relay.py" "$@" ;;
+  recap|diary|diario)     exec python3 "$S/cm-recap.py" "$@" ;;
+  night|notte)            exec python3 "$S/cm-night.py" "$@" ;;
+  guard|guardia)          exec python3 "$S/cm-guard.py" "$@" ;;
+  answer|rispondi)        exec python3 "$S/cm-answer.py" "$@" ;;
+  model|modello)          exec python3 "$S/cm-tune.py" model "$@" ;;
+  effort)                 exec python3 "$S/cm-tune.py" effort "$@" ;;
+  permissions|permessi)   exec python3 "$S/cm-tune.py" permissions "$@" ;;
+  screen|schermo)         exec python3 "$S/cm-screen.py" "$@" ;;
+  inbox|casella)          exec python3 "$S/cm-inbox.py" "$@" ;;
+  pin)                    exec python3 "$S/cm-pin.py" "$@" ;;   # 23/10: il PIN degli ok
+  host|macchina)          exec python3 "$S/cm-hosts.py" "$@" ;;
+  hosts|macchine)         case "${1:-}" in poll|install|uninstall) exec python3 "$S/cm-hosts.py" "$@" ;; esac
+                          exec python3 "$S/cm-hosts.py" list "$@" ;;
+  offload|delega)         exec python3 "$S/cm-offload.py" offload "$@" ;;
+  heavy|pesante)          exec python3 "$S/cm-offload.py" heavy "$@" ;;
+  handoff|consegne)       exec python3 "$S/cm-handoff.py" "$@" ;;   # 13/10: l'handoff per chi non ha fable-director
+  task|compito)           exec python3 "$S/cm-tasks.py" "$@" ;;   # 03/10: registro dei compiti (fase 1)
+  plan|piano)             exec python3 "$S/cm-plan.py" "$@" ;;    # 03/10: il motore della mappa (fase 1)
+  timeline|cronologia)    exec python3 "$S/cm-timeline.py" "$@" ;;   # 03/10: cosa hanno fatto le sessioni (fase 2)
+  render|rendi)           exec python3 "$S/cm-render.py" "$@" ;;     # 03/10: un riepilogo Markdown diventa una pagina HTML
+  recurring|ricorrenti)   exec python3 "$S/cm-recurring.py" "$@" ;;  # 04/10: le azioni ricorrenti della master (1.33)
+  suggest|suggerisci)     exec python3 "$S/cm-suggest.py" "$@" ;;   # 24/10 (1.84): i suggerimenti della master per la home dell'app
+  observe|osserva)        exec python3 "$S/../observe/observe.py" "$@" ;;   # copia di claude-observe (sync.py)
+  *)
+    python3 "$S/cm-config.py" --msg cli.unknown "cmd=$cmd" >&2
+    python3 "$S/cm-config.py" --msg cli.usage >&2
+    exit 2 ;;
+esac

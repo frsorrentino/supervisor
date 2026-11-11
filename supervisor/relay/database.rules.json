@@ -1,0 +1,56 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "state": {
+      ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true"
+    },
+    "events": {
+      ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true"
+    },
+    "result": {
+      ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true"
+    },
+    "tail": {
+      ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true"
+    },
+    "cmd": {
+      ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('allowed').child(auth.uid).val() === true"
+    },
+    "share": {
+      "$id": {
+        ".write": "auth != null && root.child('allowed').child(auth.uid).val() === true",
+        ".validate": "(newData.child('enc').isString() && newData.child('enc').val().length <= 10000000) || newData.hasChild('meta') || newData.hasChild('parts')",
+        "meta": {
+          ".validate": "newData.child('enc').isString() && newData.child('enc').val().length <= 1500000"
+        },
+        "parts": {
+          "$k": {
+            ".validate": "$k.matches(/^([0-9]|[1-4][0-9])$/) && newData.child('enc').isString() && newData.child('enc').val().length <= 1500000"
+          }
+        }
+      }
+    },
+    "file": {
+      "$id": {
+        ".read": "auth != null && root.child('allowed').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('allowed').child(auth.uid).val() === true && !newData.exists()"
+      }
+    },
+    "seen": {
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && root.child('allowed').child($uid).val() === true",
+        ".validate": "newData.isNumber()"
+      }
+    },
+    "pair": {
+      "$node": {
+        ".read": "auth != null",
+        "watch": {
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}

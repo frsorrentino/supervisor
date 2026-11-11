@@ -1,0 +1,498 @@
+{
+  "v": 1,
+  "ts": 1789210800,
+  "published_at": 1789210801.5,
+  "host": "crostini-demo",
+  "sessions": [
+    {
+      "id": "9e9c87fb-edcd-4c51-8c62-328c0146019b",
+      "name": "ledger-api",
+      "account": "work",
+      "account_kind": "work",
+      "project": "work/clients/ledger-api",
+      "state": "waiting",
+      "since": 1789210500,
+      "turn_started": 1789210380,
+      "tool": null,
+      "tool_note": null,
+      "link": "https://claude.ai/code/session_01ledger",
+      "attached": false,
+      "followed": true,
+      "question": {
+        "id": "q-1789210500-1",
+        "kind": "ask",
+        "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
+        "options": [
+          {
+            "n": 1,
+            "label": "yes",
+            "description": "Deploy 2.4 to production now",
+            "recommended": true
+          },
+          {
+            "n": 2,
+            "label": "no",
+            "description": "Wait for the client's ok"
+          }
+        ],
+        "tier": "medium",
+        "asked_at": 1789210500,
+        "preview": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?"
+      },
+      "outcome": null,
+      "next": "Wait for the go",
+      "next_at": 1789171200,
+      "model": {
+        "id": "claude-opus-5[1m]",
+        "label": "Opus 5"
+      },
+      "effort": "high",
+      "context": 62,
+      "fallback": null,
+      "icon": "🟦",
+      "color": "#3B82F6",
+      "low_priority": "offered",
+      "suggestion": null,
+      "goal": null,
+      "handoff": "/fable-director:handoff --here",
+      "permission_mode": "plan",
+      "changes": null
+    },
+    {
+      "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
+      "name": "atlas-shop",
+      "account": "personal",
+      "account_kind": "personal",
+      "project": "personal/atlas-shop",
+      "state": "busy",
+      "since": 1789209000,
+      "turn_started": 1789210700,
+      "tool": "Bash pytest -q tests",
+      "tool_note": "Run the test suite",
+      "link": "https://claude.ai/code/session_02atlas",
+      "attached": true,
+      "followed": false,
+      "question": null,
+      "outcome": {
+        "short": "Migrations 008-011 applied, tests green",
+        "full": "Esito: migrations 008-011 applied, tests green.\nProssimi: ok to deploy on staging · review the test seeds",
+        "at": 1789210300
+      },
+      "next": "Review the seeds and the admin page",
+      "next_at": 1789171200,
+      "model": {
+        "id": "claude-sonnet-5",
+        "label": "Sonnet 5"
+      },
+      "effort": "medium",
+      "context": 18,
+      "fallback": null,
+      "icon": "🟢",
+      "color": "#2ECC71",
+      "low_priority": "active",
+      "suggestion": null,
+      "goal": {
+        "text": "Checkout tests green, release tagged",
+        "since": 1789210700,
+        "met": false
+      },
+      "handoff": "/supervisor:handoff --here",
+      "advice": {
+        "model": "claude-fable-5-1",
+        "effort": "high",
+        "reason": "Big refactor",
+        "switch_cost_tokens": 36000,
+        "at": 1789210700,
+        "source": "fable-director",
+        "when": "next_task",
+        "differs": true
+      },
+      "next_steps": [
+        {
+          "text": "ok to deploy on staging",
+          "blocking": true
+        },
+        {
+          "text": "review the test seeds",
+          "blocking": false
+        }
+      ],
+      "permission_mode": "bypassPermissions",
+      "permission_bypass": true,
+      "at_pc": true,
+      "changes": {
+        "files": 4,
+        "added": 8,
+        "removed": 2,
+        "at": 1792100000
+      }
+    },
+    {
+      "id": "3d1b2c4e-0000-4000-8000-000000000003",
+      "name": "field-notes",
+      "account": "personal",
+      "account_kind": "personal",
+      "project": "personal/field-notes",
+      "state": "idle",
+      "since": 1789120000,
+      "turn_started": null,
+      "tool": null,
+      "tool_note": null,
+      "link": "https://claude.ai/code/session_03fieldnotes",
+      "attached": false,
+      "followed": false,
+      "question": null,
+      "outcome": {
+        "short": "README rewritten",
+        "full": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.",
+        "at": 1789121000,
+        "preview": {
+          "short": "README rewritten",
+          "full": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=•••."
+        }
+      },
+      "next": null,
+      "next_at": null,
+      "model": {
+        "id": "claude-sonnet-5",
+        "label": "Sonnet 5"
+      },
+      "effort": "low",
+      "context": 4,
+      "fallback": {
+        "from": "claude-opus-5-5",
+        "to": "claude-sonnet-5",
+        "category": "cyber",
+        "at": 1789210300
+      },
+      "icon": "🟡",
+      "color": "#F4D03F",
+      "low_priority": "off",
+      "suggestion": "commit the README changes and open a PR",
+      "goal": null,
+      "handoff": null,
+      "finished": true,
+      "resolved": {
+        "id": "q-1789120500-1",
+        "text": "Commit the README changes now?",
+        "at": 1789210600,
+        "by": "terminal"
+      },
+      "changes": null
+    },
+    {
+      "id": "3d1b2c4e-0000-4000-8000-000000000004",
+      "name": "orbit-docs",
+      "account": "work",
+      "account_kind": "work",
+      "project": "work/own/orbit-docs",
+      "state": "gone",
+      "since": 1789200000,
+      "turn_started": null,
+      "tool": null,
+      "tool_note": null,
+      "link": "",
+      "attached": false,
+      "followed": false,
+      "question": null,
+      "outcome": null,
+      "next": "Pick up the pricing page",
+      "next_at": 1789171200,
+      "model": null,
+      "effort": null,
+      "context": null,
+      "fallback": null,
+      "icon": "🟪",
+      "color": "#9B59B6",
+      "low_priority": null,
+      "suggestion": null,
+      "goal": null,
+      "handoff": null,
+      "changes": null,
+      "closed": {
+        "at": 1789200000,
+        "session_id": "3d1b2c4e-0000-4000-8000-000000000004"
+      }
+    }
+  ],
+  "quota": {
+    "personal": {
+      "h5": 11,
+      "w7": 36,
+      "reset_w7": 1789610400,
+      "reset_h5": 1789228800,
+      "stale": false,
+      "kind": "personal"
+    },
+    "work": {
+      "h5": null,
+      "w7": 75,
+      "reset_w7": 1789444800,
+      "reset_h5": 1789225200,
+      "stale": true,
+      "kind": "work"
+    }
+  },
+  "projects": [
+    {
+      "path": "/home/demo/workspaces/personal/atlas-shop",
+      "name": "atlas-shop",
+      "account": "personal",
+      "last_used": 1789210700
+    },
+    {
+      "path": "/home/demo/workspaces/work/clients/ledger-api",
+      "name": "ledger-api",
+      "account": "work",
+      "last_used": 1789210500
+    },
+    {
+      "path": "/home/demo/workspaces/work/own/orbit-docs",
+      "name": "orbit-docs",
+      "account": "work",
+      "last_used": 1789203600
+    }
+  ],
+  "night": {
+    "queued": 2,
+    "running": null,
+    "items": [
+      {
+        "id": "a3f09c1e",
+        "dir": "/home/demo/workspaces/personal/atlas-shop",
+        "name": "atlas-shop",
+        "prompt": "Reproduce the flaky issues with their seeds, fix the real ones, run the suite twice and write the notes to",
+        "added": 1789207200,
+        "started": null
+      },
+      {
+        "id": "7b21d4e8",
+        "dir": "/home/demo/workspaces/work/clients/ledger-api",
+        "name": "ledger-api",
+        "prompt": "Update the changelog for 2.4",
+        "added": 1789210620,
+        "started": null
+      }
+    ],
+    "master": true
+  },
+  "recap": {
+    "date": "2026-09-12",
+    "items": [
+      {
+        "project": "atlas-shop",
+        "done": "Migrations 008-011 applied, tests green",
+        "next": "Review the seeds"
+      },
+      {
+        "project": "ledger-api",
+        "done": "Deploy ready",
+        "next": "Wait"
+      }
+    ]
+  },
+  "choices": {
+    "models": [
+      {
+        "id": "claude-opus-5[1m]",
+        "label": "Opus 5"
+      },
+      {
+        "id": "claude-fable-5-1",
+        "label": "Fable 5.1"
+      },
+      {
+        "id": "claude-sonnet-5",
+        "label": "Sonnet 5"
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "label": "Haiku 4.5"
+      }
+    ],
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  "share": {
+    "max_bytes": 10000000,
+    "any": true,
+    "parts": true,
+    "max_parts_bytes": 52428800,
+    "multi": 5
+  },
+  "ops": [
+    "answer",
+    "prompt",
+    "launch",
+    "follow",
+    "unfollow",
+    "resume",
+    "reopen",
+    "screen",
+    "allow_all",
+    "last",
+    "model",
+    "effort",
+    "night_add",
+    "night_remove",
+    "report",
+    "interrupt",
+    "transcript",
+    "file",
+    "slash",
+    "projects",
+    "search",
+    "timeline",
+    "pair_add",
+    "approve",
+    "approval_close",
+    "attese",
+    "attesa",
+    "monitors",
+    "monitor_refresh",
+    "attention_done",
+    "decision",
+    "unpair",
+    "night",
+    "agenda",
+    "agenda_set",
+    "quota_route",
+    "project_new",
+    "permission_mode",
+    "changes",
+    "diff",
+    "studio",
+    "nights",
+    "done",
+    "elicit",
+    "suggestion",
+    "close_preview",
+    "close",
+    "sys_kill",
+    "sys_unit_stop",
+    "plugins",
+    "plugin_check",
+    "plugin_update",
+    "plugin_update_all",
+    "kpi",
+    "home_order",
+    "prove",
+    "prova",
+    "decisioni",
+    "decisione",
+    "prima_raccolta",
+    "prima_raccolta_azione",
+    "seguiti",
+    "seguiti_azione",
+    "conti",
+    "conti_azione",
+    "feedback_consent",
+    "feedback_send",
+    "feedback_text",
+    "feedback_app",
+    "results",
+    "result_seen",
+    "result_note"
+  ],
+  "slash": [
+    "compact",
+    "clear",
+    "exit",
+    "context",
+    "cost"
+  ],
+  "devices": [
+    {
+      "uid": "phoneUid00000000000000000000",
+      "name": "Pixel 9",
+      "kind": "phone",
+      "seen": 1789210790
+    },
+    {
+      "uid": "watchUid0000000000000000000",
+      "name": "Pixel Watch 5",
+      "kind": "watch",
+      "seen": 1789210500
+    },
+    {
+      "uid": "tabletUid0000000000000000000",
+      "name": "Pixel Tablet",
+      "kind": "tablet",
+      "seen": 1789209000
+    },
+    {
+      "uid": "crbookUid0000000000000000000",
+      "name": "Chromebook",
+      "kind": "chromebook",
+      "seen": 1789190000
+    },
+    {
+      "uid": "spareUid00000000000000000000",
+      "name": "Pixel 7",
+      "kind": null,
+      "seen": null
+    },
+    {
+      "uid": "webUid000000000000000000000",
+      "name": "Safari on Mac",
+      "kind": "web",
+      "seen": null
+    }
+  ],
+  "approvals": [
+    {
+      "task": "atlas-release-2-4",
+      "title": "Release 2.4 of atlas-shop",
+      "what": "tag v2.4 and push to origin main",
+      "where": "production (shop.example.com)",
+      "deploy": true,
+      "requested_at": 1789210600,
+      "wid": "wd2f87e85e2"
+    }
+  ],
+  "recurring": [
+    {
+      "id": "x-posts",
+      "label": "X posts",
+      "prompt": "X posts",
+      "param": false
+    },
+    {
+      "id": "release-changelog",
+      "label": "Changelog of a release",
+      "prompt": "Write the changelog of release",
+      "param": true
+    },
+    {
+      "id": "plugin-rivals",
+      "label": "Rival plugins",
+      "prompt": "Competing plugins",
+      "param": false
+    }
+  ],
+  "attention": [
+    {
+      "kind": "question",
+      "session": "ledger-api",
+      "ref": "q-1789210500-1",
+      "title": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?",
+      "since": 1789210500,
+      "closes": "answer",
+      "wid": "w3d202727cc"
+    }
+  ],
+  "project_parents": [
+    "/home/demo/workspaces/personal",
+    "/home/demo/workspaces/work/clients",
+    "/home/demo/workspaces/work/own"
+  ],
+  "hosts_status": [],
+  "published_today": [],
+  "commitments": [],
+  "suggestions": []
+}

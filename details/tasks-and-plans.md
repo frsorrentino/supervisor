@@ -1,0 +1,201 @@
+# Tasks and plans
+
+Back to the [README](../README.md).
+
+A plan is a JSON file of units of work. Each unit names its folder, a check
+that can fail (a command that exits 0 when the work is right), the files it may
+touch, and a lane: open (local commits, tests, docs), wide (shared code) or
+closed (push, release, publication). Edges exist only where one unit's output
+really enters the next, and each edge says what passes. `supervisor plan
+approve` records the approval once; `supervisor plan run` does the rest:
+ready units run in parallel, each in a session of its folder (opened and closed
+for it), a script unit without a session; the session's own outcome is
+recorded, but only the check rerun by the engine marks a unit done. A red unit
+goes back alone, with the reason and the narrowed perimeter, three times at
+most; then it is failed, the units after it are cancelled and the root session
+is told. The registry (`supervisor task`, SQLite next to the configuration)
+keeps every task, result and approval, and the constraints that failed tasks
+leave behind are attached to the next tasks of the same project.
+
+The closed-lane guard (`tasks.guard`, off by default) is a PreToolUse hook on
+Bash: `git push`, `gh release`, `npm publish` and `release.sh` pass only inside
+a running task of an approved plan, or after a recorded ok. `release.sh` counts
+only as the command (`bash release.sh 1.0`, `./release.sh`), not as an argument
+(`grep … release.sh`). The hooks that block a push when the guard fails wait 30
+seconds, so a loaded machine does not block it by timeout.
+
+An ok on someone's behalf comes from the person, never from the model. Since
+23/10/2026 18:53 («se io scrivo un ok è sempre valido») every ok the person
+writes is valid wherever they write it: the terminal of any session, the
+app's or the web's chat to any session, the root session. The session that
+receives it records it, for any task, with `supervisor task approve ID --by
+NAME --inbox MSG [--text NOTE]`, where `MSG` is a message of the person from
+the last hour in that session's own inbox: typed in its terminal (origin
+`terminal`, resolved from the transcript: Claude Code writes the prompt's
+`user` line after the hooks, so the registry waits up to fifteen seconds for
+a record still `unverified`, then answers «try again» to the session, never
+an error to the person) or arrived from the relay (phone, watch, web app, the
+app's chat: origin `relay`). Never a cron prompt, never another session's
+text, never a text the transcript attributes to another session. If the
+session cannot tell which task the ok is for, it asks the person which one.
+The hole of a text injected into a pane is closed at the source: the
+PreToolUse guard denies `tmux send-keys` and `paste-buffer` from Claude
+sessions, guard on or off (sessions reach each other with `supervisor talk`).
+The PIN of 0.8.49 (`supervisor pin set`, `--pin`) stays as an option, no
+longer required. The
+`UserPromptSubmit` hook saves every prompt in the session's inbox, delivered,
+pruned after a day (the rest of the box after seven, since 23/10/2026: «ok 7
+giorno per supervisor»), with the origin the transcript gives it. Claude Code
+(2.1.308) appends the prompt's `user` line (`turnOrigin`) only after the hooks
+have run, so the record is born `unverified` and is resolved later from that
+line: at the session's next prompt or Stop, in the inbox listing and inside
+`task approve --inbox` at the moment of use. A prompt the person typed,
+accepted as a suggestion, queued or sent from Remote Control becomes
+`terminal`; one fired by the session's own cron (CronCreate) becomes `cron`; a
+message from another session or a task notification goes away; a prompt the
+transcript never shows stays `unverified`, never good for an ok. Never a slash command, nor a text that matches a
+fresh record written by someone else (the relay and `talk` write the record
+before delivering); the hook's own records never make a repeated text a
+duplicate. Only `terminal` and `relay` are good for an ok; `cron`,
+`unverified` and `session` are refused with the origin named. The ok quotes
+the message with its id, origin and recipient.
+The relay's own oks («Approve» on the phone) are recorded inside the relay's
+process. Since 01/11/2026 `--text` alone is refused from every shell: no
+environment variable stands in for the person. This raises the bar and does not
+close it: sessions and relay run as the same user, so one that sets out to can
+still write to the registry's file or forge a touch with the bus key. Once an
+hour, `supervisor guard run` closes the tasks open for more than 6 hours whose
+check is green (`supervisor task auto-close`); a red check there leaves the task
+as it is and counts no attempt. It skips a paused task, unless the pause is `--waits external`
+(the check says the event arrived), and one with no trace of
+work: no `task start`, step, test or result. An ok is not work. `task done` by
+hand is unchanged.
+
+A standing ok (since 23/10/2026 20:00, the maintainer from the phone:
+«Quando ci sono aggiornamenti di supervisor, effettuali direttamente»):
+`supervisor task standing add --by NAME --inbox MSG --project DIR --kind K`
+records a permanent rule that cites a message of the person from the
+caller's own inbox (origin `terminal` or `relay`; its age does not matter,
+the message is the ok), scoped to a project folder and an outcome kind
+(`release`, `deploy`, `install`…). At `task wait-ok` a task the rule covers
+is approved at once, by the person, with a text that quotes the message and
+names the rule: the app shows no «Approva» and the lane guard sees the
+approval. `task standing list [--json]` shows the rules, `task standing
+remove N` revokes one (kept in the registry). Nothing else changes: an ok
+for a single task still needs a message of the last hour.
+
+A choice (23/10/2026, contract 1.81): `task wait-ok ID --what W --where D
+--options "Strada A|Strada B"` says the task asks a choice, not only an ok:
+two to four labels of 1-24 characters. The app shows one button per option
+and the ok is recorded with it, `task approve ID --by B … --choice "Strada
+B"`: required when the request has options, refused when it has none, and
+the label must be one of them. `task list --json` carries `request.options`,
+`task show` the `options` of the request and the `choice` of the approval,
+and the waiting session hears the choice in its inbox. A standing ok never
+picks: such a task always waits for the person.
+
+Commitments (22/10/2026, after a day lost on an APK: the task closed `done`
+on an intermediate step, the ok got lost in a hand-written handoff, nobody
+noticed an «Approve» for 46 minutes). A task born from an ok carries
+`outcome` in its contract: `expected` in the words of the ok, measurable, and
+a `kind` (`release`, `install`, `push`, `deploy`, `merge`, `custom`); the
+check must touch it (for each kind the registry knows the markers `check.cmd`
+must contain, e.g. `gh release`, `git tag`, `dumpsys`, `origin/`; `custom`
+needs `proof`), and `task add`, `task done` and the hourly auto-close refuse a
+check on an intermediate step. `supervisor task amend ID --check CMD |
+--outcome TEXT --kind K` corrects an open task; `task confirm ID --by B
+(--text T | --inbox MSG)` records the person's confirmation with the rules of
+`approve`, and `task confirmed ID` (exit 0 when it exists) is a valid check
+for an `install` outcome. `task.short` (optional, 1-28 characters) is the
+title on one line in the app (contract 1.79): `supervisor task short ID
+"text"` sets it on an open task; without it `impegni` and `closed` derive one
+from the title (whole words within 28, no cut mark, no dangling article).
+`supervisor task impegni [--json] [--brief]
+[--stalled]` lists every approved task not yet done (an ok recorded or an
+approved plan) and the ones waiting for an ok, with age, last step, idle time,
+next step (`task step ID "text" --next "…"`), whose turn it is, pause with a
+reason (`task pause ID --reason R [--waits person] [--since T]`, `task resume
+ID`: visible, never an alarm; `--waits person` puts it in the app's «Per te»
+with `waits.on = person`, `--since` the real start)
+and `stalled` after `tasks.stall_hours` (2) without a step. The same list goes
+to the master at every prompt and start (the full block when it changes, one
+line otherwise; `tasks.commitments_prompt`), into the morning report, into
+`/state.commitments` for the app (contract 1.76) and into the handoff
+(`handoff --written` appends the «Impegni dal registro» section from the
+registry; `restart arm` in the master writes it before the restart). Every
+guard round `task stall-check` finds the stalled ones not yet alerted for
+their last step: one summary to the master (`talk`) and, outside
+`tasks.quiet_hours` (23-07), to the person (event `task_stalled`, Telegram as
+a fallback). «Approve» from the app wakes the task's session with a `talk`,
+tells the master and clears the session's «waiting for you». `supervisor
+task closed [YYYY-MM-DD] [--json]` lists the tasks closed that day (green,
+cancelled, failed) with one proof each (release, commit, file or the check)
+and the earlier days with a count: the app's «Fatto» block (contract 1.77).
+
+What waits for the person (01/11/2026, contract 1.99). A session that ships
+something for the person to try writes the test: `task prova ID --build TAG
+--dove SCREEN --fai T --atteso T`, never a credential or a private URL. Tests go
+by version: a new build retires the task's earlier ones. Only a touch on a paired
+device gives the outcome (op `prova`): no command does, from a session or a shell.
+When every test of a task is ok, the person's confirmation is recorded and
+`task settle` reruns the check: green closes the task, red leaves it open, says so
+and spends no attempt. The hourly auto-close leaves a task with a test to do.
+`task decisioni` gathers the pauses for the person, the oks and the needs-you,
+grouped by `task pause --cause C` or else by the pause's words; the weight is how
+many tasks a group unblocks. Each item says «from here» or «at the PC»: `--al-pc`
+or `--da-qui` on `task pause`, otherwise from its words (a login, a fingerprint, a
+panel). `task cause ID... --cause C --note SENTENCE` lets the master join groups
+written in different words. `task wait-ok` takes `--untested T`, `--undo
+si|no|in-parte` and `--undo-how T`, and `task add --defect-of ID` records the only
+kind of precedent a card shows. `task wait-ok ID … --also ID2,ID3` lists on the
+card the separate tasks a plan foresees: the ok of that card reaches them, quoting
+it; a task not declared, or declared after the ok, gets nothing, and declaring
+writes no ok.
+
+fable-director is optional. When it is installed and enabled in the session's
+account, the unit's brief asks it to open its budget with the unit's check as
+`--verify` and its files as `--paths`; the task contract
+(`schemas/task-contract.v1.json`) is the same file in both plugins. Without it,
+nothing changes: the engine reruns the check itself.
+
+`supervisor timeline` shows what the sessions did, in time order: the
+prompts, the tests they ran with their summary line, the folder's commits, the
+«Esito:» lines and the registry's outcomes, from code. The phone reads the same
+timeline (contract 1.29, op `timeline`) for its summary; there each session's
+`project` is relative to the projects' root, as in `state.sessions[].project`.
+
+## How much a task weighs
+
+Every task has an importance: `alta`, `media` or `bassa`. fable-director's model advice
+follows it, so a heavy task gets the stronger model and a side task does not.
+Declare it in the contract (`task.importance`) or later with
+`supervisor task amend ID --importance alta`. Without it, the registry infers it
+from its own facts, never from the text and with no model:
+
+- **alta**: an ok with «undo: no» (it cannot be taken back), an outcome `deploy`
+  (it writes to production), or a folder under `tasks.high_stakes_dirs`
+  (by default `personali/rino`, `clienti`, `enti`, relative to the projects' root);
+- **bassa**: a task of type `chore`, `verify` or `test`;
+- **media**: everything else.
+
+`supervisor task importance ID --json` says the importance of a task and why;
+`supervisor task importance --cwd DIR --json` that of the active task of the
+nearest folder (the running one, else the one with the newest step), or all null.
+fable-director reads the same answer from a file, so as not to start a process at
+each refresh of its status line: `~/.claude/supervisor/task-importance.json`,
+`{"version": 1, "updated_at", "dirs": {"<folder>": {"importance", "task", "source":
+"declared"|"inferred", "why", "state": "running"|"open", "last_step_at"}}}`, one
+entry per folder with an open task. It is rewritten at once (temporary file and
+rename) after every `supervisor task` command that changes the registry, and by the
+guard's tidying every 10 minutes.
+
+## A follow-up keeps the ok
+
+A task registered as the follow-up of another (`supervisor task add FILE --follows ID`,
+or `task.follows` in the contract) inherits the person's ok of that task when it is
+approved or closed green: the registry writes «approvato dal seguito di ID» with the
+time and text of the original ok, and the person is not asked again. It happens at
+`add` and, if the origin is approved later, at the follow-up's `wait-ok`. A card that
+asks for a choice is never inherited, nor is the ok of a task cancelled, failed or
+waiting on a new card. The 60-minute limit on an ok read from the inbox stays for new
+oks.

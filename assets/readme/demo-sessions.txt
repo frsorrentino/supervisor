@@ -1,0 +1,13 @@
+PID      ACCOUNT       NAME                   STATE  FOLDER                   WINDOW    CHANNEL   UPTIME   
+-----------------------------------------------------------------------------------------------------------
+10244    work          work-ledger-api        wait   ws:work/ledger-api       DETACHED  talk      12m        <- stuck on a question, nobody watching
+10217    personal      field-notes            idle   ws:projects/field-notes  open      native    2d00h    
+10138    personal      master                 busy   ws:.                     open      native    3h14m    
+10176    work          work-atlas-shop        busy   ws:work/atlas-shop       open      talk      41m      
+
+  1 stuck on a question with nobody attached: closing it interrupts no work in progress, only work already stopped.
+
+  native channel:  SendMessage (or @name in the prompt) — same peer registry; notify_when_idle tells you when that session is done
+  talk channel:    supervisor talk <name> "the prompt" — for sessions outside the registry
+  open one:        supervisor launch <path> [--account NAME]
+  attach:          supervisor attach <name>   ·   tmux attach -t =<name>

@@ -1,0 +1,26 @@
+{
+  "file": "hello, parts!\n",
+  "key": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+  "part_bytes": 8,
+  "meta_plain": {
+    "n": 2,
+    "size": 14,
+    "sha256": "b327a94da384182ef0b96679482d20bc1caa79525275e73c08c0720791d073ff",
+    "mime": "text/plain",
+    "name": "hello.txt"
+  },
+  "meta": {
+    "v": 1,
+    "enc": "TVUDTBcK7EeCamR4w7PcwzLB2iMg6aYFecwb3aPkPws5cbzHQ9uUDksVkxZF5LIsx9fpD7ha4vhQib9rn2Yky4SLQvqjpmRP2dzYkKrSlLxmghTMjSOh8lLD4qFEzQmorzzTujUBkivpB0Bo6QEoyKQbKTWXgmnqgix544EWdrTwetlRiuTkAraiC9JqvJKrfbV/brNf2gOonBgDsFqpfw=="
+  },
+  "parts": [
+    {
+      "v": 1,
+      "enc": "sFWt/BeBhx0g+5Ti5pQAkpFTkuqFH9vsvHTCsHbLCG3IYnNX"
+    },
+    {
+      "v": 1,
+      "enc": "sdhh4pynqwJBWjYE7eYmOh0yh3Cgq5qGIp5kywIGqzpYYA=="
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# `bin/` di un plugin sta nel PATH del tool Bash mentre il plugin e' attivo (E4):
+# dentro una sessione `supervisor ...` funziona senza shim. Nel terminale
+# dell'utente serve ancora `~/.local/bin/supervisor` (init --shim).
+exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../scripts/supervisor" "$@"

@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""cm-kpi.py: i numeri per le viste KPI dell'app (contratto 1.96, 29/10/2026), su un registro, una trascrizione e una
+cartella del relay finti.
+
+K1 kpi_tasks: aperti, che aspettano la persona, fermi, chiusi oggi; per compito eta', tentativi rossi su attempts_max
+K2 kpi_checks_week: 7 giorni dal piu' vecchio, verdi e rossi per giorno; un controllo di 8 giorni fa non conta
+K3 kpi_turns_today: i turni di oggi dalla trascrizione — un prompt apre il turno, i token una volta per messaggio, un
+   errore dell'API e' fail, l'ultimo turno di una sessione al lavoro e' running; ieri e i tool_result non contano
+K4 kpi_health: latenza dell'ultima ora (mediana, massimo, campioni; oltre l'ora e fuori misura fuori), sessioni di
+   questo PC sul tetto, host con RAM e disco in percento
+K5 kpi_suggestions_7d: accettati (con le scelte), discussi, rimandati, mai, scaduti dei 7 giorni
+K6 kpi_waits: record_waits scrive inizio e fine di domanda, permesso e needs-you una volta sola; le attese di adesso
+   e la mediana dei minuti per giorno dalle attese chiuse; la timeline le mostra come eventi wait
+K7 la stessa attesa (sessione, tipo, since) sparita per una push e tornata: un inizio solo, la fine falsa non conta
+"""
+import json
+import os
+import sqlite3
+import sys
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import cm_test as T  # noqa: E402
+
+tmp = Path(T.tmpdir())
+cfg = tmp / "config.json"
+cfg.write_text(json.dumps({"language": "it", "state_dir": str(tmp / "state"), "accounts": {"personal": {"config_dir": str(tmp / ".claude")}},
+                           "default_account": "personal", "sessions": {"max_sessions": 5}}))
+os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(tmp), "CM_HOME": str(tmp)})
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location("cm_kpi", T.SCRIPTS / "cm-kpi.py")
+K = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(K)
+
+NOW = int(datetime.now().replace(hour=15, minute=0, second=0, microsecond=0).timestamp())
+D = 86400
+TODAY = datetime.fromtimestamp(NOW).strftime("%Y-%m-%d")
+
+# ------------------------------------------------------------------ K1, K2
+con = sqlite3.connect(":memory:")
+con.executescript("CREATE TABLE tasks (id TEXT PRIMARY KEY, plan TEXT, project TEXT, session TEXT, title TEXT, lane TEXT, state TEXT, contract TEXT, created_at INTEGER, updated_at INTEGER);"
+                  "CREATE TABLE results (n INTEGER PRIMARY KEY, task TEXT, attempt INTEGER, outcome TEXT, reason TEXT, proof TEXT, perimeter TEXT, at INTEGER, accepted INTEGER);")
+for tid, st, upd, amax in (("a", "running", NOW - 100, 3), ("b", "approved", NOW - 100, 5), ("c", "done", NOW - 3600, 3), ("d", "done", NOW - 2 * D, 3)):
+    con.execute("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)", (tid, "", "/p", "s", tid, "closed", st, json.dumps({"task": {"attempts_max": amax}}), NOW - D, upd))
+for task, outcome, at in (("a", "red", NOW - 7200), ("a", "red", NOW - 3600), ("b", "green", NOW - D - 60), ("c", "green", NOW - 3500), ("x", "red", NOW - 8 * D)):
+    con.execute("INSERT INTO results (task, attempt, outcome, reason, at, accepted) VALUES (?,?,?,?,?,1)", (task, 1, outcome, "r", at))
+commits = [{"task": "a", "short": "Alpha", "state": "running", "age_s": 9000, "stalled": True, "waits": {"who": "master", "on": "session"}},
+           {"task": "b", "short": "Beta", "state": "approved", "age_s": 600, "stalled": False, "waits": {"who": "maintainer", "on": "person"}}]
+kt = K.kpi_tasks(NOW, con, commits)
+T.check("K1 kpi_tasks: open 2, waiting for the person 1, stalled 1, closed today 1 (c, not d of two days ago)",
+        (kt["open"], kt["waiting_you"], kt["stalled"], kt["closed_today"]) == (2, 1, 1, 1), json.dumps(kt))
+T.check("K1 kpi_tasks: per task {task, short, state, age_s, attempts, attempts_max, stalled, who}; a has 2 red checks of 3",
+        kt["tasks"][0] == {"task": "a", "short": "Alpha", "state": "running", "age_s": 9000, "attempts": 2, "attempts_max": 3, "stalled": True, "who": "master"}
+        and kt["tasks"][1]["attempts"] == 0 and kt["tasks"][1]["attempts_max"] == 5, json.dumps(kt["tasks"]))
+kc = K.kpi_checks_week(NOW, con)
+T.check("K2 kpi_checks_week: seven days, oldest first, today with 1 green and 2 red, yesterday 1 green; 8 days ago left out",
+        len(kc) == 7 and kc[-1] == {"date": TODAY, "green": 1, "red": 2} and kc[-2]["green"] == 1 and sum(d["red"] for d in kc) == 2, json.dumps(kc))
+
+# ------------------------------------------------------------------ K3
+def iso(t):
+    return datetime.fromtimestamp(t).astimezone().isoformat()
+
+
+tx = tmp / "t.jsonl"
+lines = [
+    {"type": "user", "timestamp": iso(NOW - D), "message": {"content": "ieri"}},
+    {"type": "assistant", "timestamp": iso(NOW - D + 5), "message": {"id": "m0", "usage": {"input_tokens": 999, "output_tokens": 999}}},
+    {"type": "user", "timestamp": iso(NOW - 3600), "message": {"content": "primo"}},
+    {"type": "assistant", "timestamp": iso(NOW - 3590), "message": {"id": "m1", "usage": {"input_tokens": 10, "cache_creation_input_tokens": 100, "output_tokens": 5, "cache_read_input_tokens": 1000}}},
+    {"type": "assistant", "timestamp": iso(NOW - 3589), "message": {"id": "m1", "usage": {"input_tokens": 10, "cache_creation_input_tokens": 100, "output_tokens": 5, "cache_read_input_tokens": 1000}}},
+    {"type": "user", "timestamp": iso(NOW - 3580), "message": {"content": [{"type": "tool_result", "content": "x"}]}},
+    {"type": "assistant", "timestamp": iso(NOW - 3500), "message": {"id": "m2", "usage": {"input_tokens": 1, "output_tokens": 2, "cache_read_input_tokens": 50}}},
+    {"type": "user", "timestamp": iso(NOW - 1800), "message": {"content": "secondo"}},
+    {"type": "assistant", "timestamp": iso(NOW - 1790), "isApiErrorMessage": True, "message": {"id": "m3", "model": "<synthetic>", "content": "API Error"}},
+    {"type": "user", "timestamp": iso(NOW - 600), "message": {"content": "terzo"}},
+    {"type": "assistant", "timestamp": iso(NOW - 590), "message": {"id": "m4", "usage": {"input_tokens": 3, "output_tokens": 4}}},
+]
+tx.write_text("".join(json.dumps(x) + "\n" for x in lines))
+tt = K.kpi_turns_today([("alfa", str(tx), "busy"), ("beta", str(tmp / "none.jsonl"), "idle")], NOW)
+T.check("K3 kpi_turns_today: three turns today (yesterday's left out, a tool_result is not a prompt): ok, fail, running; tokens once per message id (115+3, then 7), cache reads apart; beta without turns is not listed",
+        [x["session"] for x in tt] == ["alfa"] and [(t["outcome"], t["tokens"], t["cache_read"]) for t in tt[0]["turns"]] == [("ok", 118, 1050), ("fail", 0, 0), ("running", 7, 0)]
+        and tt[0]["turns"][0]["start"] == NOW - 3600 and tt[0]["turns"][0]["end"] == NOW - 3500
+        and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for t in tt[0]["turns"]), json.dumps(tt))
+
+# ------------------------------------------------------------------ K4
+rd = tmp / "relay"
+rd.mkdir()
+for at, s in ((NOW - 7000, 9.0), (NOW - 1000, 1.0), (NOW - 500, 3.0), (NOW - 100, 2.0)):
+    K.record_latency(rd, at, s)
+K.record_latency(rd, NOW - 50, 9999)
+st = {"hosts_status": [{"name": "win", "up": True, "cpu": 0.04, "ram_used": 8_000, "ram_total": 16_000, "disk_free": 25, "disk_total": 100}]}
+rows = [{"status": "busy"}, {"status": "idle", "host": "local"}, {"status": "idle", "host": "win"}, {"status": "dead"}]
+kh = K.kpi_health(st, rows, NOW, rd)
+_ld4 = kh.pop("local_disk")
+T.check("K4 kpi_health: latency of the last hour (median 2, p95 3, max 3, 3 samples; the one of 2 hours ago and one out of range left out), 2 sessions here of 5, win at 50% RAM and 75% disk",
+        kh == {"latency": {"p50_s": 2.0, "p95_s": 3.0, "max_s": 3.0, "n": 3}, "commands": None, "sessions_here": 2, "sessions_max": 5,
+               "hosts": [{"name": "win", "up": True, "cpu": 0.04, "ram_pct": 50, "disk_pct": 75, "working": False, "working_why": []}]}, json.dumps(kh))
+T.check("K4c (1.110) local_disk: this computer's disk, free and total in bytes", isinstance(_ld4, dict) and set(_ld4) == {"free", "total"} and 0 < _ld4["free"] <= _ld4["total"], str(_ld4))
+_sv4c = K._leased_hosts
+_h4c = lambda **kw: dict({"name": "win", "up": True, "cpu": 0.04, "ram_used": 1, "ram_total": 2, "disk_free": 1, "disk_total": 2}, **kw)  # noqa: E731
+K._leased_hosts = lambda: {"win"}
+_wj = K.kpi_health({"hosts_status": [_h4c()]}, [], NOW, rd)["hosts"][0]
+_wd = K.kpi_health({"hosts_status": [_h4c(up=False, cpu=None)]}, [{"host": "win", "status": "busy"}], NOW, rd)["hosts"][0]
+K._leased_hosts = lambda: set()
+_ws = K.kpi_health({"hosts_status": [_h4c(cpu=0.31)]}, [{"host": "win", "status": "busy"}, {"host": "local", "status": "busy"}], NOW, rd)["hosts"][0]
+_wi = K.kpi_health({"hosts_status": [_h4c(cpu=0.2)]}, [{"host": "win", "status": "idle"}], NOW, rd)["hosts"][0]
+K._leased_hosts = _sv4c
+T.check("K4c (1.110) working: a heavy job on win, a busy session on win, CPU over 25% each say so in working_why; idle under the threshold or down: not working",
+        (_wj["working"], _wj["working_why"]) == (True, ["job"]) and (_ws["working"], _ws["working_why"]) == (True, ["session", "cpu"])
+        and (_wi["working"], _wi["working_why"]) == (False, []) and (_wd["working"], _wd["working_why"]) == (False, []), json.dumps([_wj, _ws, _wi, _wd]))
+_lp = Path(K.cm.expand(K.CFG["state_dir"])) / "heavy" / "leases.json"
+_lp.parent.mkdir(parents=True, exist_ok=True)
+_lp.write_text(json.dumps({"leases": [{"job": "j1", "host": "win", "cls": "heavy", "since": 1, "queued": False}, {"job": "j2", "host": "mac", "cls": "heavy", "since": 1, "queued": True}]}))
+T.check("K4c (1.110) the heavy jobs come from heavy/leases.json, the queued ones do not count", K._leased_hosts() == {"win"}, str(K._leased_hosts()))
+
+rd95 = tmp / "relay95"
+rd95.mkdir()
+for i in range(1, 41):   # 1..40 s: il 95% dei 40 campioni sta sotto o a 38 s
+    K.record_latency(rd95, NOW - 3000 + i, float(i))
+kh95 = K.kpi_health({}, [], NOW, rd95)["latency"]
+kh0 = K.kpi_health({}, [], NOW, tmp / "relay-vuota")["latency"]
+T.check("K4 (1.108) p95_s at the nearest rank: 40 samples of 1..40 s give 38, between the median and the max; no samples: null",
+        kh95 == {"p50_s": 20.5, "p95_s": 38.0, "max_s": 40.0, "n": 40} and kh0 == {"p50_s": None, "p95_s": None, "max_s": None, "n": 0}, json.dumps([kh95, kh0]))
+
+rdc = tmp / "relay-cmd"
+rdc.mkdir()
+_mid = K._midnight(NOW)
+K.record_command(rdc, _mid - 60, 50.0)   # ieri: fuori
+for i, s in enumerate((1.0, 2.0, 3.0, 4.0, 30.0)):
+    K.record_command(rdc, _mid + 60 + i, s)
+K.record_command(rdc, _mid + 70, -2.0)   # orologio del dispositivo un po' avanti: 0
+K.record_command(rdc, _mid + 71, 5000.0)   # oltre un'ora: fuori
+K.record_command(rdc, _mid + 72, -30.0)   # troppo sotto zero: fuori
+khc = K.kpi_health({}, [], max(NOW, _mid + 100), rdc)["commands"]
+T.check("K4b (1.109) commands of the local day: yesterday's out, a little under zero is 0, over an hour or far under zero out; median, p95 at the nearest rank, n",
+        khc == {"p50_s": 2.5, "p95_s": 30.0, "n": 6}, json.dumps(khc))
+_svmax = K.COMMANDS_FILE_MAX
+K.COMMANDS_FILE_MAX = 10
+K.record_command(rdc, _mid + 3 * 86400, 1.0)   # tre giorni dopo: il file troppo grande si riscrive con gli ultimi due giorni
+K.COMMANDS_FILE_MAX = _svmax
+_rows = [json.loads(x) for x in K.commands_path(rdc).read_text().splitlines()]
+T.check("K4b the samples file past its cap keeps only the last two days", [r["s"] for r in _rows] == [1.0], str(_rows))
+
+# ------------------------------------------------------------------ K5
+hist = [{"action": a, "at": NOW - age} for a, age in (("accepted", 100), ("chosen", 200), ("discussed", 300), ("hidden", 400), ("never", 500), ("expired", 600), ("accepted", 8 * D))]
+T.check("K5 kpi_suggestions_7d: accepted counts the choices, older than 7 days left out",
+        K.kpi_suggestions_7d(NOW, hist) == {"accepted": 2, "discussed": 1, "later": 1, "never": 1, "expired": 1}, json.dumps(K.kpi_suggestions_7d(NOW, hist)))
+
+# ------------------------------------------------------------------ K6
+s1 = {"sessions": [{"name": "alfa", "state": "waiting", "since": NOW - 900, "question": {"asked_at": NOW - 900}},
+                   {"name": "beta", "state": "waiting", "since": NOW - 300},
+                   {"name": "gamma", "state": "idle", "needs_you": {"at": NOW - 60, "reason": "login"}}]}
+e1 = K.record_waits(s1, NOW, rd)
+e2 = K.record_waits(s1, NOW + 30, rd)
+s2 = {"sessions": [{"name": "alfa", "state": "busy"}, {"name": "beta", "state": "waiting", "since": NOW - 300}, {"name": "gamma", "state": "idle"}]}
+(rd / "waits-open.json").unlink()   # 29/10: senza il file delle aperte l'attesa gia' scritta non si riapre
+e2b = K.record_waits(s1, NOW + 60, rd)
+e3 = K.record_waits(s2, NOW + 600, rd)
+T.check("K6 kpi_waits: record_waits opens question, permission and needs-you once (a second push writes nothing, nor one after waits-open.json is gone) and closes them when they go",
+        [(e["event"], e["session"], e["kind"]) for e in e1] == [("start", "alfa", "question"), ("start", "beta", "permission"), ("start", "gamma", "needs_you")]
+        and e2 == [] and e2b == [] and [(e["event"], e["session"], e["kind"], e["at"], e["since"]) for e in e3] == [("end", "alfa", "question", NOW + 600, NOW - 900), ("end", "gamma", "needs_you", NOW + 600, NOW - 60)],
+        json.dumps([e1, e2, e3]))
+kw = K.kpi_waits(s2, NOW + 600, rd)
+T.check("K6 kpi_waits: now beta waits on a permission since its time; today's median of the closed waits is (25 + 11) / 2 = 18 minutes from 2 waits",
+        kw["now"] == [{"session": "beta", "kind": "permission", "since": NOW - 300}] and kw["week"][-1] == {"date": TODAY, "median_min": 18.0, "n": 2}
+        and len(kw["week"]) == 7 and kw["week"][0]["median_min"] is None, json.dumps(kw))
+TL = importlib.util.spec_from_file_location("cm_timeline", T.SCRIPTS / "cm-timeline.py")
+TLM = importlib.util.module_from_spec(TL)
+TL.loader.exec_module(TLM)
+we = TLM.wait_events(rd, "alfa", NOW - 3600)
+T.check("K6 kpi_waits: the timeline gets the waits of a session as events of kind wait (start and end, with the kind in the text)",
+        [(e["kind"], e["at"]) for e in we] == [("wait", NOW - 900), ("wait", NOW + 600)] and all("question" in e["text"] or "domanda" in e["text"] for e in we), json.dumps(we))
+s3 = {"sessions": [{"name": "alfa", "state": "busy"}, {"name": "gamma", "state": "idle"}]}   # una push che per un giro non vede beta
+e4 = K.record_waits(s3, NOW + 700, rd)
+e5 = K.record_waits(s2, NOW + 800, rd)
+kw7 = K.kpi_waits(s2, NOW + 800, rd)
+we7 = TLM.wait_events(rd, "beta", NOW - 3600)
+T.check("K7 kpi_waits (29/10, the R27 double of WSL): a wait gone for one push and back with the same since is the same wait: the timeline shows one start, the median does not count the false end",
+        [(e["event"], e["session"]) for e in e4] == [("end", "beta")] and [(e["event"], e["session"], e["since"]) for e in e5] == [("start", "beta", NOW - 300)]
+        and [(e["kind"], e["at"]) for e in we7] == [("wait", NOW - 300)] and kw7["week"][-1] == {"date": TODAY, "median_min": 18.0, "n": 2}, json.dumps([e4, e5, we7, kw7["week"][-1]]))
+full = K.collect(NOW, st, rows, [("alfa", str(tx), "busy")], rd, con, commits, hist)
+T.check("K1-K6 collect: every block under its key, at in front",
+        list(full) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"] and all(full[k] is not None for k in full), json.dumps(full)[:300])
+T.rm(str(tmp))
+T.finish()

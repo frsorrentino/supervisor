@@ -1,0 +1,613 @@
+{
+  "v": 1,
+  "ts": 1789214400,
+  "published_at": 1789214401.5,
+  "host": "crostini-demo",
+  "sessions": [
+    {
+      "id": "f61903c0-ea6a-409c-a961-d01126a0f3ad",
+      "name": "atlas-shop",
+      "account": "personal",
+      "account_kind": "personal",
+      "project": "personal/atlas-shop",
+      "state": "idle",
+      "since": 1789214000,
+      "turn_started": null,
+      "tool": null,
+      "tool_note": null,
+      "link": "https://claude.ai/code/session_02atlas",
+      "attached": false,
+      "followed": false,
+      "question": null,
+      "outcome": {
+        "short": "Seeds and admin page reviewed",
+        "full": "Esito: seeds and admin page reviewed, 42 tests green.",
+        "at": 1789213900
+      },
+      "next": "Test deploy on staging",
+      "next_at": 1789171200,
+      "model": {
+        "id": "claude-sonnet-5",
+        "label": "Sonnet 5"
+      },
+      "effort": "medium",
+      "context": 18,
+      "fallback": null,
+      "icon": "🟢",
+      "color": "#2ECC71",
+      "low_priority": "off",
+      "suggestion": null,
+      "goal": null,
+      "handoff": null,
+      "finished": true,
+      "changes": null,
+      "needs_you": {
+        "reason": "Type the TV code",
+        "at": 1789214200,
+        "expires_at": 1789221400,
+        "task": "atlas-tv-pairing",
+        "from": "master"
+      },
+      "tocca": {
+        "prove": 2,
+        "decidi": 1,
+        "guarda": 3,
+        "segui": 1
+      }
+    }
+  ],
+  "quota": {
+    "personal": {
+      "h5": 24,
+      "w7": 38,
+      "reset_w7": 1789610400,
+      "reset_h5": 1789228800,
+      "stale": false,
+      "kind": "personal",
+      "w7_points": {
+        "start": 1789005600,
+        "steps": [
+          [
+            0,
+            2
+          ],
+          [
+            2,
+            4
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            24,
+            30
+          ],
+          [
+            25,
+            38
+          ]
+        ]
+      },
+      "w7_origins": {
+        "sessions": 20.1,
+        "automations": 6.5,
+        "requests": 11.4
+      }
+    },
+    "work": {
+      "h5": 3,
+      "w7": 75,
+      "reset_w7": 1789444800,
+      "reset_h5": 1789225200,
+      "stale": false,
+      "kind": "work"
+    }
+  },
+  "projects": [
+    {
+      "path": "/home/demo/workspaces/personal/atlas-shop",
+      "name": "atlas-shop",
+      "account": "personal",
+      "last_used": 1789213900
+    }
+  ],
+  "night": {
+    "queued": 1,
+    "running": null,
+    "items": [
+      {
+        "id": "c41d9e07",
+        "dir": "/home/demo/workspaces",
+        "name": "master",
+        "prompt": "Do this agenda item: Move the docs site to the new host (orbit-docs)",
+        "added": 1789213000,
+        "started": null
+      }
+    ],
+    "master": true
+  },
+  "recap": {
+    "date": "2026-09-12",
+    "items": []
+  },
+  "tocca": {
+    "n": 3,
+    "prove": 1,
+    "decidi": 2,
+    "today": {
+      "n": 2,
+      "items": [
+        {
+          "task": "atlas-home",
+          "short": "Home",
+          "kind": "pause",
+          "rule": 1,
+          "at": 1789214000
+        },
+        {
+          "task": "orbit-filter",
+          "short": "Filter",
+          "kind": "prova",
+          "rule": 2,
+          "at": 1789213000
+        }
+      ]
+    }
+  },
+  "choices": {
+    "models": [
+      {
+        "id": "claude-opus-5[1m]",
+        "label": "Opus 5"
+      },
+      {
+        "id": "claude-fable-5-1",
+        "label": "Fable 5.1"
+      },
+      {
+        "id": "claude-sonnet-5",
+        "label": "Sonnet 5"
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "label": "Haiku 4.5"
+      }
+    ],
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  "share": {
+    "max_bytes": 10000000,
+    "any": true,
+    "parts": true,
+    "max_parts_bytes": 52428800,
+    "multi": 5
+  },
+  "home_order": [
+    "suggestions",
+    "sessions",
+    "lavori",
+    "esiti",
+    "altro"
+  ],
+  "ops": [
+    "answer",
+    "prompt",
+    "launch",
+    "follow",
+    "unfollow",
+    "resume",
+    "reopen",
+    "screen",
+    "allow_all",
+    "last",
+    "model",
+    "effort",
+    "night_add",
+    "night_remove",
+    "report",
+    "interrupt",
+    "transcript",
+    "file",
+    "slash",
+    "projects",
+    "search",
+    "timeline",
+    "pair_add",
+    "approve",
+    "approval_close",
+    "attese",
+    "attesa",
+    "monitors",
+    "monitor_refresh",
+    "attention_done",
+    "decision",
+    "unpair",
+    "night",
+    "agenda",
+    "agenda_set",
+    "quota_route",
+    "project_new",
+    "permission_mode",
+    "changes",
+    "diff",
+    "studio",
+    "nights",
+    "done",
+    "elicit",
+    "suggestion",
+    "close_preview",
+    "close",
+    "sys_kill",
+    "sys_unit_stop",
+    "plugins",
+    "plugin_check",
+    "plugin_update",
+    "plugin_update_all",
+    "kpi",
+    "home_order",
+    "prove",
+    "prova",
+    "decisioni",
+    "decisione",
+    "prima_raccolta",
+    "prima_raccolta_azione",
+    "seguiti",
+    "seguiti_azione",
+    "conti",
+    "conti_azione",
+    "feedback_consent",
+    "feedback_send",
+    "feedback_text",
+    "feedback_app",
+    "results",
+    "result_seen",
+    "result_note"
+  ],
+  "slash": [
+    "compact",
+    "clear",
+    "exit",
+    "context",
+    "cost"
+  ],
+  "devices": [
+    {
+      "uid": "phoneUid00000000000000000000",
+      "name": "Pixel 9",
+      "kind": "phone",
+      "seen": 1789210790
+    },
+    {
+      "uid": "watchUid0000000000000000000",
+      "name": "Pixel Watch 5",
+      "kind": "watch",
+      "seen": 1789210500
+    },
+    {
+      "uid": "tabletUid0000000000000000000",
+      "name": "Pixel Tablet",
+      "kind": "tablet",
+      "seen": 1789209000
+    },
+    {
+      "uid": "crbookUid0000000000000000000",
+      "name": "Chromebook",
+      "kind": "chromebook",
+      "seen": 1789190000
+    },
+    {
+      "uid": "spareUid00000000000000000000",
+      "name": "Pixel 7",
+      "kind": null,
+      "seen": null
+    },
+    {
+      "uid": "webUid000000000000000000000",
+      "name": "Safari on Mac",
+      "kind": "web",
+      "seen": null
+    }
+  ],
+  "approvals": [
+    {
+      "task": "atlas-checkout-layout",
+      "title": "Checkout layout of atlas-shop",
+      "what": "pick the checkout layout",
+      "where": "atlas-shop, branch checkout",
+      "deploy": false,
+      "requested_at": 1789214100,
+      "options": [
+        "Strada A",
+        "Strada B"
+      ],
+      "untested": "phone",
+      "undo": "in-parte",
+      "undo_how": "revert",
+      "also": [
+        {
+          "task": "atlas-seo-pages",
+          "short": "SEO pages"
+        }
+      ],
+      "wid": "w8188b13c9d"
+    }
+  ],
+  "recurring": [
+    {
+      "id": "x-posts",
+      "label": "X posts",
+      "prompt": "X posts",
+      "param": false
+    },
+    {
+      "id": "release-changelog",
+      "label": "Changelog of a release",
+      "prompt": "Write the changelog of release",
+      "param": true
+    },
+    {
+      "id": "plugin-rivals",
+      "label": "Rival plugins",
+      "prompt": "Competing plugins",
+      "param": false
+    }
+  ],
+  "hosts_status": [
+    {
+      "name": "win",
+      "up": true,
+      "at": 1789214370,
+      "error": null,
+      "cpu": 0.42,
+      "ram_used": 9775611904,
+      "ram_total": 17063350272,
+      "disk_free": 94820073472,
+      "disk_total": 290911678464,
+      "sessions": []
+    }
+  ],
+  "published_today": [
+    {
+      "at": 1789210500,
+      "kind": "deploy",
+      "project": "work/own/orbit-docs",
+      "text": "orbit-docs",
+      "url": "https://orbit-docs.web.app"
+    },
+    {
+      "at": 1789209600,
+      "kind": "release",
+      "project": "personal/atlas-shop",
+      "text": "2.3.1",
+      "url": "https://gh.io/a/releases/tag/v2.3.1"
+    },
+    {
+      "at": 1789207800,
+      "kind": "push",
+      "project": "personal/atlas-shop",
+      "text": "origin/checkout",
+      "url": "https://gh.io/a/tree/checkout"
+    }
+  ],
+  "commitments": [
+    {
+      "task": "ledger-migrations-011",
+      "title": "Migrations on staging",
+      "short": "Migrations",
+      "project": "work/clients/ledger-api",
+      "session": "ledger-api",
+      "state": "running",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1789200600,
+      "approved_by": "maintainer",
+      "age_s": 13800,
+      "last_step": {
+        "at": 1789200600,
+        "kind": "approval",
+        "text": "staging"
+      },
+      "idle_s": 13800,
+      "next": "ledger-api works",
+      "waits": {
+        "who": "person",
+        "on": "ledger-api"
+      },
+      "expected": "on staging",
+      "outcome_kind": "deploy",
+      "check": {
+        "outcome": "red",
+        "at": 1789199760
+      },
+      "paused": null,
+      "stalled": true
+    },
+    {
+      "task": "atlas-seo-pages",
+      "title": "SEO pages",
+      "short": "SEO pages",
+      "project": "personal/atlas-shop",
+      "session": "atlas-shop",
+      "state": "approved",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1789213800,
+      "approved_by": "maintainer",
+      "age_s": 600,
+      "last_step": {
+        "at": 1789213800,
+        "kind": "approval",
+        "text": "push"
+      },
+      "idle_s": 600,
+      "next": "atlas-shop",
+      "waits": {
+        "who": "person",
+        "on": "atlas-shop"
+      },
+      "expected": "online",
+      "outcome_kind": "deploy",
+      "check": null,
+      "paused": null,
+      "stalled": false
+    }
+  ],
+  "elicitations": [
+    {
+      "id": "e-4f1c2a9b7d30",
+      "session": "atlas-shop",
+      "server": "issue-tracker",
+      "message": "Which project should the issue go to?",
+      "mode": "form",
+      "asked_at": 1789214300,
+      "expires_at": 1789214420,
+      "fields": [
+        {
+          "key": "project",
+          "title": "Project",
+          "required": true,
+          "kind": "choice",
+          "options": [
+            {
+              "value": "DOCS",
+              "label": "Documentation"
+            },
+            {
+              "value": "SHOP",
+              "label": "Shop"
+            },
+            {
+              "value": "OPS",
+              "label": "Operations"
+            }
+          ]
+        },
+        {
+          "key": "urgent",
+          "title": "Urgent",
+          "required": false,
+          "kind": "boolean",
+          "default": false
+        },
+        {
+          "key": "title",
+          "title": "Title",
+          "required": true,
+          "description": "One line",
+          "kind": "text",
+          "min_length": 3,
+          "max_length": 80
+        },
+        {
+          "key": "estimate",
+          "title": "Estimate",
+          "required": false,
+          "kind": "integer",
+          "min": 1,
+          "max": 13
+        }
+      ]
+    },
+    {
+      "id": "e-9a0b1c2d3e4f",
+      "session": "atlas-shop",
+      "server": "figma",
+      "message": "Sign in to Figma",
+      "mode": "url",
+      "asked_at": 1789214350,
+      "expires_at": 1789214470,
+      "url": "https://www.figma.com/oauth?client_id=demo"
+    }
+  ],
+  "attention": [
+    {
+      "kind": "needs_you",
+      "session": "atlas-shop",
+      "ref": "atlas-shop",
+      "title": "Type the TV code",
+      "since": 1789214200,
+      "closes": "prompt",
+      "expires_at": 1789221400,
+      "wid": "we8b3d4c565"
+    }
+  ],
+  "suggestions": [
+    {
+      "id": "s-8b3f6a1d47",
+      "kind": "deadline",
+      "key": "deadline:ledger-invoice-2026-09",
+      "text": "ledger-api invoice due Friday",
+      "at": 1789207180,
+      "expires_at": 1789250380,
+      "rank": 2,
+      "source": "master"
+    },
+    {
+      "id": "s-5d0e2f9c13",
+      "kind": "cleanup",
+      "key": "cleanup:paused:orbit-docs-*",
+      "text": "Close the paused orbit-docs tasks?",
+      "at": 1789207190,
+      "expires_at": 1789250390,
+      "rank": 5,
+      "source": "master"
+    },
+    {
+      "id": "s-a41c7e2b90",
+      "kind": "recurring",
+      "key": "recurring:night-report",
+      "text": "Night report ready",
+      "at": 1789207200,
+      "expires_at": 1789250400,
+      "rank": 6,
+      "source": "master"
+    }
+  ],
+  "usage_today": [
+    {
+      "session": "atlas-shop",
+      "account": "personal",
+      "tokens": 1840000,
+      "share": 0.62
+    },
+    {
+      "session": "master",
+      "account": "personal",
+      "tokens": 1130000,
+      "share": 0.38
+    },
+    {
+      "session": "ledger-api",
+      "account": "work",
+      "tokens": 960000,
+      "share": 0.97
+    },
+    {
+      "session": "orbit-docs",
+      "account": "work",
+      "tokens": 30000,
+      "share": 0.03
+    }
+  ],
+  "decisions": {
+    "n": 3,
+    "here": 2,
+    "tasks": 7,
+    "snoozed": 1
+  },
+  "prove": {
+    "n": 5,
+    "builds": 2,
+    "red": 1,
+    "ko": 1
+  }
+}

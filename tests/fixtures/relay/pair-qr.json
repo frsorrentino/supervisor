@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "i": "q3Vb2mXz0rT8yKp1LwN4sA",
+  "c": "j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8=",
+  "h": "penguin",
+  "e": 1789211100,
+  "f": {
+    "k": "AIzaSyD-example-key-000000000000000000",
+    "p": "cmwatch-demo",
+    "a": "1:123456789012:android:0a1b2c3d4e5f6a7b8c9d0e",
+    "d": "https://cmwatch-demo-default-rtdb.europe-west1.firebasedatabase.app",
+    "t": "watch"
+  }
+}

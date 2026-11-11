@@ -1,0 +1,554 @@
+{
+  "v": 1,
+  "ts": 1789200000,
+  "published_at": 1789200001.5,
+  "host": "crostini-demo",
+  "sessions": [
+    {
+      "id": "3d1b2c4e-0000-4000-8000-000000000004",
+      "name": "orbit-docs",
+      "account": "work",
+      "account_kind": "work",
+      "project": "work/own/orbit-docs",
+      "state": "gone",
+      "since": 1789199000,
+      "turn_started": null,
+      "tool": null,
+      "tool_note": null,
+      "link": "",
+      "attached": false,
+      "followed": false,
+      "question": null,
+      "outcome": null,
+      "next": null,
+      "next_at": null,
+      "model": null,
+      "effort": null,
+      "context": null,
+      "fallback": null,
+      "icon": null,
+      "color": null,
+      "low_priority": null,
+      "suggestion": null,
+      "goal": null,
+      "handoff": null,
+      "changes": null,
+      "closed": {
+        "at": 1789199000,
+        "session_id": "3d1b2c4e-0000-4000-8000-000000000004",
+        "outcome": "Pricing page draft ready for review",
+        "next": "Pick up the pricing page",
+        "dirty_n": 2,
+        "dirty": [
+          "src/pages/pricing.md",
+          "docs/notes.md"
+        ]
+      }
+    }
+  ],
+  "quota": {
+    "personal": {
+      "h5": 0,
+      "w7": 36,
+      "reset_w7": 1789610400,
+      "reset_h5": 1789228800,
+      "stale": true,
+      "kind": "personal"
+    },
+    "work": {
+      "h5": null,
+      "w7": 75,
+      "reset_w7": 1789444800,
+      "reset_h5": 1789225200,
+      "stale": true,
+      "kind": "work"
+    }
+  },
+  "projects": [],
+  "night": {
+    "queued": 0,
+    "running": null,
+    "items": [],
+    "master": true
+  },
+  "recap": {
+    "date": "2026-09-12",
+    "items": []
+  },
+  "choices": {
+    "models": [
+      {
+        "id": "claude-opus-5[1m]",
+        "label": "Opus 5"
+      },
+      {
+        "id": "claude-fable-5-1",
+        "label": "Fable 5.1"
+      },
+      {
+        "id": "claude-sonnet-5",
+        "label": "Sonnet 5"
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "label": "Haiku 4.5"
+      }
+    ],
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  "share": {
+    "max_bytes": 10000000,
+    "any": true,
+    "parts": true,
+    "max_parts_bytes": 52428800,
+    "multi": 5
+  },
+  "ops": [
+    "answer",
+    "prompt",
+    "launch",
+    "follow",
+    "unfollow",
+    "resume",
+    "reopen",
+    "screen",
+    "allow_all",
+    "last",
+    "model",
+    "effort",
+    "night_add",
+    "night_remove",
+    "report",
+    "interrupt",
+    "transcript",
+    "file",
+    "slash",
+    "projects",
+    "search",
+    "timeline",
+    "pair_add",
+    "approve",
+    "approval_close",
+    "attese",
+    "attesa",
+    "monitors",
+    "monitor_refresh",
+    "attention_done",
+    "decision",
+    "unpair",
+    "night",
+    "agenda",
+    "agenda_set",
+    "quota_route",
+    "project_new",
+    "permission_mode",
+    "changes",
+    "diff",
+    "studio",
+    "nights",
+    "done",
+    "elicit",
+    "suggestion",
+    "close_preview",
+    "close",
+    "sys_kill",
+    "sys_unit_stop",
+    "plugins",
+    "plugin_check",
+    "plugin_update",
+    "plugin_update_all",
+    "kpi",
+    "home_order",
+    "prove",
+    "prova",
+    "decisioni",
+    "decisione",
+    "prima_raccolta",
+    "prima_raccolta_azione",
+    "seguiti",
+    "seguiti_azione",
+    "conti",
+    "conti_azione",
+    "feedback_consent",
+    "feedback_send",
+    "feedback_text",
+    "feedback_app",
+    "results",
+    "result_seen",
+    "result_note"
+  ],
+  "slash": [
+    "compact",
+    "clear",
+    "exit",
+    "context",
+    "cost"
+  ],
+  "devices": [
+    {
+      "uid": "phoneUid00000000000000000000",
+      "name": "Pixel 9",
+      "kind": "phone",
+      "seen": 1789210790,
+      "cmd_at": 1789199950
+    },
+    {
+      "uid": "watchUid0000000000000000000",
+      "name": "Pixel Watch 5",
+      "kind": "watch",
+      "seen": 1789210500
+    },
+    {
+      "uid": "tabletUid0000000000000000000",
+      "name": "Pixel Tablet",
+      "kind": "tablet",
+      "seen": 1789209000
+    },
+    {
+      "uid": "crbookUid0000000000000000000",
+      "name": "Chromebook",
+      "kind": "chromebook",
+      "seen": 1789190000
+    },
+    {
+      "uid": "spareUid00000000000000000000",
+      "name": "Pixel 7",
+      "kind": null,
+      "seen": 1789150500
+    },
+    {
+      "uid": "webUid000000000000000000000",
+      "name": "Safari on Mac",
+      "kind": "web",
+      "seen": 1789197990,
+      "cmd_at": 1789198000
+    }
+  ],
+  "approvals": [],
+  "recurring": [
+    {
+      "id": "x-posts",
+      "label": "X posts",
+      "prompt": "X posts",
+      "param": false
+    },
+    {
+      "id": "release-changelog",
+      "label": "Changelog of a release",
+      "prompt": "Write the changelog of release",
+      "param": true
+    },
+    {
+      "id": "plugin-rivals",
+      "label": "Rival plugins",
+      "prompt": "Competing plugins",
+      "param": false
+    }
+  ],
+  "hosts_status": [
+    {
+      "name": "win",
+      "up": false,
+      "at": 1789198800,
+      "error": "ssh: timeout",
+      "cpu": null,
+      "ram_used": null,
+      "ram_total": null,
+      "disk_free": null,
+      "disk_total": null,
+      "sessions": []
+    }
+  ],
+  "published_today": [],
+  "commitments": [
+    {
+      "task": "orbit-docs-site",
+      "title": "Publish the orbit docs site",
+      "short": "Orbit docs",
+      "project": "work/own/orbit-docs",
+      "session": "orbit-docs",
+      "state": "approved",
+      "lane": "closed",
+      "plan": null,
+      "approved": true,
+      "approved_at": 1789120000,
+      "approved_by": "maintainer",
+      "age_s": 80000,
+      "last_step": {
+        "at": 1789190000,
+        "kind": "pause",
+        "text": "after the client's review"
+      },
+      "idle_s": 10000,
+      "next": "orbit-docs resumes, then task done orbit-docs-site",
+      "waits": {
+        "who": "orbit-docs",
+        "on": "person"
+      },
+      "expected": null,
+      "outcome_kind": null,
+      "check": null,
+      "paused": {
+        "reason": "after the client's review",
+        "at": 1789100000,
+        "by": "master"
+      },
+      "stalled": false
+    }
+  ],
+  "suggestions": [
+    {
+      "id": "s-1c0a7e5f21",
+      "kind": "choice",
+      "key": "choice:pricing-copy",
+      "text": "Pricing page copy: the short one or the full one?",
+      "at": 1789199500,
+      "expires_at": 1789242700,
+      "rank": 2,
+      "source": "master",
+      "options": [
+        "Short",
+        "Full"
+      ]
+    },
+    {
+      "id": "s-2d9b4c7e30",
+      "kind": "followup",
+      "key": "followup:atlas-shop:5e1f0a2b",
+      "text": "atlas-shop idle, next: Open the PR for the checkout fix",
+      "at": 1789199400,
+      "expires_at": 1789293000,
+      "rank": 4,
+      "source": "script"
+    },
+    {
+      "id": "s-3e8c5d6f49",
+      "kind": "unsaved",
+      "key": "unsaved:orbit-docs:3d1b2c4e-0000-4000-8000-000000000004",
+      "text": "orbit-docs: 2 files not committed when it closed",
+      "at": 1789199300,
+      "expires_at": 1789292900,
+      "rank": 4,
+      "source": "script"
+    },
+    {
+      "id": "s-4f7d6e8a58",
+      "kind": "waiting",
+      "key": "waiting:task:ledger-vendor-ticket",
+      "text": "Check again: the vendor's answer on ticket 4411",
+      "at": 1789199200,
+      "expires_at": 1789292800,
+      "rank": 5,
+      "source": "script"
+    },
+    {
+      "id": "s-7c4a9b1d85",
+      "kind": "observe",
+      "key": "observe:chrome-bridge:2026-W38",
+      "text": "chrome-bridge: 12 new error notes, top «No tab with id»: sort them?",
+      "at": 1789199150,
+      "expires_at": 1789292750,
+      "rank": 5,
+      "source": "script"
+    },
+    {
+      "id": "s-5a6e7f9b67",
+      "kind": "idea",
+      "key": "idea:field-notes-on-phone",
+      "text": "Try field-notes on the phone",
+      "at": 1789199100,
+      "expires_at": 1789242300,
+      "rank": 6,
+      "source": "master"
+    },
+    {
+      "id": "s-6b5f8a0c76",
+      "kind": "proposal",
+      "key": "proposal:release-notes-script",
+      "text": "Release notes written by hand three times: a script?",
+      "at": 1789199000,
+      "expires_at": 1789242200,
+      "rank": 6,
+      "source": "master"
+    }
+  ],
+  "system": {
+    "at": 1789210790,
+    "cores": 8,
+    "load1": 65.36,
+    "load_per_core": 2.17,
+    "mem_total_mb": 6636,
+    "mem_available_mb": 870,
+    "level": "red",
+    "load_level": "red",
+    "mem_level": "red",
+    "stuck": {
+      "count": 48,
+      "since": 1789189200,
+      "rss_mb": 161,
+      "units": [
+        "cros-notificationd.service",
+        "sommelier-x@0.service",
+        "sommelier-x@1.service",
+        "sommelier@0.service"
+      ]
+    },
+    "consumers": [
+      {
+        "group": "claude",
+        "count": 5,
+        "cpu": 142.5,
+        "rss_mb": 2310
+      },
+      {
+        "group": "other",
+        "count": 118,
+        "cpu": 96.0,
+        "rss_mb": 1450
+      },
+      {
+        "group": "chrome_bridge",
+        "count": 3,
+        "cpu": 46.2,
+        "rss_mb": 1061
+      },
+      {
+        "group": "relay",
+        "count": 1,
+        "cpu": 3.1,
+        "rss_mb": 60
+      }
+    ],
+    "advice": [
+      {
+        "id": "stuck_loop:cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+        "kind": "stuck_loop",
+        "level": "red",
+        "text": "3 graphic bridge services in a restart loop (up to 58 restarts)",
+        "action": {
+          "op": "sys_unit_stop",
+          "arg": "cros-notificationd.service,sommelier-x@0.service,sommelier-x@1.service",
+          "label": "Stop the loop"
+        }
+      },
+      {
+        "id": "orphan_proc:4410:912345",
+        "kind": "orphan_proc",
+        "level": "red",
+        "text": "chrome-bridge without a parent (pid 4410): 46% CPU, 939 MB",
+        "action": {
+          "op": "sys_kill",
+          "arg": "4410:912345",
+          "label": "Close"
+        }
+      },
+      {
+        "id": "low_memory:mem",
+        "kind": "low_memory",
+        "level": "red",
+        "text": "memory available 0.8 GB: move heavy work to win",
+        "action": null
+      },
+      {
+        "id": "stuck:graphic",
+        "kind": "stuck",
+        "level": "yellow",
+        "text": "48 processes stuck on the graphic bridge (161 MB): only restarting Linux frees them",
+        "action": null
+      },
+      {
+        "id": "orphan:13277:870211",
+        "kind": "orphan",
+        "level": "yellow",
+        "text": "«master» lost its tmux (pid 13277)",
+        "action": {
+          "op": "sys_kill",
+          "arg": "13277:870211",
+          "label": "Close"
+        }
+      }
+    ]
+  },
+  "plugins": {
+    "checked_at": 1789189400,
+    "accounts": [
+      {
+        "account": "personal",
+        "updates": [
+          "chrisbanes-skills@chrisbanes-skills"
+        ]
+      },
+      {
+        "account": "work",
+        "updates": []
+      }
+    ]
+  },
+  "prima_raccolta": {
+    "status": "ask",
+    "done": 7,
+    "total": 8,
+    "ask": true,
+    "first_round_at": null
+  },
+  "seguiti": {
+    "rimasto": 2,
+    "altrove": 1,
+    "promemoria": 1
+  },
+  "feedback": {
+    "at": 1789199880,
+    "plugins": [
+      {
+        "plugin": "supervisor",
+        "version": "0.8.99",
+        "new": 2,
+        "pending": 5,
+        "security": 0,
+        "anonymous": true,
+        "consent": {
+          "on": false,
+          "since": null
+        },
+        "last_sent": {
+          "at": 1789113600,
+          "url": "https://github.com/acme/tool/issues/12"
+        },
+        "top": [
+          {
+            "call": "relay agenda",
+            "error": "no agenda file",
+            "count": 146
+          }
+        ]
+      }
+    ],
+    "notice": "The text becomes a public GitHub issue, opened without your name: do not write personal data."
+  },
+  "results": {
+    "n_unseen": 1,
+    "items": [
+      {
+        "id": "9c1e4a7b2d3f5e60",
+        "session": "orbit-docs",
+        "title": "Docs tour",
+        "kind": "video",
+        "mime": "video/mp4",
+        "path": "/home/dev/orbit-docs/tour.mp4",
+        "size": 4812345,
+        "at": 1789199800,
+        "duration_s": 36.7,
+        "version": 3,
+        "versions": 3,
+        "changed": "Shorter intro",
+        "seen_at": null
+      }
+    ]
+  }
+}

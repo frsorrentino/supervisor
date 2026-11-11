@@ -1,0 +1,24 @@
+{
+  "name": "supervisor",
+  "displayName": "Supervisor",
+  "version": "0.8.148",
+  "description": "Supervisor for Claude Code. Run many Claude Code sessions on one machine: launch them in the right folder and account, in tmux, with a terminal window whose tab tells you which is which; list, close, restart, talk to them and restore them after a reboot. Configurable per machine, generic across terminals.",
+  "author": {
+    "name": "Francesco Sorrentino",
+    "email": "info@francescosorrentino.com",
+    "url": "https://github.com/frsorrentino"
+  },
+  "homepage": "https://github.com/frsorrentino/supervisor#readme",
+  "repository": "https://github.com/frsorrentino/supervisor",
+  "privacyPolicyUrl": "https://github.com/frsorrentino/supervisor/blob/main/PRIVACY.md",
+  "icon": "./.claude-plugin/icon.svg",
+  "license": "MIT",
+  "keywords": [
+    "sessions",
+    "tmux",
+    "multi-account",
+    "remote-control",
+    "terminal",
+    "chromeos"
+  ]
+}

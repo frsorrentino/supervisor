@@ -1,0 +1,11 @@
+{
+  "watch": {
+    "watch_pub": "NYBy1jZYgNGu6jKa35EhODhR7SGijjt16WXQ0s0WYlQ=",
+    "uid": "phoneUid00000000000000000000",
+    "name": "Pixel 9",
+    "check": "f47e1dedf0678005",
+    "uids": ["phoneUid00000000000000000000", "watchUid0000000000000000000"],
+    "names": {"phoneUid00000000000000000000": "Pixel 9", "watchUid0000000000000000000": "Pixel Watch 5"}
+  },
+  "ok": {"host": "penguin", "check": "45b2b3a0ed376e3d"}
+}

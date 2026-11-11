@@ -1,0 +1,33 @@
+{
+  "qr": {
+    "v": 1,
+    "i": "q3Vb2mXz0rT8yKp1LwN4sA",
+    "c": "j0DFrbaPJWJK5bIU6nZ6bslNgp09e14a0bpvPiE4KF8=",
+    "h": "penguin",
+    "e": 1789211100,
+    "f": {
+      "k": "AIzaSyD-example-key-000000000000000000",
+      "p": "cmwatch-demo",
+      "a": "1:123456789012:android:0a1b2c3d4e5f6a7b8c9d0e",
+      "d": "https://cmwatch-demo-default-rtdb.europe-west1.firebasedatabase.app",
+      "t": "watch"
+    },
+    "m": "add"
+  },
+  "watch": {
+    "watch_pub": "eaYx7t4b+cmPEgMs3q3Q56B5OY/HhriMyEbsia+FpRo=",
+    "uid": "tabletUid0000000000000000000",
+    "name": "Pixel Tablet",
+    "check": "a13efde85a73cb21",
+    "kind": "tablet"
+  },
+  "ok": {
+    "host": "penguin",
+    "check": "9eba3b2e4ddb7259",
+    "key": {
+      "v": 1,
+      "enc": "sBzllgtmoyV5XJpHVY89C/+SgfCVfSDowsM483iqQfDGYKqLCZkWmGA3UQbMvCaE8euVGvrEiEGtafHaon9SwNrYQr30yP2CGJbwllB/UPKquCoOI6oEBiGptxadCOas8tfUt29B"
+    }
+  },
+  "relay_key": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f"
+}

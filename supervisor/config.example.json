@@ -1,0 +1,534 @@
+{
+  "language": "en",
+  "plugin_root": "",
+  "state_dir": "~/.local/state/cc-supervisor",
+  "workspace": {
+    "root": "~",
+    "root_session_name": "master",
+    "excluded_dirs": [
+      ".git",
+      "node_modules"
+    ],
+    "project_dirs": [
+      "."
+    ]
+  },
+  "accounts": {
+    "default": {
+      "config_dir": "~/.claude",
+      "tmux_prefix": "",
+      "shape": "circle",
+      "shell_command": "claude",
+      "label": "default",
+      "kind": ""
+    }
+  },
+  "default_account": "default",
+  "accounts_warn_on_mismatch": true,
+  "folder_map": [],
+  "session": {
+    "claude_args": [],
+    "remote_control": true,
+    "name_sanitize_chars": ".:",
+    "startup_timeout_s": 90,
+    "dialog_patterns": [],
+    "env": {},
+    "window_by_default": true,
+    "bg_remote_control": false,
+    "death_check_s": 3,
+    "link_wait_s": 20
+  },
+  "terminal": {
+    "backend": "auto",
+    "garcon": "/opt/google/cros-containers/bin/garcon",
+    "open_as_tab": true,
+    "attach_wait_s": 25,
+    "attach_retry_wait_s": 20,
+    "ephemeral": true,
+    "headless_skip": true
+  },
+  "tabs": {
+    "title": true,
+    "strip_prefix": true,
+    "colors": {
+      "circle": [
+        "🔴",
+        "🟠",
+        "🟡",
+        "🟢",
+        "🔵",
+        "🟣",
+        "⚪"
+      ],
+      "square": [
+        "🟥",
+        "🟧",
+        "🟨",
+        "🟩",
+        "🟦",
+        "🟪",
+        "⬜"
+      ]
+    },
+    "color_registry": "~/.local/state/cc-supervisor/colors"
+  },
+  "tile": {
+    "chrome_bridge_cli": "",
+    "terminal_url": "chrome-untrusted://terminal/",
+    "min_column_px": 340,
+    "odd_layout": "master-primary",
+    "padding": 0,
+    "monitor_names": {
+      "native": "native",
+      "left": "left",
+      "right": "right",
+      "above": "above",
+      "below": "below",
+      "external": "external",
+      "center": "center"
+    },
+    "monitor_registry": "~/.local/state/cc-supervisor/monitors.json",
+    "placeholder_file": "~/.local/state/cc-supervisor/next-session",
+    "placeholder_ttl_s": 120,
+    "new_client_wait_s": 60,
+    "window_open_wait_s": 20,
+    "log": "~/.local/state/cc-supervisor/tile.log"
+  },
+  "profiles": {},
+  "registry": {
+    "file": "~/.local/state/cc-supervisor/sessions.json",
+    "good_file": "~/.local/state/cc-supervisor/sessions-good.json",
+    "cron_minutes": 5
+  },
+  "restore": {
+    "uptime_max_min": 15,
+    "confirm_timeout_s": 15,
+    "snapshot_window_min": 60,
+    "last": "master"
+  },
+  "restart": {
+    "flag_file": "~/.local/state/cc-supervisor/restart.json",
+    "log": "~/.local/state/cc-supervisor/restart.log",
+    "exit_wait_s": 20,
+    "term_wait_s": 10,
+    "kill_wait_s": 15,
+    "dead_wait_s": 120
+  },
+  "talk": {
+    "quiet_s": 6,
+    "max_wait_s": 240,
+    "warn_native_channel": true,
+    "from_name": "supervisor",
+    "from_mode": "bypass"
+  },
+  "report": {
+    "subdir": "docs/reports",
+    "image_exts": [
+      "png",
+      "jpg",
+      "jpeg",
+      "webp",
+      "gif"
+    ]
+  },
+  "sessions": {
+    "stall_min": 20,
+    "recent_min": 5,
+    "max_sessions": 5,
+    "idle_hours": 2,
+    "orphan_grace_s": 120,
+    "orphan_wait_s": 3
+  },
+  "system": {
+    "load_yellow": 1.0,
+    "load_red": 2.0,
+    "mem_yellow_mb": 1536,
+    "mem_red_mb": 1024,
+    "stale_context_pct": 50,
+    "heavy_cpu": 50,
+    "kill_patterns": [
+      {
+        "name": "chrome-bridge",
+        "match": "chrome-bridge/server/index\\.js.* --launch( |$)",
+        "min_age_s": 0,
+        "min_cpu": 0
+      },
+      {
+        "name": "mcp",
+        "match": "(^|[ /])(firebase mcp|\\S*mcp-server\\S*)( |$)",
+        "min_age_s": 1800,
+        "min_cpu": 10
+      }
+    ],
+    "orphan_parents": [
+      "init",
+      "systemd"
+    ],
+    "stuck_wchan": [
+      "virtwl_ioctl_ptr",
+      "do_vfd_close"
+    ],
+    "stuck_units": [
+      "sommelier-x@*.service",
+      "cros-notificationd.service",
+      "sommelier@*.service"
+    ],
+    "stuck_min_restarts": 5,
+    "heavy_patterns": [
+      "gradlew?",
+      "ffmpeg",
+      "remotion",
+      "pytest",
+      "vitest",
+      "jest",
+      "cargo",
+      "rustc",
+      "tsc",
+      "webpack",
+      "vite build",
+      "next build",
+      "npm run build",
+      "tesseract",
+      "make"
+    ]
+  },
+  "resume_quota": {
+    "windowless": "new",
+    "watch_s": 10
+  },
+  "quota": {
+    "source": "~/.claude/fable-director",
+    "warn_pct": 85
+  },
+  "desk": {
+    "enabled": false,
+    "name": "sportello",
+    "capacity": 4,
+    "permission_mode": "default"
+  },
+  "experimental": {
+    "codex": false
+  },
+  "bot": {
+    "enabled": false,
+    "token_file": "~/.claude/channels/telegram/.env",
+    "access_file": "~/.claude/channels/telegram/access.json",
+    "api_base": "https://api.telegram.org",
+    "log": "~/.local/state/cc-supervisor/bot.log",
+    "http_timeout_s": 20,
+    "command_timeout_s": 120,
+    "quiet_when_watch": true,
+    "watch_fresh_s": 180
+  },
+  "recap": {
+    "cron_time": "20:00",
+    "max_last_chars": 160,
+    "last": "short",
+    "hide_zero_turns": true,
+    "closed_chars": 90,
+    "summary": "model",
+    "summary_model": "haiku",
+    "summary_timeout_s": 120,
+    "project_log": "docs/recap.md",
+    "startup_lines": 5,
+    "min_turns": 3
+  },
+  "calendar": {
+    "url_file": "~/.config/cc-supervisor/calendar.env",
+    "remind_days": 3,
+    "cache_min": 30,
+    "timeout_s": 10,
+    "case_property": "X-STUDIO-CASE",
+    "cases": {},
+    "studio_rule": ""
+  },
+  "guard": {
+    "warn_pct": 95,
+    "cron_minutes": 5,
+    "night_after_reset": true,
+    "night_timeout_s": 3600,
+    "resume_prompt": "La quota è tornata disponibile: riprendi da dove eri rimasto.",
+    "week_unused_hours": 12,
+    "week_unused_pct": 60,
+    "week_pace_margin_h": 12,
+    "week_pace_min_pct": 30
+  },
+  "auto_switch": {
+    "accounts": [],
+    "at_pct": 90,
+    "back_pct": 75,
+    "min_s": 1800,
+    "night_hours": [
+      0,
+      7
+    ]
+  },
+  "night": {
+    "cron_time": "02:00",
+    "report_time": "06:30",
+    "min_free_mb": 1500,
+    "max_quota_pct": 80,
+    "item_timeout_s": 3600,
+    "max_turns": 40,
+    "permission_mode": "default",
+    "tool_memory_limit": "2g",
+    "retry_watchdog_max_wait_ms": 900000,
+    "retry_watchdog_max_usage_limit_wait_ms": 900000,
+    "retry_watchdog_usage_limit_recheck_ms": 300000,
+    "after_result_s": 300,
+    "fork_subagent": false,
+    "out_subdir": "docs/notte",
+    "max_items_per_run": 3,
+    "max_queued": 8,
+    "queue_file": "~/.local/state/cc-supervisor/night-queue.jsonl",
+    "done_file": "~/.local/state/cc-supervisor/night-done.jsonl",
+    "log": "~/.local/state/cc-supervisor/night.log"
+  },
+  "relay": {
+    "enabled": false,
+    "firebase_url": "",
+    "service_account": "~/.cc-supervisor/relay/service-account.json",
+    "fcm_topic": "watch",
+    "tier_high": [
+      "rm -rf",
+      "git push",
+      "deploy",
+      "DROP",
+      "ssh",
+      "sudo",
+      "--force",
+      "git reset --hard"
+    ],
+    "state_max_kb": 8,
+    "events_days": 7,
+    "dir": "~/.cc-supervisor/relay",
+    "heartbeat_s": 60,
+    "debounce_s": 2,
+    "token_url": "https://oauth2.googleapis.com/token",
+    "fcm_url": "https://fcm.googleapis.com",
+    "host": "",
+    "log": "",
+    "command_timeout_s": 120,
+    "pair_ttl_s": 300,
+    "pair_attempts": 5,
+    "web_app_url": "https://supervisor.francescosorrentino.com",
+    "stream_silence_s": 45,
+    "colors": {},
+    "awaiting_max_s": 1800,
+    "agenda_file": "",
+    "agenda_owner": "owner",
+    "duplicate_prompt_s": 60,
+    "telegram_fallback_after_s": 600,
+    "window_hint_dir": "~/.claude/fable-director/sessions",
+    "window_unmarked": [
+      "claude-fable-5-1",
+      "claude-sonnet-5-5"
+    ],
+    "window_1m": [
+      "claude-haiku-5-5"
+    ],
+    "firebase_app": {
+      "api_key": "",
+      "project_id": "",
+      "app_id": ""
+    },
+    "google_services": "",
+    "app_package": "",
+    "adb": "",
+    "adb_serial": "emulator-5554",
+    "setup_location": "europe-west1",
+    "slash_commands": [
+      "compact",
+      "clear",
+      "exit",
+      "context",
+      "cost"
+    ],
+    "web": {
+      "enabled": false,
+      "port": 8765,
+      "dir": ""
+    },
+    "advice_dir": "~/.claude/fable-director/sessions",
+    "advice_max_age_s": 21600
+  },
+  "tune": {
+    "timeout_s": 8,
+    "compact_timeout_s": 300,
+    "file": "~/.local/state/cc-supervisor/tuned.json",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "models": [
+      {
+        "id": "claude-opus-5-5[1m]",
+        "label": "Opus 5.5",
+        "pick": [
+          "Opus 5.5",
+          "Opus (1M context)"
+        ]
+      },
+      {
+        "id": "claude-fable-5-1",
+        "label": "Fable 5.1",
+        "pick": [
+          "Fable 5.1",
+          "Fable"
+        ]
+      },
+      {
+        "id": "claude-sonnet-5-5",
+        "label": "Sonnet 5.5",
+        "pick": [
+          "Sonnet 5.5",
+          "Sonnet"
+        ]
+      },
+      {
+        "id": "claude-haiku-5-5",
+        "label": "Haiku 5.5",
+        "pick": [
+          "Haiku 5.5",
+          "Haiku"
+        ]
+      }
+    ]
+  },
+  "inbox": {
+    "expires_h": 48
+  },
+  "tasks": {
+    "guard": false,
+    "notify": "master",
+    "stall_hours": 2,
+    "commitments_prompt": true,
+    "commitments_max_lines": 8,
+    "quiet_hours": [
+      23,
+      7
+    ],
+    "high_stakes_dirs": [
+      "personali/rino",
+      "clienti",
+      "enti"
+    ]
+  },
+  "plugins": {
+    "check_hours": 6
+  },
+  "suggest": {
+    "stall_h": 4,
+    "followup_max_h": 72,
+    "script_max": 8,
+    "observe_dir": "~/.local/state/claude-observe",
+    "observe_min_new": 10,
+    "observe_days": 3,
+    "observe_skip": [
+      "claude-master",
+      "team-supervisor"
+    ]
+  },
+  "hooks": {
+    "local_time": {
+      "enabled": true,
+      "format": "%A %Y-%m-%d %H:%M",
+      "prefix": "[local time]"
+    },
+    "restart_stop": {
+      "enabled": true
+    },
+    "session_kernel": {
+      "enabled": true
+    },
+    "ask_notify": {
+      "enabled": true,
+      "delay_s": 1.5,
+      "synth_model": "haiku",
+      "synth_max_chars": 88,
+      "synth_timeout_s": 20
+    },
+    "elicitation": {
+      "enabled": true,
+      "wait_s": 120
+    }
+  },
+  "shell": {
+    "wrappers": {
+      "claude": "default"
+    },
+    "aliases": {},
+    "passthrough_args": [
+      "--version",
+      "-v",
+      "--help",
+      "-h",
+      "-p",
+      "--print",
+      "mcp",
+      "update",
+      "doctor",
+      "install",
+      "agents",
+      "attach",
+      "logs",
+      "stop",
+      "plugin"
+    ],
+    "restore_prompt": true,
+    "disable_terminal_title": true
+  },
+  "tmux": {
+    "keybindings": {
+      "tile": "a",
+      "merge": "u",
+      "move_arrows": true
+    },
+    "socket": ""
+  },
+  "hosts": {},
+  "scheduler": {
+    "fresh_s": 180,
+    "poll_idle_s": 600,
+    "poll_busy_s": 30,
+    "load_gate_pct": 80,
+    "roles": {
+      "compute_cpu_multi": 1.0,
+      "compute_ram_gb": 8
+    },
+    "limits": {
+      "threads_per_heavy": 4,
+      "reserve_gb": 2,
+      "session_reserve_gb": 0.35,
+      "heavy_footprint_gb": 3,
+      "session_peak_gb": 0.65,
+      "sessions_cap": 6
+    },
+    "setup_s": 10,
+    "drift_pct": 30,
+    "doctor_max_age_d": 30,
+    "bench_max_load_pct": 20,
+    "remote_root": {
+      "posix": "~/claude-work",
+      "windows": "%USERPROFILE%\\claude-work"
+    },
+    "client_paths": [],
+    "secret_globs": [
+      ".env*",
+      "*.pem",
+      "*.key",
+      "id_*",
+      ".npmrc",
+      "credentials*"
+    ],
+    "ssh_connect_timeout_s": 4,
+    "min_free_gb": 2,
+    "session_offload": {
+      "load_per_core": 1.0,
+      "free_ram_gb": 2
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "source": "git",
+  "repo": "/home/dev/storefront",
+  "base": "a1b2c3d",
+  "files": [
+    {
+      "path": "src/checkout/totals.ts",
+      "status": "modified",
+      "added": 2,
+      "removed": 1,
+      "size": 2140,
+      "hunks": [
+        {
+          "old_start": 12,
+          "old_lines": 3,
+          "new_start": 12,
+          "new_lines": 4,
+          "lines": [
+            " export function total(cart: Cart) {",
+            "-  return cart.items.reduce((s, i) => s + i.price, 0)",
+            "+  const sub = cart.items.reduce((s, i) => s + i.price * i.qty, 0)",
+            "+  return sub - (cart.giftCard?.amount ?? 0)",
+            " }"
+          ]
+        }
+      ],
+      "cut": false
+    },
+    {
+      "path": "tests/checkout/totals.test.ts",
+      "status": "added",
+      "added": 5,
+      "removed": 0,
+      "size": 212,
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_lines": 0,
+          "new_start": 1,
+          "new_lines": 5,
+          "lines": [
+            "+import { total } from '../../src/checkout/totals'",
+            "+",
+            "+test('gift card lowers the total', () => {",
+            "+  expect(total({ items: [{ price: 10, qty: 2 }], giftCard: { amount: 5 } })).toBe(15)",
+            "+})"
+          ]
+        }
+      ],
+      "cut": false
+    },
+    {
+      "path": ".env.local",
+      "status": "modified",
+      "added": 1,
+      "removed": 1,
+      "size": 88,
+      "hunks": [],
+      "cut": false
+    },
+    {
+      "path": "assets/logo.png",
+      "status": "binary",
+      "added": 0,
+      "removed": 0,
+      "size": 48213,
+      "hunks": [],
+      "cut": false
+    }
+  ],
+  "totals": {
+    "files": 4,
+    "added": 8,
+    "removed": 2
+  },
+  "cut": false,
+  "at": 1792100000
+}
