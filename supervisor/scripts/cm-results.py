@@ -492,6 +492,14 @@ def scan(live=None, now=None):
                       if now - float(o.get("at") or 0) < FILE_KEEP_S and os.path.exists(p)}
         d["scan_at"] = int(now)
         _write(d)
+    # 11/11 (supervisor-anteprime-documenti-11-11): le anteprime che mancano, poche per giro, a bassa priorita' come lo scan
+    # (fuori dal lock dell'indice: una conversione di soffice puo' durare secondi)
+    try:
+        todo = [x for x in (d.get("items") or {}).values() if x.get("kind") in ("document", "image", "mockup") and x.get("seen_at") is None]
+        if todo:
+            _load("cm-thumb").prepare(todo)
+    except Exception:   # noqa: BLE001 — un'anteprima in meno, mai lo scan perso
+        pass
     return new
 
 

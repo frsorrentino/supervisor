@@ -537,6 +537,22 @@ def result_seen(arg):
     return True, M("relay.result_seen")
 
 
+_THUMB = [None]
+
+
+def result_thumb(arg):
+    """1.136 (11/11, supervisor-anteprime-documenti-11-11): op thumb, una lettura. arg = l'id di una consegna di Verifica;
+    l'anteprima creata una volta dal relay (cm-thumb): {id, path, at, kind: image|text|none, …}. Con l'etag della risposta
+    l'app la chiede una volta sola (unchanged). Solo consegne dell'indice."""
+    rid = str(arg or "").strip()
+    x, _ = results_mod().get(rid)
+    if not x:
+        return False, M("relay.result_unknown", id=rid[:40] or "?")
+    if _THUMB[0] is None:
+        _THUMB[0] = _load("cm-thumb")
+    return True, json.dumps(_THUMB[0].thumb(x), ensure_ascii=False)
+
+
 def _pos_text(pos_s):
     v = f"{pos_s:.1f}".rstrip("0").rstrip(".")
     return v.replace(".", ",") if str(CFG.get("language") or "it").lower().startswith("it") else v
@@ -2693,6 +2709,8 @@ def execute(cmd):
             return feedback_app(cmd)
         if op == "results":   # 1.106
             return True, json.dumps(results_mod().view(TRANSCRIPT_MAX_BYTES), ensure_ascii=False)
+        if op == "thumb":   # 1.136
+            return result_thumb(arg)
         if op == "result_seen":   # 1.106
             return result_seen(arg)
         if op == "result_note":   # 1.106

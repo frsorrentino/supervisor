@@ -644,6 +644,16 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.136 (11/11/2026, the maintainer from the phone at 19:49 and 19:51: the documents of Verifica show only the generic icon; task supervisor-anteprime-documenti-11-11). Additive, `v` stays 1.
+
+- **Op `thumb`** (a read, in the slow lane): `arg` = the id of a delivery of the results index (`state.results.items[].id`, the `items[].id` of op `results`). The answer is its preview, made once by the relay and kept: `{id, path, at, kind, …}` where `kind` is
+  - `image`: `mime` `image/jpeg`, `data` (base64), `width` (at most 240) and `height`; under 30 KB. PDF: the first page; office documents (doc, docx, odt, rtf, xls, xlsx, ods, ppt, pptx, odp): through LibreOffice to PDF, then its first page; images: made smaller; on macOS Quick Look when the others are missing;
+  - `text`: `text`, the first lines of txt, md, csv, tsv, json, log, yaml (at most 20 lines and 1200 characters);
+  - `none`: `why` is `no_tool` (no converter on that computer), `missing` (the file is gone), `remote` (the delivery is on another computer), `type` (a kind with no preview).
+- It carries `etag` like every read (1.135): the app asks once, keeps the preview, and later sends the `etag` to get `unchanged`. A preview is made again only when the file changes on disk. An id not in the index is an error («result <id> not found»).
+- The results scan makes the missing previews at low priority, at most three per round, so the first request usually finds it ready.
+- `ops` in the three state fixtures: `thumb` after `monitor_refresh`. Fixture: `cmd-result-sample.json` …1360 (image), …1361 (text), …1362 (none, `type`), …1363 (an unknown id).
+
 Contract 1.135 (11/11/2026, tasks supervisor-installazione-semplice-11-11 and supervisor-plugin-frase-doppia-11-11: a colleague's web app showed the master closed while it was open; the maintainer from the app: «correggere la ripetizione "vale dalle sessioni nuove"»). Additive, `v` stays 1.
 
 - **The daemon beats by itself.** Without cron the daemon published `/state` only when a hook or a command asked: the push of the master's start could run before Claude Code had registered the session, and nobody pushed again, so the app showed the master `gone`. Now the daemon asks for a light push every `relay.heartbeat_s` (60 s, at least 5) with no request in between, as the cron beat does; a new file in an account's `sessions/` folder makes the next beat a full collection.

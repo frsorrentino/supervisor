@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.149 — 2026-11-11: a preview for the documents of Verifica (supervisor-anteprime-documenti-11-11, contract 1.136).**
+  - The documents in Verifica showed only a generic icon. The relay now makes a small preview of each delivery once and keeps it. For a PDF or an office document it is the first page; for text, Markdown or CSV the first lines; images are made smaller.
+  - The app asks for it with the new op `thumb` and the delivery's id, and gets it once: a few KB, never the whole file through Firebase. Where no converter is installed it says so.
 - **0.8.148 — 2026-11-11: supervisor works on macOS, and the phone needs no Node and no Enter (supervisor-macos-11-11).**
   - On a Mac supervisor did not see any session as open: it read the processes from /proc, which macOS does not have, and its scripts needed bash 4. Now processes, load and memory are read through one layer with a Linux and a macOS branch, and every script runs with the Mac's own bash 3.2.
   - On macOS cron and the relay find tmux from Homebrew and the system tools, a new Terminal window opens, and a session restarts. Before, cron said «tmux not installed», no window opened and a restart failed.

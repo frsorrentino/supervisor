@@ -1494,6 +1494,42 @@
       "issued": 1789900030,
       "by": "web-chrome",
       "etag": "fce03203717a363b"
+    },
+    {
+      "id": "6f1c2d3e-1360-4000-8000-000000001360",
+      "op": "thumb",
+      "session": null,
+      "arg": "9f2c1a7b3e4d5c60",
+      "device": "web",
+      "issued": 1789910000,
+      "by": "web-chrome"
+    },
+    {
+      "id": "6f1c2d3e-1361-4000-8000-000000001361",
+      "op": "thumb",
+      "session": null,
+      "arg": "9f2c1a7b3e4d5c61",
+      "device": "web",
+      "issued": 1789910001,
+      "by": "web-chrome"
+    },
+    {
+      "id": "6f1c2d3e-1362-4000-8000-000000001362",
+      "op": "thumb",
+      "session": null,
+      "arg": "9f2c1a7b3e4d5c62",
+      "device": "web",
+      "issued": 1789910002,
+      "by": "web-chrome"
+    },
+    {
+      "id": "6f1c2d3e-1363-4000-8000-000000001363",
+      "op": "thumb",
+      "session": null,
+      "arg": "0000000000000000",
+      "device": "web",
+      "issued": 1789910003,
+      "by": "web-chrome"
     }
   ],
   "result": [
@@ -2459,6 +2495,33 @@
       "etag": "fce03203717a363b",
       "unchanged": true,
       "at": 1789900031
+    },
+    {
+      "id": "6f1c2d3e-1360-4000-8000-000000001360",
+      "ok": true,
+      "text": "{\"id\": \"9f2c1a7b3e4d5c60\", \"path\": \"/home/demo/ws/preventivi/PREV-2026-034.pdf\", \"at\": 1789910000, \"kind\": \"image\", \"mime\": \"image/jpeg\", \"data\": \"/9j/4AAQSkZJRgABAQEAFAAUAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCADwAKoDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD2aiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA5/wAXpJLaafDFEkxkv41MUkpjVxhuCwBIH4Gs6L+2tBcWqPE4MF3ffZULzYCGIJCjtg4JYnOO+ABXY0UAcLbeL9ShtGv52hvLKExiRoQhYtIjYUbGYffEYGTnEnPQE2Y/EGsx+IY9MuGtzJHJDDJGAq+cGiVnkUFt3DFsYUjCEE5zjsAAowAAPajA3bsDOMZoA4Ua3rE+m2El1qMcRuY9PumeKPYEEsoVk5PK4x19+xwLOm69qWbKwSFGe5iS4i2qeIl3eaOT1yqDP/TUeldiQGGGAI9DS0Ac14X1y51SfZLd292rWcVw7QJt+zyMTmM8n04B5GDmulpAoXOABk5OB1paACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP/Z\", \"width\": 170, \"height\": 240}",
+      "etag": "e99f163511db5ab4",
+      "at": 1789910001
+    },
+    {
+      "id": "6f1c2d3e-1361-4000-8000-000000001361",
+      "ok": true,
+      "text": "{\"id\": \"9f2c1a7b3e4d5c61\", \"path\": \"/home/demo/ws/francescosorrentino-com/verbale.md\", \"at\": 1789910010, \"kind\": \"text\", \"text\": \"# Verbale della riunione\\n\\nPresenti: tre persone.\\nDecisioni: approvato il preventivo, consegna entro venerdì.\"}",
+      "etag": "1c391179b5a49e0e",
+      "at": 1789910011
+    },
+    {
+      "id": "6f1c2d3e-1362-4000-8000-000000001362",
+      "ok": true,
+      "text": "{\"id\": \"9f2c1a7b3e4d5c62\", \"path\": \"/home/demo/ws/energy-manager/Determina.pages\", \"at\": 1789910020, \"kind\": \"none\", \"why\": \"type\"}",
+      "etag": "d474beef1ac65d8a",
+      "at": 1789910021
+    },
+    {
+      "id": "6f1c2d3e-1363-4000-8000-000000001363",
+      "ok": false,
+      "text": "result 0000000000000000 not found",
+      "at": 1789910004
     }
   ]
 }
