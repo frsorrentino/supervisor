@@ -149,7 +149,7 @@ T.check("MO2 a form outside the catalog is refused naming the catalog; meter wit
 T.check("MO2 status: si/ok/1 are yes, «forse» refused, «sì da 3 giorni»; bars: the values of a day summed; table: the last value of each row",
         cb.get("value") == "sì" and cb.get("delta") == "da 3 giorni" and r_st.returncode == 2
         and [p[1] for p in cv["series"][0]["points"]] == [12.0, 2.0]
-        and ct.get("rows") == [{"name": "chrome-bridge", "value": 8.0, "text": "8"}, {"name": "fable-director", "value": 4.0, "text": "4"}],
+        and ct.get("rows") == [{"name": "chrome-bridge", "value": 8.0, "text": "8", "url": None}, {"name": "fable-director", "value": 4.0, "text": "4", "url": None}],
         f"{cb.get('value')} {cb.get('delta')} {r_st.returncode} {cv.get('series')} {ct.get('rows')}")
 pts = cf["series"][0]["points"] if cf.get("series") else []
 T.check("MO2 200 values → at most 60 points, the last one kept, n=200, min and max of the whole history",
@@ -163,7 +163,7 @@ items3 = [x for x in sug().get("items") or [] if x.get("key") == "monitor:prezzi
 mo("point", "prezzi", "--series", "yoga", "1760", "--ts", ts(28))
 items3b = [x for x in sug().get("items") or [] if x.get("key") == "monitor:prezzi"]
 T.check("MO3 --below 1800 --series yoga: status watch, ONE item in «Dalla master» (kind monitor, source script, link), still one after another value under it",
-        r_al.returncode == 0 and c3.get("status") == "watch" and c3["hits"] == [{"kind": "below", "value": 1800.0, "series": "yoga", "text": "sotto 1.800 € · yoga"}]
+        r_al.returncode == 0 and c3.get("status") == "watch" and c3["hits"] == [{"kind": "below", "value": 1800.0, "series": "yoga", "text": "sotto 1.800 € · yoga", "url": None}]
         and len(items3) == 1 and items3[0]["kind"] == "monitor" and items3[0]["source"] == "script" and items3[0]["link"] == WEB + "/#/monitor/prezzi"
         and "sotto 1.800 €" in items3[0]["text"] and "supervisor monitor show prezzi" in items3[0]["prompt"]
         and len(items3b) == 1 and items3b[0]["id"] == items3[0]["id"], f"{r_al.stdout}{r_al.stderr} {c3.get('hits')} {items3} {items3b}")
@@ -471,6 +471,29 @@ T.check("MO15 the samples …1320 (started: the card, refresh running), …1321 
         and all(set(c) == {"id", "op", "session", "arg", "issued", "by"} for c in (cmds["1320"], cmds["1321"], cmds["1322"])),
         f"{s21.get('text')} | {t_n} | {s22.get('text')} | {t_s} | {sorted(set(b20) ^ set(card14))}")
 
+# MO16 (1.138, 12/11/2026, supervisor-monitor-link-12-11): il link della cosa monitorata — per punto e fisso per serie
+mo("add", "pc", "--title", "Prezzi pc", "--form", "multiples", "--unit", "€", "--series", "yoga,zen", "--link", "zen=https://shop.example/zen")
+mo("alert", "pc", "--new-min", "--series", "yoga")
+mo("point", "pc", "--series", "yoga", "1900", "--ts", ts(8), "--url", "https://a.example/yoga?id=1")
+mo("point", "pc", "--series", "zen", "1300", "--ts", ts(8))
+mo("point", "pc", "--series", "yoga", "1799", "--ts", ts(9), "--url", "https://unieuro.example/yoga-9i")
+bad_u = mo("point", "pc", "--series", "yoga", "1700", "--url", "javascript:alert(1)")
+bad_l = mo("set", "pc", "--link", "zen=ftp://x")
+c16 = show("pc")
+s16 = {s["name"]: s for s in c16.get("series") or []}
+it16 = next((x for x in (sug().get("items") or []) if x.get("key") == "monitor:pc"), {})
+T.check("MO16 a point carries --url, a series a fixed --link: each series gives the url of its last point that has one, else the fixed one; a new minimum's hit carries the url of the point that set it off, and so does the card",
+        s16.get("yoga", {}).get("url") == "https://unieuro.example/yoga-9i" and s16.get("zen", {}).get("url") == "https://shop.example/zen"
+        and [h.get("url") for h in c16.get("hits") or []] == ["https://unieuro.example/yoga-9i"] and c16.get("url") == "https://unieuro.example/yoga-9i", json.dumps(c16)[:900])
+T.check("MO16 the item in «Dalla master» carries the page (url) beside the app link; only http and https, the rest refused with nothing written",
+        it16.get("url") == "https://unieuro.example/yoga-9i" and it16.get("link") == WEB + "/#/monitor/pc"
+        and bad_u.returncode != 0 and bad_l.returncode != 0 and "javascript" not in (tmp / "monitors" / "pc" / "points.jsonl").read_text(), json.dumps(it16) + bad_u.stderr + bad_l.stderr)
+mo("set", "pc", "--link", "zen=")
+c16b = show("pc")
+SG16 = importlib.util.spec_from_file_location("sg16", T.SCRIPTS / "cm-suggest.py")
+T.check("MO16 «--link S=» removes the fixed link; a monitor with no url has url null everywhere (old apps see nothing new)",
+        {s["name"]: s["url"] for s in c16b["series"]}.get("zen") is None and show("prezzi").get("url") is None
+        and all(s.get("url") is None for s in show("prezzi")["series"]), json.dumps(c16b["series"])[:400])
 T.check("no talk left the test", not talklog.exists() or talklog.read_text() == "", talklog.read_text() if talklog.exists() else "")
 T.rm(tmp)
 T.finish()

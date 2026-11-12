@@ -376,6 +376,8 @@ def suggestion_of(x):
         y["options"] = list(x["options"])
     if x.get("link"):   # 1.132: solo sulle voci di un monitoraggio
         y["link"] = str(x["link"])
+    if x.get("url"):   # 1.138: la pagina della cosa monitorata (la soglia scattata)
+        y["url"] = str(x["url"])
     return y
 
 

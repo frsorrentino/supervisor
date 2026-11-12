@@ -644,6 +644,13 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.138 (12/11/2026, the maintainer at 15:19: «Sarebbe sufficiente che fosse cliccabile e che mi portasse alla pagina con il nuovo prezzo»; task supervisor-monitor-link-12-11, for the app app-monitor-link-12-11). Additive, `v` stays 1.
+
+- **The link of the monitored thing.** `supervisor monitor point ID [--series S] VALUE --url URL` stores the page of that reading (the best offer changes shop from one reading to the next); `supervisor monitor add|set ID --link S=URL` (several times; `--link URL` for a monitor with one series; `S=` removes it) a fixed link of the series. Only `http` and `https`, one line, up to 2000 characters; anything else is refused and nothing is written.
+- **Ops `monitors` and `monitor`**: every card gains `url`, every `series[]` item `url` (the url of its last point that has one, else the fixed link of the series, else null), every `hits[]` item `url` (the url of the point that set the threshold off), every `rows[]` item of a table `url`. The card's `url` is the first hit's, else the main series'. A monitor without links has `url: null` everywhere.
+- **`state.suggestions[]`** of kind `monitor` carry `url` (the page of the threshold that went off) beside `link` (the card in the app), only when there is one.
+- Fixture `cmd-result-sample.json`: …1310 and …1311 (the prices card with a url per series, on its hit and on the card), …1320 (`url` null).
+
 Contract 1.137 (12/11/2026, the maintainer from the app at 14:36 and 15:03: «Un link a una sezione che non mostra immagini ma che mostra solo il testo non è di aiuto»; the choice card he approved at 15:10; tasks supervisor-attesa-allegati-12-11 and supervisor-scheda-scelta-12-11, for the app app-attesa-immagini-12-11). Additive, `v` stays 1.
 
 - **A choice card in one command**: `supervisor task wait-ok ID --what "what to decide" --desc "the real description" --option "A arrows|pros and cons in one line|mock/a.png,mock/a2.png" --option "B panel|…|mock/b.png" [--where D] [--files x.pdf]`. 2 to 4 `--option`, labels up to 24 characters, «(consigliata)» in a label as before; relative paths from the task's folder; `--where` optional. `--options "A|B"` stays. A new `wait-ok` on the same task is a new round of the same card. Sessions on other hosts have no registry: the master opens the card for them. `task prova … --files` attaches files to a test.

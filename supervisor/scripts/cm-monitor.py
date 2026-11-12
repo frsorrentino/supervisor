@@ -8,7 +8,8 @@
   supervisor monitor refresh ID [--wait]
   supervisor monitor alert ID (--below N | --above N | --new-min | --new-max) [--series S]
   supervisor monitor alert ID --clear
-  supervisor monitor point ID [--series S] VALORE [--ts EPOCA|AAAA-MM-GG[THH:MM]]
+  supervisor monitor point ID [--series S] VALORE [--ts EPOCA|AAAA-MM-GG[THH:MM]] [--url URL]
+  supervisor monitor set ID --link [S=]URL [--link S2=URL2 …]   (il link fisso di una serie; «S=» lo toglie)
   supervisor monitor verdict ID "frase"
   supervisor monitor list [--json]
   supervisor monitor show ID [--json]
@@ -34,6 +35,12 @@ vale per ognuna. Quando scattano, una sola voce in «Dalla master» (state.sugge
 rientra. `line` stampa una riga breve col link, per i cron che oggi mandano report lunghi su Telegram.
 Il link: <relay.web_app_url>/#/monitor/<id>.
 
+Il link della cosa monitorata (1.138, 12/11/2026, supervisor-monitor-link-12-11: il maintainer vedeva «Yoga 9i a 1.799 €
+da Unieuro» senza poter aprire la pagina): un punto puo' portare --url (l'offerta migliore cambia negozio da una lettura
+all'altra), una serie un link fisso (--link S=URL in add/set). La scheda da' per ogni serie `url`, l'ultimo del punto o
+quello fisso; ogni soglia scattata (hits) quello del punto che l'ha fatta scattare; la voce in «Dalla master» lo stesso.
+Solo http e https.
+
 L'aggiornamento a richiesta (1.133): def.json puo' dichiarare `refresh` {cmd, timeout_s (180), min_interval_s (60)}, e
 si scrive solo da questa CLI (`add`/`set --refresh`): l'app manda l'id, mai il testo di un comando. `refresh ID` lo
 esegue con `nice -n 19 sh -c CMD` nella home, con SUPERVISOR_MONITOR_ID nell'ambiente: senza --wait in sottofondo, con
@@ -58,6 +65,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 WEB_APP_URL = "https://supervisor.francescosorrentino.com"   # come cm-relay.WEB_APP_URL
+URL_RE = re.compile(r"https?://[^\s\x00-\x1f\x7f]{1,2000}", re.I)   # 1.138: solo http e https, una riga
+URL_MAX = 2000
 FORMS = ("tile", "line", "multiples", "bars", "meter", "table", "status")
 ALERTS = ("below", "above", "new_min", "new_max")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
@@ -147,7 +156,8 @@ def read_points(mid):
             for line in f:
                 try:
                     r = json.loads(line)
-                    out.append({"ts": int(r["ts"]), "series": str(r.get("series") or ""), "value": float(r["value"])})
+                    out.append({"ts": int(r["ts"]), "series": str(r.get("series") or ""), "value": float(r["value"]),
+                                **({"url": r["url"]} if isinstance(r.get("url"), str) and URL_RE.fullmatch(r["url"]) else {})})
                 except (ValueError, KeyError, TypeError):
                     continue
     except OSError:
@@ -235,9 +245,15 @@ def reduce(points, n=POINTS_MAX):
     return [out[k] for k in sorted(out)]
 
 
-def _hits(d, series):
-    """Le soglie che scattano adesso: [{kind, value, series, text}]."""
+def _url_of(d, name, url_by):
+    """1.138: il link della serie: l'ultimo punto che ne ha uno, altrimenti quello fisso; None."""
+    return url_by.get(name) or ((d.get("links") or {}).get(name or "") if isinstance(d.get("links"), dict) else None) or None
+
+
+def _hits(d, series, url_by=None):
+    """Le soglie che scattano adesso: [{kind, value, series, text, url}]."""
     out = []
+    url_by = url_by or {}
     for a in d.get("alerts") or []:
         for name, pts in series:
             if a.get("series") not in (None, "", name) or not pts:
@@ -247,7 +263,7 @@ def _hits(d, series):
             hit = (a["kind"] == "below" and last < a["value"]) or (a["kind"] == "above" and last > a["value"]) or \
                   (a["kind"] == "new_min" and prev and last < min(prev)) or (a["kind"] == "new_max" and prev and last > max(prev))
             if hit:
-                out.append(dict(alert_view(a, d.get("unit") or ""), series=name or None))
+                out.append(dict(alert_view(a, d.get("unit") or ""), series=name or None, url=_url_of(d, name, url_by)))
     return out
 
 
@@ -282,8 +298,11 @@ def card(mid, d=None, pts=None):
     d = d or need(mid)
     pts = read_points(mid) if pts is None else pts
     unit, form = d.get("unit") or "", d["form"]
-    raw = []
+    raw, url_by = [], {}
     for name, ps in _by_series(d, pts):
+        lu = next((p["url"] for p in reversed(ps) if p.get("url")), None)   # 1.138: il link dell'ultimo punto che ne ha uno
+        if lu:
+            url_by[name] = lu
         if form == "bars":
             seq = _per_day(ps, "sum")
         elif form == "status":
@@ -291,7 +310,7 @@ def card(mid, d=None, pts=None):
         else:
             seq = [(p["ts"], p["value"]) for p in ps]
         raw.append((name, seq))
-    hits = _hits(d, raw)
+    hits = _hits(d, raw, url_by)
     main = next((s for s in raw if s[1]), raw[0] if raw else ("", []))
     last = main[1][-1] if main[1] else None
     c = {"id": mid, "title": d["title"], "form": form, "unit": unit or None, "status": "watch" if hits else "ok",
@@ -299,7 +318,7 @@ def card(mid, d=None, pts=None):
          "value": None, "delta": None, "delta_pct": None, "delta_since": None,
          "at": max((p["ts"] for p in pts), default=None), "source": d.get("source") or None, "every": d.get("every") or None,
          "example": bool(d.get("example")), "alerts": [alert_view(a, unit) for a in d.get("alerts") or []], "hits": hits,
-         "series": [], "link": link(mid)}
+         "series": [], "link": link(mid), "url": None}
     c["refresh"] = refresh_view(mid, d)   # 1.133: mai il comando, solo lo stato dell'ultimo giro
     c["refreshable"] = c["refresh"] is not None
     if form == "status":
@@ -322,9 +341,11 @@ def card(mid, d=None, pts=None):
         vals = [v for _, v in seq]
         c["series"].append({"name": name or None, "points": reduce(seq), "n": len(seq),
                             "last": vals[-1] if vals else None, "last_text": fmt_val(vals[-1], unit) if vals else None,
-                            "min": min(vals) if vals else None, "max": max(vals) if vals else None})
+                            "min": min(vals) if vals else None, "max": max(vals) if vals else None, "url": _url_of(d, name, url_by)})
+    # 1.138: il link della scheda, quello della soglia scattata, altrimenti quello della serie principale
+    c["url"] = next((h["url"] for h in hits if h.get("url")), None) or _url_of(d, main[0], url_by)
     if form == "table":
-        c["rows"] = [{"name": s["name"], "value": s["last"], "text": s["last_text"]} for s in c["series"]]
+        c["rows"] = [{"name": s["name"], "value": s["last"], "text": s["last_text"], "url": s["url"]} for s in c["series"]]
     return c
 
 
@@ -506,6 +527,11 @@ def sync(mid, c=None):
         x = next(x for x in d["items"] if x.get("key") == key)
         if c["link"]:
             x["link"] = c["link"]
+        u = next((h["url"] for h in c["hits"] if h.get("url")), None)   # 1.138: la pagina della cosa monitorata
+        if u:
+            x["url"] = u
+        else:
+            x.pop("url", None)
         x["monitor"] = mid
     if json.dumps(d, sort_keys=True) != before:
         SG.save(d, now)
@@ -560,6 +586,9 @@ def cmd_add(argv):
     real = _flag(argv, "--real")
     refresh, r_timeout, r_interval = _opt(argv, "--refresh"), _opt(argv, "--refresh-timeout"), _opt(argv, "--refresh-min-interval")
     no_refresh = _flag(argv, "--no-refresh")
+    links = []
+    while "--link" in argv:   # 1.138: --link [S=]URL, piu' volte; «S=» toglie il link della serie
+        links.append(_opt(argv, "--link"))
     if argv:
         raise Bad(M("monitor.unknown_option", opt=argv[0]))
     d = read_def(mid)
@@ -610,6 +639,21 @@ def cmd_add(argv):
         r.setdefault("timeout_s", REFRESH_TIMEOUT_S)
         r.setdefault("min_interval_s", REFRESH_MIN_INTERVAL_S)
         d["refresh"] = r
+    for raw in links:
+        name, url = ("", raw) if URL_RE.fullmatch(raw.strip()) else (raw.split("=", 1) + [""])[:2]
+        name, url = name.strip(), url.strip()
+        if name and not SERIES_RE.fullmatch(name):
+            raise Bad(M("monitor.bad_series", series=name[:40]))
+        if name and d.get("series") and name not in d["series"]:
+            raise Bad(M("monitor.unknown_series", series=name[:40], id=mid, known=", ".join(d["series"])))
+        lk = dict(d.get("links") or {}) if isinstance(d.get("links"), dict) else {}
+        if not url:
+            lk.pop(name, None)
+        elif not URL_RE.fullmatch(url):
+            raise Bad(M("monitor.bad_url", url=url[:80]))
+        else:
+            lk[name] = url
+        d["links"] = lk
     if d["form"] == "meter" and d.get("max") is None:
         raise Bad(M("monitor.meter_needs_max"))
     write_def(d)
@@ -645,9 +689,11 @@ def cmd_alert(argv):
 
 def cmd_point(argv):
     d = need(argv.pop(0) if argv else "")
-    series, ts = _opt(argv, "--series"), _ts(_opt(argv, "--ts"))
+    series, ts, url = _opt(argv, "--series"), _ts(_opt(argv, "--ts")), _opt(argv, "--url")
     if len(argv) != 1:
         raise Bad(M("monitor.point_usage"))
+    if url is not None and not URL_RE.fullmatch(url.strip()):
+        raise Bad(M("monitor.bad_url", url=url[:80]))
     raw = argv[0]
     if d["form"] == "status":
         low = raw.strip().lower()
@@ -667,7 +713,7 @@ def cmd_point(argv):
         raise Bad(M("monitor.bad_series", series=series[:40]))
     p = _dir(d["id"])
     with open(p / "points.jsonl", "a") as f:
-        f.write(json.dumps({"ts": ts, "series": series, "value": value}) + "\n")
+        f.write(json.dumps(dict({"ts": ts, "series": series, "value": value}, **({"url": url.strip()} if url else {}))) + "\n")
     c = card(d["id"], d)
     sync(d["id"], c)
     print(line_of(c))

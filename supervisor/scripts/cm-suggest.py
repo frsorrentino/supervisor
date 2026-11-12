@@ -232,6 +232,8 @@ def for_state(now=None):
             y["options"] = list(x["options"])
         if x.get("link"):   # 1.132: la voce di un monitoraggio porta il suo link
             y["link"] = x["link"]
+        if x.get("url"):   # 1.138: e la pagina della cosa monitorata
+            y["url"] = x["url"]
         out.append(y)
     return out
 

@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.153 — 2026-11-12: a monitor opens the page of what it watches (supervisor-monitor-link-12-11, contract 1.138).**
+  - The prices monitor said «Yoga 9i at 1,799 € from Unieuro: new minimum», with no way to open that offer. A reading can now carry its page (`monitor point … --url`), and a series a fixed link (`monitor set … --link S=URL`). The app gets the link for each series, for the threshold that went off and for the item in «Dalla master». Only http and https.
 - **0.8.152 — 2026-11-12: the choice card — a description, the options with their images, «none, redo», rounds and archive (supervisor-scheda-scelta-12-11, supervisor-attesa-allegati-12-11, contract 1.137).**
   - A choice between mockups reached the app as text and a link: the images stayed in the chat, lost among the messages. Now one `task wait-ok` opens a choice card with a description and, for each option, a line of pros and cons and its images (`--desc`, `--option "A|line|a.png"`). `task prova … --files` does the same for a test.
   - The relay gives the app what the card needs: the files and how to download them, only while the request is open. A request without declared files still shows the images of the message it comes from.
