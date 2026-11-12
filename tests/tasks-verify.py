@@ -331,7 +331,7 @@ T.check("T14 an awaiting_ok task is never stalled (it waits for the person): i5 
 # T15 il testo: intestazione con i conteggi, una riga per voce, --brief taglia, --stalled filtra
 txt = cm("impegni", env=IT)[1]
 T.check("T15 text: «Impegni (N, K fermi)», one line per item with id, session, state, ok time, idle, next, who waits for whom; the paused one carries PAUSA",
-        txt.startswith("Impegni (") and " fermi):" in txt.splitlines()[0] and any(l.startswith("- ok9 · master · approved · ok ") and "fermo da 3 h" in l for l in txt.splitlines())
+        txt.startswith("Impegni (") and (" fermi):" in txt.splitlines()[0] or " fermo):" in txt.splitlines()[0]) and any(l.startswith("- ok9 · master · approved · ok ") and "fermo da 3 h" in l for l in txt.splitlines())
         and "prossimo:" in txt and "· tocca a master" in txt and any("- i2 · master · awaiting_ok · chiesto" in l and l.endswith("· aspetta l'utente") for l in txt.splitlines()), txt[:600])
 cm("pause", "p1", "--reason", "dopo la 0.9", env=IT)
 T.check("T15 PAUSA: reason on the paused line", any("- p1 ·" in l and "PAUSA: dopo la 0.9" in l for l in cm("impegni", env=IT)[1].splitlines()), cm("impegni", env=IT)[1])

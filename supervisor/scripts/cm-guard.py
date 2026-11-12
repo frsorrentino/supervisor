@@ -530,13 +530,14 @@ def stalled_alerts(t):
     lines = []
     for x in items:
         waits = x.get("waits") or {}
-        who = person if waits.get("on") == "person" else str(waits.get("on") or "master")
+        # 12/11 (supervisor-testi-impegni-12-11): «tocca a l'utente»; come `task impegni`: «aspetta l'utente» / «tocca a master»
+        who = M("tasks.turn_person", person=person) if waits.get("on") == "person" else M("tasks.turn_session", session=str(waits.get("on") or "master"))
         idle_h = int(x.get("idle_s") or 0) // 3600
         tasks = x.get("tasks") or [x.get("task")]
         if len(tasks) > 1 and x.get("session"):   # 04/11: una riga per sessione, i compiti in coda elencati
             lines.append(M("guard.stalled_session", session=x["session"], n=len(tasks), tasks=", ".join(tasks), idle=f"{idle_h} h", next=x.get("next") or ""))
         else:
-            lines.append(M("guard.stalled_item", task=x.get("task"), idle=f"{idle_h} h", who=who, next=x.get("next") or ""))
+            lines.append(M("guard.stalled_item", task=x.get("task"), idle=f"{idle_h} h", turn=who, next=x.get("next") or ""))
     n = sum(len(x.get("tasks") or [x.get("task")]) for x in items)   # i compiti fermi, non le righe
     title = M("guard.stalled_one", h=hours) if n == 1 else M("guard.stalled_many", n=n, h=hours)
     body = "\n".join(lines)

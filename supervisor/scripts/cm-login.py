@@ -52,6 +52,18 @@ def _iso_epoch(v):
     return int(dt.datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp())
 
 
+def claude_bin(cm_=None):
+    """Claude Code anche dal cron (12/11/2026, supervisor-login-scaduto-fermo-11-11): col PATH ridotto del cron (/usr/bin:/bin)
+    `claude` non si trovava, ogni lettura falliva e teneva quella vecchia, e un «login scaduto» restava giorni dopo il
+    rinnovo. Prima CM_CLAUDE_BIN e il PATH, poi dove lo mette l'installatore e Homebrew."""
+    home = cm_.home() if cm_ else Path.home()
+    for c in (os.environ.get("CM_CLAUDE_BIN"), shutil.which("claude"), str(home / ".local" / "bin" / "claude"),
+              "/usr/local/bin/claude", "/opt/homebrew/bin/claude"):
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return "claude"
+
+
 def refresh():
     """1.117 (04/11/2026, Claude Code 2.1.318: `claude auth status` dice loginExpiresAt): la scadenza del login di ogni
     account in <state_dir>/login-expiry.json, {at, accounts: {nome: {label, logged_in, expires_at}}}. Un account che non
@@ -64,7 +76,7 @@ def refresh():
         old = json.loads(p.read_text()).get("accounts") or {}
     except (OSError, ValueError, AttributeError):
         old = {}
-    bin_ = os.environ.get("CM_CLAUDE_BIN") or shutil.which("claude") or "claude"
+    bin_ = claude_bin(cm_)
     out = {}
     for name, acc in (cfg.get("accounts") or {}).items():
         env = dict(os.environ, CLAUDE_CONFIG_DIR=cm_.expand(acc.get("config_dir") or "~/.claude"))

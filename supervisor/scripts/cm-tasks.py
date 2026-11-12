@@ -1988,7 +1988,8 @@ def render_commitments(items, brief=False, max_lines=None, person=None):
     person = person or M("tasks.person")
     if not items:
         return M("tasks.none")
-    head = M("tasks.header", n=len(items), k=sum(1 for x in items if x["stalled"]))
+    k = sum(1 for x in items if x["stalled"])
+    head = M("tasks.header", n=len(items), stalled=M("tasks.stalled_one" if k == 1 else "tasks.stalled_many", count=k))   # 12/11: «1 fermo»
     lines = []
     for x in items:
         # 22/10 00:35 (la master): «aspetta: l'utente → master» non si capiva; a chi tocca il prossimo passo, e basta

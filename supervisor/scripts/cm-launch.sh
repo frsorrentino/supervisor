@@ -394,6 +394,11 @@ if [ "$AGENT" = claude ] && { [ -n "$RIPRENDI" ] || [ "$CONTINUA" = si ]; } && [
 fi
 
 "$CM_SCRIPTS/cm-registry.sh" >/dev/null 2>&1   # T52: per il ripristino dopo un riavvio
+# 12/11 (supervisor-login-scaduto-fermo-11-11): una sessione appena partita su un account con una voce di login aperta (scaduto
+# o in scadenza) dice che il login c'e': la scadenza si rilegge subito, in fondo, e la voce esce se e' stato rinnovato
+if [ -z "$HOST" ] && python3 -c 'import importlib.util as u,sys; s=u.spec_from_file_location("l", sys.argv[1]); m=u.module_from_spec(s); s.loader.exec_module(m); sys.exit(0 if any(x["account"] == sys.argv[2] for x in m.due()) else 1)' "$CM_SCRIPTS/cm-login.py" "$ACCOUNT" 2>/dev/null; then
+  cm_setsid "$CM_SCRIPTS/supervisor" task login-check >/dev/null 2>&1 < /dev/null &
+fi
 
 # 11/11 (supervisor-macos-11-11): una sessione partita ma mai registrata da Claude Code non e' «avviata» per supervisor
 # (su un Mac /proc non c'era, launch aspettava tutto il tempo e diceva «sessione avviata» con 0): lo si dice al posto

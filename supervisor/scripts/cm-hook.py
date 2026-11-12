@@ -524,7 +524,8 @@ def commitments_block():
         except OSError:
             same = False
         if same:
-            return M("tasks.unchanged", n=len(items), stalled=sum(1 for x in items if x["stalled"]))   # mai `k=`: M e' lambda k
+            k_ = sum(1 for x in items if x["stalled"])   # mai `k=` a M direttamente: M e' lambda k
+            return M("tasks.unchanged", n=len(items), stalled=M("tasks.stalled_one" if k_ == 1 else "tasks.stalled_many", count=k_))
         try:
             STATE.mkdir(parents=True, exist_ok=True)
             f.write_text(sig)

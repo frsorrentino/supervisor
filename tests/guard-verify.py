@@ -240,7 +240,7 @@ args = argslog.read_text() if argslog.exists() else ""
 tk = re.findall(r"^talk master .*?--no-wait$", args, re.M | re.S)   # il riepilogo ha piu' righe: un argomento solo
 T.check("GU-ST two stalled commitments → ONE talk to the master «2 impegni fermi …» (no emoji, 22/10) with a line per task (tocca a notte-app / aspetta l'utente, next step), and the same once on Telegram",
         r.returncode == 0 and len(tk) == 1 and "2 impegni fermi da più di 2 h senza passi" in tk[0] and not E_EMOJI.search(tk[0]) and "- gantt-apk (9 h): tocca a notte-app; prossimo: APK sul telefono" in tk[0]
-        and "- ledger-release (3 h): tocca a l'utente; prossimo: l'ok a: tag v1.4" in tk[0] and tk[0].endswith("--no-wait")
+        and "- ledger-release (3 h): aspetta l'utente; prossimo: l'ok a: tag v1.4" in tk[0] and tk[0].endswith("--no-wait")
         and len(CALLS.get("sendMessage", [])) == n_tg + 1 and "gantt-apk" in CALLS["sendMessage"][-1]["text"] and "ledger-release" in CALLS["sendMessage"][-1]["text"], r.stdout + r.stderr + str(tk))
 r = guard("run", now=NOW + 17 * 3600)   # 02:00: ore quiete, solo la master
 tk2 = re.findall(r"^talk master .*?--no-wait$", argslog.read_text() if argslog.exists() else "", re.M | re.S)

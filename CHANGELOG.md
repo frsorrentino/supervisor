@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.150 — 2026-11-12: an expired login leaves the list once renewed, and the commitments read right (supervisor-login-scaduto-fermo-11-11, supervisor-testi-impegni-12-11).**
+  - «The login of an account expired» stayed among the decisions for days after the login was renewed. The guard checks the logins every hour from cron, where `claude` was not on the PATH: every check failed and kept the old reading. It now finds Claude Code there too, and a session opened on an account with an open login item checks it again at once.
+  - The guard's reminder said «tocca a l'utente»: it now says «aspetta l'utente», like `task impegni`. The commitments header and summary say «1 fermo» for one, not «1 fermi».
 - **0.8.149 — 2026-11-11: a preview for the documents of Verifica (supervisor-anteprime-documenti-11-11, contract 1.136).**
   - The documents in Verifica showed only a generic icon. The relay now makes a small preview of each delivery once and keeps it. For a PDF or an office document it is the first page; for text, Markdown or CSV the first lines; images are made smaller.
   - The app asks for it with the new op `thumb` and the delivery's id, and gets it once: a few KB, never the whole file through Firebase. Where no converter is installed it says so.
