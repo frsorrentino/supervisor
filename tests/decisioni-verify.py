@@ -872,7 +872,7 @@ T.check("UP4 once the test is registered the task is no longer listed", "up-run"
 
 
 # ------------------------------------------------------------------ una prova per numero (supervisor-prova-numero-10-11, contratto 1.134)
-PN_KEYS = ["id", "task", "short", "title", "session", "project", "build", "dove", "fai", "atteso", "state", "text", "at"]
+PN_KEYS = ["id", "task", "short", "title", "session", "project", "build", "dove", "fai", "atteso", "state", "text", "at", "files"]   # 1.137: files
 
 
 def one(n):
@@ -885,7 +885,7 @@ prova("pn1", build="pn-b1", dove="casa", fai="apri la prova", atteso="si vede")
 _n1 = ids_of("pn1")[0]
 _ok1, _o1 = one(str(_n1))
 _listed = next(x for g in prove()["groups"] for x in g["prove"] if x["id"] == _n1)
-T.check("PN1 op prove with arg = a number answers that test alone: the thirteen keys in order, state todo, text null, at = when it was written",
+T.check("PN1 op prove with arg = a number answers that test alone: the fourteen keys in order (files since 1.137), state todo, text null, at = when it was written",
         _ok1 and list(_o1) == PN_KEYS and _o1["id"] == _n1 and _o1["task"] == "pn1" and _o1["title"] == "Numero uno" and _o1["short"] == _listed["short"]
         and (_o1["build"], _o1["dove"], _o1["fai"], _o1["atteso"]) == ("pn-b1", "casa", "apri la prova", "si vede")
         and _o1["state"] == "todo" and _o1["text"] is None and _o1["at"] == _listed["at"] and _o1["session"] == "sess", str(_o1))

@@ -222,6 +222,7 @@
     "pair_add",
     "approve",
     "approval_close",
+    "approval_redo",
     "attese",
     "attesa",
     "monitors",

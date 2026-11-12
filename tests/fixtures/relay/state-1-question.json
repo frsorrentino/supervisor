@@ -78,7 +78,7 @@
         "full": "Esito: migrations 008-011 applied, tests green.\nProssimi: ok to deploy on staging · review the test seeds",
         "at": 1789210300
       },
-      "next": "Review the seeds and the admin page",
+      "next": "Review the seeds",
       "next_at": 1789171200,
       "model": {
         "id": "claude-sonnet-5",
@@ -351,6 +351,7 @@
     "pair_add",
     "approve",
     "approval_close",
+    "approval_redo",
     "attese",
     "attesa",
     "monitors",

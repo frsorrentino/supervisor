@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.152 — 2026-11-12: the choice card — a description, the options with their images, «none, redo», rounds and archive (supervisor-scheda-scelta-12-11, supervisor-attesa-allegati-12-11, contract 1.137).**
+  - A choice between mockups reached the app as text and a link: the images stayed in the chat, lost among the messages. Now one `task wait-ok` opens a choice card with a description and, for each option, a line of pros and cons and its images (`--desc`, `--option "A|line|a.png"`). `task prova … --files` does the same for a test.
+  - The relay gives the app what the card needs: the files and how to download them, only while the request is open. A request without declared files still shows the images of the message it comes from.
+  - «None, redo» with the reason is a new answer: the round stays in the card as discarded, the session gets the reason, and the next round joins the same card.
+  - After the answer the card stays readable from the archive, so old messages still open it with what was chosen.
+  - «Da dove viene» pointed to an unrelated text: the question asked in the caption of the images was skipped. It now points to the message that sent the files, or to the message of its turn closest to the question.
 - **0.8.151 — 2026-11-12: the previews in the chat arrive, all of them and without waiting (supervisor-relay-file-corsia-12-11, supervisor-relay-file-chiave-12-11).**
   - In a chat with many images only the first preview loaded. When several reads of the same session waited together the relay kept only the newest, and it did not look at what they asked for: twenty different files counted as one read. Reads that name a file, a delivery, a step, a question, a monitor or a test are now told apart by what they name. Only a repeat of the same read is dropped, as before.
   - A preview could wait up to 103 seconds: file reads queued behind the slow reads, like the timeline and the search. They now have a lane of their own, so they wait neither for those nor slow down the chat. The contract with the app does not change.

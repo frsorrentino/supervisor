@@ -470,6 +470,14 @@ def file_open(cmd, session, tm, arg):
             hit = None
         if hit:
             listed, host = True, hit.get("host")
+    if path and not listed:
+        # 1.137 (12/11, supervisor-attesa-allegati-12-11): un file da guardare di una richiesta aperta (wait-ok --files,
+        # task prova --files), anche senza sessione: solo i percorsi che la richiesta ha dichiarato
+        try:
+            if path in _tasks_read(lambda tk, con: tk.open_files(con)):
+                listed, host = True, "local"
+        except Exception:   # noqa: BLE001 — registro illeggibile: come se non ci fosse
+            pass
     if not listed and (not row or not tr):
         return False, M("relay.cmd_file_no_session", name=session or "?")
     if not path or not listed:
@@ -1721,6 +1729,31 @@ def approval_close(cmd, arg):
     return True, json.dumps(dict(res, text=M("relay.cmd_closed" if res["closed"] else "relay.cmd_close_not_waiting", task=tid, state=res["state"])), ensure_ascii=False)
 
 
+def approval_redo(cmd, arg):
+    """1.137 (12/11/2026, la scheda di scelta approvata dal maintainer): «Nessuna, rifare» col motivo. Come approval_close, ma il
+    giro resta scartato con il motivo (state redo) e la sessione riceve il motivo per preparare il giro nuovo; un wait-ok
+    nuovo sullo stesso compito entra nella stessa scheda. Motivo obbligatorio."""
+    tid = str(arg or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid):
+        return False, M("relay.cmd_close_unknown", task=tid[:80] or "?")
+    reason = S.one_line(str(cmd.get("text") or "").strip())[:300] if isinstance(cmd.get("text"), str) else ""
+    if not reason:
+        return False, M("relay.cmd_redo_needs_reason", task=tid)
+    by = str(cmd.get("by") or "app")
+    tk = _load("cm-tasks")
+    con = tk.connect()
+    try:
+        if not con.execute("SELECT 1 FROM tasks WHERE id=?", (tid,)).fetchone():
+            return False, M("relay.cmd_close_unknown", task=tid)
+        res = tk.withdraw(con, tid, by, f"{reason} ({from_device(cmd)})", kind="redo")
+    except SystemExit as e:
+        return False, fail_line(str(e), "task redo failed")
+    finally:
+        con.close()
+    push_async()
+    return True, json.dumps(dict(res, text=M("relay.cmd_redone" if res["closed"] else "relay.cmd_close_not_waiting", task=tid, state=res["state"])), ensure_ascii=False)
+
+
 def approve_task(cmd, arg):
     """1.37 (05/10, «Da approvare» nell'app): l'ok a un compito del registro in awaiting_ok, registrato come quello
     scritto a mano — `task approve <task> --by <chi> --text "<testo> (dal telefono)"`. Solo un compito che aspetta
@@ -2007,7 +2040,7 @@ def monitor_refresh_op(arg):
     return True, json.dumps(MO.card(i), ensure_ascii=False)
 
 
-def attesa_op(arg):
+def attesa_op(arg, archive=False):
     """1.130: op attesa, la scheda «Ti aspetta»: arg = l'id (state.attention[].wid, approvals[].wid, il link
     #/attesa/<id>). La voce di attese con `msg`, il pezzo di trascrizione dove la domanda e' stata spiegata
     {session, session_id, id, text, at} (null se non si trova); errore se la domanda non aspetta piu'."""
@@ -2016,9 +2049,14 @@ def attesa_op(arg):
         return False, M("relay.cmd_attesa_bad_id", id=S.one_line(i)[:40])
     AT = _load("cm-attese")
     a = AT.find(i)
+    if a is not None:
+        a["rounds"] = AT.card_rounds(a)   # 1.137: i giri di prima della stessa scheda
+    elif archive:
+        a = AT.archived(i)   # 1.137: con archive true, la scheda di qualsiasi giro anche dopo la risposta
     if a is None:
         return False, M("relay.cmd_attesa_gone", id=i)
     a["msg"] = AT.origin(a, live_rows())
+    AT.with_files(a, a["msg"])   # 1.137: i file da guardare, dichiarati o del messaggio d'origine
     return True, json.dumps(a, ensure_ascii=False)
 
 
@@ -2689,8 +2727,10 @@ def execute(cmd):
             return monitor_refresh_op(arg)
         if op == "attese":   # 1.130
             return attese_op()
-        if op == "attesa":   # 1.130
-            return attesa_op(arg)
+        if op == "attesa":   # 1.130; 1.137 archive
+            return attesa_op(arg, cmd.get("archive") is True)
+        if op == "approval_redo":   # 1.137
+            return approval_redo(cmd, arg)
         if op == "prove":   # 1.99
             return prove_op(arg)   # 1.134: con arg, una prova sola
         if op == "prova":   # 1.99

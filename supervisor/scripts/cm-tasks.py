@@ -14,7 +14,9 @@
   supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
-  supervisor task wait-ok ID --what W --where D [--options "A|B"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3]
+  supervisor task wait-ok ID --what W --where D [--options "A|B"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]
+  supervisor task wait-ok ID --what W --desc T --option "A|pro e contro|a.png,b.png" --option "B|…" [--where D]   (1.137: la scheda di scelta)
+  supervisor task redo ID --by B --reason T       (1.137: «nessuna, rifare»: il giro resta scartato col motivo, la sessione lo sa)
   supervisor task withdraw ID --by B [--reason R]  1.129: la persona chiude la carta senza ok; la richiesta esce
                                                 «superata», il compito torna a running (o assigned), sessione e master lo sanno
                                                 attende ok; --also (1.99): i compiti a parte previsti dal piano, elencati nella
@@ -101,7 +103,7 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 (task-alerts.json accanto al registro); lo chiama guard run
 
 Fase A del programma del 01/11 (contratto 1.99):
-  supervisor task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]
+  supervisor task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B] [--files a.png,b.pdf]
                                 SCHERMATA con «Portami lì» nell'app: queue, box-aspetta, box-lavoro, box-esiti, lavori, launch, night, search, settings, homeorder, usage, home;
                                 le altre si scrivono ma non portano li'. Dal web si puo' dare ok anche a una build Android
                                 (il device resta nel registro): una prova che vale solo sul telefono lo dice in --fai
@@ -331,6 +333,17 @@ def connect(create=True):
         con.commit()
     if "also" not in cols:   # 1.99 (01/11, compito dal piano)
         con.execute("ALTER TABLE approvals ADD COLUMN also TEXT")
+        con.commit()
+    if "files" not in cols:   # 1.137 (12/11): i file da guardare per decidere
+        con.execute("ALTER TABLE approvals ADD COLUMN files TEXT")
+        con.commit()
+    if "detail" not in cols:   # 1.137: la scheda di scelta (descrizione, opzioni con riga e file) e come si e' chiuso il giro
+        for c in ("detail", "closed_by", "closed_kind", "closed_reason"):
+            con.execute(f"ALTER TABLE approvals ADD COLUMN {c} TEXT")
+        con.execute("ALTER TABLE approvals ADD COLUMN closed_at INTEGER")
+        con.commit()
+    if "files" not in {r[1] for r in con.execute("PRAGMA table_info(prove)")}:   # 1.137: e quelli di una prova
+        con.execute("ALTER TABLE prove ADD COLUMN files TEXT")
         con.commit()
     if "build" not in {r[1] for r in con.execute("PRAGMA table_info(tidy)")}:   # 1.115 (04/11): la pre-release della regola 1
         con.execute("ALTER TABLE tidy ADD COLUMN build TEXT")
@@ -573,6 +586,87 @@ def parse_options(s):
     return opts
 
 
+def parse_option_cards(raws, project):
+    """1.137 (12/11, la scheda di scelta approvata dal maintainer alle 15:10): --option «Etichetta|riga di pro e contro|a.png,b.png»,
+    da 2 a OPTIONS_MAX. Torna (etichette, [{label, description, files}]); la riga e i file sono facoltativi."""
+    labels, cards = [], []
+    for raw in raws:
+        parts = str(raw).split("|")
+        if len(parts) > 3:
+            sys.exit("task wait-ok --option: «label|one line of pros and cons|file1,file2» (the line and the files are optional)")
+        label = " ".join(parts[0].split())
+        line = " ".join(parts[1].split()) if len(parts) > 1 else ""
+        if len(line) > INFO_MAX:
+            sys.exit(f"task wait-ok --option {label}: the line over {INFO_MAX} characters")
+        files = parse_files(parts[2], project, "wait-ok --option") if len(parts) > 2 and parts[2].strip() else None
+        labels.append(label)
+        cards.append({"label": label, "description": line or None, "files": files})
+    parse_options("|".join(labels))   # stesse regole di --options: 2-4 etichette distinte di 1-24 caratteri
+    return labels, cards
+
+
+DESC_MAX = 1500
+ARCHIVE_DAYS = 180
+
+
+def rounds_of(con, tid):
+    """1.137: ogni richiesta del compito (una riga di approvals con by_ NULL) e' un giro, con com'e' finito: open (aspetta),
+    chosen/approved (l'ok che la segue), redo/closed (closed_kind, «nessuna, rifare» o «Chiudi senza ok»), replaced (un
+    wait-ok nuovo senza risposta), closed (il compito e' andato avanti senza risposta). Dal piu' vecchio."""
+    rows = con.execute("SELECT * FROM approvals WHERE task=? ORDER BY n", (tid,)).fetchall()
+    st = con.execute("SELECT state FROM tasks WHERE id=?", (tid,)).fetchone()
+    reqs = [r for r in rows if r["by_"] is None]
+    out = []
+    try:
+        S_ = _load("cm-relay-state")
+    except Exception:   # noqa: BLE001
+        S_ = None
+    for i, r in enumerate(reqs):
+        nxt = reqs[i + 1]["n"] if i + 1 < len(reqs) else None
+        ans = next((x for x in rows if x["by_"] is not None and x["n"] > r["n"] and (nxt is None or x["n"] < nxt) and (x["what"] or "") != "confirmed"), None)
+        g = {"n": r["n"], "wid": S_.wid_approval(tid, r["at"]) if S_ else None, "at": int(r["at"]), "what": r["what"], "where": r["where_"],
+             "options": json.loads(r["options"]) if r["options"] else None, "detail": json.loads(r["detail"]) if r["detail"] else None,
+             "files": files_of(r["files"]), "untested": r["untested"], "undo": r["undo"], "undo_how": r["undo_how"],
+             "state": None, "reason": None, "by": None, "answered_at": None, "choice": None}
+        if r["closed_kind"]:
+            g.update(state="redo" if r["closed_kind"] == "redo" else "closed", reason=r["closed_reason"], by=r["closed_by"], answered_at=r["closed_at"])
+        elif ans is not None:
+            g.update(state="chosen" if ans["choice"] else "approved", by=ans["by_"], answered_at=int(ans["at"]), choice=ans["choice"])
+        elif nxt is not None:
+            g["state"] = "replaced"
+        else:
+            g["state"] = "open" if st and st["state"] == "awaiting_ok" else "closed"
+        out.append(g)
+    return out
+
+
+def card_of(con, tid, wid=None):
+    """1.137: la scheda del compito che contiene il giro `wid` (senza: l'ultima). Una scheda raccoglie i giri fino a quello
+    con la scelta o l'ok; il giro dopo apre una scheda nuova. {card_id, rounds} o None."""
+    cards, cur = [], []
+    for g in rounds_of(con, tid):
+        cur.append(g)
+        if g["state"] in ("chosen", "approved"):
+            cards.append(cur)
+            cur = []
+    if cur:
+        cards.append(cur)
+    hit = next((c for c in cards if any(g["wid"] == wid for g in c)), None) if wid else (cards[-1] if cards else None)
+    return {"card_id": hit[0]["wid"], "rounds": hit} if hit else None
+
+
+def find_round(con, wid):
+    """1.137 (l'archivio): il compito del giro con questo id, fra le richieste degli ultimi ARCHIVE_DAYS giorni; None."""
+    try:
+        S_ = _load("cm-relay-state")
+    except Exception:   # noqa: BLE001
+        return None
+    for r in con.execute("SELECT task, at FROM approvals WHERE by_ IS NULL AND at>=? ORDER BY n DESC", (now() - ARCHIVE_DAYS * 86400,)):
+        if S_.wid_approval(r["task"], r["at"]) == wid:
+            return r["task"]
+    return None
+
+
 def request_options(con, tid):
     """Le opzioni dell'ultima richiesta di ok del compito (wait-ok --options), o None."""
     a = con.execute("SELECT options FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
@@ -632,7 +726,7 @@ def approve(con, tid, by, text, what=None, where=None, choice=None, ok_at=None, 
     con.commit()
 
 
-def withdraw(con, tid, by, reason=""):
+def withdraw(con, tid, by, reason="", kind="closed"):
     """1.129 (06/11/2026, supervisor-approval-close-06-11; il maintainer alle 15:06: le carte di scelta devono potersi sempre
     chiudere e non restare bloccate): la persona chiude la carta di un compito in awaiting_ok senza approvarlo. La
     richiesta esce come «superata» (una riga in tidy, un passo nel registro, mai una riga in approvals: by_ li' vale
@@ -643,6 +737,17 @@ def withdraw(con, tid, by, reason=""):
         return {"task": tid, "closed": False, "state": row["state"]}
     back = "running" if row["session"] or (_contract_task(row).get("where") or {}).get("session") else "assigned"
     t = now()
+    # 1.137 (12/11): il giro resta segnato con come si e' chiuso (closed, o redo: «nessuna, rifare» col motivo)
+    con.execute("UPDATE approvals SET closed_at=?, closed_by=?, closed_kind=?, closed_reason=? WHERE n=(SELECT MAX(n) FROM approvals WHERE task=? AND by_ IS NULL)",
+                (t, by, kind, reason or None, tid))
+    if kind == "redo":
+        text = M("tasks.redo", by=by, reason=reason)
+        con.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,?,?,?,NULL)", (t, tid, "approval", 0, text[:500]))
+        con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'step',?,NULL)", (tid, t, by, text[:500]))
+        set_state(con, tid, back)
+        con.commit()
+        _tell(row, M("tasks.redo_tell", task=tid, by=by, when=time.strftime("%H:%M"), reason=reason))
+        return {"task": tid, "closed": True, "state": back}
     text = M("tasks.withdrawn", by=by, reason=f": {reason}" if reason else "")
     con.execute("INSERT INTO tidy (at, task, kind, rule, text, build) VALUES (?,?,?,?,?,NULL)", (t, tid, "approval", 0, text[:500]))
     con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'step',?,NULL)", (tid, t, by, text[:500]))
@@ -1303,7 +1408,63 @@ def prove_pending(con, tid):
     return [r for r in _live_prove(con, tid) if r["result"] != "ok"]
 
 
-def prova_add(con, tid, build, dove, fai, atteso, by=None):
+FILES_MAX = 12
+
+
+def parse_files(raw, project=None, verb="wait-ok"):
+    """1.137 (12/11/2026, supervisor-attesa-allegati-12-11, il maintainer: «il link alle sezioni per la verifica e la scelta non
+    aiutano se questa sezione non contiene anche le immagini per poter scegliere»): --files «a.png,b.png» → [{path, name,
+    mime, size, kind}]. Un percorso relativo vale dalla cartella del compito, poi dalla cartella corrente; ogni file deve
+    esistere. kind: image | document | other. Esce con il motivo."""
+    import mimetypes
+    out, seen = [], set()
+    for x in [x.strip() for x in str(raw or "").split(",") if x.strip()]:
+        p = os.path.expanduser(x)
+        if not os.path.isabs(p):
+            cand = [os.path.join(project, p)] if project else []
+            p = next((c for c in cand if os.path.isfile(c)), os.path.abspath(p))
+        p = os.path.realpath(p)
+        if not os.path.isfile(p):
+            sys.exit(f"task {verb} --files: {x} is not a file")
+        if p in seen:
+            continue
+        seen.add(p)
+        mime = mimetypes.guess_type(p)[0] or "application/octet-stream"
+        kind = "image" if mime.startswith("image/") else "document" if (mime.startswith("text/") or mime in DOC_MIMES or p.rsplit(".", 1)[-1].lower() in DOC_EXTS) else "other"
+        out.append({"path": p, "name": os.path.basename(p), "mime": mime, "size": os.path.getsize(p), "kind": kind})
+    if not out:
+        sys.exit(f"task {verb} --files: the paths of the files, separated by commas")
+    if len(out) > FILES_MAX:
+        sys.exit(f"task {verb} --files: at most {FILES_MAX} files")
+    return out
+
+
+DOC_MIMES = ("application/pdf", "application/json")
+DOC_EXTS = ("pdf", "md", "html", "htm", "txt", "csv", "doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "svg")
+
+
+def files_of(raw):
+    """La colonna files (JSON) come lista; None se vuota o illeggibile."""
+    try:
+        v = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return v if isinstance(v, list) and v else None
+
+
+def open_files(con):
+    """1.137: i percorsi dei file delle richieste aperte (ok e scelte in attesa, prove da fare di compiti aperti): la lettura
+    `file` del relay serve questi e nessun altro fuori dalle trascrizioni."""
+    out = set()
+    for r in con.execute("SELECT a.files FROM approvals a JOIN tasks t ON t.id=a.task WHERE a.by_ IS NULL AND t.state='awaiting_ok' AND a.files IS NOT NULL"):
+        out |= {f.get("path") for f in files_of(r["files"]) or [] if isinstance(f, dict)}
+    q = "SELECT p.files FROM prove p JOIN tasks t ON t.id=p.task WHERE p.superseded_at IS NULL AND p.result IS NULL AND p.files IS NOT NULL AND t.state IN (%s)" % ",".join("?" * len(OPEN_STATES))
+    for r in con.execute(q, OPEN_STATES):
+        out |= {f.get("path") for f in files_of(r["files"]) or [] if isinstance(f, dict)}
+    return {p for p in out if p}
+
+
+def prova_add(con, tid, build, dove, fai, atteso, by=None, files=None):
     """Una prova per la persona. Per versione: una build nuova ritira tutte quelle di prima del compito (un ok su una build
     vecchia non dice niente della nuova); stessa build, dove e fai sostituisce. Nessun esito: quello nasce solo da prove_mark."""
     row = get_task(con, tid)
@@ -1314,7 +1475,8 @@ def prova_add(con, tid, build, dove, fai, atteso, by=None):
         sys.exit(f"task prova: --build and --dove 1-80 characters, --fai and --atteso 1-{INFO_MAX}")
     t = now()
     con.execute("UPDATE prove SET superseded_at=? WHERE task=? AND superseded_at IS NULL AND (build<>? OR (dove=? AND fai=?))", (t, tid, build, dove, fai))
-    cur = con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_) VALUES (?,?,?,?,?,?,?)", (tid, build, dove, fai, atteso, t, by))
+    cur = con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_, files) VALUES (?,?,?,?,?,?,?,?)",
+                      (tid, build, dove, fai, atteso, t, by, json.dumps(files, ensure_ascii=False) if files else None))
     con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (tid, t, by, "prova", f"{build} · {dove}: {fai}"[:500]))
     con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (t, tid))
     con.commit()
@@ -1596,6 +1758,8 @@ def prove_list(con, now_=None):
         live = _live_prove(con, row["id"])
         for r in live:
             base = {"id": r["n"], "task": row["id"], "short": short, "build": r["build"], "dove": r["dove"], "fai": r["fai"], "atteso": r["atteso"]}
+            if files_of(r["files"]):   # 1.137: i file da guardare, solo se ci sono
+                base["files"] = files_of(r["files"])
             if r["result"] == "ko":
                 ko.append(dict(base, text=r["result_text"], at=r["result_at"]))
             elif r["result"] is None:
@@ -1643,7 +1807,7 @@ def prova_one(con, n):
     return {"id": r["n"], "task": r["task"], "short": short_of(task) if row else None, "title": row["title"] if row else None,
             "session": (row["session"] or (task.get("where") or {}).get("session")) if row else None,
             "project": row["project"] if row else None, "build": r["build"], "dove": r["dove"], "fai": r["fai"],
-            "atteso": r["atteso"], "state": state, "text": text, "at": at}
+            "atteso": r["atteso"], "state": state, "text": text, "at": at, "files": files_of(r["files"])}   # 1.137: files o null
 
 
 def precedent_of(con, tid):
@@ -1744,7 +1908,8 @@ def decisions(con, now_=None, snoozed=False):
             items.append((("o", tid), None, dict(base, kind="ok", asks="choice" if a and a["options"] else "ok", what=a["what"] if a else None, where_to=a["where_"] if a else None,
                                                  options=json.loads(a["options"]) if a and a["options"] else None, since=int(a["at"]) if a else int(r["updated_at"]),
                                                  where="here", untested=a["untested"] if a else None, undo=a["undo"] if a else None, undo_how=a["undo_how"] if a else None,
-                                                 precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None)))
+                                                 precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None,
+                                                 files=files_of(a["files"]) if a else None)))
             continue
         pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         if pz and pz["waits"] == "person" and not prove_pending(con, tid):
@@ -2283,10 +2448,12 @@ def main(argv):
         return 0
     if verb == "prova":
         build, dove, fai, atteso, by = _opt(args, "--build"), _opt(args, "--dove"), _opt(args, "--fai"), _opt(args, "--atteso"), _opt(args, "--by")
+        files = _opt(args, "--files")
         if len(args) != 1 or not (build and dove and fai and atteso):
-            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B]\n"
+            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B] [--files a.png,b.pdf]\n"
                      "SCHERMATA con «Portami lì» nell'app: queue, box-aspetta, box-lavoro, box-esiti, lavori, launch, night, search, settings, homeorder, usage, home; una prova che vale solo sul telefono lo dice in --fai")
-        print(prova_add(con, args[0], build, dove, fai, atteso, by))
+        files = parse_files(files, get_task(con, args[0])["project"], "prova") if files is not None else None
+        print(prova_add(con, args[0], build, dove, fai, atteso, by, files))
         return 0
     if verb == "prove":
         p = prove_list(con)
@@ -2492,18 +2659,38 @@ def main(argv):
         return 0
     if verb == "wait-ok":
         what, where, options = _opt(args, "--what"), _opt(args, "--where"), _opt(args, "--options")
-        untested, also = _opt(args, "--untested"), _opt(args, "--also")
+        untested, also, files = _opt(args, "--untested"), _opt(args, "--also"), _opt(args, "--files")
+        desc, option_raws = _opt(args, "--desc"), []
+        while "--option" in args:
+            option_raws.append(_opt(args, "--option"))
         undo, undo_how = parse_undo(args, "wait-ok")
+        if option_raws and options is not None:
+            sys.exit("task wait-ok: --options or --option, not both")
+        if desc is not None and len(" ".join(desc.split())) > DESC_MAX:
+            sys.exit(f"task wait-ok --desc: at most {DESC_MAX} characters")
+        if option_raws or desc is not None:
+            where = where or "-"   # 1.137: una scheda di scelta non pubblica niente: dove e' facoltativo
         if not what or not where or not args:
-            sys.exit("usage: task wait-ok ID --what W --where D [--options \"A|B\"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3]")
+            sys.exit("usage: task wait-ok ID --what W --where D [--options \"A|B\"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]\n"
+                     "       task wait-ok ID --what W --desc \"what to decide and why\" --option \"A|pros and cons|a.png\" --option \"B|…|b.png\" [--where D]   (a choice card)")
+        if files is not None:
+            files = parse_files(files, get_task(con, args[0])["project"], "wait-ok")
+        detail = None
+        if option_raws or desc is not None:
+            labels, cards = parse_option_cards(option_raws, get_task(con, args[0])["project"]) if option_raws else (None, None)
+            options = "|".join(labels) if labels else options
+            detail = {"description": " ".join(desc.split()) if desc else None, "options": cards}
+            every = (files or []) + [f for c in cards or [] for f in c["files"] or []]
+            files = list({f["path"]: f for f in every}.values()) or None
         also = parse_also(con, args[0], also) if also is not None else None
         if untested is not None and len(untested) > INFO_MAX:
             sys.exit(f"task wait-ok: --untested over {INFO_MAX} characters")
         untested = " ".join(untested.split()) if untested else None
         opts = parse_options(options) if options is not None else None   # 1.81: il compito chiede una scelta
         get_task(con, args[0])
-        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?)",
-                    (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None, untested, undo, undo_how, json.dumps(also) if also else None))   # la richiesta: by NULL finche' nessuno approva
+        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also, files, detail) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?,?,?)",
+                    (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None, untested, undo, undo_how, json.dumps(also) if also else None,
+                     json.dumps(files, ensure_ascii=False) if files else None, json.dumps(detail, ensure_ascii=False) if detail else None))   # la richiesta: by NULL finche' nessuno approva
         set_state(con, args[0], "awaiting_ok")
         con.commit()
         r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
@@ -2513,6 +2700,14 @@ def main(argv):
             orig = follows_apply(con, args[0])   # 05/11: il seguito di un compito approvato
             if orig:
                 print(f"{args[0]}: approved as a follow-up of {orig}")
+        return 0
+    if verb == "redo":   # 1.137: «nessuna, rifare» dal terminale, come approval_redo dal telefono
+        by, reason = _opt(args, "--by"), _opt(args, "--reason")
+        reason = " ".join(str(reason or "").split())[:INFO_MAX]
+        if len(args) != 1 or not by or not reason:
+            sys.exit("usage: task redo ID --by B --reason T")
+        res = withdraw(con, args[0], by, reason, kind="redo")
+        print(f"{args[0]}: " + ("redo, back to " + res["state"] if res["closed"] else "not waiting (" + res["state"] + ")"))
         return 0
     if verb == "standing":
         sub = args[0] if args else "list"

@@ -195,7 +195,7 @@ smp = {r["id"].split("-")[1]: r for r in SAMPLE["result"]}
 s_list, s_one, s_gone = json.loads(smp["1300"]["text"]), json.loads(smp["1301"]["text"]), smp["1302"]
 real_card = next(a for a in json.loads(tl)["items"] if a["kind"] == "choice")
 real_chat = next(a for a in json.loads(tl)["items"] if a["kind"] == "prossimi")
-opt_keys = {"n", "label", "value", "recommended", "description"}
+opt_keys = {"n", "label", "value", "recommended", "description", "files"}   # files dal 1.137
 T.check("AT6 the cmd-result-sample examples (…1300 attese, …1301 attesa, …1302 closed) carry the fields of the real answers",
         set(s_list) == {"at", "items"} and set(s_list["items"][0]) == set(real_card) and set(s_list["items"][1]) == set(real_chat)
         and set(s_one) == set(rx) and set(s_one["msg"]) == set(rx["msg"])
@@ -217,7 +217,7 @@ T.check("AT7 title is one line (the task's short name for a card, the question f
         ok["title"] == "t at-ok" and q["title"] == "Quale?" and px["title"] == "Riga a sinistra" and ok["card"]["deploy"] is False and ch["card"]["deploy"] is True
         and acts(ok) == [("Approva", "primary", "approve", None), ("Chiudi senza ok", "secondary", "approval_close", "text")]
         and acts(ch)[0] == ("Scuro", "primary", "approve", None) and ch["actions"][0].get("recommended") is True and ch["actions"][0]["cmd"]["choice"] == "Scuro (consigliata)"
-        and acts(ch)[1] == ("Chiaro", "option", "approve", None) and acts(ch)[2][2] == "approval_close"
+        and acts(ch)[1] == ("Chiaro", "option", "approve", None) and acts(ch)[2][2] == "approval_redo" and acts(ch)[3][2] == "approval_close"
         and acts(pv) == [("Va", "primary", "prova", None), ("Non va", "secondary", "prova", "text")] and pv["actions"][0]["cmd"]["result"] == "ok"
         and answer_cmd == {"session": "gamma", "op": "answer", "arg": "2", "question": "q-17"}
         and [x["label"] for x in px["actions"]] == ["Riga a sinistra", "Bordo leggero", "Rispondi", "Fatto"] and px["actions"][0]["cmd"] == {"session": "delta", "op": "prompt", "arg": "Riga a sinistra"}
@@ -228,6 +228,139 @@ okc, tc = RL.execute(cmd_c)
 time.sleep(0.5)
 T.check("AT7 the recommended option's command goes through execute as it is (approve with its choice); its talk goes to the fake binary, never to a real session",
         okc and "talk beta " in talklog.read_text(), f"{tc} {talklog.read_text()[-300:]!r}")
+
+# AT8 (1.137, 12/11/2026, supervisor-attesa-allegati-12-11): i file da guardare per decidere
+(tmp / "mock").mkdir()
+(tmp / "mock" / "home-a.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+(tmp / "mock" / "home-b.pdf").write_bytes(b"%PDF-1.4 x")
+(tmp / "segreto.txt").write_text("non dichiarato")
+add("al-scelta", "beta")
+add("al-prova", "alfa")
+r8 = cm("task", "wait-ok", "al-scelta", "--what", "quale home?", "--where", "app", "--options", "A|B", "--files", "mock/home-a.png, mock/home-b.pdf")
+r8bad = cm("task", "wait-ok", "al-scelta", "--what", "x", "--where", "y", "--files", "mock/manca.png")
+r8p = cm("task", "prova", "al-prova", "--build", "b2", "--dove", "home", "--fai", "guarda", "--atteso", "uguale", "--files", str(tmp / "mock" / "home-a.png"))
+w8 = {a.get("task"): a for a in AT.collect()}
+c8, p8 = w8.get("al-scelta") or {}, w8.get("al-prova") or {}
+fa, fb = str((tmp / "mock" / "home-a.png").resolve()), str((tmp / "mock" / "home-b.pdf").resolve())
+T.check("AT8 wait-ok --files: paths relative to the task's folder; the choice card carries files [{path, name, mime, size, kind}] in that order; a missing file is refused with its name, nothing recorded",
+        r8.returncode == 0 and [f["path"] for f in c8.get("files") or []] == [fa, fb]
+        and c8["files"][0] == {"path": fa, "name": "home-a.png", "mime": "image/png", "size": 72, "kind": "image", "session": None}
+        and c8["files"][1]["kind"] == "document" and c8["files"][1]["mime"] == "application/pdf"
+        and r8bad.returncode != 0 and "mock/manca.png" in r8bad.stderr, json.dumps(c8.get("files")) + r8bad.stderr)
+T.check("AT8 task prova --files: the prova card and the single test (op prove with a number) carry the file; a card without files has files null",
+        r8p.returncode == 0 and [f["path"] for f in p8.get("files") or []] == [fa] and ok.get("files") is None
+        and [f["path"] for f in (json.loads(RL.execute({"op": "prove", "arg": r8p.stdout.strip()})[1]).get("files") or [])] == [fa],
+        json.dumps(p8.get("files")) + r8p.stdout + r8p.stderr)
+ok8, t8 = RL.execute({"op": "attesa", "arg": c8.get("id"), "device": "phone"})
+T.check("AT8 op attesa returns the files with the card", ok8 and [f["name"] for f in json.loads(t8).get("files") or []] == ["home-a.png", "home-b.pdf"], t8[:300])
+f_ok = RL.execute({"op": "file", "session": None, "arg": fa, "id": "al-file-1", "_local": True, "device": "phone"})
+f_no = RL.execute({"op": "file", "session": None, "arg": str((tmp / "segreto.txt").resolve()), "id": "al-file-2", "_local": True, "device": "phone"})
+loc = json.loads((tmp / "relay" / "local" / "file" / "al-file-1.json").read_text()) if (tmp / "relay" / "local" / "file" / "al-file-1.json").exists() else {}
+T.check("AT8 op file serves a file of an open request with no session (here to the local web app); a path no request declared is refused",
+        f_ok[0] is True and loc.get("path") == fa and loc.get("mime") == "image/png" and f_no[0] is False, f"{f_ok} {f_no} {loc}")
+_ap8 = RL.execute({"op": "approve", "arg": "al-scelta", "text": "ok", "choice": "A", "device": "phone", "by": "phone-pixel8", "session": None})
+f_after = RL.execute({"op": "file", "session": None, "arg": fb, "id": "al-file-3", "_local": True, "device": "phone"})
+T.check("AT8 once the choice is made the request is closed and its files are no longer served", _ap8[0] and f_after[0] is False, str((_ap8, f_after)))
+
+# AT9 da dove viene: con i file il messaggio che li ha mandati; senza, il testo del turno piu' vicino alla domanda
+E = lambda i, role, text, **k: dict({"id": f"e{i}", "role": role, "text": text, "at": i, "files": None}, **k)  # noqa: E731
+ents = [E(1, "user", "fammi i mockup"),
+        E(2, "assistant", "Ecco i due mockup della home: A con la barra in alto, B con le schede in basso. Quale home preferisci?"),
+        E(3, "tool", "SendUserFile", tool="SendUserFile", files=[{"path": fa}, {"path": fb}]),
+        E(4, "tool", "supervisor task wait-ok al-scelta --what quale home?", tool="Bash"),
+        E(5, "assistant", "Ho messo le scelte nel registro, ti aspettano nell'app.")]
+a9 = {"kind": "choice", "task": "al-scelta", "text": "quale home?", "options": ["A", "B"], "files": [{"path": fa}]}
+a9n = dict(a9, files=None)
+ents_n = [E(1, "user", "che sfondo?"), E(2, "assistant", "Lo sfondo scuro regge meglio il contrasto; il chiaro e' piu' leggero. Quale sfondo vuoi?"),
+          E(3, "tool", "supervisor task wait-ok al-scelta --what quale sfondo?", tool="Bash"), E(4, "assistant", "Ho messo la scelta nel registro.")]
+a9s = {"kind": "choice", "task": "al-scelta", "text": "quale sfondo?", "options": ["Scuro", "Chiaro"], "files": None}
+ents_o = [E(1, "user", "vai"), E(2, "tool", "supervisor task wait-ok al-scelta --what pubblico?", tool="Bash"), E(3, "assistant", "Pronto: pubblico la 1.0 quando dici ok.")]
+T.check("AT9 «Da dove viene» of a request with files: the message that sent them (here SendUserFile with its caption), not the hand-off line after the wait-ok",
+        (AT.origin_in(ents, a9) or {}).get("id") == "e3", str(AT.origin_in(ents, a9)))
+T.check("AT9 without files: in the turn, the text sharing most words with the question wins over the hand-off line; with no better text, the one after the call as before",
+        (AT.origin_in(ents_n, a9s) or {}).get("id") == "e2" and (AT.origin_in(ents_o, {"kind": "ok", "task": "al-scelta", "text": "pubblico?", "files": None}) or {}).get("id") == "e3",
+        str([AT.origin_in(ents_n, a9s), AT.origin_in(ents_o, {"kind": "ok", "task": "al-scelta", "text": "pubblico?"})]))
+# il caso vero delle 14:41 (master, app-mockup-sposta-master-12-11): la domanda e' la didascalia di SendUserFile, poi la
+# chiamata, poi due comandi e un testo d'altro alle 14:42
+ents_m = [E(1, "user", "fammi le proposte"),
+          E(2, "tool", "Riga della Home in basso. Nell'ordine: A coi contatori, B minima.", tool="SendUserFile", files=[{"path": "/x/home-a.png"}]),
+          E(3, "tool", "supervisor task wait-ok app-mockup-chat-home-12-11 --what \"Riga della Home\"", tool="Bash"),
+          E(4, "tool", "Tasto rotondo che sposta la master. Nell'ordine: A frecce a raggiera, B pannello con lo schermo in miniatura.", tool="SendUserFile",
+            files=[{"path": fa}]),
+          E(5, "tool", "supervisor task wait-ok al-scelta --what \"Tasto rotondo che sposta la master\"", tool="Bash"),
+          E(6, "tool", "ssh win Get-ChildItem skills", tool="Bash"),
+          E(7, "assistant", "Win non ha le skill di design: ha solo cinque plugin, nessuno per l'interfaccia. Le installo lì.")]
+a_m = {"kind": "choice", "task": "al-scelta", "text": "Tasto rotondo che sposta la master", "options": ["A frecce", "B pannello"], "files": None}
+T.check("AT9 the real case of 14:41: the question was SendUserFile's caption → that entry, not the unrelated text of 14:42; with the file declared, the entry that sent it",
+        (AT.origin_in(ents_m, a_m) or {}).get("id") == "e4" and (AT.origin_in(ents_m, dict(a_m, files=[{"path": fa}])) or {}).get("id") == "e4",
+        str([AT.origin_in(ents_m, a_m), AT.origin_in(ents_m, dict(a_m, files=[{"path": fa}]))]))
+# una richiesta senza --files il cui messaggio d'origine e' un SendUserFile: i file di quel messaggio, con la sua sessione
+m10 = {"session": "master", "id": "e4", "text": "Tasto rotondo", "_files": [{"path": fa, "mime": "image/png", "size": 72}]}
+a10 = AT.with_files({"kind": "choice", "files": None}, m10)
+a10d = AT.with_files({"kind": "choice", "files": [{"path": fb, "name": "home-b.pdf", "mime": "application/pdf", "size": 10, "kind": "document"}]},
+                     {"session": "master", "_files": [{"path": fa}]})
+T.check("AT9 op attesa without declared files: the files of the message it comes from (SendUserFile), with that session for op file; declared files win, session null; msg loses the internal field",
+        a10["files"] == [{"path": fa, "name": "home-a.png", "mime": "image/png", "size": 72, "kind": "image", "session": "master"}] and "_files" not in m10
+        and [f["path"] for f in a10d["files"]] == [fb] and a10d["files"][0]["session"] is None, json.dumps([a10, a10d]))
+# AT10 (1.137, supervisor-scheda-scelta-12-11): la scheda di scelta — descrizione, opzioni con riga e file, «nessuna, rifare»,
+# giri nella stessa scheda, archivio dopo la risposta
+add("sc-1", "beta")
+(tmp / "mock" / "c.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"1" * 10)
+r10 = cm("task", "wait-ok", "sc-1", "--what", "Tasto che sposta la master", "--desc", "Dove mettere il tasto rotondo che sposta la master fra i monitor.",
+         "--option", "A frecce (consigliata)|chiaro, ma copre il testo|mock/home-a.png", "--option", "B pannello|si vede lo schermo, occupa spazio|mock/c.png,mock/home-b.pdf")
+c10 = next((a for a in AT.collect() if a.get("task") == "sc-1"), {})
+o10 = c10.get("options") or [{}, {}]
+T.check("AT10 one wait-ok opens the choice card: description, each option with its line of pros and cons and its files, files = all of them, card_id = the id, state open, answered null; «where» optional",
+        r10.returncode == 0 and c10.get("description", "").startswith("Dove mettere") and [o["label"] for o in o10] == ["A frecce", "B pannello"]
+        and o10[0]["description"] == "chiaro, ma copre il testo" and [f["name"] for f in o10[1]["files"]] == ["c.png", "home-b.pdf"] and o10[0]["recommended"] is True
+        and [f["name"] for f in c10["files"]] == ["home-a.png", "c.png", "home-b.pdf"] and c10["card_id"] == c10["id"] and c10["state"] == "open" and c10["answered"] is None,
+        json.dumps(c10, ensure_ascii=False)[:900] + r10.stderr)
+T.check("AT10 the card's buttons: the options, then «Nessuna, rifare» (op approval_redo, the reason in text), then «Chiudi senza ok»",
+        [x["label"] for x in c10["actions"]] == ["A frecce", "B pannello", "Nessuna, rifare", "Chiudi senza ok"]
+        and c10["actions"][2]["cmd"] == {"session": None, "op": "approval_redo", "arg": "sc-1"} and c10["actions"][2]["text_field"] == "text", json.dumps(c10["actions"], ensure_ascii=False))
+talklog.write_text("")
+rd0 = RL.execute({"op": "approval_redo", "arg": "sc-1", "text": "  ", "device": "phone", "by": "phone-pixel8"})
+rd1 = RL.execute({"op": "approval_redo", "arg": "sc-1", "text": "troppo grandi, rifalle piccole", "device": "phone", "by": "phone-pixel8"})
+st10 = json.loads(cm("task", "show", "sc-1").stdout)["state"]
+T.check("AT10 approval_redo: without a reason refused; with it the round is discarded, the task back to running, the session told «nessuna, rifare» with the reason",
+        rd0[0] is False and "motivo" in rd0[1] and rd1[0] is True and json.loads(rd1[1])["closed"] is True and st10 == "running"
+        and "nessuna, rifare" in talklog.read_text() and "troppo grandi" in talklog.read_text(), f"{rd0} {rd1} {st10} {talklog.read_text()[-300:]!r}")
+f_r1 = RL.execute({"op": "file", "session": None, "arg": str((tmp / "mock" / "c.png").resolve()), "id": "sc-file-1", "_local": True, "device": "phone"})
+time.sleep(1.1)
+r10b = cm("task", "wait-ok", "sc-1", "--what", "Tasto che sposta la master, giro 2", "--desc", "Più piccoli.", "--option", "C piccolo|discreto|mock/c.png", "--option", "D bordo|sempre visibile")
+c10b = next((a for a in AT.collect() if a.get("task") == "sc-1"), {})
+ok10b, t10b = RL.execute({"op": "attesa", "arg": c10b.get("id"), "device": "phone"})
+x10b = json.loads(t10b) if ok10b else {}
+T.check("AT10 a new wait-ok on the same task is a new round of the same card: a new id, the same card_id; op attesa lists the earlier round with its options, files, state redo and the reason",
+        r10b.returncode == 0 and c10b.get("id") not in (None, c10["id"]) and c10b.get("card_id") == c10["id"] and f_r1[0] is False
+        and [g["state"] for g in x10b.get("rounds") or []] == ["redo"] and x10b["rounds"][0]["id"] == c10["id"] and x10b["rounds"][0]["reason"].startswith("troppo grandi")
+        and [o["label"] for o in x10b["rounds"][0]["options"]] == ["A frecce", "B pannello"] and x10b["rounds"][0]["options"][1]["files"][0]["name"] == "c.png"
+        and x10b["options"][1]["files"] is None, json.dumps(x10b, ensure_ascii=False)[:900])
+ap10 = RL.execute({"op": "approve", "arg": "sc-1", "text": "ok", "choice": "C piccolo", "device": "phone", "by": "phone-pixel8", "session": None})
+gone10 = RL.execute({"op": "attesa", "arg": c10b["id"], "device": "phone"})
+ar1 = RL.execute({"op": "attesa", "arg": c10b["id"], "archive": True, "device": "phone"})
+ar0 = RL.execute({"op": "attesa", "arg": c10["id"], "archive": True, "device": "phone"})
+y1, y0 = (json.loads(ar1[1]) if ar1[0] else {}), (json.loads(ar0[1]) if ar0[0] else {})
+T.check("AT10 after the choice: op attesa without archive answers as before (no longer waiting); with archive true the card from the archive: state chosen, answered with by and choice, no buttons, the earlier round kept",
+        ap10[0] and gone10[0] is False and ar1[0] and y1["state"] == "chosen" and y1["answered"]["choice"] == "C piccolo" and y1["answered"]["by"]
+        and y1["actions"] == [] and y1["card_id"] == c10["id"] and [g["state"] for g in y1["rounds"]] == ["redo"] and y1["description"] == "Più piccoli."
+        and [o["label"] for o in y1["options"]] == ["C piccolo", "D bordo"], json.dumps([ap10, gone10, y1], ensure_ascii=False)[:900])
+T.check("AT10 the id of an earlier round opens the same card from the archive (old messages still open it); an id of no round stays an error",
+        ar0[0] and y0["id"] == y1["id"] and y0["card_id"] == c10["id"]
+        and RL.execute({"op": "attesa", "arg": "w0000000000", "archive": True, "device": "phone"})[0] is False, json.dumps(y0, ensure_ascii=False)[:300])
+add("sc-2", "beta")
+cm("task", "wait-ok", "sc-2", "--what", "x", "--option", "A|", "--option", "B")
+rr = cm("task", "redo", "sc-2", "--by", "tester", "--reason", "nessuna va bene")
+T.check("AT10 task redo from the terminal does the same as approval_redo; --option and --options together are refused",
+        rr.returncode == 0 and json.loads(cm("task", "show", "sc-2").stdout)["state"] == "running"
+        and cm("task", "wait-ok", "sc-2", "--what", "x", "--options", "A|B", "--option", "C").returncode != 0, rr.stdout + rr.stderr)
+smp8 = {r["id"].split("-")[1]: r for r in SAMPLE["result"]}
+s_one8 = json.loads(smp8["1301"]["text"])
+T.check("AT8 the contract's samples: …1301 attesa with two files carrying the fields of the real answer; …1370 op file of an attachment with session null",
+        {frozenset(f) for f in s_one8.get("files") or []} == {frozenset(f) for f in json.loads(t8)["files"]} and "files" in json.loads(smp8["1300"]["text"])["items"][1]
+        and set(s_one8["rounds"][0]) == set(x10b["rounds"][0]) and set(json.loads(smp8["1390"]["text"])) == set(y1)
+        and set(json.loads(smp8["1390"]["text"])["answered"]) == set(y1["answered"]) and smp8["1381"]["ok"] is False
+        and next(c for c in SAMPLE["cmd"] if c["id"].split("-")[1] == "1370")["session"] is None and smp8["1370"]["ok"] is True, "")
 
 T.rm(tmp)
 T.finish()

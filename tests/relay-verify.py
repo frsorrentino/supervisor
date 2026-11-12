@@ -245,7 +245,7 @@ SRC1 = {
         {"id": "7b21d4e8", "dir": ROOT_WS + "/work/clients/ledger-api", "prompt": "Update the changelog for 2.4", "account": "work", "model": "", "effort": "", "max_turns": 40, "added": iso(1789210620)}]},
     "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": [{"project": "atlas-shop", "done": "Migrations 008-011 applied, tests green", "next": "Review the seeds"}, {"project": "ledger-api", "done": "Deploy ready", "next": "Wait"}]},
     "follow": {"work-ledger-api"}, "awaiting": set(),
-    "next": {"work-ledger-api": "Wait for the go", "atlas-shop": "Review the seeds and the admin page", "work-orbit-docs": "Pick up the pricing page"},
+    "next": {"work-ledger-api": "Wait for the go", "atlas-shop": "Review the seeds", "work-orbit-docs": "Pick up the pricing page"},   # 12/11: «Review the seeds», 19 byte in meno: con l'op approval_redo lo stato resta negli 8 KB
     "tools": {"atlas-shop": "Bash pytest -q tests"},
     "tool_notes": {"atlas-shop": "Run the test suite"},
     "icons": {"work-ledger-api": "🟦", "atlas-shop": "🟢", "field-notes": "🟡", "work-orbit-docs": "🟪"},

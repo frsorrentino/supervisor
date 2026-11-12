@@ -24,6 +24,7 @@ Il link: <relay.web_app_url>/#/attesa/<id>; l'app Android apre lo stesso indiriz
 """
 import importlib.util
 import json
+import os
 import re
 import sys
 import time
@@ -89,6 +90,8 @@ def _from_registry(now_):
                     a["_short"] = it.get("short")
                     a["card"] = {k: it.get(f) for k, f in (("what", "what"), ("where", "where_to"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how"))
                                  if it.get(f)} or None
+                    a["files"] = it.get("files") or None   # 1.137: i file da guardare (wait-ok --files)
+                    a["_card"] = tk.card_of(con, it["task"])   # 1.137: la scheda e i suoi giri
                     out.append(a)
                 elif k == "pause":
                     out.append({"id": wid("pausa", it["task"], it.get("since")), "type": "carta", "kind": "pausa", "session": it.get("session"), "task": it["task"],
@@ -108,7 +111,12 @@ def _from_registry(now_):
                 by_task.setdefault(x["task"], []).append(x)
         for tid, xs in by_task.items():
             ids = sorted(x["id"] for x in xs)
+            fs = {}
+            for x in xs:   # 1.137: i file delle prove del compito, una volta ciascuno
+                for f in x.get("files") or []:
+                    fs.setdefault(f.get("path"), f)
             out.append({"id": wid("prova", tid, ids[0]), "type": "carta", "kind": "prova", "session": xs[0].get("session"), "task": tid, "_short": xs[0].get("short"),
+                        "files": list(fs.values()) or None,
                         "text": "; ".join(f"{x['dove']}: {x['fai']}" for x in xs)[:600], "options": None, "at": min(int(x.get("at") or 0) for x in xs),
                         "answer": {"op": "prova", "arg": ",".join(map(str, ids))}})
     finally:
@@ -190,8 +198,10 @@ def _actions(a, prova=False):
         return [_act("approve", {"op": "approve", "arg": a["task"], "text": "ok"}, "primary"),
                 _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
     if k == "choice":
+        # 1.137: «Nessuna, rifare» col motivo, prima di «Chiudi senza ok»
         return [_act(None, {"op": "approve", "arg": a["task"], "text": "ok", "choice": o["value"]}, "primary" if o.get("recommended") else "option", label=o["label"], **rec(o))
-                for o in opts] + [_act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
+                for o in opts] + [_act("redo", {"op": "approval_redo", "arg": a["task"]}, text_field="text"),
+                                  _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
     if k == "prova":
         ids = str(an.get("arg") or "")
         return [_act("works", {"op": "prova", "arg": ids, "result": "ok"}, "primary"),
@@ -217,6 +227,83 @@ def _actions(a, prova=False):
     return []
 
 
+def _option_details(options, details):
+    """Le opzioni (gia' oggetti) con la riga di pro e contro (`description`) e i file di ciascuna, per indice."""
+    for i, o in enumerate(options or []):
+        d = (details or [])[i] if details and i < len(details) else {}
+        if d.get("description"):
+            o["description"] = d["description"]
+        o.setdefault("description", None)
+        o["files"] = [file_item(f) for f in d.get("files") or []] or None
+    return options
+
+
+def round_view(g):
+    """Un giro della scheda come lo vede l'app: {id, at, text, description, options, files, state, reason, by, answered_at, choice}."""
+    opts = _options(g.get("options"), 24) if g.get("options") else None
+    det = g.get("detail") or {}
+    return {"id": g["wid"], "at": g["at"], "text": g.get("what"), "description": det.get("description"), "options": _option_details(opts, det.get("options")),
+            "files": [file_item(f) for f in g.get("files") or []] or None, "state": g["state"], "reason": g.get("reason"), "by": g.get("by"),
+            "answered_at": g.get("answered_at"), "choice": g.get("choice")}
+
+
+def card_rounds(a):
+    """I giri della scheda prima di quello della voce, dal piu' vecchio ([] al primo giro, e per le voci che non sono carte)."""
+    if a.get("type") != "carta" or a.get("kind") not in ("ok", "choice") or not a.get("task"):
+        return []
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return []
+    try:
+        card = tk.card_of(con, a["task"], a["id"])
+    finally:
+        con.close()
+    return [round_view(g) for g in (card or {}).get("rounds", []) if g["wid"] != a["id"]]
+
+
+def archived(i):
+    """1.137 (archivio): la scheda di qualsiasi giro, anche dopo la risposta. Il giro piu' recente della scheda fa da voce:
+    aperto = la voce di collect con i giri di prima; chiuso = la voce ricostruita dal registro, actions [] e `answered`.
+    None se l'id non e' di nessun giro."""
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return None
+    try:
+        tid = tk.find_round(con, i)
+        card = tk.card_of(con, tid, i) if tid else None
+        row = con.execute("SELECT title, session, contract FROM tasks WHERE id=?", (tid,)).fetchone() if tid else None
+    finally:
+        con.close()
+    if not card:
+        return None
+    last = card["rounds"][-1]
+    if last["state"] == "open":
+        a = find(last["wid"])
+        if a is not None:
+            a["rounds"] = [round_view(g) for g in card["rounds"][:-1]]
+            return a
+    v = round_view(last)
+    try:
+        short = tk.short_of(json.loads(row["contract"]).get("task") or {}) if row else None
+    except (ValueError, TypeError, AttributeError):
+        short = None
+    a = {"id": last["wid"], "type": "carta", "kind": "choice" if last.get("options") else "ok", "session": _short(row["session"]) if row and row["session"] else None,
+         "task": tid, "text": v["text"], "options": v["options"], "at": last["at"], "answer": None,
+         "card": {k: last.get(f) for k, f in (("what", "what"), ("where", "where"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how")) if last.get(f)} or None,
+         "link": link(last["wid"]), "files": v["files"], "description": v["description"], "card_id": card["card_id"], "state": last["state"],
+         "answered": {"by": last.get("by"), "at": last.get("answered_at"), "choice": last.get("choice"), "reason": last.get("reason")} if last["state"] != "replaced" else None,
+         "rounds": [round_view(g) for g in card["rounds"][:-1]]}
+    a["label"] = LABELS.get(a["kind"], "decide")
+    a["label_text"] = M("attese.label_" + a["label"])
+    if a["card"] is not None:
+        a["card"]["deploy"] = bool(DEPLOY_RE.search(f"{a['card'].get('what') or ''} {a['card'].get('where') or ''}"))
+    a["title"] = (" ".join(str(short or v["text"] or "").split())[:TITLE_MAX]) or None
+    a["actions"] = []
+    return a
+
+
 def _finish(a):
     """L'etichetta del tipo (label: decide | choose | verify | reply, e label_text nella lingua della config, «Decidi»,
     «Scegli», «Verifica», «Rispondi»), le opzioni come oggetti, card null fuori dalle carte di ok. 1.131: `title`, una riga
@@ -226,6 +313,17 @@ def _finish(a):
     a["label_text"] = M("attese.label_" + a["label"])
     a["options"] = _options(a.get("options"), 24 if a["kind"] == "choice" else None)
     a.setdefault("card", None)
+    a.setdefault("files", None)   # 1.137: [{path, name, mime, size, kind, session}] o null; la lettura `file` li scarica (arg = path)
+    if a["files"]:
+        a["files"] = [file_item(f) for f in a["files"]]
+    # 1.137 (la scheda di scelta): descrizione, riga e file di ogni opzione, id stabile della scheda, stato e risposta
+    card = a.pop("_card", None)
+    cur = (card or {}).get("rounds", [None])[-1] if card else None
+    a["description"] = ((cur or {}).get("detail") or {}).get("description")
+    _option_details(a["options"], ((cur or {}).get("detail") or {}).get("options"))
+    a["card_id"] = card["card_id"] if card else a["id"]
+    a.setdefault("state", "open")
+    a.setdefault("answered", None)
     if a["card"] is not None:
         a["card"]["deploy"] = bool(DEPLOY_RE.search(f"{a['card'].get('what') or ''} {a['card'].get('where') or ''}"))
     short = a.pop("_short", None)
@@ -287,15 +385,43 @@ def origin_in(entries, a):
     rx = _anchor_re(a)
     if rx is None:
         return None
+    # 1.137 (12/11, supervisor-attesa-allegati-12-11): una richiesta con file viene dal messaggio che li ha mandati (la
+    # voce che li elenca nei suoi files, SendUserFile o una scrittura): il testo dell'assistente in quel turno
+    # (12/11 15:00, la master: la scheda di app-mockup-sposta-master-12-11 mostrava il testo delle 14:42 invece della
+    # domanda delle 14:41) la domanda era la didascalia di SendUserFile, una voce «tool»: anche quella e' un messaggio
+    # alla persona, e se manda i file della richiesta e' lei la voce d'origine
+    msgs = sorted(set(texts) | {k for k, e in enumerate(entries) if e.get("tool") == "SendUserFile" and e.get("text")})
+    want = {os.path.realpath(str(f.get("path"))) for f in a.get("files") or [] if isinstance(f, dict) and f.get("path")}
+    want_names = {os.path.basename(p) for p in want}
+    if want:
+        f = next((k for k in range(len(entries) - 1, -1, -1)
+                  if any(os.path.realpath(str(x.get("path") or "")) in want or os.path.basename(str(x.get("path") or "")) in want_names
+                         for x in entries[k].get("files") or [] if isinstance(x, dict))), None)
+        if f is not None:
+            return entries[f] if f in msgs else _turn_text(entries, msgs, f, a)
     k = next((k for k in range(len(entries) - 1, -1, -1) if entries[k].get("role") == "tool" and rx.search(str(entries[k].get("text") or ""))), None)
     if k is None:
         return None
-    for j in range(k + 1, len(entries)):
-        if entries[j].get("role") == "user":
-            break
-        if j in texts:
-            return entries[j]
-    return next((entries[j] for j in reversed(texts) if j < k), None)
+    return _turn_text(entries, msgs, k, a)
+
+
+def _turn_text(entries, texts, k, a):
+    """Il testo (dell'assistente, o la didascalia di SendUserFile) che spiega l'attesa nel turno della voce k. Prima (12/11) era il primo testo dopo k: per
+    una carta della master era spesso una riga di passaggio («Ho messo le scelte nel registro…»). Ora, fra i testi del
+    turno (dalla riga della persona prima di k a quella dopo), quello con piu' parole in comune con la domanda e le sue
+    opzioni; a pari merito, o senza parole in comune, il primo dopo k, altrimenti l'ultimo prima."""
+    lo = next((j for j in range(k, -1, -1) if entries[j].get("role") == "user"), -1)
+    hi = next((j for j in range(k + 1, len(entries)) if entries[j].get("role") == "user"), len(entries))
+    turn = [j for j in texts if lo < j < hi]
+    after = [j for j in turn if j > k]
+    first = after[0] if after else next((j for j in reversed(texts) if j < k), None)
+    want = {w.casefold() for w in _WORD_RE.findall(" ".join([str(a.get("text") or "")] + [str(o.get("label") if isinstance(o, dict) else o) for o in a.get("options") or []]))}
+    if want and turn:
+        score = lambda j: len(want & {w.casefold() for w in _WORD_RE.findall(str(entries[j].get("text") or ""))})  # noqa: E731
+        best = max(turn, key=lambda j: (score(j), j == first, -abs(j - k)))
+        if score(best) > (score(first) if first is not None and first in turn else 0):
+            return entries[best]
+    return entries[first] if first is not None else None
 
 
 _SENT_SPLIT = re.compile(r"(?<=[.?!])\s+|\n+")   # la fine di frase e' un segno seguito da uno spazio: «1.0» resta intera
@@ -346,8 +472,32 @@ def origin(a, rows=None):
         if e:
             text = str(e.get("text") or "")
             return {"session": _short(name), "session_id": row.get("session_id"), "id": e["id"], "uuid": str(e["id"]).split(".")[0],
-                    "text": text[:MSG_MAX], "key": key_sentence(text, a), "at": e.get("at")}
+                    "text": text[:MSG_MAX], "key": key_sentence(text, a), "at": e.get("at"),
+                    "_files": [f for f in e.get("files") or [] if isinstance(f, dict) and f.get("path")]}
     return None
+
+
+def file_item(f, session=None):
+    """1.137: un file da guardare {path, name, mime, size, kind, session}: session null = dichiarato nella richiesta
+    (`file` lo serve senza sessione), altrimenti la sessione nella cui trascrizione compare (`file` con quella sessione)."""
+    import mimetypes
+    p = str(f.get("path"))
+    mime = f.get("mime") or mimetypes.guess_type(p)[0] or "application/octet-stream"
+    ext = p.rsplit(".", 1)[-1].lower() if "." in p else ""
+    kind = f.get("kind") or ("image" if mime.startswith("image/") else "document" if (mime.startswith("text/") or mime in ("application/pdf", "application/json")
+                                                                                      or ext in ("pdf", "md", "html", "htm", "txt", "csv", "doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "svg")) else "other")
+    return {"path": p, "name": f.get("name") or re.split(r"[\\/]", p)[-1], "mime": mime, "size": f.get("size"), "kind": kind, "session": session}
+
+
+def with_files(a, msg):
+    """La voce con i suoi file: quelli dichiarati (session null); senza, quelli del messaggio d'origine (SendUserFile, una
+    scrittura), con la sessione della sua trascrizione. Toglie il campo interno di msg."""
+    got = (msg or {}).pop("_files", None) if isinstance(msg, dict) else None
+    if a.get("files"):
+        a["files"] = [file_item(f) for f in a["files"]]
+    elif got:
+        a["files"] = [file_item(f, msg.get("session")) for f in got]
+    return a
 
 
 def find(i, now_=None, state=None):
@@ -367,6 +517,7 @@ def main(argv):
             print(M("attese.gone", id=args[1]), file=sys.stderr)
             return 1
         a["msg"] = origin(a)
+        with_files(a, a["msg"])
         if as_json:
             print(json.dumps(a, ensure_ascii=False, indent=2))
         else:

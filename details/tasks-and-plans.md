@@ -147,7 +147,14 @@ or `--da-qui` on `task pause`, otherwise from its words (a login, a fingerprint,
 panel). `task cause ID... --cause C --note SENTENCE` lets the master join groups
 written in different words. `task wait-ok` takes `--untested T`, `--undo
 si|no|in-parte` and `--undo-how T`, and `task add --defect-of ID` records the only
-kind of precedent a card shows. `task wait-ok ID … --also ID2,ID3` lists on the
+kind of precedent a card shows. `task wait-ok ID … --files a.png,b.pdf` (and `task
+prova … --files`) attaches the files to look at before deciding, up to 12: a relative
+path is read from the task's folder, and the «Ti aspetta» card of the apps shows them.
+A choice card takes `--desc "what to decide and why"` and two to four `--option
+"label|one line of pros and cons|a.png,b.png"`; a new `wait-ok` on the same task is a
+new round of the same card. `task redo ID --by B --reason T` (or «None, redo» in the
+app) discards the round with its reason and tells the session.
+`task wait-ok ID … --also ID2,ID3` lists on the
 card the separate tasks a plan foresees: the ok of that card reaches them, quoting
 it; a task not declared, or declared after the ok, gets nothing, and declaring
 writes no ok.
