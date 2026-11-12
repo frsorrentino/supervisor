@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.151 — 2026-11-12: the previews in the chat arrive, all of them and without waiting (supervisor-relay-file-corsia-12-11, supervisor-relay-file-chiave-12-11).**
+  - In a chat with many images only the first preview loaded. When several reads of the same session waited together the relay kept only the newest, and it did not look at what they asked for: twenty different files counted as one read. Reads that name a file, a delivery, a step, a question, a monitor or a test are now told apart by what they name. Only a repeat of the same read is dropped, as before.
+  - A preview could wait up to 103 seconds: file reads queued behind the slow reads, like the timeline and the search. They now have a lane of their own, so they wait neither for those nor slow down the chat. The contract with the app does not change.
 - **0.8.150 — 2026-11-12: an expired login leaves the list once renewed, and the commitments read right (supervisor-login-scaduto-fermo-11-11, supervisor-testi-impegni-12-11).**
   - «The login of an account expired» stayed among the decisions for days after the login was renewed. The guard checks the logins every hour from cron, where `claude` was not on the PATH: every check failed and kept the old reading. It now finds Claude Code there too, and a session opened on an account with an open login item checks it again at once.
   - The guard's reminder said «tocca a l'utente»: it now says «aspetta l'utente», like `task impegni`. The commitments header and summary say «1 fermo» for one, not «1 fermi».

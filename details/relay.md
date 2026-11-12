@@ -845,7 +845,7 @@ Fixture: `cmd-result-sample.json` (`prove` with `archived`); `state-2-idle.json`
 
 Contract 1.112 (03/11/2026, reported by the maintainer: «cos'è questo messaggio che appare spesso?»). Additive, `v` stays 1.
 
-- **A read replaced by a newer one** (several reads of the same op and session waiting together: only the newest runs) gets at once a result with `ok: false`, `superseded: true` and the text `relay.cmd_superseded` in the relay's language. `superseded` is present only there: a client closes that request in silence instead of showing an error, without reading the text.
+- **A read replaced by a newer one** (several reads of the same op and session waiting together: only the newest runs; since 0.8.151, for `file`, `thumb`, `diff`, `changes`, `attesa`, `monitors` and `prove`, only those with the same `arg` too, so reads of different files or items all run) gets at once a result with `ok: false`, `superseded: true` and the text `relay.cmd_superseded` in the relay's language. `superseded` is present only there: a client closes that request in silence instead of showing an error, without reading the text.
 
 Fixture: `cmd-result-sample.json` (a superseded read).
 

@@ -3142,7 +3142,19 @@ PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "ti
 # 03/11/2026, misura del relay dal 02/11 (p95 dell'esecuzione): done 39 s, timeline 34 s, file 13 s, plugins 9 s, kpi
 # 7 s; decisioni, agenda, transcript e results sotto i 2 s. Con una corsia sola per le letture, dopo la 0.8.103 una
 # timeline da 37 s ha tenuto «decisioni» 33 s in fila: le lente vanno in una corsia loro
-SLOW_READ_OPS = ("timeline", "done", "file", "plugins", "kpi", "search", "diff", "studio", "nights", "night", "changes", "conti", "prima_raccolta", "projects", "attesa", "thumb")
+SLOW_READ_OPS = ("timeline", "done", "plugins", "kpi", "search", "diff", "studio", "nights", "night", "changes", "conti", "prima_raccolta", "projects", "attesa", "thumb")
+
+# 12/11/2026 (supervisor-relay-file-corsia-12-11): `file` stava fra le lente; dal relay.log del 12/11, 12:30-13:00, 15
+# anteprime della PWA con esecuzione 2,5-16,3 s ma fino a 103,4 s in fila dietro timeline, search e le altre. Fra le
+# letture normali rallenterebbe la chat (transcript, decisioni sotto i 2 s): ha una corsia sua. L'app chiede i file uno
+# alla volta per sessione, quindi la corsia non si intasa
+FILE_OPS = ("file",)
+
+# 12/11/2026 (supervisor-relay-file-chiave-12-11): letture passive il cui argomento nomina una cosa diversa (un file, una
+# consegna, un passaggio, una domanda, un monitoraggio, una prova): due con argomenti diversi non sono la stessa lettura.
+# Prima la chiave era (op, sessione) e di 20 anteprime della stessa chat ne usciva una sola, le altre «superseded».
+# transcript, screen, search, timeline restano senza argomento: la chat le ripete e vale l'ultima
+ARG_KEYED_OPS = ("file", "thumb", "diff", "changes", "attesa", "monitors", "prove")
 
 
 def in_order(cmds):
@@ -3168,6 +3180,8 @@ def in_order(cmds):
     # 04/11 (supervisor-relay-pagina-before-04-11): una pagina vecchia della chat (`before=`) non e' la stessa lettura delle
     # `after=` che la chat aperta chiede di continuo: ha la sua chiave, se no «Carica i messaggi precedenti» non arriva mai
     def same(c):
+        if str(c.get("op") or "") in ARG_KEYED_OPS:
+            return (c.get("op"), c.get("session"), "arg", str(c.get("arg") or "").strip())
         return (c.get("op"), c.get("session"), "before" if "before=" in str(c.get("arg") or "") else "")
     newest = {}
     for cid, _, c in items:
@@ -3452,13 +3466,14 @@ class CmdLanes:
     31 s alle 12:57 ha tenuto fermi i sei comandi dietro, arrivati con issued 25-40 s; la fila segnava 0,0 s perche'
     `arrived` si prendeva solo quando l'evento veniva letto. Ora lo stream legge e smista: tre corsie, ognuna in ordine e
     un comando alla volta, i comandi dell'utente, le letture (PASSIVE_OPS) e le letture lente (SLOW_READ_OPS), cosi' una
-    lettura lenta non ferma una risposta ne' «Da decidere». Quello che si accumula in una corsia si prende tutto insieme e passa da in_order:
+    lettura lenta non ferma una risposta ne' «Da decidere». 12/11: una quarta per i file (FILE_OPS), le anteprime della
+    chat, che dietro le lente aspettavano fino a 103 s. Quello che si accumula in una corsia si prende tutto insieme e passa da in_order:
     delle letture uguali della stessa sessione resta l'ultima."""
 
     def __init__(self, done, on_done=None):
         self.done, self.on_done = done, on_done
         self.cv = threading.Condition()
-        self.queues = {"cmd": {}, "read": {}, "slow": {}}
+        self.queues = {"cmd": {}, "read": {}, "slow": {}, "file": {}}
         self.stop = False
         self.threads = [threading.Thread(target=self._run, args=(lane,), name=f"relay-{lane}", daemon=True) for lane in self.queues]
         for t in self.threads:
@@ -3471,7 +3486,7 @@ class CmdLanes:
         except (ValueError, TypeError, AttributeError, RelayError):
             c = None
         op = str(c.get("op") or "") if isinstance(c, dict) else ""
-        return "cmd" if op not in PASSIVE_OPS else "slow" if op in SLOW_READ_OPS else "read"
+        return "cmd" if op not in PASSIVE_OPS else "file" if op in FILE_OPS else "slow" if op in SLOW_READ_OPS else "read"
 
     def put(self, cmds, arrived):
         """{cid: doc} dallo stream: in coda alla sua corsia, senza aspettare l'esecuzione. Un id gia' in coda (il put
@@ -3511,6 +3526,7 @@ class CmdLanes:
 EXEC_LOCK = threading.Lock()   # 1.35: i comandi dal bus e quelli dell'API locale, uno alla volta come prima
 READ_LOCK = threading.Lock()   # 03/11: le letture (PASSIVE_OPS) in una corsia loro, una alla volta, accanto ai comandi
 SLOW_LOCK = threading.Lock()   # 03/11: e le letture lente (SLOW_READ_OPS) in una terza
+FILE_LOCK = threading.Lock()   # 12/11: e i file (FILE_OPS) in una quarta, che non aspetta le lente
 
 
 def raccolta_summary():
@@ -3620,7 +3636,8 @@ def run_cmd(cmd, arrived=None):
     active = str(cmd.get("op") or "") not in PASSIVE_OPS
     # 03/11: una lettura lenta (timeline 31 s) non tiene piu' fermo un comando dell'utente: due lock, due corsie. Le
     # letture giravano gia' accanto alla push (PushWorker), che legge le stesse cose
-    with (EXEC_LOCK if active else SLOW_LOCK if str(cmd.get("op") or "") in SLOW_READ_OPS else READ_LOCK):
+    op_ = str(cmd.get("op") or "")
+    with (EXEC_LOCK if active else FILE_LOCK if op_ in FILE_OPS else SLOW_LOCK if op_ in SLOW_READ_OPS else READ_LOCK):
         t_run = time.time()
         if active:
             _MEMO.clear()   # 29/10: un comando che cambia qualcosa decide sul fresco (approve legge le attese di ok)

@@ -4606,6 +4606,80 @@ T.check("R100 the stream loop hands commands to the lanes and no longer runs han
         and "if handle_cmd(cid, doc, done, arrived):" not in (T.SCRIPTS / "cm-relay.py").read_text(), "")
 
 
+# R150 (12/11/2026, supervisor-relay-file-corsia-12-11 e supervisor-relay-file-chiave-12-11): nella PWA un'anteprima ha
+# aspettato 103 s in fila dietro le letture lente, e di 20 immagini della stessa chat ne arrivava una: la chiave delle
+# letture uguali non aveva l'argomento
+_sv150 = dict(ex=RL.execute, pa=RL.push_async, last=RL.last_sessions, rtdb=RL.rtdb)
+_ran150, _t150 = [], {}
+
+
+def _ex150(cmd):
+    _ran150.append((cmd["op"], cmd["id"], str(cmd.get("arg") or ""), round(time.time() - _t150["0"], 2)))
+    if cmd["op"] == "timeline":
+        time.sleep(2.0)
+    if cmd["op"] == "file":
+        time.sleep(0.2)
+    return (True, "ok")
+
+
+try:
+    RL.execute, RL.push_async, RL.last_sessions = _ex150, (lambda *a, **k: None), (lambda: {})
+    RL.rtdb = lambda *a, **k: None
+    # 1. run_cmd: un file parte mentre una timeline lenta e' in corso
+    _t150["0"] = time.time()
+    _done150 = {}
+
+    def _go150(c):
+        RL.run_cmd(c)
+        _done150[c["id"]] = round(time.time() - _t150["0"], 2)
+    _th150 = [threading.Thread(target=_go150, args=({"id": "t1", "op": "timeline", "session": ""},))]
+    _th150[0].start(); time.sleep(0.2)
+    _th150.append(threading.Thread(target=_go150, args=({"id": "f1", "op": "file", "session": "x", "arg": "/p/a.png"},)))
+    _th150[-1].start()
+    [t.join() for t in _th150]
+    # 2. lo stream: tre file diversi della stessa sessione e una ripetizione, dietro una timeline lenta
+    _ran150.clear(); _served150, _dl150 = [], []
+    _lanes150 = RL.CmdLanes(_dl150, _served150.append)
+    _t150["0"] = time.time()
+    _lanes150.put({"s1": {"op": "timeline", "session": "", "issued": time.time()}}, time.time())
+    time.sleep(0.1)
+    _now150 = time.time()
+    _lanes150.put({"fa": {"op": "file", "session": "x", "arg": "/p/a.png", "issued": _now150},
+                   "fb": {"op": "file", "session": "x", "arg": "/p/b.png", "issued": _now150 + 0.01},
+                   "fc": {"op": "file", "session": "x", "arg": "/p/c.png", "issued": _now150 + 0.02},
+                   "fa2": {"op": "file", "session": "x", "arg": "/p/a.png", "issued": _now150 + 0.03}}, time.time())
+    _deadline = time.time() + 6
+    while len(_served150) < 4 and time.time() < _deadline:
+        time.sleep(0.05)
+    _lanes150.close()
+finally:
+    RL.execute, RL.push_async, RL.last_sessions, RL.rtdb = _sv150["ex"], _sv150["pa"], _sv150["last"], _sv150["rtdb"]
+_files150 = [(c, a, at) for op, c, a, at in _ran150 if op == "file"]
+T.check("R150 run_cmd: a `file` read starts while a slow read (2 s timeline) is running, it does not wait for it",
+        _done150.get("f1", 9) < 0.2 + 0.2 + 0.4 and _done150.get("t1", 0) >= 2.0, str(_done150))
+T.check("R150 the /cmd stream: `file` has its own lane, three different files of one session queued together behind a slow timeline all run before it ends; the repeat of the same file runs once",
+        sorted(c for c, _, _ in _files150) == ["fa2", "fb", "fc"] and all(at < 2.0 for _, _, at in _files150)
+        and sorted(a for _, a, _ in _files150) == ["/p/a.png", "/p/b.png", "/p/c.png"]
+        and sorted(_served150) == ["fa2", "fb", "fc", "s1"], str((_ran150, _served150)))
+cmds150 = {"fa": {"op": "file", "session": "x", "arg": "/p/a.png", "issued": 1789210930},
+           "fb": {"op": "file", "session": "x", "arg": "/p/b.png", "issued": 1789210931},
+           "fc": {"op": "file", "session": "x", "arg": "/p/c.png", "issued": 1789210932},
+           "fb2": {"op": "file", "session": "x", "arg": "/p/b.png", "issued": 1789210933},
+           "th1": {"op": "thumb", "session": "", "arg": "r-1", "issued": 1789210934},
+           "th2": {"op": "thumb", "session": "", "arg": "r-2", "issued": 1789210935},
+           "tr1": {"op": "transcript", "session": "x", "arg": "200:after=e-1", "issued": 1789210936},
+           "tr2": {"op": "transcript", "session": "x", "arg": "200:after=e-2", "issued": 1789210937}}
+_sv150b = RL.rtdb
+RL.rtdb = lambda *a, **k: None
+try:
+    got150 = [c for c, _ in RL.in_order(cmds150)]
+finally:
+    RL.rtdb = _sv150b
+T.check("R150 in_order: three different `file` of one session all come out, of two equal ones only the newest; two thumbs of different deliveries both; the chat's after= reads as before, only the newest",
+        got150 == ["fa", "fc", "fb2", "th1", "th2", "tr2"], str(got150))
+T.check("R150 `file` is no longer among the slow reads; the lanes are four",
+        "file" in RL.FILE_OPS and "file" not in RL.SLOW_READ_OPS and "file" in RL.ARG_KEYED_OPS and "transcript" not in RL.ARG_KEYED_OPS, "")
+
 # R102 (03/11/2026, supervisor-kpi-comandi-03-11, contratto 1.109): ogni comando del bus lascia il suo tempo di risposta,
 # da issued (orologio del dispositivo) all'esito scritto, per kpi_health.commands
 _sv102 = {n: getattr(RL, n) for n in ("run_cmd", "rtdb")}
