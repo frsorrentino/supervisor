@@ -1210,6 +1210,8 @@
   "rsession.close_failed": "{host}: chiusura di {name} fallita: {error}",
   "rsession.closed": "{host}: {name} chiusa (processo fermato, attività tolta; la cartella resta per host fetch)",
   "rsession.closed_already": "{host}: {name} non era in esecuzione; attività tolta",
+  "relay.cmd_file_expired": "file scaduto: la richiesta che lo mostrava è più vecchia di {days} giorni",
+  "relay.cmd_file_not_declared": "nessuna richiesta, aperta o in archivio, dichiara questo file",
   "relay.cmd_file_no_session": "no session {name}",
   "relay.cmd_file_not_listed": "not in the transcript",
   "relay.result_unknown": "risultato {id} non trovato",

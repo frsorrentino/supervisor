@@ -1610,6 +1610,36 @@
       "device": "phone",
       "issued": 1789216700,
       "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1371-4000-8000-000000001371",
+      "op": "file",
+      "session": null,
+      "arg": "/home/user/work/atlas-shop/docs/mockups/home-a.png",
+      "parts": true,
+      "device": "phone",
+      "issued": 1789216800,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1372-4000-8000-000000001372",
+      "op": "file",
+      "session": null,
+      "arg": "/home/user/work/atlas-shop/docs/mockups/old.png",
+      "parts": true,
+      "device": "phone",
+      "issued": 1789216800,
+      "by": "phone-pixel8"
+    },
+    {
+      "id": "6f1c2d3e-1373-4000-8000-000000001373",
+      "op": "file",
+      "session": null,
+      "arg": "/home/user/notes.txt",
+      "parts": true,
+      "device": "phone",
+      "issued": 1789216800,
+      "by": "phone-pixel8"
     }
   ],
   "result": [
@@ -2650,6 +2680,24 @@
       "ok": true,
       "text": "{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"state\": \"retired\", \"text\": \"the A screen no longer exists\", \"at\": 1789216700, \"files\": null}",
       "at": 1789216701
+    },
+    {
+      "id": "6f1c2d3e-1371-4000-8000-000000001371",
+      "ok": true,
+      "text": "file ready (image/png, 48213 bytes)",
+      "at": 1789216801
+    },
+    {
+      "id": "6f1c2d3e-1372-4000-8000-000000001372",
+      "ok": false,
+      "text": "file expired: the request that showed it is older than 180 days",
+      "at": 1789216801
+    },
+    {
+      "id": "6f1c2d3e-1373-4000-8000-000000001373",
+      "ok": false,
+      "text": "no request, open or archived, declares this file",
+      "at": 1789216801
     }
   ]
 }

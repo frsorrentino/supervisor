@@ -490,11 +490,22 @@ def file_open(cmd, session, tm, arg):
     if path and not listed:
         # 1.137 (12/11, supervisor-attesa-allegati-12-11): un file da guardare di una richiesta aperta (wait-ok --files,
         # task prova --files), anche senza sessione: solo i percorsi che la richiesta ha dichiarato
+        expired = False
         try:
             if path in _tasks_read(lambda tk, con: tk.open_files(con)):
                 listed, host = True, "local"
+            else:
+                # 1.142 (12/11, supervisor-file-scheda-chiusa-12-11): anche a scelta fatta, finche' la scheda sta in
+                # archivio (la stessa finestra di attesa con archive); oltre, scaduto. Solo i percorsi dichiarati
+                got, since = _tasks_read(lambda tk, con: tk.archived_files(con)) or ({}, 0)
+                if path in got:
+                    listed, host, expired = got[path] >= since, "local", got[path] < since
         except Exception:   # noqa: BLE001 — registro illeggibile: come se non ci fosse
             pass
+        if expired:
+            return False, M("relay.cmd_file_expired", days=_load("cm-tasks").ARCHIVE_DAYS)
+    if not listed and not session:
+        return False, M("relay.cmd_file_not_declared")   # 12/11: senza sessione non manca una sessione, il file non e' dichiarato
     if not listed and (not row or not tr):
         return False, M("relay.cmd_file_no_session", name=session or "?")
     if not path or not listed:

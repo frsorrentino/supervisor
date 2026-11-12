@@ -644,6 +644,12 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.142 (12/11/2026, seen by the master at 21:26 on the web app: #/attesa/wc90a9e6b58, a choice already made, opened as «Scelta fatta» with no image; task supervisor-file-scheda-chiusa-12-11). Additive, `v` stays 1.
+
+- **Op `file` serves the declared files of a card in the archive**, not only while the request is open: an answered choice, a discarded round, a test already marked, for as long as `attesa` with `archive: true` finds the card (180 days from the request). Only the paths a request or a test declared (`files[].path` with `session` null); nothing else.
+- Errors, in the relay's language: older than the archive, «file expired: the request that showed it is older than 180 days»; a path no request declared, with `session` null, «no request, open or archived, declares this file» (it said «no session ?»). A file gone from the disk stays «missing or unreadable».
+- Fixture `cmd-result-sample.json`: …1371 (a file of an answered choice, served), …1372 (expired), …1373 (not declared).
+
 Contract 1.141 (12/11/2026, supervisor-app: it had to guess whether a report came from the Android app or the web; task supervisor-segnalazione-origine-12-11). Additive, `v` stays 1.
 
 - **Op `report`** takes three optional fields: `app` (`android`, `web` or `wear`), `app_version` (up to 40 characters) and `screen` (the screen it was sent from, up to 60). When any is there, the message to the session gets one more line, «Da: app Android 2.4.1 · schermata Verifica» (in English «From: Android app 2.4.1 · screen Verifica»). Without them the message is as before; an unknown `app` is ignored.

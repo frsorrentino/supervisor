@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.156 — 2026-11-12: a choice already made still shows its images (supervisor-file-scheda-chiusa-12-11, contract 1.142).**
+  - Once a choice was answered its card opened from the archive without the images: the relay served a card's files only while the request was open, and answered «no session ?». It now serves them for as long as the card stays in the archive, 180 days, and only the files the request declared. Past that it says the file expired; a file no request declared is named as such.
 - **0.8.155 — 2026-11-12: sessions outside the root stay private, eight fixes for a Mac with an iPhone, one short question after pairing, a test can be retired, relaunching on another host works, reports say where they come from (supervisor-ambito-sessioni-12-11, supervisor-note-mac-iphone-12-11, supervisor-avvio-popola-12-11, supervisor-prova-ritirata-12-11, supervisor-host-rilancio-avanti-12-11, supervisor-host-prompt-perso-12-11, supervisor-host-poll-fermo-12-11, supervisor-segnalazione-origine-12-11, contracts 1.139, 1.140 and 1.141).**
   - New setting `workspace.sessions_scope`, `root` by default, also for existing installs. supervisor no longer opens the transcripts of sessions outside your workspace root. They stay out of counts, search, the recap, the timeline, the first collection and everything that goes to the phone. Their hooks send nothing to the phone either. `supervisor sessions` in the terminal still lists them.
   - `workspace.sessions_also` lists extra folders to include. The night's automations stay counted wherever they run, and sessions on another host follow the root of that host's sessions. `supervisor doctor` says the scope and how to read every session again: `"sessions_scope": "all"`.

@@ -260,7 +260,17 @@ T.check("AT8 op file serves a file of an open request with no session (here to t
         f_ok[0] is True and loc.get("path") == fa and loc.get("mime") == "image/png" and f_no[0] is False, f"{f_ok} {f_no} {loc}")
 _ap8 = RL.execute({"op": "approve", "arg": "al-scelta", "text": "ok", "choice": "A", "device": "phone", "by": "phone-pixel8", "session": None})
 f_after = RL.execute({"op": "file", "session": None, "arg": fb, "id": "al-file-3", "_local": True, "device": "phone"})
-T.check("AT8 once the choice is made the request is closed and its files are no longer served", _ap8[0] and f_after[0] is False, str((_ap8, f_after)))
+# 1.142 (12/11, supervisor-file-scheda-chiusa-12-11): a scelta fatta la scheda sta in archivio, e i suoi file si servono ancora
+f_nodecl = RL.execute({"op": "file", "session": None, "arg": str((tmp / "segreto.txt").resolve()), "id": "al-file-4", "_local": True, "device": "phone"})
+import sqlite3 as _sq8
+_c8 = _sq8.connect(str(tmp / "t.db"))
+_c8.execute("UPDATE approvals SET at=at-?", (200 * 86400,))
+_c8.execute("UPDATE prove SET at=at-?", (200 * 86400,))
+_c8.commit(); _c8.close()
+f_old = RL.execute({"op": "file", "session": None, "arg": fb, "id": "al-file-5", "_local": True, "device": "phone"})
+T.check("AT8 (1.142) after the choice the card's files are still served while the card is in the archive; a path no request declared says so (not «no session»); older than the archive: «expired»",
+        _ap8[0] and f_after[0] is True and f_nodecl[0] is False and "dichiara" in f_nodecl[1] and "no session" not in f_nodecl[1]
+        and f_old[0] is False and "scaduto" in f_old[1], str((_ap8, f_after, f_nodecl, f_old)))
 
 # AT9 da dove viene: con i file il messaggio che li ha mandati; senza, il testo del turno piu' vicino alla domanda
 E = lambda i, role, text, **k: dict({"id": f"e{i}", "role": role, "text": text, "at": i, "files": None}, **k)  # noqa: E731
@@ -332,7 +342,7 @@ c10b = next((a for a in AT.collect() if a.get("task") == "sc-1"), {})
 ok10b, t10b = RL.execute({"op": "attesa", "arg": c10b.get("id"), "device": "phone"})
 x10b = json.loads(t10b) if ok10b else {}
 T.check("AT10 a new wait-ok on the same task is a new round of the same card: a new id, the same card_id; op attesa lists the earlier round with its options, files, state redo and the reason",
-        r10b.returncode == 0 and c10b.get("id") not in (None, c10["id"]) and c10b.get("card_id") == c10["id"] and f_r1[0] is False
+        r10b.returncode == 0 and c10b.get("id") not in (None, c10["id"]) and c10b.get("card_id") == c10["id"] and f_r1[0] is True   # 1.142: un giro scartato sta in archivio, i suoi file si servono
         and [g["state"] for g in x10b.get("rounds") or []] == ["redo"] and x10b["rounds"][0]["id"] == c10["id"] and x10b["rounds"][0]["reason"].startswith("troppo grandi")
         and [o["label"] for o in x10b["rounds"][0]["options"]] == ["A frecce", "B pannello"] and x10b["rounds"][0]["options"][1]["files"][0]["name"] == "c.png"
         and x10b["options"][1]["files"] is None, json.dumps(x10b, ensure_ascii=False)[:900])

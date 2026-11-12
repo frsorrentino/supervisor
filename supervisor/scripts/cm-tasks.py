@@ -1464,6 +1464,21 @@ def open_files(con):
     return {p for p in out if p}
 
 
+def archived_files(con, now_=None):
+    """1.142 (12/11/2026, supervisor-file-scheda-chiusa-12-11: una scelta gia' fatta si apriva senza le immagini): i
+    percorsi dichiarati dalle richieste e dalle prove degli ultimi ARCHIVE_DAYS giorni, anche risposte o chiuse, la
+    stessa finestra in cui `attesa` con archive le ritrova. {path: at della richiesta piu' recente che lo dichiara}."""
+    since = int(now_ or now()) - ARCHIVE_DAYS * 86400
+    out = {}
+    for tbl in ("approvals", "prove"):
+        for r in con.execute(f"SELECT files, at FROM {tbl} WHERE files IS NOT NULL"):
+            for f in files_of(r["files"]) or []:
+                p = f.get("path") if isinstance(f, dict) else None
+                if p:
+                    out[p] = max(out.get(p, 0), int(r["at"] or 0))
+    return {p: at for p, at in out.items()}, since
+
+
 def prova_add(con, tid, build, dove, fai, atteso, by=None, files=None):
     """Una prova per la persona. Per versione: una build nuova ritira tutte quelle di prima del compito (un ok su una build
     vecchia non dice niente della nuova); stessa build, dove e fai sostituisce. Nessun esito: quello nasce solo da prove_mark."""
