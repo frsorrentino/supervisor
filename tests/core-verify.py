@@ -230,6 +230,22 @@ T.check("CO17 sonnet_window_unmarked: Sonnet 5.5 at 150k tokens and no hint → 
 (hints17 / "S-17.json").write_text(json.dumps({"session_id": "S-17", "model": "claude-sonnet-5-5", "ctx_size": 1000000}))
 rt = sonnet_window_unmarked(150_000)
 T.check("CO17 sonnet_window_unmarked: with the statusline hint (1M, same model) → 150k of 1M = 15 %", rt["context"] == 15, str(rt))
+# CO18 (12/11/2026, Claude Code 2.1.321): Fable 5.2 e' il Fable predefinito, id senza [1m] come Fable 5.1
+def fable52_window(tokens, sid="S-18"):
+    with open(tdir / f"{sid}.jsonl", "w") as f:
+        f.write(json.dumps({"type": "attachment", "attachment": {"type": "model", "identity": {"modelId": "claude-fable-5-2", "marketingName": "Fable 5.2"}}}) + "\n")
+        f.write(json.dumps({"type": "assistant", "effort": "medium", "message": {"model": "claude-fable-5-2", "usage": {
+            "input_tokens": 0, "cache_read_input_tokens": tokens, "cache_creation_input_tokens": 0}}}) + "\n")
+    return core.session_runtime({"session_id": sid, "cwd": str(cwd), "account": "personal"})
+T.check("CO18 the defaults: claude-fable-5-2 in relay.window_unmarked, next to Fable 5.1",
+        {"claude-fable-5-1", "claude-fable-5-2"} <= set(core.cm.DEFAULTS["relay"]["window_unmarked"]), str(core.cm.DEFAULTS["relay"]))
+rt = fable52_window(150_000)
+T.check("CO18 Fable 5.2 at 150k tokens and no hint → context null, not 75 % of 200k", rt["context"] is None and rt["model"]["id"] == "claude-fable-5-2", str(rt))
+(hints17 / "S-18.json").write_text(json.dumps({"session_id": "S-18", "model": "claude-fable-5-2", "ctx_size": 1000000}))
+rt = fable52_window(150_000)
+T.check("CO18 Fable 5.2 with the statusline hint (1M, same model) → 15 %", rt["context"] == 15, str(rt))
+rt = fable52_window(300_000, sid="S-18b")
+T.check("CO18 Fable 5.2 past 200k tokens and no hint → 1M by force (300k → 30 %)", rt["context"] == 30, str(rt))
 core._CFG["relay"] = {"dir": str(proj / "relay")}
 # CO12 (22/09/2026, Opus 5.5): il ripiego dopo un messaggio segnalato. Le righe come le scrive Claude Code 2.1.280
 # (schema letto nel binario; nessun messaggio segnalato provocato per vederle)

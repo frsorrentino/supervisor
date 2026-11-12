@@ -223,8 +223,10 @@ DEFAULTS = {
               "telegram_fallback_after_s": 600,
               # contesto di una sessione (1.13.1): dove una statusline salva la finestra dichiarata da Claude Code, e i
               # modelli il cui id non dice se la finestra e' da 1M o standard (sotto i 200k token il contesto resta null;
-              # 27/10/2026, Claude Code 2.1.311: anche Sonnet 5.5, l'id non porta mai [1m])
-              "window_hint_dir": "~/.claude/fable-director/sessions", "window_unmarked": ["claude-fable-5-1", "claude-sonnet-5-5"],
+              # 27/10/2026, Claude Code 2.1.311: anche Sonnet 5.5, l'id non porta mai [1m]; 12/11/2026, Claude Code 2.1.321:
+              # Fable 5.2, che nel catalogo del binario 2.1.323 ha la stessa voce di Fable 5.1, native_1m senza suffisso)
+              "window_hint_dir": "~/.claude/fable-director/sessions",
+              "window_unmarked": ["claude-fable-5-1", "claude-fable-5-2", "claude-sonnet-5-5"],
               # modelli da 1M che non portano [1m] nell'id (16/10/2026: Haiku 5.5, 1M di contesto)
               "window_1m": ["claude-haiku-5-5"],
               # 1.15 (24/09/2026): i dati dell'app Firebase nel QR di `relay pair` — o qui, o letti da un

@@ -324,6 +324,7 @@
     "window_hint_dir": "~/.claude/fable-director/sessions",
     "window_unmarked": [
       "claude-fable-5-1",
+      "claude-fable-5-2",
       "claude-sonnet-5-5"
     ],
     "window_1m": [
