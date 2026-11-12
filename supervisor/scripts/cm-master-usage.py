@@ -355,6 +355,8 @@ def _week_files(config_dir, start):
         pass
     out = []
     for p in mains + subs:   # i file principali prima: i subagenti prendono l'origine del turno che li ha avviati
+        if not cm.transcript_in_scope(CFG, p):   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
+            continue
         try:
             st = p.stat()
         except OSError:

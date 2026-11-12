@@ -42,6 +42,7 @@ cfg.write_text(json.dumps({
     "accounts": {"personale": {"config_dir": str(home / ".claude")},
                  "professionale": {"config_dir": str(home / ".claude-pixel"), "tmux_prefix": "pix-"}},
     "quota": {"source": str(src)},
+    "workspace": {"sessions_scope": "all"},   # 12/11: le sessioni finte stanno in /ws, fuori dalla root di default (~)
 }))
 
 

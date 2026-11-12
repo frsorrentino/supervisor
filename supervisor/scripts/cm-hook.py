@@ -271,7 +271,7 @@ def my_tmux_name():
 def ask_notify(p):
     """L'avviso sul telefono (idea 1, 11/09): `cm-answer.py --notify` staccato con il payload su stdin;
     aspetta lui che il dialogo sia sullo schermo, l'hook torna subito."""
-    if not (CFG["hooks"].get("ask_notify") or {}).get("enabled"):
+    if PRIVATE or not (CFG["hooks"].get("ask_notify") or {}).get("enabled"):
         return
     try:
         pr = subprocess.Popen([sys.executable, str(HERE / "cm-answer.py"), "--notify"], stdin=subprocess.PIPE,
@@ -568,9 +568,10 @@ def task_check_on_stop():
 def relay_push():
     """L'orologio (0.4.0): chiede una push al relay, solo con relay.enabled; torna subito (debounce nel relay).
     08/10 (piano prestazioni, fase 1): con il demone vivo basta toccare <relay.dir>/push-req/hook, il suo worker
-    la fa; solo senza demone parte `cm-relay.py push --async` (il percorso di prima)."""
+    la fa; solo senza demone parte `cm-relay.py push --async` (il percorso di prima). Una sessione fuori dall'ambito
+    (12/11) non chiede push: lo stato non la contiene."""
     R = CFG.get("relay") or {}
-    if not R.get("enabled"):
+    if PRIVATE or not R.get("enabled"):
         return
     d = Path(cm.expand(R.get("dir") or "~/.cc-supervisor/relay"))
     try:
@@ -622,10 +623,15 @@ def elicit_mod():
     return mod
 
 
+PRIVATE = False   # 12/11 (supervisor-ambito-sessioni-12-11): una sessione fuori dall'ambito non manda niente al telefono
+
+
 def main(argv):
+    global PRIVATE
     ev = argv[0] if argv else ""
     p = payload()
     sid = p.get("session_id", "")
+    PRIVATE = not cm.cwd_in_scope(CFG, p.get("cwd") or "")
     if ev == "SessionStart":
         registry_update()
         (STATE / "waiting" / sid).unlink(missing_ok=True) if sid else None
@@ -711,7 +717,7 @@ def main(argv):
         relay_push()
     elif ev == "Elicitation":
         el = elicit_mod()
-        out, outcome = el.hook(p, STATE, CFG["hooks"].get("elicitation") or {}, CFG.get("relay") or {}, my_tmux_name(), relay_push)
+        out, outcome = el.hook(p, STATE, CFG["hooks"].get("elicitation") or {}, {} if PRIVATE else (CFG.get("relay") or {}), my_tmux_name(), relay_push)
         ledger("elicitation", p, server=str(p.get("mcp_server_name") or "")[:80], mode=p.get("mode") or "form", outcome=outcome)
         if out:
             sys.stdout.write(out + "\n")
@@ -802,7 +808,7 @@ def main(argv):
         ledger("stop-failure", p, error=str(p.get("error", ""))[:200], details=details[:200])
         # 1.58 (14/10): un turno fermato dal limite della quota → il telefono propone le tre strade
         err = (str(p.get("error", "")) + (": " + details if details else "")).strip()
-        name = my_tmux_name() if (CFG.get("relay") or {}).get("enabled") else ""
+        name = my_tmux_name() if (CFG.get("relay") or {}).get("enabled") and not PRIVATE else ""
         # 1.85 (25/10/2026): il testo dell'errore e la trascrizione al relay. Il limite di un modello («You've reached your
         # Fable limit») sta nel messaggio <synthetic> della trascrizione: qui arriva solo il 429 generico
         # (l'ultimo messaggio dell'assistente conta solo con la frase del limite: puo' essere la risposta di prima)

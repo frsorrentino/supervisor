@@ -281,5 +281,6 @@ case "${1:-}" in
   hook)     hook ;;
   failed)   failed ;;
   exec|esegui) shift; esegui "${1:?serve il file flag}" ;;
+  remote|remota) shift; exec python3 "$CM_SCRIPTS/cm-rsession.py" restart "$@" ;;   # 12/11: una sessione su un altro host
   *) cm_msg restart.usage >&2; exit 2 ;;
 esac

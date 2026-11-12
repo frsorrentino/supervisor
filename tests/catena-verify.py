@@ -32,7 +32,7 @@ ws = tmp / "ws" / "proj"
 ws.mkdir(parents=True)
 cfg = tmp / "config.json"
 cfg.write_text(json.dumps({"language": "it", "state_dir": str(state), "accounts": {"personal": {"config_dir": str(home / ".claude")}},
-                           "default_account": "personal", "workspace": {"root": str(tmp / "ws"), "root_session_name": "master"},
+                           "default_account": "personal", "workspace": {"root": str(tmp / "ws"), "root_session_name": "master", "sessions_scope": "all"},
                            "relay": {"dir": str(tmp / "relay")}, "restart": {"flag_file": str(state / "riavvio.json")}}))
 (tmp / "relay").mkdir()
 ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "TMUX_PANE", "CLAUDE_CONFIG_DIR", "CM_RESTART_FLAG_FILE")}

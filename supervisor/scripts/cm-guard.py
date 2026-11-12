@@ -257,7 +257,7 @@ def failed_since(since_epoch):
             ts = dt.datetime.fromisoformat(e["ts"]).timestamp()
         except (ValueError, KeyError, TypeError):
             continue
-        if ts >= since_epoch and e.get("session_id"):
+        if ts >= since_epoch and e.get("session_id") and cm.cwd_in_scope(CFG, e.get("cwd") or "", e.get("host")):   # 12/11: ambito
             out.add(e["session_id"])
     return out
 

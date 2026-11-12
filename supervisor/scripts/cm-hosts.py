@@ -734,14 +734,35 @@ def relay_push_request():
         pass
 
 
+def wake_path(name):
+    return state_dir() / "hosts" / f"{name}.wake"
+
+
+def wake(name):
+    """12/11/2026 (supervisor-host-poll-fermo-12-11): un lancio o una chiusura su un host chiedono la lettura subito. Dopo
+    una chiusura l'ultima lettura non aveva niente di vivo, il giro del cron aspettava poll_idle_s (10 minuti) e la
+    sessione rilanciata non compariva ne' in sessions ne' nell'app (alle 15:11 «letto 6 min fa», alle 16:22 «8 min»)."""
+    try:
+        p = wake_path(name)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch()
+    except OSError:
+        pass
+
+
 def poll_one(name, force=False):
-    """status() di un host confermato e scrittura dello snapshot; nessuna lettura se quella di prima e' fresca."""
+    """status() di un host confermato e scrittura dello snapshot; nessuna lettura se quella di prima e' fresca, a meno
+    che un lancio o una chiusura l'abbiano chiesta (wake) dopo quella lettura."""
     h = hosts()[name]
     prev = read_json(snap_path(name), {}) or {}
     due = int(S["poll_busy_s"]) if lively(prev) else int(S["poll_idle_s"])
     if name != "local" and not confirmed(h):
         return None
-    if not force and prev and age_s(prev) < due - 5:
+    try:
+        woken = wake_path(name).stat().st_mtime > float(prev.get("read_at") or 0)
+    except OSError:
+        woken = False
+    if not force and not woken and prev and age_s(prev) < due - 5:
         return None
     a = adapter(name)
     snap = {"name": name, "read_at": time.time()}

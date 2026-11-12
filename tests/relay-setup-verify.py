@@ -10,7 +10,10 @@ S3  seconda corsa: idempotente, nessuna creazione (le regole si ripubblicano ugu
 S4  senza il token della CLI: istanza, accesso anonimo e chiave diventano passi manuali con il link esatto; --yes non aspetta;
     S4b Authentication mai aperto (404) → passo manuale «Inizia»
 S5  progetto scelto dall'elenco (stdin), relay.fcm_topic esistente rispettato; S5b la chiave di un altro progetto non si tocca
-S6  relay.app_package vuoto → FAIL con il messaggio, nessuna app creata
+S6  relay.app_package vuoto → l'app Android di supervisor, detto perche' va bene anche col solo iPhone (12/11)
+S8  --dry-run senza terminale e senza --yes: i default, nessun EOFError; dal vivo si ferma e lo dice (12/11)
+S9  addFirebase 403 (termini di Firebase mai accettati): il messaggio con dove andare (12/11)
+S10 pulizia automatica degli anonimi accesa: setup la spegne (12/11)
 S7  la configurazione principale (quella di HOME) non esiste e non nasce: si scrive solo CC_SUPERVISOR_CONFIG
 """
 import base64
@@ -44,6 +47,7 @@ def opt(name): return a[a.index(name) + 1] if name in a else None
 c = a[0]
 if c == "login:list": print("Logged in as tester@example.com")
 elif c == "projects:list": out([{"projectId": p, "displayName": d} for p, d in st["projects"].items()])
+elif c == "projects:create" and a[1].startswith("noterms-"): print("Error: Failed to add Firebase to Google Cloud Platform project. HTTP Error: 403, The caller does not have permission", file=sys.stderr); sys.exit(1)
 elif c == "projects:create": st["projects"][a[1]] = opt("-n"); print("created")
 elif c == "database:instances:list": out([{"name": n, "location": l, "databaseUrl": f"https://{n}.{l}.firebasedatabase.app", "type": "DEFAULT_DATABASE"} for n, l in st["instances"].get(opt("--project"), {}).items()])
 elif c == "database:instances:create": st["instances"].setdefault(opt("--project"), {})[a[1]] = opt("--location"); print("created")
@@ -91,9 +95,12 @@ class H(BaseHTTPRequestHandler):
             if API.get("auth_missing", {}).get(parts[3]):
                 return self._json(404, {"error": {"code": 404, "message": "CONFIGURATION_NOT_FOUND", "status": "NOT_FOUND"}})
             pid = parts[3]
-            if method == "PATCH":
+            if method == "PATCH" and "updateMask=autodeleteAnonymousUsers" in self.path:
+                API.setdefault("autodel", {})[pid] = bool(body.get("autodeleteAnonymousUsers"))
+            elif method == "PATCH":
                 API["anon"][pid] = bool(((body.get("signIn") or {}).get("anonymous") or {}).get("enabled"))
-            return self._json(200, {"signIn": {"anonymous": {"enabled": API["anon"].get(pid, False)}}})
+            return self._json(200, dict({"signIn": {"anonymous": {"enabled": API["anon"].get(pid, False)}}},
+                                        **({"autodeleteAnonymousUsers": True} if API.get("autodel", {}).get(pid) else {})))
         if parts[:1] == ["v1"] and parts[-1] == "serviceAccounts" and method == "GET":
             pid = parts[2]
             return self._json(200, {"accounts": [{"email": f"other@{pid}.iam.gserviceaccount.com"}, {"email": f"firebase-adminsdk-ab12c@{pid}.iam.gserviceaccount.com"}]})
@@ -233,12 +240,43 @@ T.check("S5b the key file at relay.service_account belongs to another project �
         r.returncode == 1 and "other-real-project" in r.stdout and "non la tocco" in r.stdout and json.loads(sa_main.read_text())["private_key"] == "real" and not any(m == "POST" and p.endswith("/keys") for m, p, _ in API["calls"]), r.stdout[-700:])
 fblog.unlink()
 
-# S6: senza relay.app_package
+# S6: senza relay.app_package (12/11, dal collega con l'iPhone: prima si fermava senza spiegare)
 cfg6 = tmp / "config-6.json"; cfg6.write_text(json.dumps({"language": "it", "relay": {"dir": str(tmp / "relay-6")}}))
 r = setup("--yes", "--project", "old-proj", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg6)))
-T.check("S6 relay.app_package empty → FAIL «relay.app_package vuoto», exit 1, no app created, config not written",
-        r.returncode == 1 and "relay.app_package vuoto" in r.stdout and "apps:create" not in calls() and "firebase_url" not in cfg6.read_text(), r.stdout[-600:])
-T.check("S6 the project is persisted in relay.firebase_app.project_id as soon as it is picked or created: a run stopped later never creates a second one", json.loads(cfg6.read_text())["relay"]["firebase_app"] == {"project_id": "old-proj"}, cfg6.read_text())
+_c6 = json.loads(cfg6.read_text())["relay"]
+T.check("S6 relay.app_package empty → a neutral package (web.supervisor.relay) with a line that says it is enough for the web app and the iPhone, and what to do with the Android app; registered, written in the config, setup goes on",
+        r.returncode == 0 and "web.supervisor.relay" in r.stdout and "solo l'iPhone" in r.stdout and "app Android" in r.stdout and _c6.get("app_package") == "web.supervisor.relay"
+        and _c6.get("firebase_app", {}).get("project_id") == "old-proj" and "web.supervisor.relay" in json.dumps(json.loads(state.read_text())["apps"].get("old-proj", {})), r.stdout[-700:])
+fblog.unlink()
+
+# S8 (12/11, dal collega su Mac): --dry-run senza terminale e senza --yes andava in crash con EOFError alla scelta del progetto
+cfg8 = tmp / "config-8.json"; cfg8.write_text(json.dumps({"language": "it", "relay": {"dir": str(tmp / "relay-8"), "service_account": str(tmp / "relay-8" / "sa.json"), "app_package": "it.example.cmwatch"}}))
+r8 = setup("--dry-run", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg8)), stdin="")
+r8b = setup(env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg8)), stdin="")
+T.check("S8 --dry-run with no terminal and no --yes: no EOFError, the defaults as with --yes (a new project «would be created»), exit 0",
+        r8.returncode == 0 and "EOFError" not in r8.stderr and "Traceback" not in r8.stderr and "verrebbe creato" in r8.stdout, r8.stdout[-500:] + r8.stderr[-500:])
+T.check("S8 a real run with no terminal and no --yes stops and says to use a terminal or --yes; no project created",
+        r8b.returncode == 1 and "Traceback" not in r8b.stderr and "nessun terminale" in r8b.stdout and "projects:create" not in calls(), r8b.stdout[-400:] + r8b.stderr[-300:])
+fblog.unlink(missing_ok=True)
+
+# S9 (12/11, dal collega): un account Google che non ha mai usato Firebase → projects:create crea il progetto GCP, addFirebase 403
+cfg9 = tmp / "config-9.json"; cfg9.write_text(json.dumps({"language": "it", "relay": {"dir": str(tmp / "relay-9"), "app_package": "it.example.cmwatch"}}))
+r9 = setup("--yes", "--project", "noterms-abc123", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg9)))
+T.check("S9 projects:create fails with 403 on addFirebase → a message that says to accept the Firebase terms, where (console.firebase.google.com) and the command to run again; exit 1",
+        r9.returncode == 1 and "termini di Firebase" in r9.stdout and "https://console.firebase.google.com/" in r9.stdout and "--project noterms-abc123" in r9.stdout, r9.stdout[-500:])
+fblog.unlink(missing_ok=True)
+
+# S10 (12/11, dal collega): la pulizia automatica degli anonimi stacca il telefono dopo 30 giorni → setup la spegne
+API.setdefault("autodel", {})["old-proj"] = True
+cfg10 = tmp / "config-10.json"; cfg10.write_text(json.dumps({"language": "it", "relay": {"dir": str(tmp / "relay-10"), "app_package": "it.example.cmwatch"}}))
+r10d = setup("--dry-run", "--project", "old-proj", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg10)))
+_still = API["autodel"]["old-proj"]
+r10 = setup("--yes", "--project", "old-proj", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg10)))
+r10b = setup("--yes", "--project", "old-proj", env=dict(ENV, CC_SUPERVISOR_CONFIG=str(cfg10)))
+T.check("S10 automatic clean-up of anonymous accounts on: --dry-run says it would be turned off and leaves it; the real run turns it off (PATCH autodeleteAnonymousUsers false); the next run says to keep it off",
+        "verrebbe spenta" in r10d.stdout and _still is True and "spenta ora" in r10.stdout and API["autodel"]["old-proj"] is False
+        and "lasciala così" in r10b.stdout, r10.stdout[-500:])
+fblog.unlink(missing_ok=True)
 
 # S7
 T.check("S7 the main config of HOME never appears: only the CC_SUPERVISOR_CONFIG files were written", not (home / ".config" / "cc-supervisor").exists(), str(list(home.iterdir())))

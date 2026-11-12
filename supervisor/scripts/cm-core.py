@@ -153,7 +153,9 @@ def ledger_rows():
                     continue
             c["end"] += cut + 1
             c["tail"] = data[max(0, cut + 1 - 64):cut + 1]
-        return list(c["rows"])
+        # 12/11 (supervisor-ambito-sessioni-12-11): le righe delle sessioni fuori dall'ambito non arrivano al relay
+        cfg = _cfg()
+        return [r for r in c["rows"] if cm.cwd_in_scope(cfg, r.get("cwd") or "", r.get("host"))]
 
 
 def transcript_of(row):

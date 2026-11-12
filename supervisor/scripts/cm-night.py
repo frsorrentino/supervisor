@@ -291,6 +291,7 @@ def run_item(item, dry):
     if dry:
         return {"rc": None, "out": "", "seconds": 0, "cmd": cmd}
     t0 = time.time()
+    cm.note_automation(CFG, item["dir"])   # 12/11 (supervisor-ambito-sessioni-12-11): contata anche fuori dalla root
     res = stream_item(cmd, item["dir"], account_env(item["account"]))
     res.update(seconds=round(time.time() - t0), cmd=cmd)
     return res

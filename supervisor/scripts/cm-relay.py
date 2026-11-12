@@ -584,7 +584,7 @@ def sessions_rows():
             if _SESS["key"] != key:
                 _SESS.update(key=key, mod=_load("cm-sessions"))
             m = _SESS["mod"]
-            return json.loads(json.dumps(m.collect(True) + m.remote_rows(), ensure_ascii=False))
+            return json.loads(json.dumps(cm.scope_rows(CFG, m.collect(True) + m.remote_rows()), ensure_ascii=False))
         except Exception as e:   # noqa: BLE001 — la CLI resta la via sicura
             _SESS.update(key=None, mod=None)
             log(f"sessions in processo fallito ({str(e)[:120]}), uso la CLI")
@@ -594,9 +594,14 @@ def sessions_rows():
 def _json_cmd(*args, expect="["):
     try:
         rc, out = run_cm(*args)
-        return json.loads(out) if rc == 0 and out.strip().startswith(expect) else None
+        got = json.loads(out) if rc == 0 and out.strip().startswith(expect) else None
     except (ValueError, subprocess.TimeoutExpired):
         return None
+    # 12/11 (supervisor-ambito-sessioni-12-11): il relay vede solo le sessioni dell'ambito; `supervisor sessions` dal
+    # terminale continua a mostrarle tutte
+    if args[:2] == ("sessions", "--json") and isinstance(got, list):
+        got = cm.scope_rows(CFG, got)
+    return got
 
 
 def waiting_info(session_id):
@@ -1650,6 +1655,8 @@ def usage_today(rows, now):
             except OSError:
                 continue
             for p in found:
+                if not cm.transcript_in_scope(CFG, p):   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
+                    continue
                 try:
                     st = p.stat()
                 except OSError:
@@ -2906,7 +2913,7 @@ def pair_add_invite():
     return True, json.dumps({"qr": qr, "code": code, "exp": exp}, ensure_ascii=False)
 
 
-def pair(timeout=None, text=False, add=False):
+def pair(timeout=None, text=False, add=False, web=False):
     """Codice a 6 cifre e QR sullo schermo (1.15): lo stesso {pc_pub, host, exp} in /pair/<code> (l'orologio, con il
     codice) e in /pair/<id> (il telefono, che legge il QR); il relay interroga tutti e due, vince la prima risposta
     valida in /pair/<…>/watch e l'altro nodo si cancella; scadenza e tentativi sono in comune. La chiave e'
@@ -2940,18 +2947,27 @@ def pair(timeout=None, text=False, add=False):
         rtdb("PUT", f"pair/{node}", dict({"pc_pub": pub, "host": host, "exp": exp}, **({"mode": "add"} if add else {})), {"print": "silent"})
     if app:
         line = json.dumps(qr_payload(pair_id, pub, host, exp, app, add), ensure_ascii=False, separators=(",", ":"))
+        # 12/11 (supervisor-note-mac-iphone-12-11): la fotocamera dell'iPhone non apre un QR col JSON; --web disegna il
+        # link /#pair= della web app, che la fotocamera apre in Safari
+        link_qr = web_pair_link(line) if web else ""
+        if web and not link_qr:
+            print(M("relay.pair_web_off"))
         if text:
             print(line)
         else:
-            rows = qr_lines(line)
+            rows = qr_lines(link_qr or line)
             try:
                 cols = os.get_terminal_size().columns
             except OSError:
                 cols = 0
             if cols and cols < len(rows[0]):
                 print(M("relay.pair_qr_narrow", cols=cols, need=len(rows[0])))
-            print(M("relay.pair_scan"))
+            if web_pair_link(line):
+                print(M("relay.pair_ios_home"))
+            print(M("relay.pair_scan_web") if link_qr else M("relay.pair_scan"))
             print("\n".join(rows))
+            if web_pair_link(line) and not link_qr:
+                print(M("relay.pair_iphone_hint"))
     else:
         print(M("relay.pair_no_qr", why=M(why, path=cm.expand(R.get("google_services") or ""), package=R.get("app_package") or "")))
     if add:
@@ -3815,6 +3831,16 @@ def web_enable_local():
     R = CFG["relay"]
 
 
+def browser_opener():
+    """Il programma che apre un indirizzo nel browser: CM_RELAY_OPEN (le prove), su macOS `open` (12/11, dal collega su
+    Mac: «nessun programma per aprire il browser (xdg-open)»), altrove xdg-open, su ChromeOS garcon-url-handler."""
+    if os.environ.get("CM_RELAY_OPEN"):
+        return os.environ["CM_RELAY_OPEN"]
+    if sys.platform == "darwin":
+        return shutil.which("open") or ("/usr/bin/open" if os.path.exists("/usr/bin/open") else None)
+    return shutil.which("xdg-open") or shutil.which("garcon-url-handler")
+
+
 def web(rest):
     """`relay web [--no-open]`: l'indirizzo della web app locale col token; lo apre nel browser (xdg-open, su
     ChromeOS il Chrome vero) se il daemon la sta servendo."""
@@ -3835,7 +3861,7 @@ def web(rest):
         ensure()
     print(link)
     if "--no-open" not in rest:
-        opener = os.environ.get("CM_RELAY_OPEN") or shutil.which("xdg-open") or shutil.which("garcon-url-handler")
+        opener = browser_opener()
         if opener:
             subprocess.Popen([opener, link], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         else:
@@ -4768,7 +4794,7 @@ def main(argv):
         return 0 if ok else 1
     if cmd == "pair":
         # 04/10 (dall'app): `pair --help` avviava un pairing vero. L'aiuto, e un argomento sconosciuto, prima di tutto
-        known, i = {"--text", "--add"}, 0
+        known, i = {"--text", "--add", "--web"}, 0
         while i < len(rest):
             if rest[i] == "--timeout" and i + 1 < len(rest):
                 i += 2; continue
@@ -4791,7 +4817,7 @@ def main(argv):
     if cmd == "pair":
         tmo = float(rest[rest.index("--timeout") + 1]) if "--timeout" in rest else None
         try:
-            return pair(tmo, text="--text" in rest, add="--add" in rest)
+            return pair(tmo, text="--text" in rest, add="--add" in rest, web="--web" in rest)
         except (RelayError, urllib.error.URLError, OSError, ValueError) as e:
             print(f"relay pair: {e}", file=sys.stderr); return 1
     if cmd == "serve":

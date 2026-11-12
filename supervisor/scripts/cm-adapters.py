@@ -437,18 +437,41 @@ class WindowsNative(Adapter):
 
     _PS_DIR = "$d = [Environment]::ExpandEnvironmentVariables(%s); $m = Join-Path $d '.cm-session.json';"
 
-    def session_prepare(self, rdir):
-        """{exists, marker, base, root, ahead, dirty}: la cartella c'e'? e' nostra (.cm-session.json)? quanti commit oltre
-        la base, quanti file non committati (04/11: un lancio con una HEAD diversa rifa' la copia solo se sono zero)."""
+    def session_prepare(self, rdir, here=None):
+        """{exists, marker, base, root, ahead, dirty, dirty_tracked, contains_here}: la cartella c'e'? e' nostra
+        (.cm-session.json)? quanti commit oltre la base, quanti file non committati (04/11: un lancio con una HEAD diversa
+        rifa' la copia solo se sono zero). 12/11 (supervisor-host-rilancio-avanti-12-11): quanti di quelli sono tracciati
+        (i non tracciati, log e schermate, non sono lavoro da riportare) e se la HEAD di qui (`here`) e' un antenato di
+        quella di la'."""
+        h = self.q(here) if here and re.fullmatch(r"[0-9a-f]{7,40}", str(here)) else "''"
         return self.ps_json(self._PS_DIR % self.q(rdir) + r"""
+$h = """ + h + r"""
 $r = @{ exists = [bool](Test-Path $d); marker = $false }
 if (Test-Path $m) {
   $j = Get-Content $m -Raw | ConvertFrom-Json
   $r.marker = $true; $r.base = $j.base; $r.root = $j.root
   $r.ahead = [int](git -C $d rev-list --count "$($j.root)..HEAD" 2>$null)
-  $r.dirty = @(git -C $d status --porcelain 2>$null | Where-Object { $_.Trim() }).Count
+  $st = @(git -C $d status --porcelain 2>$null | Where-Object { $_.Trim() })
+  $r.dirty = $st.Count
+  $r.dirty_tracked = @($st | Where-Object { -not $_.StartsWith('??') }).Count
+  $r.contains_here = $false
+  if ($h) { git -C $d merge-base --is-ancestor $h HEAD 2>$null; $r.contains_here = ($LASTEXITCODE -eq 0) }
 }
 ConvertTo-Json -InputObject $r -Compress""")
+
+    def session_rebase(self, rdir, sha):
+        """12/11: la base della copia la' si riallinea alla HEAD di qui (base e root del segnaposto), copia del segnaposto
+        accanto. → {ok} o {error}."""
+        if not re.fullmatch(r"[0-9a-f]{7,40}", str(sha)):
+            return {"error": "bad sha"}
+        return self.ps_json(self._PS_DIR % self.q(rdir) + f"""
+try {{
+  Copy-Item -LiteralPath $m -Destination ($m + '.bak-' + (Get-Date -Format 'yyyyMMddHHmmss')) -ErrorAction Stop
+  $j = Get-Content $m -Raw | ConvertFrom-Json
+  $j.base = {self.q(sha)}; $j.root = {self.q(sha)}
+  ($j | ConvertTo-Json -Compress) | Set-Content -LiteralPath $m -Encoding UTF8 -ErrorAction Stop
+  ConvertTo-Json -Compress @{{ ok = $true }}
+}} catch {{ ConvertTo-Json -Compress @{{ error = $_.Exception.Message }} }}""")
 
     def session_retire(self, rdir, stamp):
         """04/11 (supervisor-launch-win-base-04-11): la copia vecchia si mette da parte, mai cancellata: rinominata in

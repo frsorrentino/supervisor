@@ -140,7 +140,7 @@ def live_rows():
     try:
         p = subprocess.run([os.environ.get("CM_BIN") or str(HERE / "supervisor"), "sessions", "--json", "--no-screen"],
                            capture_output=True, text=True, timeout=60)
-        return json.loads(p.stdout) if p.returncode == 0 else []
+        return cm.scope_rows(CFG, json.loads(p.stdout)) if p.returncode == 0 else []   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return []
 

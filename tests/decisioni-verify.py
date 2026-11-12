@@ -956,4 +956,30 @@ T.check("PN8 the samples …1330 (todo), …1331 (ok, closed), …1332 (ko), …
         and _pr["1334"]["ok"] is False and _pr["1334"]["text"] == _en["relay.cmd_prova_unknown"].format(n=999)
         and all(_pr[k]["ok"] is True and isinstance(_pr[k]["at"], int) for k in ("1330", "1331", "1332", "1333")), str([x["state"] for x in _px]))
 
+# ------------------------------------------------------------------ ritirare una prova (supervisor-prova-ritirata-12-11, contratto 1.140)
+add("rt1", title="Ritiro")
+cm("start", "rt1")
+prova("rt1", build="rt-b", dove="home", fai="apri A", atteso="si vede A")
+prova("rt1", build="rt-b", dove="home", fai="apri B", atteso="si vede B")
+_ra, _rb = sorted(ids_of("rt1"))
+tap(str(_ra), result="ko", text="non si apre")
+WAKES.clear()
+_bad2 = tap(f"{_ra},{_rb}", result="ritirata")
+_okr = tap(str(_ra), result="ritirata", text="la schermata A non esiste più")
+_again = tap(str(_ra), result="ritirata")
+_pv = prove()
+_st = show("rt1")
+_one = one(str(_ra))[1]
+T.check("RT1 op prova with result «ritirata» on a reported test: ok, it leaves the reported ones and the groups, the other test stays to do, the task stays open, no confirmation written",
+        _okr[0] is True and _ra not in [x["id"] for x in _pv["ko"]] and ids_of("rt1", _pv) == [_rb] and _st["state"] in ("running", "assigned")
+        and not any(a_.get("what") == "confirmed" for a_ in _st.get("approvals") or []), f"{_okr} {_pv['ko']} {ids_of('rt1', _pv)} {_st['state']}")
+T.check("RT1 a step says it was retired with the reason; the session is told; the single test reads state retired with the reason",
+        any("ritirata" in (x.get("text") or "") and "non esiste più" in (x.get("text") or "") for x in _st.get("steps") or [])
+        and any("ritirato la prova" in t_ for _, t_ in WAKES) and _one["state"] == "retired" and _one["text"] == "la schermata A non esiste più", f"{WAKES} {_one}")
+T.check("RT2 retiring is for one test at a time, a test already retired is gone; old results ok/ko unchanged",
+        _bad2[0] is False and _again[0] is False and tap(str(_rb), result="boh")[0] is False, f"{_bad2} {_again}")
+_cli = cm("prova-ritira", str(_rb), "--by", "tester", "--reason", "doppione")
+T.check("RT3 the same from the terminal: task prova-ritira N --by B [--reason T]; the task stays open with no test to do",
+        _cli[0] == 0 and ids_of("rt1") == [] and show("rt1")["state"] in ("running", "assigned"), str(_cli))
+
 T.finish()

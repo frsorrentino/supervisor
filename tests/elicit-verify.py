@@ -114,7 +114,7 @@ def env():
     return {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_PROC_SCAN_PIDS": ""}
 
 
-PAY = {"session_id": "sid-h", "cwd": str(home), "hook_event_name": "Elicitation", "mcp_server_name": "tracker", "message": "Which environment?",
+PAY = {"session_id": "sid-h", "cwd": str(home / "ws" / "atlas"), "hook_event_name": "Elicitation", "mcp_server_name": "tracker", "message": "Which environment?",
        "mode": "form", "requested_schema": {"type": "object", "required": ["env"], "properties": {"env": {"type": "string", "enum": ["staging", "prod"]}, "ok": {"type": "boolean"}}}}
 
 

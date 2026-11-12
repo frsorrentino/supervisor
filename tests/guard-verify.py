@@ -76,6 +76,7 @@ fake_crontab.chmod(0o755)
 cfg = tmp / "config.json"
 cfg.write_text(json.dumps({
     "language": "it", "state_dir": str(state),
+    "workspace": {"sessions_scope": "all"},   # 12/11: le righe finte hanno cwd /x e /y, fuori da ogni root
     "accounts": {"personale": {"config_dir": str(home / ".claude")}, "professionale": {"config_dir": str(home / ".claude-pixel"), "tmux_prefix": "pix-"}},
     "default_account": "personale",
     "quota": {"source": str(qdir)},

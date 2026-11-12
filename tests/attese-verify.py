@@ -200,7 +200,7 @@ T.check("AT6 the cmd-result-sample examples (…1300 attese, …1301 attesa, …
         set(s_list) == {"at", "items"} and set(s_list["items"][0]) == set(real_card) and set(s_list["items"][1]) == set(real_chat)
         and set(s_one) == set(rx) and set(s_one["msg"]) == set(rx["msg"])
         and set(s_one["answer"]) == set(real_card["answer"]) and set(s_list["items"][1]["answer"]) == set(real_chat["answer"])
-        and all(set(o) <= opt_keys and {"n", "label", "value"} <= set(o) for a in s_list["items"] for o in a["options"])
+        and all(set(o) <= opt_keys and {"n", "label", "value"} <= set(o) for a in s_list["items"] for o in a["options"] or [])
         and all(set(o) <= opt_keys for o in real_card["options"]) and s_gone["ok"] is False
         and all(set(x) <= {"label", "style", "cmd", "text_field", "recommended"} and {"op", "session"} <= set(x["cmd"]) for a in s_list["items"] for x in a["actions"])
         and set(s_one["card"]) <= {"what", "where", "untested", "undo", "undo_how", "deploy"} and "deploy" in s_one["card"] and gone[1].startswith("w0000000000:")

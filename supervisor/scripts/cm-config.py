@@ -58,6 +58,10 @@ DEFAULTS = {
         "root_session_name": "master",
         "excluded_dirs": [".git", "node_modules"],
         "project_dirs": ["."],
+        # 12/11/2026 (supervisor-ambito-sessioni-12-11): «root» = supervisor legge solo le sessioni sotto la root (e sotto
+        # sessions_also); quelle fuori restano private, si vedono solo da `supervisor sessions`. «all» = tutte
+        "sessions_scope": "root",
+        "sessions_also": [],
     },
     "accounts": {
         "default": {
@@ -418,6 +422,218 @@ def contract(s):
     return s
 
 
+# ----------------------------------------------------------------- ambito delle sessioni
+# 12/11/2026 (supervisor-ambito-sessioni-12-11, dal collega su Mac): le sessioni Claude fuori da workspace.root restano
+# private. Con workspace.sessions_scope = "root" (il default) nessuna funzione apre una trascrizione il cui cwd sta fuori
+# dalla root, da workspace.sessions_also o dalle cartelle di supervisor stesso (state_dir e le automazioni che lancia,
+# scope-automations.json), e quelle sessioni non entrano in conteggi, ricerca, recap, cronologia ne' nel relay.
+# Un punto solo: le trascrizioni con transcript_in_scope (prima lo slug della cartella in projects/, senza aprire niente;
+# il cwd dentro la trascrizione solo se lo slug e' ambiguo), le righe di sessione e del registro con cwd_in_scope.
+SCOPE_VALUES = ("root", "all")
+_SCOPE_MEMO = {}
+SCOPE_MEMO_S = 600
+AUTOMATIONS_KEEP_S = 30 * 86400
+
+
+def _slug(path):
+    """Il nome della cartella in projects/ per un cwd, come lo fa Claude Code: ogni non alfanumerico → «-»."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(path))
+
+
+def sessions_scope(cfg):
+    v = str((cfg.get("workspace") or {}).get("sessions_scope") or "root").strip().lower()
+    return v if v in SCOPE_VALUES else "root"
+
+
+def _automations_file(cfg):
+    return Path(expand(cfg.get("state_dir") or "~/.local/state/cc-supervisor")) / "scope-automations.json"
+
+
+_AUTO_MEMO = {}
+
+
+def automation_dirs(cfg):
+    """Le cartelle dove supervisor stesso ha lanciato un'automazione (la notte) negli ultimi 30 giorni."""
+    f = _automations_file(cfg)
+    try:
+        mt = f.stat().st_mtime
+        hit = _AUTO_MEMO.get(str(f))
+        if hit and hit[0] == mt:
+            d = hit[1]
+        else:
+            d = json.loads(f.read_text())
+            _AUTO_MEMO[str(f)] = (mt, d)
+    except (OSError, ValueError):
+        return []
+    now = time.time()
+    return [k for k, t in (d.items() if isinstance(d, dict) else []) if isinstance(t, (int, float)) and now - t <= AUTOMATIONS_KEEP_S]
+
+
+def note_automation(cfg, folder):
+    """Chi lancia un'automazione la segna qui: le sue sessioni restano contate anche fuori dalla root."""
+    if not folder:
+        return
+    f = _automations_file(cfg)
+    try:
+        d = json.loads(f.read_text()) if f.is_file() else {}
+    except (OSError, ValueError):
+        d = {}
+    d = d if isinstance(d, dict) else {}
+    d[os.path.realpath(expand(str(folder)))] = int(time.time())
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False))
+        os.replace(tmp, f)
+    except OSError:
+        pass
+    _SCOPE_MEMO.clear()
+
+
+def _norm_remote(p):
+    return str(p).replace("\\", "/").rstrip("/").lower()
+
+
+def scope_dirs(cfg, host=None):
+    """Le cartelle ammesse. Sul PC: la root, workspace.sessions_also, state_dir e le automazioni (ognuna come scritta e
+    come percorso reale). Su un altro host: la root delle sue sessioni (hosts.<nome>.sessions.root, quella dove `launch`
+    le apre; senza, %USERPROFILE%\\claude-sessions con la home misurata); None se non la conosciamo."""
+    ws = cfg.get("workspace") or {}
+    if host and host != "local":
+        h = (cfg.get("hosts") or {}).get(host) or {}
+        r = str((h.get("sessions") or {}).get("root") or "%USERPROFILE%\\claude-sessions")
+        home_ = str((h.get("measured") or {}).get("home") or "")
+        if "%USERPROFILE%" in r.upper():
+            if not home_:
+                return None
+            r = re.sub(r"(?i)%USERPROFILE%", lambda _: home_, r)
+        return [_norm_remote(r)]
+    raw = [ws.get("root") or "~"] + [x for x in (ws.get("sessions_also") or []) if isinstance(x, str) and x.strip()]
+    raw += [cfg.get("state_dir") or "~/.local/state/cc-supervisor"] + automation_dirs(cfg)
+    out = []
+    for d in raw:
+        e = expand(d.strip())
+        for x in (e.rstrip("/") or "/", os.path.realpath(e)):
+            if x not in out:
+                out.append(x)
+    return out
+
+
+def _under(p, d):
+    return d == "/" or p == d or p.startswith(d + "/")
+
+
+_CWD_MEMO = {}
+
+
+def cwd_in_scope(cfg, cwd, host=None):
+    """Una sessione con questo cwd (su `host`) si puo' leggere? Senza cwd si': sono righe di supervisor stesso.
+    Ricordato per (cwd, host, cartelle ammesse): il registro comune ha decine di migliaia di righe."""
+    if sessions_scope(cfg) == "all" or not cwd:
+        return True
+    dirs = scope_dirs(cfg, host)
+    if dirs is None:
+        return True
+    key = (str(cwd), host or "", tuple(dirs))
+    v = _CWD_MEMO.get(key)
+    if v is None:
+        if host and host != "local":
+            c = _norm_remote(cwd)
+            v = any(_under(c, d) for d in dirs)
+        else:
+            c = str(cwd).rstrip("/") or "/"
+            v = any(_under(c, d) for d in dirs) or any(_under(os.path.realpath(c), d) for d in dirs)
+        if len(_CWD_MEMO) > 20000:
+            _CWD_MEMO.clear()
+        _CWD_MEMO[key] = v
+    return v
+
+
+def scope_rows(cfg, rows):
+    """Le righe (di `sessions --json`, del registro) che si possono leggere, per cwd e host."""
+    if sessions_scope(cfg) == "all":
+        return list(rows or [])
+    return [r for r in rows or [] if not isinstance(r, dict) or cwd_in_scope(cfg, r.get("cwd") or "", r.get("host"))]
+
+
+def _dirs_with_slug(slug, budget=400):
+    """Le cartelle che esistono sul disco con questo slug (lo slug perde la differenza fra «/» e «-»). Si scende da «/»
+    solo nei rami il cui slug e' l'inizio di quello cercato. Il tetto conta le cartelle che corrispondono, non quelle
+    elencate (12/11: su win /tmp aveva migliaia di cartelle di prova e un tetto sulle voci elencate finiva prima della
+    risposta, con le sessioni sotto la root lette come ambigue)."""
+    out, stack = [], [("/", "")]
+    while stack and budget > 0:
+        p, ps = stack.pop()
+        if ps == slug:
+            out.append(p)
+            continue
+        try:
+            names = os.listdir(p)
+        except OSError:
+            continue
+        for n in names:
+            c = os.path.join(p, n)
+            cs = _slug(c)
+            if (cs == slug or slug.startswith(cs + "-")) and os.path.isdir(c):
+                budget -= 1
+                stack.append((c, cs))
+    return out
+
+
+def _slug_verdict(cfg, slug):
+    """True/False dallo slug di projects/<slug>; None = ambiguo, serve il cwd della trascrizione."""
+    dirs = scope_dirs(cfg)
+    key = (slug, tuple(dirs))
+    hit = _SCOPE_MEMO.get(key)
+    if hit and time.time() - hit[1] < SCOPE_MEMO_S:
+        return hit[0]
+    if any(d == "/" for d in dirs):
+        v = True
+    elif not any(slug == _slug(d) or slug.startswith(_slug(d) + "-") for d in dirs):
+        v = False   # nessuna cartella ammessa ha questo inizio: fuori, senza aprire niente
+    else:
+        found = _dirs_with_slug(slug)
+        ins = [any(_under(f, d) for d in dirs) for f in found]
+        v = True if ins and all(ins) else False if ins and not any(ins) else None
+    _SCOPE_MEMO[key] = (v, time.time())
+    return v
+
+
+CWD_RE = re.compile(rb'"cwd":\s*("(?:[^"\\]|\\.)*")')
+
+
+def transcript_cwd(path, head=65536):
+    try:
+        with open(path, "rb") as f:
+            m = CWD_RE.search(f.read(head))
+        return json.loads(m.group(1)) if m else ""
+    except (OSError, ValueError):
+        return ""
+
+
+def transcript_in_scope(cfg, path, host=None):
+    """Una trascrizione si puo' aprire? <config>/projects/<slug>/<id>.jsonl (anche i subagenti sotto <id>/subagents/):
+    decide lo slug; la copia di un altro host (hosts/transcripts/<host>/<id>.jsonl) e uno slug ambiguo: il cwd scritto
+    nelle prime righe."""
+    if sessions_scope(cfg) == "all":
+        return True
+    parts = Path(str(path)).parts
+    if "projects" in parts and (host is None or host == "local"):
+        i = len(parts) - 1 - parts[::-1].index("projects")
+        if i + 1 < len(parts) - 1:
+            v = _slug_verdict(cfg, parts[i + 1])
+            if v is not None:
+                return v
+    cwd = transcript_cwd(path)
+    if not cwd:
+        return False
+    if host is None and "transcripts" in parts:
+        j = len(parts) - 1 - parts[::-1].index("transcripts")
+        if j >= 1 and parts[j - 1] == "hosts" and j + 1 < len(parts) - 1:
+            host = parts[j + 1]
+    return cwd_in_scope(cfg, cwd, host)
+
+
 def config_path():
     p = (os.environ.get("CC_SUPERVISOR_CONFIG") or os.environ.get("TEAM_SUPERVISOR_CONFIG") or os.environ.get("CLAUDE_MASTER_CONFIG"))
     return Path(p) if p else home() / ".config" / "cc-supervisor" / "config.json"
@@ -745,7 +961,9 @@ INSTALL = {   # prerequisito → gestore di pacchetti → comando
                 "zypper": "sudo zypper install cronie", "brew": "crontab ships with macOS"},
 }
 CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
-FIREBASE_INSTALL = "npm install -g firebase-tools && firebase login"
+# 12/11 (dal collega su Mac): con /usr/local di root `npm install -g` chiede sudo; in ~/.local no, e setup e relay setup
+# cercano gia' ~/.local/bin/firebase
+FIREBASE_INSTALL = "npm install -g --prefix ~/.local firebase-tools && ~/.local/bin/firebase login"
 PKG_MANAGERS = (("apt", "apt-get"), ("dnf", "dnf"), ("pacman", "pacman"), ("zypper", "zypper"))
 
 
@@ -770,6 +988,34 @@ def version_tuple(text):
 # in WSL2 l'installer lancia `npm uninstall -g @anthropic-ai/claude-code` e `npm` e' quello di Windows: senza le
 # cartelle di Windows nel PATH non tocca il Claude Code di Windows (provato il 13/10 con un npm finto)
 CLAUDE_INSTALL_WSL = "curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash"
+
+
+def anon_cleanup_row(cfg, timeout=6):
+    """(livello, chiave, kwargs, rimedio) sullo stato di autodeleteAnonymousUsers, o None se non si puo' leggere."""
+    import urllib.request
+    pid = str((cfg["relay"].get("firebase_app") or {}).get("project_id") or "").strip()
+    if not pid:
+        m_ = re.match(r"https://([a-z0-9-]+?)(-default-rtdb)?\.", str(cfg["relay"].get("firebase_url") or ""))
+        pid = m_.group(1) if m_ else ""
+    store = Path(os.environ.get("CM_FIREBASE_CONFIGSTORE") or (home() / ".config" / "configstore" / "firebase-tools.json"))
+    try:
+        t = json.loads(store.read_text()).get("tokens") or {}
+        tok = t.get("access_token") if float(t.get("expires_at") or 0) / 1000 - time.time() > 30 else None
+    except (OSError, ValueError, AttributeError):
+        tok = None
+    if not pid or not tok:
+        return None
+    base = (os.environ.get("CM_SETUP_IDENTITY_URL") or "https://identitytoolkit.googleapis.com").rstrip("/")
+    try:
+        req = urllib.request.Request(f"{base}/admin/v2/projects/{pid}/config", headers={"Authorization": f"Bearer {tok}"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            conf = json.loads(r.read().decode() or "{}")
+    except (OSError, ValueError):
+        return None
+    link = f"https://console.firebase.google.com/project/{pid}/authentication/settings"
+    if conf.get("autodeleteAnonymousUsers"):
+        return ("WARN", "doctor.anon_cleanup_on", {"link": link}, None)
+    return ("PASS", "doctor.anon_cleanup_off", {}, None)
 
 
 def install_hint(cfg, what, pm, kind=""):
@@ -831,6 +1077,13 @@ def prereq_rows(m, cfg):
         rows.append(("PASS", "doctor.backend_ok", {"backend": be, "bin": b}, None) if m.which(b)
                     else ("FAIL", "doctor.backend_bin_missing", {"backend": be, "bin": b}, msg(cfg, f"prereq.terminal_{kind}")))
 
+    # 12/11 (supervisor-ambito-sessioni-12-11): quali sessioni legge supervisor, e come cambiarlo
+    if sessions_scope(cfg) == "all":
+        rows.append(("INFO", "doctor.sessions_scope_all", {"path": contract(str(config_path()))}, None))
+    else:
+        also = [x for x in (cfg["workspace"].get("sessions_also") or []) if isinstance(x, str) and x.strip()]
+        rows.append(("INFO", "doctor.sessions_scope_root", {"root": cfg["workspace"].get("root") or "~", "also": ", ".join(also) or "-",
+                                                             "path": contract(str(config_path()))}, None))
     # 13/10: col relay acceso ma senza relay.firebase_url c'e' solo la web app locale (`relay web`): niente cifratura,
     # niente crontab, niente Firebase — le dipendenze del bus restano INFO
     on = cfg["relay"]["enabled"] and bool(str(cfg["relay"].get("firebase_url") or "").strip())
@@ -1438,6 +1691,13 @@ def cmd_doctor():
         app, why = relay_firebase_app(cfg)
         rows.append(("PASS", "doctor.firebase_app_ok", {"project": app["project_id"], "source": why}, None) if app
                     else ("WARN", "doctor.firebase_app_missing", {"why": msg(cfg, why, path=expand(cfg["relay"].get("google_services") or ""), package=cfg["relay"].get("app_package") or "")}, "doctor.fix_firebase_app"))
+
+    # 12/11 (supervisor-note-mac-iphone-12-11): la pulizia automatica degli account anonimi stacca il telefono dopo 30
+    # giorni. Si legge col token della CLI di Firebase, se c'e' e non e' scaduto; altrimenti niente riga
+    if cfg["relay"]["enabled"] and str(cfg["relay"].get("firebase_url") or "").strip() and m.fake is None:
+        r = anon_cleanup_row(cfg)
+        if r:
+            rows.append(r)
 
     # 11/11 (supervisor-relay-peso-firebase-11-11): quanto il relay scrive su Firebase oggi, dai suoi conti
     # (<relay.dir>/usage-firebase.json). Una stima del download: ogni esito lo scarica chi l'ha chiesto, ogni stato ogni

@@ -290,7 +290,7 @@ base = [w for w in json.loads(Path(machine).read_text())["which"] if w != "tmux"
 r = doctor_on("apt", which=base + ["apt-get"], exists=[])
 T.check("C13g Linux + apt: tmux missing → FAIL with «sudo apt install tmux», system line, firebase INFO with npm",
         r.returncode == 1 and "FAIL tool_missing — tmux" in r.stdout and "fix: sudo apt install tmux" in r.stdout
-        and "system: Linux · package manager: apt" in r.stdout and "npm install -g firebase-tools" in r.stdout, r.stdout)
+        and "system: Linux · package manager: apt" in r.stdout and "npm install -g --prefix ~/.local firebase-tools" in r.stdout, r.stdout)   # 12/11: senza sudo (note Mac)
 r = doctor_on("dnf", which=base + ["dnf"], exists=[])
 T.check("C13g dnf → «sudo dnf install tmux», cronie for crontab", "fix: sudo dnf install tmux" in r.stdout and "sudo dnf install cronie" in r.stdout, r.stdout)
 r = doctor_on("pacman", which=base + ["pacman"], exists=[])

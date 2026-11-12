@@ -242,7 +242,9 @@ LABEL="$(cm_get "$ACCOUNT" LABEL)"
 
 # --- --host: la sessione parte su un altro host (cm-rsession.py: ammissione, fotografia, avvio, link) ---------
 if [ -n "$HOST" ]; then
-  exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" -- ${ARGS[@]+"${ARGS[@]}"}
+  # 12/11 (supervisor-host-prompt-perso-12-11): il primo prompt va anche ai lanci remoti (cm-rsession lo manda con talk)
+  PROMPT_ARGS=(); [ -n "$PRIMO" ] && PROMPT_ARGS=(--prompt "$PRIMO")
+  exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" ${PROMPT_ARGS[@]+"${PROMPT_ARGS[@]}"} -- ${ARGS[@]+"${ARGS[@]}"}
 fi
 
 # --- --bg: nel gestore di background di Claude Code, non in tmux (T47) --------------

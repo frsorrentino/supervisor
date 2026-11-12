@@ -283,6 +283,7 @@ def sessions_in(since, name=None, live=None):
     prefixes = [a.get("tmux_prefix") or "" for a in (CFG.get("accounts") or {}).values()]
     S = _load("cm-relay-state")
     out, seen = [], set()
+    live = cm.scope_rows(CFG, live)   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
     for r in live:
         path = core.transcript_of(r)
         if not path:
@@ -292,6 +293,8 @@ def sessions_in(since, name=None, live=None):
         seen.add(os.path.realpath(path))
     for acc in (CFG.get("accounts") or {}).values():
         for f in (Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "projects").glob("*/*.jsonl"):
+            if not cm.transcript_in_scope(CFG, f):   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
+                continue
             try:
                 if f.stat().st_mtime < since or os.path.realpath(str(f)) in seen:
                     continue

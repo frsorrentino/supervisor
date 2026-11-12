@@ -58,6 +58,7 @@ FIREBASE = os.environ.get("CM_FIREBASE_CMD") or shutil.which("firebase") or (str
 ANON_WAIT_S = 900   # 11/11: quanto si aspetta il clic «Inizia» nella console, guardando da soli
 ANON_POLL_S = 5
 CONFIGSTORE = Path(os.environ.get("CM_FIREBASE_CONFIGSTORE") or (cm.home() / ".config" / "configstore" / "firebase-tools.json"))
+DEFAULT_APP_PACKAGE = "web.supervisor.relay"   # 12/11: un pacchetto neutro, solo per la chiave API della web app
 IDENTITY_URL = (os.environ.get("CM_SETUP_IDENTITY_URL") or "https://identitytoolkit.googleapis.com").rstrip("/")
 IAM_URL = (os.environ.get("CM_SETUP_IAM_URL") or "https://iam.googleapis.com").rstrip("/")
 RTDB_API_URL = (os.environ.get("CM_SETUP_RTDB_API_URL") or "https://firebasedatabase.googleapis.com").rstrip("/")
@@ -95,7 +96,8 @@ class Setup:
         self.project = project
         self.dry_run = dry_run
         self.yes = yes
-        self.ask = ask
+        self._ask = ask
+        self.ask = self.safe_ask
         self.rows = []        # (livello, chiave del messaggio, kwargs) per il riepilogo
         self.manual = []      # i passi rimasti manuali
         self.writes = {}      # cosa finisce nella configurazione
@@ -157,6 +159,18 @@ class Setup:
         except urllib.error.HTTPError as e:
             raise SetupError(f"{method} {url.split('?')[0]}: HTTP {e.code} {e.read().decode()[:200]}") from e
         return json.loads(raw) if raw else {}
+
+    def safe_ask(self, prompt):
+        """12/11 (dal collega su Mac): `relay setup --dry-run` senza terminale e senza --yes andava in crash con EOFError
+        alla scelta del progetto. Senza risposta possibile: a secco vale il default (come --yes); dal vivo ci si ferma
+        e si dice come rilanciare, senza creare niente."""
+        try:
+            return self._ask(prompt)
+        except EOFError:
+            if self.dry_run:
+                print()
+                return ""
+            raise SetupError(M("setup.no_tty")) from None
 
     def wait_enter(self, key, **kw):
         self.say(key, **kw)
@@ -237,7 +251,14 @@ class Setup:
         self.project = pid
         if self.dry_run:
             self.row("WARN", "setup.project_would_create", project=pid); return
-        self.fb("projects:create", pid, "-n", "supervisor relay", as_json=False)
+        try:
+            self.fb("projects:create", pid, "-n", "supervisor relay", as_json=False)
+        except SetupError as e:
+            # 12/11 (dal collega): un account Google che non ha mai usato Firebase. projects:create crea il progetto
+            # Google Cloud, poi addFirebase risponde 403 finche' non si accettano i termini di Firebase nella console
+            if re.search(r"addFirebase|403|PERMISSION_DENIED|terms of service|Terms of Service", str(e)):
+                raise SetupError(M("setup.firebase_terms", project=pid, link="https://console.firebase.google.com/")) from None
+            raise
         self.row("PASS", "setup.project_created", project=pid)
 
     def enable_api(self, service):
@@ -339,16 +360,39 @@ class Setup:
                 self.row("WARN", "setup.anon_no_token", error=str(e)[:120])
                 self.wait_enter("setup.anon_manual", link=link); return
         if ((conf.get("signIn") or {}).get("anonymous") or {}).get("enabled"):
-            self.row("PASS", "setup.anon_ok"); return
+            self.row("PASS", "setup.anon_ok")
+            self.anon_cleanup(conf, url); return
         if self.dry_run:
             self.row("WARN", "setup.anon_would_enable"); return
         self.rest("PATCH", url + "?updateMask=signIn.anonymous.enabled", {"signIn": {"anonymous": {"enabled": True}}})
         self.row("PASS", "setup.anon_enabled")
+        self.anon_cleanup(conf, url)
+
+    def anon_cleanup(self, conf, url):
+        """12/11 (dal collega): «Abilita pulizia automatica» degli account anonimi li cancella dopo 30 giorni e il telefono
+        perde l'abbinamento. Il campo e' autodeleteAnonymousUsers della config di Identity Toolkit: acceso si spegne (a
+        secco si dice), se la scrittura non riesce resta un passo manuale col link."""
+        link = f"https://console.firebase.google.com/project/{self.project}/authentication/settings"
+        if not conf.get("autodeleteAnonymousUsers"):
+            self.row("PASS", "setup.anon_cleanup_off"); return
+        if self.dry_run:
+            self.row("WARN", "setup.anon_cleanup_would_off"); return
+        try:
+            self.rest("PATCH", url + "?updateMask=autodeleteAnonymousUsers", {"autodeleteAnonymousUsers": False})
+            self.row("PASS", "setup.anon_cleanup_turned_off")
+        except SetupError as e:
+            self.manual.append(M("setup.anon_cleanup_manual", link=link))
+            self.row("WARN", "setup.anon_cleanup_on", error=str(e)[:120], link=link)
 
     def step_app(self):
         pkg = str(R.get("app_package") or "").strip()
         if not pkg:
-            raise SetupError(M("setup.no_package"))
+            # 12/11 (dal collega con l'iPhone): con relay.app_package vuoto il setup si fermava senza spiegare. Chi ha solo
+            # l'iPhone usa la web app, che ha bisogno solo della chiave API: la da' la registrazione di un'app Android
+            # qualsiasi, qui un pacchetto neutro. Chi usa l'app Android mette il suo pacchetto e rilancia
+            pkg = DEFAULT_APP_PACKAGE
+            self.app_package = pkg
+            self.row("PASS", "setup.package_default", package=pkg)
         apps = self.fb("apps:list", "ANDROID", "--project", self.project, check=False) or []
         app = next((a for a in apps if isinstance(a, dict) and a.get("packageName") == pkg), None) if isinstance(apps, list) else None
         if app:
@@ -438,6 +482,8 @@ class Setup:
                        "service_account": str(self.sa_path())}
         if getattr(self, "app", None):
             self.writes["firebase_app"] = self.app
+        if getattr(self, "app_package", None):
+            self.writes["app_package"] = self.app_package
         target = cm.config_path()
         if self.dry_run:
             self.row("WARN", "setup.config_would_write", path=str(target), keys=", ".join(f"relay.{k}" for k in self.writes)); return

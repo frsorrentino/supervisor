@@ -265,6 +265,9 @@ def cmd_launch(argv):
         return 2
     hname, folder, base = argv[0], os.path.realpath(argv[1]), argv[2]
     args = argv[3:]
+    first = None
+    if args[:1] == ["--prompt"] and len(args) > 1:   # 12/11 (supervisor-host-prompt-perso-12-11): il primo prompt
+        first, args = args[1], args[2:]
     if args and args[0] == "--":
         args = args[1:]
     h = hosts().get(hname)
@@ -283,7 +286,7 @@ def cmd_launch(argv):
     print(M("rsession.starting", host=hname, name=name, rdir=rdir), file=sys.stderr)
     if dirty:
         print(M("rsession.dirty_here", n=len(dirty), files=", ".join(dirty[:5])), file=sys.stderr)
-    info = a.session_prepare(rdir)
+    info = a.session_prepare(rdir, sha)
     if info.get("exists") and not info.get("marker"):
         print(M("rsession.foreign_dir", host=hname, rdir=rdir), file=sys.stderr)
         return 6
@@ -293,16 +296,28 @@ def cmd_launch(argv):
         # riportare (commit oltre la base, file non committati), la copia vecchia si mette da parte e se ne fa una nuova;
         # altrimenti ci si ferma e si dice come portarlo qui
         ahead, dirty_there = int(info.get("ahead") or 0), int(info.get("dirty") or 0)
-        if ahead or dirty_there:
+        tracked = int(info.get("dirty_tracked") if info.get("dirty_tracked") is not None else dirty_there)
+        if info.get("contains_here") and not tracked:
+            # 12/11 (supervisor-host-rilancio-avanti-12-11): la' la sessione ha lavorato e pubblicato su origin, e la HEAD di
+            # qui e' un antenato della sua: niente da perdere, la copia si riusa e la base si riallinea alla HEAD di qui. I
+            # file non tracciati (log, schermate) restano dove sono e non contano come lavoro da riportare
+            moved = a.session_rebase(rdir, sha)
+            if not moved.get("ok"):
+                print(M("rsession.retire_failed", host=hname, rdir=rdir, error=str(moved.get("error") or "?")[:200]), file=sys.stderr)
+                return 6
+            print(M("rsession.rebased", host=hname, base=str(info.get("base") or "?")[:10], head=sha[:10], untracked=dirty_there - tracked), file=sys.stderr)
+            info = a.session_prepare(rdir, sha)
+        elif ahead or dirty_there:
             print(M("rsession.stale_with_work", host=hname, rdir=rdir, base=str(info.get("base") or "?")[:10], head=sha[:10],
-                    ahead=ahead, dirty=dirty_there), file=sys.stderr)
+                    ahead=ahead, dirty=dirty_there, tracked=tracked), file=sys.stderr)
             return 6
-        moved = a.session_retire(rdir, dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        if not moved.get("ok"):
-            print(M("rsession.retire_failed", host=hname, rdir=rdir, error=str(moved.get("error") or "?")[:200]), file=sys.stderr)
-            return 6
-        print(M("rsession.stale_moved", host=hname, base=str(info.get("base") or "?")[:10], head=sha[:10], to=moved.get("to") or "?"), file=sys.stderr)
-        info = {"exists": False}
+        else:
+            moved = a.session_retire(rdir, dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
+            if not moved.get("ok"):
+                print(M("rsession.retire_failed", host=hname, rdir=rdir, error=str(moved.get("error") or "?")[:200]), file=sys.stderr)
+                return 6
+            print(M("rsession.stale_moved", host=hname, base=str(info.get("base") or "?")[:10], head=sha[:10], to=moved.get("to") or "?"), file=sys.stderr)
+            info = {"exists": False}
     if info.get("exists"):
         base_sha = info["base"]
         print(M("rsession.reuse", host=hname, rdir=rdir, base=base_sha[:10], ahead=info.get("ahead", 0)), file=sys.stderr)
@@ -353,9 +368,20 @@ def cmd_launch(argv):
             print(M("rsession.poller_installed"), file=sys.stderr)
     except (OSError, subprocess.CalledProcessError) as e:
         print(M("rsession.poller_failed", error=e), file=sys.stderr)
+    _repoll(hname)
     if not entry:
         print(M("rsession.no_registry", host=hname, name=name, s=int(sess.get("start_timeout_s") or 90)), file=sys.stderr)
+        if first:   # mai perso in silenzio: resta da mandare, e lo si dice con il comando
+            print(M("rsession.prompt_not_sent", host=hname, name=name), file=sys.stderr)
         return 5
+    # 12/11 (supervisor-host-prompt-perso-12-11): il primo prompt di --prompt non arrivava mai (cm-launch.sh usciva verso
+    # cm-rsession prima di aggiungerlo). Non come argomento di claude sulla riga di PowerShell (la quotatura): con talk,
+    # appena la sessione e' registrata, come un messaggio qualsiasi
+    sent_first = None
+    if first:
+        sent_first = cmd_talk([f"{hname}:{name}", first, "--no-wait"]) == 0
+        if not sent_first:
+            print(M("rsession.prompt_not_sent", host=hname, name=name), file=sys.stderr)
     # 21/10/2026 (Claude Code 2.1.304): una ripresa su un altro host puo' fermarsi sull'avviso del costo in quota, e
     # sull'host nessuno guarda: cm-resume-quota.py sceglie una conversazione nuova o chiede alla persona
     note = ""
@@ -372,6 +398,8 @@ def cmd_launch(argv):
     print(f"  cartella:  {folder}")
     print(f"  su {hname}:    {rdir} (base {base_sha[:10]})")
     print(f"  link:      {rec['link'] or M('rsession.link_later')}")
+    if sent_first:
+        print("  " + M("rsession.prompt_sent"))
     if note:
         print("  " + note)
     print(M("rsession.howto", host=hname, name=name))
@@ -625,7 +653,46 @@ def cmd_close(argv):
         rec["closed"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
         p.write_text(json.dumps(rec, indent=1, ensure_ascii=False))
     print(M("rsession.closed_already" if d.get("already") else "rsession.closed", host=hname, name=name))
+    _repoll(hname)
     return 0
+
+
+def _repoll(hname):
+    """12/11 (supervisor-host-poll-fermo-12-11): dopo un lancio o una chiusura lo stato dell'host si rilegge subito, e il
+    giro del cron dopo non aspetta i 10 minuti dell'host fermo."""
+    try:
+        H = _load("cm-hosts")
+        H.wake(hname)
+        H.poll_one(hname, force=True)
+    except Exception as e:   # noqa: BLE001 — il lancio e' fatto: la lettura in piu' non lo fa fallire
+        print(f"poll {hname}: {e}", file=sys.stderr)
+
+
+def cmd_restart(argv):
+    """12/11 (supervisor-host-rilancio-avanti-12-11): `supervisor restart remote HOST:nome [--prompt T] [--force]`. La sessione
+    la' non puo' riavviarsi da sola (plugin nuovi): si chiude e si rilancia sulla stessa cartella, ripresa con --continue
+    sulla sua ultima conversazione, col primo prompt se c'e'. Occupata: rifiuta come close, salvo --force."""
+    r = resolve(argv[0]) if argv else None
+    if not r:
+        print(M("rsession.not_remote", target=argv[0] if argv else ""), file=sys.stderr)
+        return 3
+    hname, name = r
+    try:
+        rec = json.loads(rec_path(name).read_text())
+    except (OSError, ValueError):
+        print(M("rsession.restart_no_record", host=hname, name=name), file=sys.stderr)
+        return 3
+    prompt = argv[argv.index("--prompt") + 1] if "--prompt" in argv and argv.index("--prompt") + 1 < len(argv) else None
+    rc = cmd_close([f"{hname}:{name}"] + (["--force"] if "--force" in argv else []))
+    if rc not in (0,):
+        return rc
+    # --continue: l'ultima conversazione della cartella la', cioe' quella della sessione (launch rifiuta --resume con
+    # --host: l'id si cerca fra le trascrizioni di qui)
+    cmd = [str(HERE / "cm-launch.sh"), rec["dir"], "--host", hname, "--no-window", "--continue"]
+    if prompt:
+        cmd += ["--prompt", prompt]
+    print(M("rsession.restarting", host=hname, name=name), file=sys.stderr)
+    return subprocess.run(cmd).returncode
 
 
 def main(argv):
@@ -634,7 +701,7 @@ def main(argv):
         return 2
     fn = {"launch": cmd_launch, "fetch": cmd_fetch, "admit": cmd_admit, "pick": cmd_pick, "propose": cmd_propose,
           "sessions": cmd_sessions, "resolve": cmd_resolve, "talk": cmd_talk, "wait": cmd_wait,
-          "close": cmd_close}.get(argv[0])
+          "close": cmd_close, "restart": cmd_restart}.get(argv[0])
     if not fn:
         print(__doc__)
         return 2

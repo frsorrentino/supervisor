@@ -135,7 +135,7 @@ def trascrizioni_locali(config_dir):
     for f in glob.glob(glob.escape(str(config_dir)) + "/sessions/*.json"):
         try:
             e = json.loads(Path(f).read_text())
-            if e.get("kind") == "interactive" and e.get("sessionId") and e.get("cwd"):
+            if e.get("kind") == "interactive" and e.get("sessionId") and e.get("cwd") and cm.cwd_in_scope(CFG, e["cwd"]):   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
                 slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(e["cwd"]))
                 out.append(f"{config_dir}/projects/{slug}/{e['sessionId']}.jsonl")
         except (OSError, ValueError, AttributeError, TypeError):

@@ -27,6 +27,7 @@ longer adds up. A minimal example for two accounts:
 |---|---|
 | `accounts.<name>` | one entry per Claude account: its config folder, the tab's shape, a prefix for its session names, the shell command that opens it, and `remote_control` (true/false) to override `session.remote_control` for that account |
 | `folder_map` · `workspace.root` | which folders belong to which account; the root opens the `master` session |
+| `workspace.sessions_scope` · `workspace.sessions_also` | which Claude sessions supervisor reads. `root` (the default): only those whose folder is under the root, under a folder listed in `sessions_also`, or one where supervisor ran an automation (the night queue). The others stay private: their transcripts are never opened, and they are left out of counts, search, recap, timeline, the first collection and everything that goes to the relay and the phone. `supervisor sessions` in the terminal still lists them. On another host the root of its sessions (`hosts.<name>.sessions.root`) counts. `all`: every session, as before 0.8.152 |
 | `session.claude_args` · `session.link_wait_s` | flags every session starts with; how long `launch` waits for the Remote Control link (20 s) |
 | `sessions.max_sessions` · `sessions.idle_hours` | past this many sessions at work `launch` asks (5); after this many idle hours `sessions` suggests closing (2) |
 | `sessions.orphan_grace_s` · `sessions.orphan_wait_s` | a claude left without its tmux pane is closed after this many seconds (120), each signal of HUP, TERM, KILL waits this long (3) |

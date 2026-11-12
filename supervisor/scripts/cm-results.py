@@ -343,7 +343,7 @@ def _regroup(items):
 def _transcript_of_sid(sid):
     for acc in (CFG.get("accounts") or {}).values():
         for f in (Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "projects").glob(f"*/{sid}.jsonl"):
-            return str(f)
+            return str(f) if cm.transcript_in_scope(CFG, f) else None   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
     return None
 
 
@@ -409,6 +409,7 @@ def scan(live=None, now=None):
             live = json.loads(p.stdout) if p.returncode == 0 else []
         except (OSError, ValueError, subprocess.TimeoutExpired):
             live = []
+    live = cm.scope_rows(CFG, live)   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
     by_tr = {}
     for r in live:
         t = core.transcript_of(r)

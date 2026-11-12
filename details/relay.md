@@ -644,6 +644,25 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.141 (12/11/2026, supervisor-app: it had to guess whether a report came from the Android app or the web; task supervisor-segnalazione-origine-12-11). Additive, `v` stays 1.
+
+- **Op `report`** takes three optional fields: `app` (`android`, `web` or `wear`), `app_version` (up to 40 characters) and `screen` (the screen it was sent from, up to 60). When any is there, the message to the session gets one more line, «Da: app Android 2.4.1 · schermata Verifica» (in English «From: Android app 2.4.1 · screen Verifica»). Without them the message is as before; an unknown `app` is ignored.
+
+Contract 1.140 (12/11/2026, the maintainer: a reported test in Verifica could not be closed; supervisor-app's proposal; task supervisor-prova-ritirata-12-11). Additive, `v` stays 1.
+
+- **Op `prova` takes `result: "ritirata"`** («No longer needed»): one id only, `text` optional (the reason, up to 300 characters). The test, without a result or reported («Non va»), leaves as superseded and never confirmed: it is no longer among the tests to do nor in `ko`, a step of the task says it with the reason, the task's session is told, and the task stays open with its other tests. Errors: more than one id, a test no longer in force. `ok` and `ko` as before; an old app that never sends `ritirata` sees nothing new.
+- **Op `prove` with a number** (1.134): `state` can be `retired`, with `text` the reason (or null).
+- In the terminal: `supervisor task prova-ritira N --by B [--reason T]`.
+- Fixture `cmd-result-sample.json`: …1395 (retired), …1396 (two ids: refused), …1397 (`prove` of a retired test).
+
+Contract 1.139 (12/11/2026, the maintainer at 15:23, 15:38 and 15:41: the question after pairing «serve molto più sintetico, tipo: Per completare la configurazione, effettua la scansione delle sessioni», the two guarantees in a small line; task supervisor-avvio-popola-12-11). Additive, `v` stays 1.
+
+- **Op `prima_raccolta`** gains `ask`: `{text, note, yes, later, first_round: true}` while the question is open, else null. `text` is one line («Per completare la configurazione, effettua la scansione delle sessioni.»), `note` the small line under it (the data stays on this computer, the master's first round uses a small part of the quota), `yes` and `later` the labels of the two buttons («Scansiona», «Non ora»), in the relay's language. `ask_text` stays, equal to `ask.text`.
+- **Op `prima_raccolta_azione`**, `action: consent`: `value: si` now also starts the master's first round by itself when the collection ends (once, as `first_round`); new `value: later` («Non ora») writes no consent and hides the question for a day (`ask` null, `state.prima_raccolta.ask` false), then it comes back. `no` as before.
+- **Asked again on existing installs** (the maintainer at 16:32): `ask` appears where the scan has not happened. An install that never ran the collection gets `state.prima_raccolta` with `status: "none"` and `ask: true`. A no given to the old question is asked once more with the new text; a no to the new one stands. A yes without the master's first round is asked again («Scansiona» starts it). Collection and first round done: nothing.
+- **First items**: a new install gets a first monitor, «Quota use (example)» (`consumo-quota`, meter on the week's quota, `example: true`, a point at every collection), when there is no monitor yet; and, when the registry has no task at all, the task `primi-passi` with one test, «send a message to the master from the phone».
+- Fixture `cmd-result-sample.json`: the `prima_raccolta` sample with `ask`.
+
 Contract 1.138 (12/11/2026, the maintainer at 15:19: «Sarebbe sufficiente che fosse cliccabile e che mi portasse alla pagina con il nuovo prezzo»; task supervisor-monitor-link-12-11, for the app app-monitor-link-12-11). Additive, `v` stays 1.
 
 - **The link of the monitored thing.** `supervisor monitor point ID [--series S] VALUE --url URL` stores the page of that reading (the best offer changes shop from one reading to the next); `supervisor monitor add|set ID --link S=URL` (several times; `--link URL` for a monitor with one series; `S=` removes it) a fixed link of the series. Only `http` and `https`, one line, up to 2000 characters; anything else is refused and nothing is written.
@@ -1310,22 +1329,37 @@ come from the relay's own config. Without those data `relay pair` says so, shows
 no QR and the six-digit code still works; `doctor` shows a WARN. The QR is
 drawn in the terminal with half blocks, error correction L and a two-module
 margin (about 70 columns wide; `relay pair --text` prints its JSON on one line
-instead). The same
+instead). The iPhone camera does not open a QR holding JSON: `relay pair --web`
+draws the QR of the web app link (`/#pair=…`, about 85 columns), which the camera
+opens in Safari, and the plain QR ends with a line saying so. Before the QR a line
+reminds that on iPhone and iPad the app added to the Home Screen has its own
+storage, separate from Safari: a pairing done in Safari does not count there, so
+pair from inside that app (Pair → scan, or paste the link). The same
 document sits under `/pair/<code>` and `/pair/<id>`; the first valid answer
 wins, the other node is deleted, expiry and attempts are shared. The phone may
 answer with `uids` (up to four) and `names`: every uid goes to `/allowed`, and
 `devices.json` keeps each with its name.
 
 `relay setup` builds the Firebase side, guided and idempotent, on the Firebase
-CLI already logged in (`npm install -g firebase-tools`, `firebase login`): it
+CLI already logged in (`npm install -g --prefix ~/.local firebase-tools`, no sudo
+even where /usr/local belongs to root as on a Mac, then `~/.local/bin/firebase login`): it
 picks or creates the project, creates the Realtime Database instance
 (`relay.setup_location`, europe-west1 by default), deploys the rules above,
-enables anonymous sign-in, registers the Android app of `relay.app_package`
+enables anonymous sign-in and keeps the automatic clean-up of anonymous accounts
+off (on, Firebase deletes them after 30 days and the phone loses its pairing;
+`doctor` reads it when the CLI's token is valid), registers the Android app of
+`relay.app_package` (empty: the neutral `web.supervisor.relay`, enough for the web
+app and an iPhone, which need only the API key; with the Android app, set its
+package and run setup again)
 without a SHA fingerprint (the API key is not restricted: the Play signature
 differs from the development one), saves its data in `relay.firebase_app` and
 `<relay.dir>/google-services.json`, creates the firebase-adminsdk key at
 `relay.service_account` (0600) and writes `relay.enabled`, `relay.firebase_url`
-and `relay.fcm_topic` into the config in use, `CC_SUPERVISOR_CONFIG` included.
+and `relay.fcm_topic` into the config in use, `CC_SUPERVISOR_CONFIG` included. A Google account that never used Firebase gets the Google Cloud project but a
+403 when Firebase is added: setup says to accept the Firebase terms at
+console.firebase.google.com with the same account and run it again. Without a
+terminal and without `--yes`, `--dry-run` takes the defaults and a real run stops
+saying to use a terminal or `--yes`.
 The database instance, anonymous sign-in and the key go through Google's REST
 APIs with the CLI's own token; when that token is missing, those steps print
 the exact console link and wait for Enter. On a project born a minute ago

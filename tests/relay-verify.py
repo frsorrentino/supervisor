@@ -864,6 +864,7 @@ write_cfg(firebase_app=APP)
 pr, code, head = pair_run(3, "--add", "--text")
 _w = _after_code(pr)
 T.check("R5h pair --add --text prints the web app link too", any(_web_q([l], "https://supervisor.francescosorrentino.com") == head[-1] for l in _w if "#pair=" in l), str(_w))
+
 T.wait_until(lambda: not any(isinstance(v, dict) and v.get("pc_pub") for v in (STORE.get("pair") or {}).values()), 3)
 # senza --text: il QR a mezzi blocchi, margine di 2 moduli, decodificato (OpenCV, se c'e') = quel JSON
 pr, code, head = pair_run(8)
@@ -944,6 +945,36 @@ write_cfg()
 # del telefono = 32..63): pair_accept sull'id della fixture accetta la risposta e produce esattamente `ok`
 os.environ.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home)})
 RL = load("cm-relay")
+# R5i (12/11/2026, supervisor-note-mac-iphone-12-11): la fotocamera dell'iPhone non apre il QR col JSON. --web disegna il
+# QR del link /#pair=; prima del QR l'avviso sulla Home di iOS; senza --web una riga dice come avere quello del link
+_sv5i = {"which": RL.shutil.which, "sys": RL.sys}
+_qr_rows = lambda h: [l for l in h if l and set(l) <= set("█▀▄ ")]
+write_cfg(firebase_app=APP)
+pr, code, head = pair_run(3, "--web")
+_w = _after_code(pr)
+_link5i = next((l[len("Web app: "):] for l in _w if l.startswith("Web app: ")), "")
+T.check("R5i pair --web: the drawn QR is the one of the web app link /#pair= (the iPhone camera opens it), announced as such, after the warning on the Home Screen app of iOS",
+        code and _link5i and _qr_rows(head) == RL.qr_lines(_link5i) and any("schermata Home" in l and "Safari" in l for l in head)
+        and any("fotocamera del telefono" in l for l in head), "\n".join(head[:4]) + str(_w[:1]))
+pr, code, head = pair_run(3)
+_w = _after_code(pr)
+_link5i = next((l[len("Web app: "):] for l in _w if l.startswith("Web app: ")), "")
+_json5i = _web_q([_link5i], "https://supervisor.francescosorrentino.com") if _link5i else None
+T.check("R5i pair without --web: the app's QR (the JSON) as before, the iOS warning, and a line that says the iPhone camera needs `relay pair --web`",
+        code and _json5i and _qr_rows(head) == RL.qr_lines(_json5i) and any("relay pair --web" in l for l in head) and any("schermata Home" in l for l in head), "\n".join(head[-3:]))
+try:
+    RL.shutil.which = lambda n: {"open": "/usr/bin/open", "xdg-open": "/usr/bin/xdg-open"}.get(n)
+    RL.sys = type("S", (), {"platform": "darwin"})()
+    _env5i = os.environ.pop("CM_RELAY_OPEN", None)
+    _mac = RL.browser_opener()
+    RL.sys = _sv5i["sys"]
+    _lin = RL.browser_opener()
+    if _env5i is not None:
+        os.environ["CM_RELAY_OPEN"] = _env5i
+finally:
+    RL.shutil.which, RL.sys = _sv5i["which"], _sv5i["sys"]
+T.check("R5i relay web opens the browser with `open` on macOS (xdg-open missing there), xdg-open on Linux",
+        _mac == "/usr/bin/open" and _lin == "/usr/bin/xdg-open", str((_mac, _lin)))
 from cryptography.hazmat.primitives.asymmetric import x25519 as _x
 from cryptography.hazmat.primitives import serialization as _ser
 FQ = json.loads((FIX / "pair-qr.json").read_text()); FR = json.loads((FIX / "pair-response.json").read_text())
@@ -1311,6 +1342,12 @@ T.check("R15 (1.19) after the command /share/<id> is deleted and the temporary f
 res = send_cmd(CMDS[15])
 T.check("R15 (1.19) text only → `report <folder> - <text> --session field-notes`, «sent to field-notes»",
         res and res["ok"] is True and res["text"] == RES[15]["text"] and f"report {ws / 'personal' / 'field-notes'} - add the Tuesday meeting notes to the draft --session field-notes" in cm_calls(), str(res) + str(cm_calls()[-2:]))
+# R15b (1.141, 12/11/2026, supervisor-segnalazione-origine-12-11): da quale app, versione e schermata
+res15b = send_cmd(dict(CMDS[15], id="6f1c2d3e-0999-4000-8000-000000000999", app="android", app_version="2.4.1", screen="Verifica"))
+T.check("R15b a report that names its app, version and screen carries one more line «Da: app Android 2.4.1 · schermata Verifica»; without them as before",
+        res15b and res15b["ok"] is True and "add the Tuesday meeting notes to the draft\nDa: app Android 2.4.1 · schermata Verifica --session field-notes" in "\n".join(cm_calls()[-2:])
+        and RL.report_origin({"app": "web"}) == "Da: app web" and RL.report_origin({"screen": "Home"}) == "Da: schermata Home"
+        and RL.report_origin({"app": "toaster"}) == "" and RL.report_origin({}) == "", str(cm_calls()[-2:]))
 n_calls = len(cm_calls())
 res = send_cmd(CMDS[16])
 bad = "6f1c2d3e-0125-4000-8000-00000000b001"
@@ -1643,7 +1680,8 @@ T.check("R67 (1.81) approve with a choice among the options → `task approve �
 tasks31.unlink()
 (tmp / "task-show.json").write_text(json.dumps({"id": "atlas-release-2-4", "session": None, "state": "awaiting_ok", "contract": {"task": {"where": {"session": None}}}, "approvals": []}))
 # R69 (1.82, 24/10, «ogni scheda cliccabile» del rapporto della notte): transcript di una conversazione chiusa, dal suo id
-_d69 = home / ".claude" / "projects" / "-closed-demo"
+(ws / "closed-demo").mkdir(parents=True, exist_ok=True)   # 12/11: una cartella sotto la root (ambito delle sessioni)
+_d69 = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(ws / "closed-demo"))
 _d69.mkdir(parents=True, exist_ok=True)
 (_d69 / f"{CMDS[80]['sid']}.jsonl").write_bytes((FIX / "transcript-sample.jsonl").read_bytes())
 r69a, r69b = send_cmd(CMDS[80]), send_cmd(CMDS[81])
@@ -2669,7 +2707,7 @@ T.check("R36 prunes at most once every 10 minutes", RL.prune_due(time.time()) is
 T.check("R36 (1.43) the published state carries published_at, at or after ts", _pub4.get("published_at") and float(_pub4["published_at"]) >= float(_pub4["ts"]), str({x: _pub4.get(x) for x in ("ts", "published_at")}))
 _hk36 = rdir2 / "push-req" / "hook"
 _t36 = time.time() - 1
-_r36 = hook("UserPromptSubmit", {"session_id": "sid-36", "cwd": str(home), "prompt": "ciao"})
+_r36 = hook("UserPromptSubmit", {"session_id": "sid-36", "cwd": str(ws), "prompt": "ciao"})   # 12/11: sotto la root
 T.check("R36 UserPromptSubmit asks for a push (push-req/hook touched)", _r36.returncode == 0 and _hk36.exists() and _hk36.stat().st_mtime >= _t36, _r36.stderr[-300:])
 OF36 = load("cm-offload")
 T.check("R36 heavy run on this machine runs at low priority: nice -n 10 and ionice -c3 around the command",
@@ -3936,7 +3974,9 @@ _sa73 = _u73 / "personal" / "projects" / "-w-x" / "sid-a" / "subagents" / "agent
 _sa73.parent.mkdir(parents=True, exist_ok=True)
 _sa73.write_text(_ln73(_mid73 + 100, "m5", 50) + "\n" + _ln73(_mid73 + 101, "m6", 7))   # l'ultima riga senza a capo: ancora in scrittura
 _acc73s, _rd73 = RL.CFG["accounts"], RL.rdir
+_sc73 = RL.CFG["workspace"].get("sessions_scope")
 try:
+    RL.CFG["workspace"]["sessions_scope"] = "all"   # 12/11: le trascrizioni finte stanno in /w, fuori dalla root del test
     RL.CFG["accounts"] = {"personal": {"config_dir": str(_u73 / "personal")}, "work": {"config_dir": str(_u73 / "work")}}
     RL.rdir = lambda: _u73
     _o73 = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73)
@@ -3946,6 +3986,7 @@ try:
     _o73c = RL.usage_today([{"session_id": "sid-a", "name": "alpha-shop", "tmux": "alpha-shop"}], _now73 + RL.USAGE_CACHE_S + 1)
 finally:
     RL.CFG["accounts"], RL.rdir = _acc73s, _rd73
+    RL.CFG["workspace"]["sessions_scope"] = _sc73
 T.check("R73 (1.84) usage_today: tokens since local midnight, one message counted once, subagents with their session, the name from the state (else the folder), share of the account; biggest first",
         _o73 == [{"session": "alpha-shop", "account": "personal", "tokens": 200, "share": 0.8}, {"session": "beta", "account": "personal", "tokens": 50, "share": 0.2},
                  {"session": "gamma", "account": "work", "tokens": 30, "share": 1.0}], str(_o73))

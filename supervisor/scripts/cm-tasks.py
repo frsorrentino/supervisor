@@ -1514,6 +1514,25 @@ def prove_mark(con, ids, result, by, where, text=None, origin="relay"):
     return {"complete": complete}
 
 
+def prova_retire(con, n, by, where, reason=None):
+    """1.140 (12/11/2026, supervisor-prova-ritirata-12-11; il maintainer: una prova «segnalata» in Verifica non si poteva
+    chiudere): «Non serve piu'». Una prova in vigore di un compito aperto, senza esito o segnalata, esce come superata e
+    mai confermata (result «ritirata», superseded_at): non e' piu' fra le prove da fare ne' fra quelle che non vanno, un
+    passo lo dice col motivo, il compito resta aperto. Nessuna conferma: le altre prove restano com'erano. {task} o
+    {error: n}."""
+    r = prova_info(con, n)
+    if r is None or r["result"] == "ok":
+        return {"error": n}
+    t = now()
+    reason = " ".join(str(reason or "").split())[:INFO_MAX] or None
+    con.execute("UPDATE prove SET result='ritirata', result_at=?, result_by=?, result_text=?, superseded_at=? WHERE n=?", (t, by, reason, t, n))
+    text = M("tasks.prova_retired", n=n, by=by, where=where, reason=f": {reason}" if reason else "")
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'step',?,NULL)", (r["task"], t, by, text[:500]))
+    con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (t, r["task"]))
+    con.commit()
+    return {"task": r["task"], "left": len(prove_pending(con, r["task"]))}
+
+
 def root_session():
     return str((_cfg()[1].get("workspace") or {}).get("root_session_name") or "master")
 
@@ -1795,8 +1814,8 @@ def prova_one(con, n):
         return None
     row = con.execute("SELECT * FROM tasks WHERE id=?", (r["task"],)).fetchone()
     task = _contract_task(row) if row else {}
-    state = r["result"] if r["result"] in ("ok", "ko") else "todo"
-    text, at = (r["result_text"] or None) if state == "ko" else None, r["result_at"] or r["at"]
+    state = r["result"] if r["result"] in ("ok", "ko") else "retired" if r["result"] == "ritirata" else "todo"   # 1.140: retired
+    text, at = (r["result_text"] or None) if state in ("ko", "retired") else None, r["result_at"] or r["at"]
     if state == "ok" and r["superseded_at"] is None and row and row["state"] in OPEN_STATES:
         live = _live_prove(con, r["task"])
         if all(x["result"] == "ok" for x in live):   # come `red` di prove_list: tutte ok, compito aperto, controllo rosso
@@ -2454,6 +2473,15 @@ def main(argv):
                      "SCHERMATA con «Portami lì» nell'app: queue, box-aspetta, box-lavoro, box-esiti, lavori, launch, night, search, settings, homeorder, usage, home; una prova che vale solo sul telefono lo dice in --fai")
         files = parse_files(files, get_task(con, args[0])["project"], "prova") if files is not None else None
         print(prova_add(con, args[0], build, dove, fai, atteso, by, files))
+        return 0
+    if verb == "prova-ritira":   # 1.140: «Non serve piu'» dal terminale
+        by, reason = _opt(args, "--by"), _opt(args, "--reason")
+        if len(args) != 1 or not args[0].isdigit() or not by:
+            sys.exit("usage: task prova-ritira N --by B [--reason T]")
+        res = prova_retire(con, int(args[0]), by, "terminal", reason)
+        if res.get("error") is not None:
+            sys.exit(f"task prova-ritira: test {args[0]} is not in force (gone, already confirmed, or its task is closed)")
+        print(f"test {args[0]} retired ({res['task']}, {res['left']} left to do)")
         return 0
     if verb == "prove":
         p = prove_list(con)

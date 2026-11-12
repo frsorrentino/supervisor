@@ -120,7 +120,9 @@ How the relay works, its protocol and its rules: [details/relay.md](details/rela
   answer and prompt a session. Before a «yes» from it reaches a session, the
   plugin takes a git checkpoint of that workspace. A device is paired only
   through `relay pair` on the PC (a QR, a line to paste or a link, valid for five
-  minutes), and `relay pair --revoke` removes it.
+  minutes), and `relay pair --revoke` removes it. The iPhone camera opens only the
+  QR of `relay pair --web`; on iPhone and iPad the app added to the Home Screen
+  keeps its own storage, so pair from inside it, not in Safari.
 - **Sessions on one account talk to each other; across two accounts only if you
   allow it**, with `crossSessionInbound: accept` in that account's settings.
 - **No telemetry, no update check, no account of its own.** Errors of

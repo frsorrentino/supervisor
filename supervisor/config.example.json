@@ -11,7 +11,9 @@
     ],
     "project_dirs": [
       "."
-    ]
+    ],
+    "sessions_scope": "root",
+    "sessions_also": []
   },
   "accounts": {
     "default": {

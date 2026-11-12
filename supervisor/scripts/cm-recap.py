@@ -76,6 +76,9 @@ def read_events(since=None, day=None):
         # registrano la cartella corrente del momento, e una sessione che si sposta con `cd` sembrava un altro progetto
         if e.get("event") == "start" and e.get("session_id") and e.get("cwd"):
             homes[e["session_id"]] = e["cwd"]
+        # 12/11 (supervisor-ambito-sessioni-12-11): una sessione fuori dall'ambito non entra nel recap
+        if not cm.cwd_in_scope(CFG, homes.get(e.get("session_id") or "") or e.get("cwd") or "", e.get("host")):
+            continue
         if day is not None and ts.date() != day:
             continue
         if since is not None and ts < since:

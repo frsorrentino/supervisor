@@ -584,5 +584,80 @@ T.check("RS17 a folder of the professional account on a host that admits it: tru
         r17.returncode == 0 and [c["verb"] for c in c17] == ["trust", "start"] and all(c.get("config") == ".claude-pixel" for c in c17)
         and c2.get("config") == ".claude", json.dumps(c17) + json.dumps(c2) + r17.stdout + r17.stderr)
 
+# RS18 (12/11/2026, supervisor-host-prompt-perso-12-11 e supervisor-host-poll-fermo-12-11)
+zeta = ws / "personali" / "zeta"
+zeta.mkdir(parents=True, exist_ok=True)
+repo(zeta, {"README.md": "zeta\n"})
+n_post = len([c for c in calls() if c["verb"] == "post"])
+r18 = launch(str(zeta), "--host", "win", "--no-window", "--prompt", 'parti dal punto 3: "virgolette" `x` $HOME e accenti è')
+posts18 = [c for c in calls() if c["verb"] == "post"][n_post:]
+T.check("RS18 launch --host with --prompt: the first prompt reaches the session there, whole (quotes, backticks, $, accents), sent with talk once it registered, and launch says so",
+        r18.returncode == 0 and [c.get("text") for c in posts18] == ['parti dal punto 3: "virgolette" `x` $HOME e accenti è'] and "primo prompt" in r18.stdout,
+        f"rc={r18.returncode} {posts18} {r18.stdout[-300:]} {r18.stderr[-300:]}")
+r18n = launch(str(zeta), "--host", "win", "--no-window", "--prompt", "ciao", FAKE_WIN_NOREG="1")
+T.check("RS18 a session that never registers: exit 5, and the first prompt is said not delivered with the command to send it, never lost in silence",
+        r18n.returncode == 5 and "NON consegnato" in r18n.stderr and "supervisor talk" in r18n.stderr, r18n.stderr[-400:])
+import importlib.util as _ilu18
+import time
+os.environ.update(env())
+_sp = _ilu18.spec_from_file_location("cm_hosts18", T.SCRIPTS / "cm-hosts.py"); H18 = _ilu18.module_from_spec(_sp); _sp.loader.exec_module(H18)
+
+
+class _A18:
+    n = 0
+
+    def status(self):
+        _A18.n += 1
+        return {"sessions": []}
+
+
+H18.adapter = lambda name: _A18()
+H18.confirmed = lambda h, n=None: True
+H18.wake_path("win").unlink(missing_ok=True)   # i lanci qui sopra l'hanno gia' toccato
+H18.write_json(H18.snap_path("win"), {"name": "win", "read_at": time.time() - 60, "status": {"sessions": []}, "last_ok_at": time.time() - 60})
+first18 = H18.poll_one("win")
+H18.wake("win")
+second18 = H18.poll_one("win")
+third18 = H18.poll_one("win")
+T.check("RS18 an idle host read a minute ago is not read again by the cron round (600 s), but after a launch or a close (wake) the next round reads it at once, once",
+        first18 is None and second18 is not None and third18 is None and _A18.n == 1, f"{first18} {bool(second18)} {third18} {_A18.n}")
+T.check("RS18 launch --host and close ask the host to be read again at the end (wake + poll)", "_repoll(hname)" in (T.SCRIPTS / "cm-rsession.py").read_text()
+        and (T.SCRIPTS / "cm-rsession.py").read_text().count("    _repoll(hname)\n") == 2, "")
+
+# RS19 (12/11/2026, supervisor-host-rilancio-avanti-12-11): la copia la' ha lavorato e pubblicato su origin
+eta = ws / "personali" / "eta"
+eta.mkdir(parents=True, exist_ok=True)
+repo(eta, {"README.md": "eta\n"})
+r19a = launch(str(eta), "--host", "win", "--no-window")
+rd19 = winroot / "cm" / "personali" / "eta"
+rs("close", "win:eta", "--force")
+(eta / "nuovo.txt").write_text("qui\n"); g(eta, "add", "-A"); g(eta, "commit", "-q", "-m", "qui B")
+head19 = g(eta, "rev-parse", "HEAD").strip()
+g(rd19, "fetch", "-q", str(eta), "HEAD"); g(rd19, "reset", "-q", "--hard", "FETCH_HEAD")   # la storia la' riallineata a origin
+(rd19 / "la.txt").write_text("la\n"); g(rd19, "add", "la.txt"); g(rd19, "commit", "-q", "-m", "lavoro la' C")
+(rd19 / "segnalazione.log").write_text("log\n")   # un file non tracciato
+r19 = launch(str(eta), "--host", "win", "--no-window")
+mk19 = json.loads((rd19 / ".cm-session.json").read_text())
+T.check("RS19 HEAD here is an ancestor of the copy there, no modified tracked file (only an untracked log): launch reuses the copy, moves its base to HEAD here and says so; the work there stays",
+        r19a.returncode == 0 and r19.returncode == 0 and mk19["base"] == head19 and "riallineo" in r19.stderr and (rd19 / "la.txt").is_file() and (rd19 / "segnalazione.log").is_file(),
+        f"rc={r19.returncode} {r19.stderr[-500:]} {mk19}")
+rs("close", "win:eta", "--force")
+(rd19 / "README.md").write_text("cambiato la'\n")   # un file tracciato modificato
+(eta / "altro.txt").write_text("x\n"); g(eta, "add", "-A"); g(eta, "commit", "-q", "-m", "qui D")
+r19b = launch(str(eta), "--host", "win", "--no-window")
+T.check("RS19 a modified tracked file there (or HEAD here not an ancestor): still refused, and the message says ways that work (git pull here, host fetch)",
+        r19b.returncode == 6 and "git pull" in r19b.stderr and "host fetch" in r19b.stderr and "1 file tracciati" in r19b.stderr, r19b.stderr[-500:])
+g(rd19, "checkout", "-q", "--", "README.md")
+g(rd19, "fetch", "-q", str(eta), "HEAD"); g(rd19, "merge", "-q", "--no-edit", "FETCH_HEAD")
+r19c = launch(str(eta), "--host", "win", "--no-window")
+n19 = len(calls())
+r19r = rs("restart", "win:eta", "--force", "--prompt", "ripresa dopo i plugin")
+new19 = calls()[n19:]
+st19 = [c for c in new19 if c["verb"] == "start"]
+T.check("RS19 restart remote: close, then launch on the same folder continuing its conversation (-c), with the first prompt",
+        r19c.returncode == 0 and r19r.returncode == 0 and [c["verb"] for c in new19 if c["verb"] in ("close", "start", "post")][:3] == ["close", "start", "post"]
+        and st19 and "-c" in st19[0]["args"]
+        and any(c.get("text") == "ripresa dopo i plugin" for c in new19 if c["verb"] == "post"), f"{r19r.returncode} {[c['verb'] for c in new19]} {r19r.stderr[-400:]}")
+
 T.rm(tmp)
 T.finish()

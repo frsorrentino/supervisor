@@ -46,17 +46,27 @@ class FakeWin:
         note("status")
         return {"ok": True, "sessions": [{"alive": not e.get("closed"), "entry": e} for e in registry()]}
 
-    def session_prepare(self, rdir):
+    def session_prepare(self, rdir, here=None):
         note("prepare", rdir=rdir)
         d = local(rdir)
         m = d / ".cm-session.json"
         r = {"exists": d.exists(), "marker": m.exists()}
         if m.exists():
             j = json.loads(m.read_text())
+            st = [x for x in subprocess.run(["git", "-C", str(d), "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines() if x.strip()]
             r.update(base=j["base"], root=j["root"], ahead=int(subprocess.run(["git", "-C", str(d), "rev-list", "--count", j["root"] + "..HEAD"],
                                                                                 capture_output=True, text=True).stdout or 0),
-                     dirty=len([x for x in subprocess.run(["git", "-C", str(d), "status", "--porcelain"], capture_output=True, text=True).stdout.splitlines() if x.strip()]))
+                     dirty=len(st), dirty_tracked=len([x for x in st if not x.startswith("??")]),
+                     contains_here=bool(here) and subprocess.run(["git", "-C", str(d), "merge-base", "--is-ancestor", here, "HEAD"], capture_output=True).returncode == 0)
         return r
+
+    def session_rebase(self, rdir, sha):
+        note("rebase", rdir=rdir, sha=sha)
+        m = local(rdir) / ".cm-session.json"
+        j = json.loads(m.read_text())
+        j.update(base=sha, root=sha)
+        m.write_text(json.dumps(j))
+        return {"ok": True}
 
     def session_retire(self, rdir, stamp):
         note("retire", rdir=rdir, stamp=stamp)

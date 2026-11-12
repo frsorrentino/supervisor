@@ -21,7 +21,8 @@ closed = tmp / "ws" / "orbit"
 for d in (proj, closed):
     d.mkdir(parents=True)
 cfg = tmp / "config.json"
-cfg.write_text(json.dumps({"language": "it", "default_account": "personal", "accounts": {"personal": {"config_dir": str(conf), "tmux_prefix": "w-"}}}))
+cfg.write_text(json.dumps({"language": "it", "default_account": "personal", "accounts": {"personal": {"config_dir": str(conf), "tmux_prefix": "w-"}},
+                          "workspace": {"root": str(tmp / "ws")}}))   # 12/11: la root del test (ambito delle sessioni)
 fake = tmp / "fake"
 fake.mkdir()
 ENV = dict(os.environ, CC_SUPERVISOR_CONFIG=str(cfg), CM_BIN=str(Path(__file__).resolve().parent / "lib" / "fake-cm-plan.py"),

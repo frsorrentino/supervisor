@@ -75,6 +75,9 @@ def share_report(cmd, tm, session):
     messaggio alla sessione (share_multi); ogni /share/<id> si cancella comunque."""
     arg = str(cmd.get("arg") or "").strip()
     sids = [x.strip() for x in arg.split(",")] if "," in arg else ([arg] if arg else [])
+    origin = report_origin(cmd)
+    if origin and len(str(cmd.get("text") or "").strip()) + len(origin) + 1 <= REPORT_TEXT_MAX:
+        cmd = dict(cmd, text=(str(cmd.get("text") or "").strip() + "\n" + origin).strip())
     try:
         if len(sids) > 1:
             return share_multi(cmd, tm, session, sids)
@@ -86,6 +89,20 @@ def share_report(cmd, tm, session):
             pass
         for sid in sids:
             share_drop(cmd, sid)
+
+
+REPORT_APPS = {"android": "Android", "web": "web", "wear": "Wear OS"}
+
+
+def report_origin(cmd):
+    """1.141 (12/11/2026, supervisor-segnalazione-origine-12-11, chiesto da win:supervisor-app): la riga «Da: app Android
+    1.2.3 · schermata Verifica» quando l'app manda `app`, `app_version`, `screen`; "" se non manda niente (come prima)."""
+    app = REPORT_APPS.get(str(cmd.get("app") or "").strip().lower())
+    ver = S.one_line(str(cmd.get("app_version") or ""))[:40] if isinstance(cmd.get("app_version"), str) else ""
+    scr = S.one_line(str(cmd.get("screen") or ""))[:60] if isinstance(cmd.get("screen"), str) else ""
+    parts = ([M("relay.report_origin_app", app=app) + (f" {ver}" if ver else "")] if app else ([ver] if ver else [])) + \
+            ([M("relay.report_origin_screen", screen=scr)] if scr else [])
+    return M("relay.report_origin", what=" · ".join(parts)) if parts else ""
 
 
 def share_drop(cmd, sid):
@@ -941,6 +958,8 @@ def studio_outcomes(dirs, now):
         for acc in (CFG.get("accounts") or {}).values():
             for enc in {re.sub(r"[^A-Za-z0-9]", "-", x) for x in (d.rstrip("/"), here)}:   # Claude Code: ogni altro segno → «-»
                 for f in (Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "projects" / enc).glob("*.jsonl"):
+                    if not cm.transcript_in_scope(CFG, f):   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
+                        continue
                     try:
                         files.append((f.stat().st_mtime, os.path.realpath(str(f))))
                     except OSError:
@@ -1121,6 +1140,8 @@ def search_files(now=None):
     files = set(live)
     for acc in (CFG.get("accounts") or {}).values():
         for f in (Path(cm.expand(acc.get("config_dir") or "~/.claude")) / "projects").glob("*/*.jsonl"):
+            if not cm.transcript_in_scope(CFG, f):   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
+                continue
             try:
                 if now - f.stat().st_mtime <= SEARCH_DAYS * 86400:
                     files.add(os.path.realpath(str(f)))
@@ -1374,10 +1395,10 @@ def transcript_by_sid(sid):
     for d in dirs:
         hit = next(iter(sorted(d.glob(f"*/{sid}.jsonl"))), None) if d.is_dir() else None
         if hit:
-            return str(hit)
+            return str(hit) if cm.transcript_in_scope(CFG, hit) else None   # 12/11 (supervisor-ambito-sessioni-12-11): solo l'ambito
     mirror = Path(cm.expand(CFG["state_dir"])) / "hosts" / "transcripts"
     hit = next(iter(sorted(mirror.glob(f"*/{sid}.jsonl"))), None) if mirror.is_dir() else None
-    return str(hit) if hit else None
+    return str(hit) if hit and cm.transcript_in_scope(CFG, hit) else None
 
 
 # ------------------------------------------------------------------ 1.126 (05/11/2026, supervisor-catena-trascrizioni-05-11)
@@ -1414,6 +1435,8 @@ def _ledger_rows():
             r = json.loads(ln)
             r["_at"] = __import__("datetime").datetime.fromisoformat(r.get("ts") or "").timestamp()
         except (ValueError, TypeError):
+            continue
+        if not cm.cwd_in_scope(CFG, r.get("cwd") or "", r.get("host")):   # 12/11: fuori dall'ambito
             continue
         rows.append(r)
     _CHAIN_CACHE.update(key=key, rows=rows)
@@ -1981,14 +2004,21 @@ def raccolta_azione(cmd):
         master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
         code, out = relay_talk(master, M("raccolta.first_round_prompt"), "--no-wait")
         return code == 0, M("raccolta.first_round_sent") if code == 0 else str(out)[:200]
+    extra = []
     if action == "consent":
-        if cmd.get("value") not in ("si", "no"):
+        # 1.139: «later» (Non ora) la ripropone fra un giorno; «si» legge le sessioni e, a raccolta finita, fa il primo giro
+        if cmd.get("value") not in ("si", "no", "later"):
             return False, M("raccolta.action_bad")
+        if cmd["value"] == "later":
+            rc.ask_later()
+            return True, M("raccolta.consent_later_ok")
         rc.set_consent(cmd["value"] == "si")
+        if cmd["value"] == "si":
+            extra = ["--first-round"]
     elif action != "start":
         return False, M("raccolta.action_bad")
     try:
-        subprocess.Popen([CM_BIN, "prima-raccolta", "--json"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        subprocess.Popen([CM_BIN, "prima-raccolta", "--json", *extra], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError as e:
         return False, str(e)[:200]
@@ -2101,7 +2131,7 @@ def prova_op(cmd, arg):
     if why:
         return False, why
     result, a = cmd.get("result"), str(arg or "").strip()
-    if result not in ("ok", "ko"):
+    if result not in ("ok", "ko", "ritirata"):   # 1.140: «ritirata», «Non serve piu'»
         return False, M("relay.cmd_prova_bad_result")
     if not re.fullmatch(r"\d{1,12}(,\d{1,12})*", a) or a.count(",") >= PROVA_IDS_MAX:
         return False, M("relay.cmd_prova_bad_arg")
@@ -2109,6 +2139,29 @@ def prova_op(cmd, arg):
     text = str(cmd.get("text") or "").strip()[:PROVA_TEXT_MAX] if isinstance(cmd.get("text"), str) else ""
     if result == "ko" and (len(a.split(",")) != 1 or not text):
         return False, M("relay.cmd_prova_ko_needs_text")
+    if result == "ritirata":
+        if len(a.split(",")) != 1:
+            return False, M("relay.cmd_prova_retire_one")
+        tk = _load("cm-tasks")
+        con = tk.connect(create=False)
+        if con is None:
+            return False, M("relay.cmd_prova_gone", n=a)
+        try:
+            row = tk.prova_info(con, ids[0])
+            sess = None
+            if row is not None:
+                tr = tk.get_task(con, row["task"])
+                sess = tr["session"] or (tk._contract_task(tr).get("where") or {}).get("session")
+            res = tk.prova_retire(con, ids[0], str(cmd.get("by") or "app"), from_device(cmd), text or None)
+        finally:
+            con.close()
+        if res.get("error") is not None:
+            return False, M("relay.cmd_prova_gone", n=ids[0])
+        if sess:
+            _wake(sess, M("relay.prova_told_retired", person=M("tasks.person"), device=from_device(cmd), task=res["task"], n=ids[0], left=res["left"],
+                          reason=f": {text}" if text else ""))
+        push_async()
+        return True, M("relay.cmd_prova_retired", n=ids[0], left=res["left"])
     by, where = str(cmd.get("by") or "app"), from_device(cmd)
     tk = _load("cm-tasks")
     con = tk.connect(create=False)

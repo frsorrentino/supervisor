@@ -10,6 +10,7 @@ avvio           AV1 livelli dallo stato reale, nuova / a meta' / completa; AV2 p
 """
 import importlib.util
 import json
+import re
 import os
 import signal
 import subprocess
@@ -76,7 +77,7 @@ def load(name):
 
 
 def transcript(project, sid, step, age=3600):
-    d = conf / "projects" / str(project).replace("/", "-").replace(".", "-")
+    d = conf / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(project))   # come Claude Code (12/11: «_» di mkdtemp compreso)
     d.mkdir(parents=True, exist_ok=True)
     f = d / f"{sid}.jsonl"
     f.write_text("\n".join(json.dumps(x) for x in [
@@ -305,6 +306,62 @@ T.check("avvio AV4 init ends by proposing the master and the collection", "super
 # ---------------------------------------------------------------- AV5: testi
 _rd = (T.ROOT / "README.md").read_text()
 T.check("avvio AV5 README: the collection and the five levels", "supervisor prima-raccolta" in _rd and all(f"| {i}. " in _rd for i in range(1, 6)), "")
+# PR10 (1.139, 12/11/2026, supervisor-avvio-popola-12-11): una domanda sola, corta, coi tasti; il si' fa tutto; le prime voci
+os.environ["CM_MONITORS"] = str(tmp / "monitors10")
+os.environ["CM_TASKS_DB"] = str(tmp / "tasks10.db")
+R10 = load("cm-raccolta")
+R10.save({"status": "done", "steps": {}, "consent": None})
+v10 = R10.view()
+T.check("prima_raccolta PR10 the question is one short line, with the small note (data on this computer, a small part of the quota) and the short buttons from the relay; ask_text as before",
+        v10["ask"] and v10["ask"]["text"] == "Per completare la configurazione, effettua la scansione delle sessioni." and "\n" not in v10["ask"]["text"]
+        and "questo computer" in v10["ask"]["note"] and "quota" in v10["ask"]["note"] and v10["ask"]["yes"] == "Scansiona" and v10["ask"]["later"] == "Non ora"
+        and v10["ask"]["first_round"] is True and v10["ask_text"] == v10["ask"]["text"], json.dumps(v10.get("ask"), ensure_ascii=False))
+R10.ask_later()
+v10b, s10b = R10.view(), R10.summary()
+T.check("prima_raccolta PR10 «Not now» (consent later): no consent written, the question gone for a day (ask null, summary ask false)",
+        v10b["ask"] is None and v10b["ask_text"] is None and v10b["consent"] is None and s10b["ask"] is False
+        and R10.read_status()["ask_after"] >= time.time() + 86000, json.dumps([v10b.get("ask"), s10b]))
+# riproposta (il maintainer alle 16:32): a chi ha installato prima e non ha fatto la scansione
+cases10 = {"mai partita": None, "no alla vecchia": {"status": "done", "steps": {}, "consent": False},
+           "no alla nuova": {"status": "done", "steps": {}, "consent": False, "asked_v": 2},
+           "si senza primo giro": {"status": "done", "steps": {}, "consent": True},
+           "tutto fatto": {"status": "done", "steps": {}, "consent": True, "first_round_at": 1}}
+got10 = {}
+for k_, st_ in cases10.items():
+    R10.path().unlink(missing_ok=True)
+    if st_ is not None:
+        R10.save(st_)
+    sm_ = R10.summary()
+    got10[k_] = (bool((R10.view() or {}).get("ask")), (sm_ or {}).get("ask"))
+R10.save({"status": "done", "steps": {}, "consent": False})
+R10.set_consent(False)
+again10 = bool(R10.view()["ask"])
+T.check("prima_raccolta PR10 existing installs: never ran or never answered → asked (also in state); a no to the old question → asked once with the new text, a no to the new one → not again; yes without the first round → asked; all done → nothing",
+        got10 == {"mai partita": (True, True), "no alla vecchia": (True, True), "no alla nuova": (False, False), "si senza primo giro": (True, True), "tutto fatto": (False, None)}
+        and again10 is False, str(got10) + str(again10))
+talk_log.unlink(missing_ok=True)
+R10.save({"status": "done", "steps": {}, "consent": True})
+fr1, fr2 = R10.first_round(cli=str(fake_cm)), R10.first_round(cli=str(fake_cm))
+T.check("prima_raccolta PR10 with the yes the master's first round starts by itself, once (prima-raccolta --first-round at the end of the collection)",
+        fr1 is True and fr2 is False and talk_log.read_text().count("talk master") == 1 and "--first-round" in (T.SCRIPTS / "cm-relay-cmds.py").read_text(), talk_log.read_text()[-200:])
+R10.quota_monitor({"personal": {"stato": "ok", "settimana_pct": 18}})
+MO10 = load("cm-monitor")
+c10 = MO10.card("consumo-quota") if "consumo-quota" in MO10.ids() else {}
+R10.quota_monitor({"personal": {"stato": "ok", "settimana_pct": 21}})
+c10b = MO10.card("consumo-quota") if "consumo-quota" in MO10.ids() else {}
+T.check("prima_raccolta PR10 the first item of Monitoraggi: an example on the week's quota (meter, example true), a point at every collection",
+        c10.get("example") is True and c10.get("form") == "meter" and c10.get("value") == "18%" and c10b.get("value") == "21%" and c10b["series"][0]["n"] == 2, json.dumps(c10b)[:400])
+os.environ["CM_MONITORS"] = str(tmp / "monitors10b")
+(tmp / "monitors10b" / "mio").mkdir(parents=True)
+(tmp / "monitors10b" / "mio" / "def.json").write_text(json.dumps({"id": "mio", "title": "Mio", "form": "tile", "series": [], "alerts": []}))
+R10.quota_monitor({"personal": {"stato": "ok", "settimana_pct": 18}})
+T.check("prima_raccolta PR10 with a monitor of one's own no example is added", load("cm-monitor").ids() == ["mio"], str(load("cm-monitor").ids()))
+n10 = R10.first_steps()
+n10b = R10.first_steps()
+sh10 = subprocess.run([CLI, "task", "show", "primi-passi"], capture_output=True, text=True, env=dict(ENV, CM_TASKS_DB=str(tmp / "tasks10.db")))
+pv10 = subprocess.run([CLI, "task", "prove", "--json"], capture_output=True, text=True, env=dict(ENV, CM_TASKS_DB=str(tmp / "tasks10.db")))
+T.check("prima_raccolta PR10 the first item of Verifica on a new install: the task primi-passi with the test «send a message from the phone»; a registry already used gets nothing",
+        n10 and n10b is None and sh10.returncode == 0 and "messaggio" in pv10.stdout and "primi-passi" in pv10.stdout, sh10.stderr[-300:] + pv10.stdout[-300:])
 for lang in ("it", "en"):
     _t = (T.ROOT / f"supervisor/onboarding_{lang}.md").read_text()
     T.check(f"avvio AV5 script {lang}: one step at a time, secrets never in chat, the three buttons, the collection", "prima-raccolta" in _t and "doctor --onboarding" in _t and "--mark" in _t, "")
