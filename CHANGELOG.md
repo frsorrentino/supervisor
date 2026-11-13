@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.162 — 2026-11-13: a web test and an app test of the same task stay open side by side (supervisor-prove-canali-13-11).**
+  - `task prova` retired every open test of the task with another build, also the tests of the other channel. In an app each task has a web build («web-0.2.N (sha)») and an Android pre-release («auto-…-sha»): a new app test retired the open web test. Now a new build retires only the tests of its own channel: web, pre-release or `vX.Y.Z` tag, read from the build's name. A build named for both channels retires both. A name whose channel is unknown retires every other build, as before.
 - **0.8.161 — 2026-11-13: the chat goes back past the first 2 MB of a long conversation (supervisor-before-finestra-13-11).**
   - The relay reads a transcript from its last 2 MB and widens only when needed. A «before» page stopped widening as soon as the asked entry was inside that window. When the entry was among the first of the window, the page came back short, or empty with more true if it was the first one. The web and the phone then stopped loading older messages. «before» and «around» now widen the window until there are enough entries before the asked one, or the file starts.
 - **0.8.160 — 2026-11-13: tests written with an app's own build names move to the newest build too (supervisor-prove-riporto-13-11).**

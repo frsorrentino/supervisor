@@ -1652,9 +1652,37 @@ def archived_files(con, now_=None):
     return {p: at for p, at in out.items()}, since
 
 
+def build_channels(project, name, cache=None):
+    """13/11/2026 (supervisor-prove-canali-13-11): i canali di una build, dal nome: «web» (web-0.2.N …), «app» (la
+    pre-release Android: auto-…, app-…, un tag del progetto che non e' una versione, un «0.2.N» nudo dove i tag finiscono con
+    lo sha), «tag» (vX.Y.Z, o X.Y.Z nudo altrove). Un nome con piu' parti («web-0.2.2132 · app-0.2.2129») ha piu' canali; uno
+    che non si riconosce nessuno (set vuoto)."""
+    cache = {} if cache is None else cache
+    out = set()
+    for part in re.split(r"\s*[·,+&]\s*|\s+e\s+|\s+and\s+", str(name or "").strip()):
+        part = part.strip()
+        if not part:
+            continue
+        low = part.lower()
+        if low.startswith("web-") or low.startswith("web "):
+            out.add("web")
+        elif low.startswith("auto-") or low.startswith("app-") or low.startswith("app "):
+            out.add("app")
+        elif re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+.][\w.-]+)?", low):
+            out.add("tag")
+        elif re.fullmatch(r"\d+\.\d+\.\d+", low):
+            ok = bool(project) and Path(str(project)).is_dir()
+            out.add("app" if ok and _count_scheme(project, cache) else "tag")
+        elif project and Path(str(project)).is_dir() and part in dict(_tags_of(project, cache)):
+            out.add("app")
+    return out
+
+
 def prova_add(con, tid, build, dove, fai, atteso, by=None, files=None):
-    """Una prova per la persona. Per versione: una build nuova ritira tutte quelle di prima del compito (un ok su una build
-    vecchia non dice niente della nuova); stessa build, dove e fai sostituisce. Nessun esito: quello nasce solo da prove_mark."""
+    """Una prova per la persona. Per versione: una build nuova ritira quelle di prima del compito sullo stesso canale (un ok
+    su una build vecchia non dice niente della nuova); stessa build, dove e fai sostituisce. 13/11: la web e la pre-release
+    Android sono canali diversi e una non ritira l'altra (la prova n. 685 dell'app aveva ritirato la n. 673 della web); un
+    nome di cui non si sa il canale ritira e si fa ritirare come prima. Nessun esito: quello nasce solo da prove_mark."""
     row = get_task(con, tid)
     if row["state"] not in OPEN_STATES:
         sys.exit(f"task {tid}: already {row['state']}")
@@ -1663,7 +1691,16 @@ def prova_add(con, tid, build, dove, fai, atteso, by=None, files=None):
     if not (1 <= len(build) <= 80 and 1 <= len(dove) <= 80 and 1 <= len(fai) <= INFO_MAX and 1 <= len(atteso) <= INFO_MAX):
         sys.exit(f"task prova: --build and --dove 1-80 characters, --fai and --atteso 1-{INFO_MAX}")
     t = now()
-    con.execute("UPDATE prove SET superseded_at=? WHERE task=? AND superseded_at IS NULL AND (build<>? OR (dove=? AND fai=?))", (t, tid, build, dove, fai))
+    cache, ch = {}, None
+    for r in con.execute("SELECT n, build, dove, fai FROM prove WHERE task=? AND superseded_at IS NULL", (tid,)).fetchall():
+        if r["build"] == build:
+            gone = r["dove"] == dove and r["fai"] == fai
+        else:
+            ch = build_channels(row["project"], build, cache) if ch is None else ch
+            old_ch = build_channels(row["project"], r["build"], cache)
+            gone = not ch or not old_ch or bool(ch & old_ch)
+        if gone:
+            con.execute("UPDATE prove SET superseded_at=? WHERE n=?", (t, r["n"]))
     cur = con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_, files) VALUES (?,?,?,?,?,?,?,?)",
                       (tid, build, dove, fai, atteso, t, by, json.dumps(files, ensure_ascii=False) if files else None))
     con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,?,?,NULL)", (tid, t, by, "prova", f"{build} · {dove}: {fai}"[:500]))
