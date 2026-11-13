@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.163 — 2026-11-13: a test carried to a newer build names the new version everywhere in its text (supervisor-prove-riporto-testo-13-11).**
+  - When `task tidy` carried a test to a newer build, only «what to do» and «what to expect» got the new version, and only the version of the build just left. «Where» kept the old one, and a version left behind by earlier carries stayed: on pre-release 0.2.2147, tests still said «app 0.2.2143» or «app Android 0.2.2134». Now where, what to do and what to expect name the new version wherever they give it to the test's own channel («app 0.2.N», «app Android 0.2.N», «Installa la 0.2.N»; «web 0.2.N» for the web). A version given to the other channel («Web già alla 0.2.2050» in an app test) stays. An open test already on the newest build, with its text left at an older version of its channel, is aligned in place.
 - **0.8.162 — 2026-11-13: a web test and an app test of the same task stay open side by side (supervisor-prove-canali-13-11).**
   - `task prova` retired every open test of the task with another build, also the tests of the other channel. In an app each task has a web build («web-0.2.N (sha)») and an Android pre-release («auto-…-sha»): a new app test retired the open web test. Now a new build retires only the tests of its own channel: web, pre-release or `vX.Y.Z` tag, read from the build's name. A build named for both channels retires both. A name whose channel is unknown retires every other build, as before.
 - **0.8.161 — 2026-11-13: the chat goes back past the first 2 MB of a long conversation (supervisor-before-finestra-13-11).**

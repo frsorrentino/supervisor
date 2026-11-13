@@ -1137,14 +1137,28 @@ def carried_build(project, name, cache, webs=()):
     return new if new and new != name else None
 
 
-def _retext(text, old, new, old_ver, new_ver):
+# 13/11/2026 (supervisor-prove-riporto-testo-13-11): come le prove nominano la versione del loro canale («app 0.2.2143», «app
+# Android 0.2.2134», «Installa la 0.2.2147», «web 0.2.2138»); l'altro canale («Web gia' alla 0.2.2050» in una prova dell'app)
+# resta com'e'
+_V = r"\d+\.\d+\.\d+(?![\w]|\.\d)"
+_CHAN_PREFIX = {"app": r"\b(?:[Aa]pp(?: Android)?(?: alla| la)? |[Ii]nstalla la )",
+                "web": r"\b[Ww]eb(?: gi(?:à|a'))?(?: alla| la)? "}
+
+
+def _retext(text, old, new, old_ver, new_ver, channel=None):
     """Il testo di una prova riportata: il nome vecchio diventa il nuovo (parola intera, come _carry_pause: «a» non tocca
-    «apre»), e la versione vecchia («0.2.2032») la nuova; un nome che e' solo una versione cambia solo come versione."""
+    «apre»), e la versione vecchia («0.2.2032») la nuova; un nome che e' solo una versione cambia solo come versione.
+    13/11: con `channel` («app» o «web», in un progetto che numera le build coi commit) ogni versione che il testo da' al
+    canale della prova diventa la nuova, anche se e' rimasta indietro di piu' riporti; quella data all'altro canale resta."""
     pat = re.compile(r"(?<![A-Za-z0-9._-])" + re.escape(old) + r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9])")
     if old != old_ver and pat.search(text):
         text = pat.sub(new, text)
+    other = re.compile("(?:" + _CHAN_PREFIX["web" if channel == "app" else "app"] + r")$") if channel in _CHAN_PREFIX else None
     if old_ver and new_ver and old_ver != new_ver:
-        text = re.sub(r"(?<![\w.])" + re.escape(old_ver) + r"(?![\w]|\.\d)", new_ver, text)
+        text = re.sub(r"(?<![\w.])" + re.escape(old_ver) + r"(?![\w]|\.\d)",
+                      lambda m: m.group(0) if other and other.search(text[max(0, m.start() - 30):m.start()]) else new_ver, text)
+    if channel in _CHAN_PREFIX and new_ver:
+        text = re.sub("(" + _CHAN_PREFIX[channel] + ")" + _V, lambda m: m.group(1) + new_ver, text)
     return text
 
 
@@ -1232,6 +1246,14 @@ def tidy(con, now_=None, dry=False):
             elif r["state"] != "running" and now_ - _last_activity(con, pr["task"], r) >= TIDY_STALE_S:
                 rule, text = 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400)
             else:
+                # 13/11 (supervisor-prove-riporto-testo-13-11): una prova gia' sulla build piu' nuova, col testo rimasto a
+                # una versione di prima del suo canale (riportata quando il dove non si aggiornava): il testo si allinea
+                if not dry and r["project"] and Path(str(r["project"])).is_dir() and _count_scheme(r["project"], cache):
+                    bc, nv = build_commit(r["project"], pr["build"], cache), _ver_of(r["project"], pr["build"], cache)
+                    if bc and nv:
+                        txt = [_retext(pr[k], pr["build"], pr["build"], None, nv, bc[0]) for k in ("dove", "fai", "atteso")]
+                        if txt != [pr["dove"], pr["fai"], pr["atteso"]]:
+                            con.execute("UPDATE prove SET dove=?, fai=?, atteso=? WHERE n=?", (txt[0][:80], txt[1], txt[2], pr["n"]))
                 continue
         log(pr["task"], "prova", rule, text, nb_)
         if not dry:
@@ -1239,12 +1261,16 @@ def tidy(con, now_=None, dry=False):
             if nb_:
                 # la stessa prova sulla build nuova: l'ora resta quella di quando la persona l'ha vista la prima volta; il
                 # testo che nomina la build o la versione vecchia nomina la nuova (13/11)
-                ov, nv = (_ver_of(r["project"], pr["build"], cache), _ver_of(r["project"], nb_, cache)) if Path(str(r["project"])).is_dir() else (None, None)
-                fai_, atteso_ = (_retext(pr[k], pr["build"], nb_, ov, nv) for k in ("fai", "atteso"))
+                isdir = Path(str(r["project"])).is_dir()
+                ov, nv = (_ver_of(r["project"], pr["build"], cache), _ver_of(r["project"], nb_, cache)) if isdir else (None, None)
+                # 13/11 (supervisor-prove-riporto-testo-13-11): anche il dove, e le versioni date al canale della prova
+                bc = build_commit(r["project"], nb_, cache) if isdir and _count_scheme(r["project"], cache) else None
+                dove_, fai_, atteso_ = (_retext(pr[k], pr["build"], nb_, ov, nv, bc[0] if bc else None) for k in ("dove", "fai", "atteso"))
+                dove_ = dove_[:80]
                 if not con.execute("SELECT 1 FROM prove WHERE task=? AND build=? AND dove=? AND fai=? AND superseded_at IS NULL",
-                                   (pr["task"], nb_, pr["dove"], fai_)).fetchone():
+                                   (pr["task"], nb_, dove_, fai_)).fetchone():
                     con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_, files) VALUES (?,?,?,?,?,?,?,?)",
-                                (pr["task"], nb_, pr["dove"], fai_, atteso_, pr["at"], pr["by_"], pr["files"]))
+                                (pr["task"], nb_, dove_, fai_, atteso_, pr["at"], pr["by_"], pr["files"]))
     # 1, il seguito (1.115, 04/11; 1.122, 05/11): un compito superato dalla regola 1 si chiude come superato (mai done) solo
     # quando la pre-release che lo supera ha una sua prova ok, mai perche' si e' chiuso un altro compito del progetto
     if not dry:
