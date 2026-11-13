@@ -376,11 +376,17 @@
         ]
       },
       {
+        "id": "claude-fable-5-2",
+        "label": "Fable 5.2",
+        "pick": [
+          "Fable 5.2"
+        ]
+      },
+      {
         "id": "claude-fable-5-1",
         "label": "Fable 5.1",
         "pick": [
-          "Fable 5.1",
-          "Fable"
+          "Fable 5.1"
         ]
       },
       {

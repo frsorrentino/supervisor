@@ -215,6 +215,13 @@ T.check("CO16 Haiku 5.5 under 200k tokens: the 1M window from relay.window_1m (1
 T.check("CO16 the defaults: claude-haiku-5-5 in relay.window_1m; Sonnet 5.5 and Haiku 5.5 in tune.models",
         "claude-haiku-5-5" in core.cm.DEFAULTS["relay"]["window_1m"]
         and [m["id"] for m in core.cm.DEFAULTS["tune"]["models"]][-2:] == ["claude-sonnet-5-5", "claude-haiku-5-5"], str(core.cm.DEFAULTS["tune"]["models"]))
+# CO19 (13/11/2026, Claude Code 2.1.321): Fable 5.2 nel selettore con la sua etichetta; nessun Fable ripiega su «Fable»,
+# l'alias che segue il Fable predefinito
+f19 = {m["id"]: m for m in core.cm.DEFAULTS["tune"]["models"]}
+T.check("CO19 tune.models: claude-fable-5-2 with label and pick «Fable 5.2»; claude-fable-5-1 only «Fable 5.1»; no model picks the bare «Fable»",
+        f19.get("claude-fable-5-2", {}).get("pick") == ["Fable 5.2"] and f19["claude-fable-5-2"].get("label") == "Fable 5.2"
+        and f19.get("claude-fable-5-1", {}).get("pick") == ["Fable 5.1"]
+        and all("Fable" not in (m["pick"] if isinstance(m["pick"], list) else [m["pick"]]) for m in core.cm.DEFAULTS["tune"]["models"]), str(core.cm.DEFAULTS["tune"]["models"]))
 # CO17 (27/10/2026, Claude Code 2.1.311): l'id di Sonnet 5.5 non porta mai [1m] e la finestra dipende dall'account, come
 # Fable 5.1: nei default di relay.window_unmarked (la config dell'utente non li sovrascrive)
 def sonnet_window_unmarked(tokens, sid="S-17"):

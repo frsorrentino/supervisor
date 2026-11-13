@@ -428,6 +428,12 @@ add(contract("z4", cmd="test -f ok.txt", outcome={"expected": "docs/notte/2026-1
 add(contract("z5", cmd='R=$(gh release view impegni-2026-10-22-b --json tagName -q .tagName) && test -n "$R"', outcome={"expected": "la pre-release installata", "kind": "release"}))
 for z in ("z2", "z3", "z4", "z5"):
     cm("cancel", z)
+# una suite partita prima di mezzanotte (13/11/2026, release 0.8.157: g1 chiuso alle 23:5x, T18 dopo le 00:00) ha chiuso g1
+# e gli altri «ieri»: T18 guarda il formato e i giorni che crea lui, quindi quelle chiusure passano alla mezzanotte di oggi
+mid18 = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d")))
+con18 = sqlite3.connect(str(tmp / "tasks.db"))
+con18.execute("UPDATE results SET at=? WHERE at>=? AND at<?", (mid18, mid18 - 86400, mid18))
+con18.execute("UPDATE tasks SET updated_at=? WHERE updated_at>=? AND updated_at<?", (mid18, mid18 - 86400, mid18)); con18.commit(); con18.close()
 c18 = json.loads(cm("closed", "--json", env=IT)[1])
 rows18 = {x["task"]: x for x in c18["rows"]}
 T.check("T18 closed --json: {date (today), rows (newest first, outcome green|cancelled|failed, at, session, proof), days, more false}",

@@ -184,6 +184,13 @@ T.check("MU8 the text report: the period, the automations with since and who agr
         r6.returncode == 0 and "Master, ultimi 7 giorni" in r6.stdout and "Automazioni concordate" in r6.stdout and "(dal 2026-10-24, maintainer)" in r6.stdout
         and "Sessioni" in r6.stdout and "AVVISO" in r6.stdout, r6.stdout + r6.stderr)
 T.check("MU8 --days wants a number", run("--days", "x").returncode == 2, "")
+# MU10 (13/11/2026, Claude Code 2.1.321): senza fable-director i pesi scritti qui hanno Fable 5.2 come Fable 5.1
+r10 = subprocess.run([sys.executable, "-c", "import importlib.util,json,sys; s=importlib.util.spec_from_file_location('mu', sys.argv[1]); "
+                     "mu=importlib.util.module_from_spec(s); s.loader.exec_module(mu); print(json.dumps(mu.economics()[1]))", str(T.SCRIPTS / "cm-master-usage.py")],
+                    capture_output=True, text=True, env=ENV, timeout=30)
+m10 = json.loads(r10.stdout or "{}")
+T.check("MU10 economics() without fable-director: claude-fable-5-2 cache read 0.025, like claude-fable-5-1",
+        m10.get("claude-fable-5-2", {}).get("cache_read") == 0.025 and m10.get("claude-fable-5-1", {}).get("cache_read") == 0.025, r10.stdout + r10.stderr)
 
 T.rm(str(tmp))
 T.finish()

@@ -58,7 +58,7 @@ DOUBLE = 2.0             # avviso: un'automazione oltre il doppio della sua medi
 DOUBLE_MIN_SHARE = 0.01  # ...se pesa almeno l'1 % del periodo (sotto e' rumore)
 ALERT_EVERY_S = 86400    # lo stesso avviso al massimo una volta ogni 24 ore
 EQ_DEFAULT = {"input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_create": 1.25, "cache_create_1h": 2.0}
-EQ_MODELS = {"claude-fable-5-1": {"cache_read": 0.025}, "claude-opus-5-5": {"cache_read": 0.05}, "claude-sonnet-5-5": {"cache_read": 0.05}}
+EQ_MODELS = {"claude-fable-5-2": {"cache_read": 0.025}, "claude-fable-5-1": {"cache_read": 0.025}, "claude-opus-5-5": {"cache_read": 0.05}, "claude-sonnet-5-5": {"cache_read": 0.05}}
 PEER = re.compile(r'<cross-session-message\b[^>]*\bfrom-name="([^"]*)"[^>]*>\s*(.*?)\s*(?:</cross-session-message>|$)', re.S)
 PHONE, WEB = "Dall'utente via telefono", "Dall'utente via web app"
 

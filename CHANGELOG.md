@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.158 — 2026-11-13: Fable 5.2 can be picked from the phone, and the cost weights know it (supervisor-tune-fable52-13-11).**
+  - The model list now has Fable 5.2, picked by its own «Fable 5.2» row of the `/model` selector. Fable 5.1 is picked only by «Fable 5.1»: since Claude Code 2.1.321 the bare «Fable» row is the default Fable, so it would have switched to Fable 5.2 without saying so. No model uses the bare «Fable» any more.
+  - Without fable-director, the master's usage weights Fable 5.2 cache reads at 0.025, like Fable 5.1.
+  - Tests: the closed-tasks test (T18) failed when the suite ran across midnight. It now moves the closures of the day before to today's midnight before checking.
 - **0.8.157 — 2026-11-12: a Fable 5.2 session no longer shows a context five times too high (supervisor-finestra-fable52-12-11).**
   - Claude Code 2.1.321 made Claude Fable 5.2 the default Fable. Its id never carries `[1m]`, and its window can be 1M or 200k like Fable 5.1's. Without the statusline snapshot, for example on another host, a Fable 5.2 session under 200k tokens was counted against 200k. `claude-fable-5-2` is now in the defaults of `relay.window_unmarked`: below 200k tokens and with no snapshot the context stays unknown instead of wrong.
 - **0.8.156 — 2026-11-12: a choice already made still shows its images (supervisor-file-scheda-chiusa-12-11, contract 1.142).**

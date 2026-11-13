@@ -257,7 +257,12 @@ DEFAULTS = {
              # `pick`: le etichette nel selettore di /model, una lista perche' cambiano con Claude Code (le seconde fino
              # alla 2.1.280, le prime dalla 2.1.283, dove la voce «(1M context)» non c'e' piu')
              "models": [{"id": "claude-opus-5-5[1m]", "label": "Opus 5.5", "pick": ["Opus 5.5", "Opus (1M context)"]},
-                        {"id": "claude-fable-5-1", "label": "Fable 5.1", "pick": ["Fable 5.1", "Fable"]},
+                        # 13/11/2026, Claude Code 2.1.321: Fable 5.2 e' il Fable predefinito. Nel binario 2.1.323 la voce
+                        # «Fable» del selettore e' l'alias del Fable predefinito (claude-fable-5-2) e le voci del catalogo
+                        # sono «Fable 5.2» (main) e «Fable 5.1» (overflow). Nessuna delle due tiene «Fable»: quella voce
+                        # cambia modello a ogni nuovo Fable senza errore
+                        {"id": "claude-fable-5-2", "label": "Fable 5.2", "pick": ["Fable 5.2"]},
+                        {"id": "claude-fable-5-1", "label": "Fable 5.1", "pick": ["Fable 5.1"]},
                         {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5", "pick": ["Sonnet 5.5", "Sonnet"]},
                         {"id": "claude-haiku-5-5", "label": "Haiku 5.5", "pick": ["Haiku 5.5", "Haiku"]}]},
     # casella persistente (23/09/2026, docs/plans/2026-09-23-approvazioni-casella-registro-design.md): scadenza dei
