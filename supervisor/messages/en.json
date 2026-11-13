@@ -258,6 +258,7 @@
   "tasks.card_choice": "choice",
   "tasks.card_ok": "ok request",
   "tasks.tidy_newer": "carried over: pre-release {new} contains {old}, test that one",
+  "tasks.tidy_newer_web": "carried over: web {new} contains {old}, test that one",
   "tasks.tidy_task": "superseded: closed with pre-release {new}, where its own test is ok",
   "tasks.imp_declared": "declared in the task",
   "tasks.imp_undo_no": "an ok that cannot be undone",

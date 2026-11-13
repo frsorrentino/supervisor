@@ -997,6 +997,163 @@ def newer_build(project, tag, cache):
     return res
 
 
+# 13/11/2026 (supervisor-prove-riporto-13-11): i nomi d'uso delle build. Le pre-release Android di un'app hanno il tag
+# `auto-…-<sha>` e il titolo «0.2.N · ramo · sha»; le sessioni scrivono pero' anche «0.2.2032», «app-0.2.2134 (a9cb6d47)», e la
+# web «web-0.2.1930» o «web-0.2.2132 (a72884fc)». N e' il numero di commit (`rev-list --count`, come vite.config.ts della web e
+# la build Android). Senza risolverli la regola 1 non li riportava mai: 30 prove su 41 ferme su build vecchie.
+_BUILD_NAME_RE = re.compile(r"^(?:(web|app)-)?\d+\.\d+\.(\d+)(?:\s*\(([0-9a-f]{7,40})\))?$")
+_VER_RE = re.compile(r"(?<![\w.])\d+\.\d+\.\d+(?![\w]|\.\d)")
+
+
+def _tags_of(project, cache):
+    """[(tag, unix, sha)] dal piu' nuovo; il commit di un tag annotato e' quello che porta."""
+    tk = ("tags", str(project))
+    if tk not in cache:
+        out = _git(project, "for-each-ref", "--sort=-creatordate", "--format=%(refname:short)\t%(creatordate:unix)", "refs/tags").stdout
+        cache[tk] = [(t, int(ts)) for t, ts in (x.split("\t") for x in out.splitlines() if "\t" in x)]
+    return cache[tk]
+
+
+def _sha(project, ref, cache):
+    k = ("sha", str(project), ref)
+    if k not in cache:
+        r = _git(project, "rev-parse", "--verify", "-q", ref + "^{commit}")
+        cache[k] = r.stdout.strip() if r.returncode == 0 else None
+    return cache[k]
+
+
+def _count(project, sha, cache):
+    k = ("count", str(project), sha)
+    if k not in cache:
+        r = _git(project, "rev-list", "--count", sha)
+        cache[k] = int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip().isdigit() else None
+    return cache[k]
+
+
+def _commit_of_count(project, n, cache):
+    """Il commit con `n` antenati (se stesso compreso) sulla linea principale del tag piu' nuovo, di HEAD o di origin/HEAD:
+    lungo i primi genitori il conto cresce, quindi una ricerca binaria. None se nessuna linea ce l'ha."""
+    for ref in [t for t, _ in _tags_of(project, cache)[:1]] + ["HEAD", "origin/HEAD"]:
+        k = ("fp", str(project), ref)
+        if k not in cache:
+            r = _git(project, "rev-list", "--first-parent", ref)
+            cache[k] = list(reversed(r.stdout.split())) if r.returncode == 0 else []
+        line, lo, hi = cache[k], 0, len(cache[k]) - 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            c = _count(project, line[mid], cache)
+            if c is None:
+                break
+            if c == n:
+                return line[mid]
+            lo, hi = (mid + 1, hi) if c < n else (lo, mid - 1)
+    return None
+
+
+def _count_scheme(project, cache):
+    k = ("scheme", str(project))
+    if k not in cache:
+        cache[k] = False
+        for t, _ in _tags_of(project, cache)[:5]:
+            h = re.search(r"-([0-9a-f]{7,40})$", t)
+            if h and (_sha(project, t, cache) or "").startswith(h.group(1)):
+                cache[k] = True
+                break
+    return cache[k]
+
+
+def build_commit(project, name, cache):
+    """(superficie, sha) di una build: un tag del progetto e' una pre-release Android («app»); «[app-|web-]X.Y.N [(sha)]» il
+    commit dello sha, o quello con N commit. None se il nome non si risolve (niente si sposta)."""
+    k = ("build", str(project), name)
+    if k in cache:
+        return cache[k]
+    res = None
+    try:
+        if name in dict(_tags_of(project, cache)):
+            sha = _sha(project, name, cache)
+            res = ("app", sha) if sha else None
+        else:
+            m = _BUILD_NAME_RE.match(name.strip())
+            # un «X.Y.N» nudo e' un numero di commit solo in un progetto che numera cosi': uno dei suoi tag recenti finisce
+            # con lo sha del commit che porta (auto-…-dc88527b). Altrove «0.8.158» e' una versione, non il commit 158
+            if m and not m.group(1) and not m.group(3) and not _count_scheme(project, cache):
+                m = None
+            if m:
+                sha = _sha(project, m.group(3), cache) if m.group(3) else _commit_of_count(project, int(m.group(2)), cache)
+                res = ("web" if m.group(1) == "web" else "app", sha) if sha else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        res = None
+    cache[k] = res
+    return res
+
+
+def _web_name(project, sha, cache):
+    n = _count(project, sha, cache)
+    return f"web-0.2.{n} ({sha[:8]})" if n else None
+
+
+def normalize_build(project, name, cache=None):
+    """Il nome con cui si salva una prova: la pre-release Android col suo tag (stesso commit), la web come «web-0.2.N (sha)».
+    Un nome che non si risolve resta com'e'."""
+    cache = {} if cache is None else cache
+    if not project or not Path(str(project)).is_dir():
+        return name
+    bc = build_commit(project, name, cache)
+    if not bc:
+        return name
+    surface, sha = bc
+    if surface == "web":
+        return _web_name(project, sha, cache) or name
+    for t, _ in _tags_of(project, cache):
+        if _sha(project, t, cache) == sha:
+            return t
+    return name
+
+
+def carried_build(project, name, cache, webs=()):
+    """La build su cui portare una prova scritta per `name`, o None: per l'Android la pre-release piu' nuova che ne contiene
+    il commit (anche lo stesso commit con un altro nome); per la web la piu' nuova tra `webs` (le web nominate dalle prove del
+    progetto) che lo contiene. Mai la build stessa."""
+    bc = build_commit(project, name, cache)
+    if not bc:
+        return None
+    surface, sha = bc
+    if surface == "app":
+        for t, _ in _tags_of(project, cache):
+            ts = _sha(project, t, cache)
+            if ts and (ts == sha or _git(project, "merge-base", "--is-ancestor", sha, ts).returncode == 0):
+                return t if t != name else None
+        return None
+    best = None
+    for w in webs:
+        wb = build_commit(project, w, cache)
+        if not wb or wb[0] != "web":
+            continue
+        if wb[1] == sha or _git(project, "merge-base", "--is-ancestor", sha, wb[1]).returncode == 0:
+            if best is None or (_count(project, wb[1], cache) or 0) > (_count(project, best, cache) or 0):
+                best = wb[1]
+    new = _web_name(project, best, cache) if best else None
+    return new if new and new != name else None
+
+
+def _retext(text, old, new, old_ver, new_ver):
+    """Il testo di una prova riportata: il nome vecchio diventa il nuovo (parola intera, come _carry_pause: «a» non tocca
+    «apre»), e la versione vecchia («0.2.2032») la nuova; un nome che e' solo una versione cambia solo come versione."""
+    pat = re.compile(r"(?<![A-Za-z0-9._-])" + re.escape(old) + r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9])")
+    if old != old_ver and pat.search(text):
+        text = pat.sub(new, text)
+    if old_ver and new_ver and old_ver != new_ver:
+        text = re.sub(r"(?<![\w.])" + re.escape(old_ver) + r"(?![\w]|\.\d)", new_ver, text)
+    return text
+
+
+def _ver_of(project, name, cache):
+    bc = build_commit(project, name, cache)
+    n = _count(project, bc[1], cache) if bc else None
+    return f"0.2.{n}" if n else None
+
+
 def _last_activity(con, tid, row):
     vals = [row["created_at"] or 0]
     for q in ("SELECT MAX(at) FROM steps WHERE task=?", "SELECT MAX(at) FROM prove WHERE task=?", "SELECT MAX(at) FROM pauses WHERE task=?"):
@@ -1053,7 +1210,11 @@ def tidy(con, now_=None, dry=False):
                 con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,'supervisor','step',?,NULL)", (tid, now_, text[:500]))
         elif r["state"] != "running" and now_ - _last_activity(con, tid, r) >= TIDY_STALE_S:
             close_pause(tid, 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400))
-    # 1 e 4: le prove del banco ancora da fare
+    # 1 e 4: le prove del banco ancora da fare. Le web che il registro conosce, per progetto: la piu' nuova che contiene
+    # quella di una prova e' dove la prova si porta (la web pubblicata non dice altrove la sua versione)
+    webs = {}
+    for w in con.execute("SELECT DISTINCT t.project, p.build FROM prove p JOIN tasks t ON t.id=p.task WHERE p.build LIKE 'web-%'").fetchall():
+        webs.setdefault(w["project"], []).append(w["build"])
     for pr in con.execute("SELECT * FROM prove WHERE superseded_at IS NULL AND result IS NULL").fetchall():
         r = rows.get(pr["task"])
         if r is None:
@@ -1063,9 +1224,11 @@ def tidy(con, now_=None, dry=False):
             rule, text = 2, M("tasks.tidy_closed", state=r["state"])
         else:
             nb = newer_build(r["project"], pr["build"], cache) if r["project"] else None
+            if not nb and r["project"] and Path(str(r["project"])).is_dir():   # 13/11: i nomi d'uso, non solo i tag
+                nb = carried_build(r["project"], pr["build"], cache, webs.get(r["project"], ()))
             nb_ = nb
             if nb:
-                rule, text = 1, M("tasks.tidy_newer", old=pr["build"], new=nb)
+                rule, text = 1, M("tasks.tidy_newer_web" if nb.startswith("web-") else "tasks.tidy_newer", old=pr["build"], new=nb)
             elif r["state"] != "running" and now_ - _last_activity(con, pr["task"], r) >= TIDY_STALE_S:
                 rule, text = 4, M("tasks.tidy_stale", days=TIDY_STALE_S // 86400)
             else:
@@ -1073,11 +1236,15 @@ def tidy(con, now_=None, dry=False):
         log(pr["task"], "prova", rule, text, nb_)
         if not dry:
             con.execute("UPDATE prove SET superseded_at=? WHERE n=?", (now_, pr["n"]))
-            if nb_ and not con.execute("SELECT 1 FROM prove WHERE task=? AND build=? AND dove=? AND fai=? AND superseded_at IS NULL",
-                                       (pr["task"], nb_, pr["dove"], pr["fai"])).fetchone():
-                # la stessa prova sulla build nuova: l'ora resta quella di quando la persona l'ha vista la prima volta
-                con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_) VALUES (?,?,?,?,?,?,?)",
-                            (pr["task"], nb_, pr["dove"], pr["fai"], pr["atteso"], pr["at"], pr["by_"]))
+            if nb_:
+                # la stessa prova sulla build nuova: l'ora resta quella di quando la persona l'ha vista la prima volta; il
+                # testo che nomina la build o la versione vecchia nomina la nuova (13/11)
+                ov, nv = (_ver_of(r["project"], pr["build"], cache), _ver_of(r["project"], nb_, cache)) if Path(str(r["project"])).is_dir() else (None, None)
+                fai_, atteso_ = (_retext(pr[k], pr["build"], nb_, ov, nv) for k in ("fai", "atteso"))
+                if not con.execute("SELECT 1 FROM prove WHERE task=? AND build=? AND dove=? AND fai=? AND superseded_at IS NULL",
+                                   (pr["task"], nb_, pr["dove"], fai_)).fetchone():
+                    con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at, by_, files) VALUES (?,?,?,?,?,?,?,?)",
+                                (pr["task"], nb_, pr["dove"], fai_, atteso_, pr["at"], pr["by_"], pr["files"]))
     # 1, il seguito (1.115, 04/11; 1.122, 05/11): un compito superato dalla regola 1 si chiude come superato (mai done) solo
     # quando la pre-release che lo supera ha una sua prova ok, mai perche' si e' chiuso un altro compito del progetto
     if not dry:
@@ -1492,6 +1659,7 @@ def prova_add(con, tid, build, dove, fai, atteso, by=None, files=None):
     if row["state"] not in OPEN_STATES:
         sys.exit(f"task {tid}: already {row['state']}")
     build, dove, fai, atteso = (" ".join(str(x).split()) for x in (build, dove, fai, atteso))
+    build = normalize_build(row["project"], build)   # 13/11: «app-0.2.2135 (dc88527b)» → il tag della pre-release
     if not (1 <= len(build) <= 80 and 1 <= len(dove) <= 80 and 1 <= len(fai) <= INFO_MAX and 1 <= len(atteso) <= INFO_MAX):
         sys.exit(f"task prova: --build and --dove 1-80 characters, --fai and --atteso 1-{INFO_MAX}")
     t = now()

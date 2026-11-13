@@ -784,6 +784,47 @@ _r8 = {r["id"]: r for r in _crs8["result"]}
 _dn8 = [json.loads(_r8[c["id"]]["text"]) for c in _crs8["cmd"] if c["op"] == "done" and c["id"] in _r8 and _r8[c["id"]]["ok"]]
 T.check("SU9 the contract's sample: a closed row with outcome superseded", any(r.get("outcome") == "superseded" for d in _dn8 for r in d.get("rows", [])), str(len(_dn8)))
 
+# riporto_nomi (13/11/2026, supervisor-prove-riporto-13-11): 30 prove su 41 di un'app ferme su build vecchie, perche' la
+# regola 1 voleva un tag. Nomi d'uso: «0.2.N» (N = numero di commit), «app-0.2.N (sha)», «web-0.2.N», «web-0.2.N (sha)».
+# Cinque commit; i tag auto-a (commit 3) e auto-b (commit 5) sono le pre-release Android
+_repo3 = tmp / "app-repo-3"
+_repo3.mkdir()
+def _g3(*a, when=None):
+    e = dict(_genv, **({"GIT_COMMITTER_DATE": when, "GIT_AUTHOR_DATE": when} if when else {}))
+    return subprocess.run(["git", "-C", str(_repo3), *a], capture_output=True, text=True, env=e, check=True).stdout
+_g3("init", "-q", "-b", "main")
+_sha3 = {}
+for _i in range(1, 6):
+    _g3("commit", "-q", "--allow-empty", "-m", f"c{_i}", when=f"2026-11-0{_i}T10:00:00")
+    _sha3[_i] = _g3("rev-parse", "HEAD").strip()
+    if _i in (3, 5):
+        _g3("tag", f"auto-a-{_sha3[3][:8]}" if _i == 3 else f"auto-b-{_sha3[5][:8]}")
+_AB = f"auto-b-{_sha3[5][:8]}"
+for _t in ("rn-app", "rn-app2", "rn-web", "rn-web2", "rn-norm", "rn-wnorm"):
+    add_in(_t, _repo3)
+cm("prova", "rn-app", "--build", "0.2.2", "--dove", "home", "--fai", "installa la 0.2.2 e apri la Home", "--atteso", "la 0.2.2 mostra la scheda")
+cm("prova", "rn-app2", "--build", f"app-0.2.3 ({_sha3[3][:8]})", "--dove", "home", "--fai", "apri", "--atteso", "si apre")
+cm("prova", "rn-web", "--build", "web-0.2.1", "--dove", "home", "--fai", "ricarica la web", "--atteso", "si vede")
+cm("prova", "rn-web2", "--build", f"web-0.2.4 ({_sha3[4][:8]})", "--dove", "home", "--fai", "ricarica", "--atteso", "si vede")
+_run_rn = json.loads(cm("tidy", "--json")[1])
+_lb = lambda t: [x[0] for x in _live(t)]  # noqa: E731
+T.check("RN1 «0.2.2» and «app-0.2.3 (sha)» (the commit of auto-a) are carried to auto-b, the newest pre-release that contains them",
+        _lb("rn-app") == [_AB] and _lb("rn-app2") == [_AB], str(_run_rn))
+T.check("RN1 the text of a carried test names the new version: «0.2.2» becomes «0.2.5» in what to do and what to expect",
+        _live("rn-app") == [(_AB, "home", "installa la 0.2.5 e apri la Home", "la 0.2.5 mostra la scheda")], str(_live("rn-app")))
+T.check("RN2 «web-0.2.1» goes to the newest web the registry knows that contains it, «web-0.2.4 (sha)»; that one stays; the line says «la web»",
+        _lb("rn-web") == [f"web-0.2.4 ({_sha3[4][:8]})"] and _lb("rn-web2") == [f"web-0.2.4 ({_sha3[4][:8]})"]
+        and any(x["task"] == "rn-web" and "la web " in x["text"] for x in _run_rn) and not any(x["task"] == "rn-web2" for x in _run_rn), str(_run_rn))
+cm("prova", "rn-norm", "--build", f"app-0.2.5 ({_sha3[5][:8]})", "--dove", "home", "--fai", "apri", "--atteso", "si apre")
+cm("prova", "rn-wnorm", "--build", "web-0.2.4", "--dove", "home", "--fai", "apri", "--atteso", "si apre")
+add_in("rn-semver", _repo2)
+cm("prova", "rn-semver", "--build", "0.0.1", "--dove", "home", "--fai", "apri", "--atteso", "si apre")
+T.check("RN4 a bare «0.0.1» in a project whose tags do not carry their sha (app-repo-2) stays a name: never resolved as commit 1",
+        _lb("rn-semver") == ["0.0.1"] and not [x for x in json.loads(cm("tidy", "--json")[1]) if x["task"] == "rn-semver"], str(_live("rn-semver")))
+T.check("RN3 task prova saves the name it resolves: «app-0.2.5 (sha)» as the tag auto-b, «web-0.2.4» as «web-0.2.4 (sha)»; a second tidy moves nothing",
+        _lb("rn-norm") == [_AB] and _lb("rn-wnorm") == [f"web-0.2.4 ({_sha3[4][:8]})"]
+        and not [x for x in json.loads(cm("tidy", "--json")[1]) if x["task"].startswith("rn-")], str((_live("rn-norm"), _live("rn-wnorm"))))
+
 
 # scadenza_login (04/11/2026, contratto 1.117, supervisor-scadenza-login-04-11): `claude auth status` dice loginExpiresAt; da 7
 # giorni prima una voce in Tocca a te, sulla master, senza comandi per la persona; sparisce alla lettura dopo il nuovo login

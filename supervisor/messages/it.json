@@ -258,6 +258,7 @@
   "tasks.card_choice": "scelta",
   "tasks.card_ok": "richiesta di ok",
   "tasks.tidy_newer": "portata avanti: la pre-release {new} contiene {old}, si prova quella",
+  "tasks.tidy_newer_web": "portata avanti: la web {new} contiene {old}, si prova quella",
   "tasks.tidy_task": "superata: chiuso con la pre-release {new}, dove la sua prova è ok",
   "tasks.imp_declared": "dichiarata nel compito",
   "tasks.imp_undo_no": "un ok con «non si torna indietro»",
