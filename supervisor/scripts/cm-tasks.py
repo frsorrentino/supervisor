@@ -1347,6 +1347,12 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
             nxt = st["next"]
         if pz and pz["waits"] == "person":   # 1.77: in pausa per qualcosa che solo la persona puo' fare → «Per te» nell'app
             waits = {"who": session, "on": "person"}
+        # 13/11/2026 (supervisor-fermi-prove-13-11): una prova da fare (nessun esito, non superata) aspetta la persona,
+        # come in `task prove`: non e' fermo e non tocca alla sessione, e il prossimo passo dice quale prova
+        pv = con.execute("SELECT n, build FROM prove WHERE task=? AND result IS NULL AND superseded_at IS NULL ORDER BY n", (r["id"],)).fetchall()
+        if pv:
+            waits = {"who": session, "on": "person"}
+            nxt = M("tasks.next_prova", n=", ".join(str(x["n"]) for x in pv), build=pv[-1]["build"])
         idle = max(0, now_ - last["at"])
         out.append({"task": r["id"], "title": r["title"], "short": short_of(task), "project": r["project"], "session": r["session"], "state": r["state"],
                     "lane": r["lane"], "plan": r["plan"], "approved": approved, "approved_at": approved_at, "approved_by": approved_by,
@@ -1356,7 +1362,7 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
                     "check": {"outcome": res["outcome"], "at": int(res["at"])} if res else None,
                     "paused": {"reason": pz["reason"], "at": int(pz["since"] or pz["at"]), "by": pz["by_"], "waits": pz["waits"],
                                "recheck": pz["recheck"]} if pz else None,   # 1.88: waits person | external | null
-                    "stalled": bool(approved and not pz and idle >= stall_s)})
+                    "stalled": bool(approved and not pz and not pv and idle >= stall_s)})
     # 04/11/2026 (supervisor-impegni-fermi-sessione-04-11): la stessa regola di stall-check (0.8.115): un compito di una
     # sessione che da meno di stall_s ha fatto un passo o un esito su un compito qualsiasi, o un commit nelle cartelle
     # dei suoi compiti, non e' fermo: e' in coda dietro una sessione al lavoro. Home, hook della master e `task impegni`

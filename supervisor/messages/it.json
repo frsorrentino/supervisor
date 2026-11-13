@@ -292,6 +292,7 @@
   "tasks.next_running": "{session} lavora; chiude con task done {task}",
   "tasks.next_assigned": "avvio di {session}",
   "tasks.next_proposed": "plan run",
+  "tasks.next_prova": "la prova n. {n} sulla {build}",
   "tasks.dur_min": "{n} min",
   "tasks.dur_hm": "{h} h {m:02d}",
   "tasks.dur_dh": "{d} g {h} h",

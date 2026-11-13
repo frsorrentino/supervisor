@@ -393,6 +393,33 @@ T.check("T16b a fresh commit in the session's folder counts as work: nothing, an
         "session:s18" in _alerts16b and not [x for x in b3 if x["session"] == "s18"]
         and "session:s18" not in json.loads((tmp / "alerts16b.json").read_text()), json.dumps((_alerts16b, b3)))
 
+# T16e (13/11/2026, supervisor-fermi-prove-13-11): un impegno che aspetta solo la prova della persona non e' fermo e
+# non tocca alla sessione; ritirata la prova torna fermo
+A16e = dict(IT, CM_TASKS_ALERTS=str(tmp / "alerts16e.json"))
+(tmp / "p16e").mkdir()   # una cartella senza commit: in repo16b il commit di T16c conterebbe come lavoro di s20
+add(contract("tp1", where={"project": str(tmp / "p16e"), "session": "s20", "host": "local", "account": None}))
+cm("prova", "tp1", "--build", "v9.9.1", "--dove", "home", "--fai", "apri la Home", "--atteso", "la scheda c'e'")
+_n16e = show("tp1")["prove"][0]["n"]
+con16e = sqlite3.connect(str(tmp / "tasks.db"))
+con16e.execute("UPDATE tasks SET state='approved', created_at=?, updated_at=? WHERE id='tp1'", (_old16b, _old16b))
+con16e.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_) VALUES (?,?,?,?,?,?,?)", ("tp1", None, "maintainer", _old16b, "ok", "x", "y"))
+for _tb in ("steps", "prove"):
+    con16e.execute(f"UPDATE {_tb} SET at=? WHERE task='tp1'", (_old16b,))
+con16e.commit(); con16e.close()
+_i16e = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}.get("tp1") or {}
+_a16e = json.loads(cm("stall-check", "--json", env=A16e)[1])
+T.check("T16e an open test (task prova, no result): not stalled after 3 hours idle, the person's turn, next names the test; stall-check says nothing",
+        _i16e.get("stalled") is False and _i16e.get("idle_s", 0) >= 3 * 3600 - 60 and _i16e.get("waits") == {"who": "s20", "on": "person"}
+        and _i16e.get("next") == f"la prova n. {_n16e} sulla v9.9.1" and not [x for x in _a16e if "tp1" in (x.get("tasks") or [x.get("task")])],
+        json.dumps((_i16e, _a16e))[:500])
+cm("prova-ritira", str(_n16e), "--by", "maintainer", env=IT)
+con16e = sqlite3.connect(str(tmp / "tasks.db"))   # il ritiro e' un passo: lo si invecchia come gli altri
+con16e.execute("UPDATE steps SET at=? WHERE task='tp1'", (_old16b,)); con16e.execute("UPDATE prove SET result_at=? WHERE task='tp1'", (_old16b,))
+con16e.execute("UPDATE tasks SET updated_at=? WHERE id='tp1'", (_old16b,)); con16e.commit(); con16e.close()
+_i16f = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}.get("tp1") or {}
+T.check("T16e the test retired (it has a result) and 3 hours idle: stalled again and the session's turn",
+        _i16f.get("stalled") is True and (_i16f.get("waits") or {}).get("on") == "s20", json.dumps(_i16f)[:300])
+
 # T17 (22/10/2026, contratto 1.77): una pausa che aspetta la persona (--waits person) e l'inizio vero (--since)
 cm("pause", "ok9", "--reason", "aspetta la casella Aruba", "--waits", "person", "--since", "2026-10-18T09:00", "--by", "master", env=IT)
 r17 = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}

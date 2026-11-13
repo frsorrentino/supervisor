@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.159 — 2026-11-13: a task waiting only for your test is no longer «stalled» (supervisor-fermi-prove-13-11).**
+  - A task whose only missing step was a test for you to do (a `task prova` with no result yet) was counted as stalled after two idle hours, and as the session's turn. The master got stall alerts for it. Such a task now waits for you: it is never stalled, its next step names the test («la prova n. 615 sulla v0.8.158»), and the app shows it as yours. This holds in `task impegni`, `task stall-check`, the Home and the master's hook. Once the test has a result, the usual rule applies again.
 - **0.8.158 — 2026-11-13: Fable 5.2 can be picked from the phone, and the cost weights know it (supervisor-tune-fable52-13-11).**
   - The model list now has Fable 5.2, picked by its own «Fable 5.2» row of the `/model` selector. Fable 5.1 is picked only by «Fable 5.1»: since Claude Code 2.1.321 the bare «Fable» row is the default Fable, so it would have switched to Fable 5.2 without saying so. No model uses the bare «Fable» any more.
   - Without fable-director, the master's usage weights Fable 5.2 cache reads at 0.025, like Fable 5.1.
