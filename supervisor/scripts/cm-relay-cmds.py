@@ -1597,6 +1597,10 @@ def transcript_read(path, n, mode, ref, chain=None):
             continue   # la voce e' piu' indietro: si allarga la finestra
         if not ref and len(entries) < n and start:
             continue
+        # 13/11 (supervisor-before-finestra-13-11): la voce c'e' ma fra le prime della finestra, e prima di lei il file
+        # continua: si allarga anche qui, o «before» la' dava una pagina corta, vuota se era la prima, con more true
+        if ref and start and ((mode == "before" and ids.index(ref) < n) or (mode == "around" and ids.index(ref) < (n - 1) // 2)):
+            continue
         break
     entries = _with_compacts(path, start, entries)
     ids = [e["id"] for e in entries]

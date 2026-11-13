@@ -4997,4 +4997,36 @@ _cl107 = {x["name"]: x.get("closing") for x in _st107["sessions"]}
 T.check("R107 (1.120) state.sessions[].closing {mode, at, deadline} only on the session with an armed closing; absent on the others",
         _cl107.get("atlas-shop") == {"mode": "force", "at": 1789214398, "deadline": 1789214578} and sum(1 for v in _cl107.values() if v) == 1, json.dumps(_cl107))
 
+# R108 (13/11, supervisor-before-finestra-13-11): sulla master, file oltre i 2 MB, «before=<id>» con la voce fra le prime
+# n della finestra dava una pagina corta, o {entries: [], more: true} se era la prima: il ciclo delle finestre smetteva
+# di allargare appena la voce c'era, e la chat della web e del telefono non andava piu' indietro
+_tx108 = tmp / "r108.jsonl"
+with open(_tx108, "w") as _f108:
+    for _i108 in range(400):
+        _f108.write(json.dumps({"type": "user", "uuid": f"u108-{_i108}", "timestamp": "2026-11-13T08:00:%02d.000Z" % (_i108 % 60),
+                                "isMeta": False, "isSidechain": False, "origin": {"kind": "human"},
+                                "message": {"role": "user", "content": f"message {_i108} " + "x" * 200}}) + "\n")
+_W108 = os.path.getsize(_tx108) // 5
+_sv108 = RL.TRANSCRIPT_WINDOWS
+try:
+    RL.TRANSCRIPT_WINDOWS = (_W108, _W108 * 2, None)
+    _sz108 = os.path.getsize(_tx108)
+    _win108 = [e["id"] for e in RL.core.transcript_entries(str(_tx108), _sz108 - _W108)]
+    _all108 = [f"u108-{i}.0" for i in range(400)]
+    _b0_108 = json.loads(RL.transcript_read(str(_tx108), 20, "before", _win108[0])[1])
+    _b3_108 = json.loads(RL.transcript_read(str(_tx108), 20, "before", _win108[3])[1])
+    _ar108 = json.loads(RL.transcript_read(str(_tx108), 21, "around", _win108[2])[1])
+    _top108 = json.loads(RL.transcript_read(str(_tx108), 20, "before", "u108-5.0")[1])
+finally:
+    RL.TRANSCRIPT_WINDOWS = _sv108
+_k108 = _all108.index(_win108[0])
+T.check("R108 transcript «n:before=<id>» with the entry first in the tail window → the n entries before it, from a wider window; never an empty page with more true",
+        [e["id"] for e in _b0_108["entries"]] == _all108[_k108 - 20:_k108] and _b0_108["more"] is True, str((_win108[:1], [e["id"] for e in _b0_108["entries"]][:3], _b0_108["more"])))
+T.check("R108 transcript «n:before=<id>» with the entry fourth in the window → still n entries, not 3",
+        [e["id"] for e in _b3_108["entries"]] == _all108[_k108 + 3 - 20:_k108 + 3], str(len(_b3_108["entries"])))
+T.check("R108 transcript «n:around=<id>» near the head of the window → half before it from a wider window, the entry in the middle",
+        [e["id"] for e in _ar108["entries"]] == _all108[_k108 + 2 - 10:_k108 + 2 + 11] and _ar108["more"] is True, str([e["id"] for e in _ar108["entries"]][:3]))
+T.check("R108 at the start of the file the page is short and more false (no endless widening)",
+        [e["id"] for e in _top108["entries"]] == _all108[:5] and _top108["more"] is False, str(_top108)[:200])
+
 T.finish()

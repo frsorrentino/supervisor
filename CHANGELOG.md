@@ -2,6 +2,8 @@
 
 ## 0.3.x
 
+- **0.8.161 — 2026-11-13: the chat goes back past the first 2 MB of a long conversation (supervisor-before-finestra-13-11).**
+  - The relay reads a transcript from its last 2 MB and widens only when needed. A «before» page stopped widening as soon as the asked entry was inside that window. When the entry was among the first of the window, the page came back short, or empty with more true if it was the first one. The web and the phone then stopped loading older messages. «before» and «around» now widen the window until there are enough entries before the asked one, or the file starts.
 - **0.8.160 — 2026-11-13: tests written with an app's own build names move to the newest build too (supervisor-prove-riporto-13-11).**
   - A test moved to a newer pre-release only when its build was a git tag. Sessions also write the names people use, such as «0.2.2032», «app-0.2.2134 (a9cb6d47)», «web-0.2.1930» or «web-0.2.2132 (a72884fc)», where the last number counts the commits. Those tests stayed on old builds for days: 30 of 41 open tests of one app. `task tidy` now resolves these names to their commit. An Android test moves to the newest pre-release that contains it, a web test to the newest web build named by the registry's tests that contains it. A version the test's text names («installa la 0.2.2032») becomes the new one.
   - `task prova --build` saves the resolved name: the pre-release's tag, or «web-0.2.N (sha)». A bare «X.Y.N» counts as a commit number only in a project whose tags end with their commit's sha; elsewhere it stays a version name.
