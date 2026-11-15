@@ -174,7 +174,7 @@
       "finished": true,
       "resolved": {
         "id": "q-1789120500-1",
-        "text": "Commit the README changes now?",
+        "text": "Commit the README?",
         "at": 1789210600,
         "by": "terminal"
       },
@@ -399,7 +399,8 @@
     "feedback_app",
     "results",
     "result_seen",
-    "result_note"
+    "result_note",
+    "max_sessions_set"
   ],
   "slash": [
     "compact",

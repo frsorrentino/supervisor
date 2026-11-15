@@ -270,7 +270,8 @@
     "feedback_app",
     "results",
     "result_seen",
-    "result_note"
+    "result_note",
+    "max_sessions_set"
   ],
   "slash": [
     "compact",
@@ -557,7 +558,7 @@
       "id": "s-5d0e2f9c13",
       "kind": "cleanup",
       "key": "cleanup:paused:orbit-docs-*",
-      "text": "Close the paused orbit-docs tasks?",
+      "text": "Close the paused tasks?",
       "at": 1789207190,
       "expires_at": 1789250390,
       "rank": 5,

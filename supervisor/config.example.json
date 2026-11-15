@@ -230,7 +230,9 @@
     "closed_chars": 90,
     "summary": "model",
     "summary_model": "haiku",
-    "summary_timeout_s": 120,
+    "summary_timeout_s": 60,
+    "max_s": 150,
+    "send_max_s": 420,
     "project_log": "docs/recap.md",
     "startup_lines": 5,
     "min_turns": 3

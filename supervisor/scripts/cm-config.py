@@ -169,7 +169,7 @@ DEFAULTS = {
     # last: none | short (solo le ferme su domanda, 60 caratteri) | full; hide_zero_turns: le chiuse
     # senza turni non compaiono
     "recap": {"cron_time": "20:00", "max_last_chars": 160, "last": "short", "hide_zero_turns": True, "closed_chars": 90,
-              "summary": "model", "summary_model": "haiku", "summary_timeout_s": 120, "project_log": "docs/recap.md", "startup_lines": 5,
+              "summary": "model", "summary_model": "haiku", "summary_timeout_s": 60, "max_s": 150, "send_max_s": 420, "project_log": "docs/recap.md", "startup_lines": 5,
               "min_turns": 3},
     # scadenze da un calendario .ics (16/10/2026): l'indirizzo col token sta in url_file (0600), mai qui; senza quel
     # file e' tutto spento. remind_days vale per gli eventi senza VALARM; cases: id della pratica (case_property) →
@@ -1672,6 +1672,47 @@ def firebase_usage_row(cfg, now=None):
     return ("WARN" if proj > FIREBASE_DAY_MB else "PASS", "doctor.firebase_usage", kw, "doctor.fix_firebase_usage" if proj > FIREBASE_DAY_MB else None)
 
 
+# 13/11/2026 (supervisor-push-falliti-13-11): con tutte le push in errore doctor dava 0 FAIL e 0 WARN. Il relay conta le
+# push fallite di fila in <relay.dir>/push-fails.json e dice se il demone legge la cartella dei progetti; l'esito del job
+# di prova di cron (macOS, `relay install`) sta in cron-probe.json.
+PUSH_FAIL_RECENT_S = 900
+STATE_OLD_S = 600
+
+
+def relay_push_rows(cfg, now=None):
+    now = now or time.time()
+    rd = expand(cfg["relay"].get("dir") or "~/.cc-supervisor/relay")
+    hm = lambda t: time.strftime("%H:%M", time.localtime(float(t or 0)))  # noqa: E731
+    rows = []
+    pf = read_json(os.path.join(rd, "push-fails.json"))
+    pf = pf if isinstance(pf, dict) else {}
+    if pf.get("n") and now - float(pf.get("last_at") or 0) < PUSH_FAIL_RECENT_S:
+        if pf.get("root_error"):
+            mac = sys.platform == "darwin" or os.environ.get("CM_FAKE_MACOS") == "1"
+            tcc = mac and "Operation not permitted" in str(pf.get("root_error"))
+            rows.append(("FAIL", "doctor.relay_root_unreadable", {"root": cfg["workspace"].get("root") or "~", "error": pf["root_error"], "n": pf["n"],
+                                                                 "since": hm(pf.get("since"))}, "doctor.fix_relay_root_tcc" if tcc else "doctor.fix_relay_root"))
+        else:
+            rows.append(("FAIL", "doctor.relay_push_failed", {"n": pf["n"], "since": hm(pf.get("since")), "at": hm(pf.get("last_at")),
+                                                             "error": pf.get("error") or "?"}, "doctor.fix_relay_push"))
+    try:
+        os.kill(int(Path(rd, "serve.pid").read_text().strip()), 0)
+        alive = True
+    except (OSError, ValueError):
+        alive = False
+    last = read_json(os.path.join(rd, "last-state.json"))
+    last = last if isinstance(last, dict) else {}
+    pub = float((last.get("state") or {}).get("published_at") or last.get("pushed_at") or 0)
+    if alive and pub and now - pub > STATE_OLD_S:
+        rows.append(("WARN", "doctor.relay_state_old", {"min": int((now - pub) // 60)}, "doctor.fix_relay_state_old"))
+    probe = read_json(os.path.join(rd, "cron-probe.json"))
+    if isinstance(probe, dict) and probe.get("ok") is False:
+        rows.append(("FAIL", "doctor.cron_disk_access_fail", {"root": probe.get("root") or "?", "error": probe.get("error") or "?"}, "doctor.fix_cron_disk_access"))
+    elif isinstance(probe, dict) and probe.get("ok") is True:
+        rows.append(("PASS", "doctor.cron_disk_access_ok", {"folder": probe.get("folder") or "?"}, None))
+    return rows
+
+
 def cmd_doctor():
     m = Machine()
     p = config_path()
@@ -1711,6 +1752,10 @@ def cmd_doctor():
     # dispositivo abbinato; la soglia gratuita e' 10 GB al mese (~330 MB al giorno). I numeri veri: Cloud Monitoring
     if cfg["relay"]["enabled"] and str(cfg["relay"].get("firebase_url") or "").strip():
         rows.append(firebase_usage_row(cfg))
+
+    # 13/11 (supervisor-push-falliti-13-11): push fallite di fila, cartella dei progetti illeggibile dal demone, stato fermo
+    if cfg["relay"]["enabled"]:
+        rows += relay_push_rows(cfg)
 
     # 09/10: un host confermato senza il sondatore nel crontab → le sue sessioni non compaiono in sessions ne' nell'app
     if any(n != "local" and h.get("confirmed_at") for n, h in (cfg.get("hosts") or {}).items()):

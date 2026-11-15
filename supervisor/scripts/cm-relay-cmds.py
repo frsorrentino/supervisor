@@ -1294,6 +1294,49 @@ def home_order_op(arg):
     return True, M("relay.cmd_home_order_saved")
 
 
+MAX_SESSIONS_MIN, MAX_SESSIONS_MAX = 1, 20
+
+
+def max_sessions_op(arg):
+    """1.145 (13/11/2026, supervisor-max-sessioni-app-13-11): il massimo delle sessioni dall'app. arg = un intero fra
+    MAX_SESSIONS_MIN e MAX_SESSIONS_MAX (stringa o numero). Scrive SOLO sessions.max_sessions nella config utente in uso
+    (il resto del file com'e', in un passo solo); una config che non si legge non si tocca. Vale subito: la config del
+    demone e dei moduli che tiene caricati (i consigli di cm-system, kpi_health.sessions_max) si rilegge qui, e il tetto
+    dei lanci legge il file a ogni lancio. text = JSON {max_sessions}."""
+    global CFG, R, _SYS_LAST
+    a = "" if arg is None or isinstance(arg, bool) else str(arg).strip()
+    if not re.fullmatch(r"\d{1,3}", a) or not MAX_SESSIONS_MIN <= int(a) <= MAX_SESSIONS_MAX:
+        return False, M("relay.cmd_max_sessions_bad_arg", min=MAX_SESSIONS_MIN, max=MAX_SESSIONS_MAX)
+    n = int(a)
+    target = cm.config_path()
+    try:
+        raw = json.loads(target.read_text()) if target.is_file() else {}
+    except (OSError, ValueError) as e:
+        return False, M("relay.cmd_max_sessions_config", error=str(e)[:120])
+    if not isinstance(raw, dict):
+        return False, M("relay.cmd_max_sessions_config", error="not an object")
+    raw["sessions"] = dict(raw.get("sessions") if isinstance(raw.get("sessions"), dict) else {}, max_sessions=n)
+    try:
+        mode = (target.stat().st_mode & 0o777) if target.is_file() else 0o600
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except OSError as e:
+        return False, M("relay.cmd_max_sessions_config", error=str(e)[:120])
+    CFG = cm.load(warn=False)
+    R = CFG["relay"]
+    for mod in (SY, KPI):   # i moduli che il demone tiene caricati hanno la loro copia della config
+        if mod is not None and hasattr(mod, "CFG"):
+            mod.CFG = CFG
+    _SYS_LAST = (0.0, None)   # i consigli si rifanno alla prossima push, col massimo nuovo
+    log(f"max_sessions_set: sessions.max_sessions = {n} in {target}")
+    return True, json.dumps({"max_sessions": n})
+
+
 TIMELINE_MAX_S = 7 * 86400
 
 
@@ -2789,6 +2832,8 @@ def execute(cmd):
             return kpi_op()
         if op == "home_order":   # 1.97
             return home_order_op(arg)
+        if op == "max_sessions_set":   # 1.145
+            return max_sessions_op(arg)
         if op == "monitors":   # 1.132
             return monitors_op(arg)
         if op == "monitor_refresh":   # 1.133

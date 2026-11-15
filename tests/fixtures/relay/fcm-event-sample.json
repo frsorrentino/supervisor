@@ -1,0 +1,28 @@
+{
+  "_": "Contract 1.148: the `data` of the FCM data messages the relay sends on its topic, one per event. Every value is a string. `etag` and `published_at` are optional: a relay before 1.148 sends none (the third sample), and a client that does not know them ignores them.",
+  "topic": "watch",
+  "data": [
+    {
+      "kind": "question",
+      "session": "atlas-shop",
+      "ts": "1789805000",
+      "key": "1789805000_012",
+      "etag": "3f9a1c0b7d2e4a68",
+      "published_at": "1789805000.412"
+    },
+    {
+      "kind": "done",
+      "session": "field-notes",
+      "ts": "1789805031",
+      "key": "1789805031_013",
+      "quiet": "1",
+      "etag": "b71c05e2a94d3f10",
+      "published_at": "1789805031.907"
+    },
+    {
+      "kind": "recap",
+      "ts": "1789840800",
+      "key": "1789840800_014"
+    }
+  ]
+}

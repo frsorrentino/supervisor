@@ -119,5 +119,51 @@ T.check("RL6 the marketplace checkout on another branch (not the published one) 
         and remote6d == "chore(marketplace): supervisor v0.8.27", r6d.stdout + r6d.stderr + remote6d)
 subprocess.run(["git", "checkout", "-q", "-"], cwd=mk, check=True)
 T.check("RL6 release.sh calls the bump after the install, with the public sha", "tools-marketplace-bump.py \"$VER\" \"$PUB\"" in (root / "release.sh").read_text(), "")
+
+# RL7 (15/11/2026): le note coprono ogni voce mai uscita. Cinque versioni erano pronte in main senza release, e
+# release.sh rilascia solo quella di HEAD con la sua sola voce: gli id dei compiti delle altre restavano fuori
+nr = tmp / "notes-repo"
+nr.mkdir()
+shutil.copy(root / "tools-release-notes.py", nr / "tools-release-notes.py")
+(nr / "CHANGELOG.md").write_text("# Changelog\n\n## 1.x\n\n"
+                                 "- **1.0.4 — 2026-11-15: the fourth (alfa-quarto-15-11).**\n  - A detail of the fourth.\n"
+                                 "- **1.0.3 — 2026-11-14: the third (alfa-terzo-14-11, contract 1.9).**\n  - A detail of the third (beta-altro-3-1).\n"
+                                 "- **1.0.2 — 2026-11-13: the second (alfa-secondo-13-11).**\n"
+                                 "- **1.0.1 — 2026-11-12: the first (alfa-primo-12-11).**\n  - Already out.\n"
+                                 "- **1.0.0 — 2026-11-11: the start.**\n\n## 0.x\n\n- **0.9.0 — 2026-10-01: old.**\n")
+
+
+def notes(*a):
+    return subprocess.run([sys.executable, "tools-release-notes.py", *a], cwd=nr, capture_output=True, text=True, encoding="utf-8", timeout=60)
+
+
+n_out = notes("1.0.4")   # fuori da git: la sola voce della versione, come prima
+subprocess.run(["git", "init", "-q"], cwd=nr, check=True)
+subprocess.run(GIT + ["add", "-A"], cwd=nr, check=True)
+subprocess.run(GIT + ["commit", "-q", "-m", "x"], cwd=nr, check=True)
+n_notag = notes("1.0.4")
+subprocess.run(GIT + ["tag", "v1.0.1"], cwd=nr, check=True)
+subprocess.run(GIT + ["tag", "v1.0.0"], cwd=nr, check=True)
+n7, i7, s7 = notes("1.0.4"), notes("1.0.4", "--ids"), notes("1.0.4", "--summary")
+T.check("RL7 the notes of 1.0.4 with v1.0.1 the last tag: the entries 1.0.4, 1.0.3 and 1.0.2, whole and in order, and nothing of 1.0.1 or below",
+        n7.returncode == 0 and n7.stdout.splitlines() == [
+            "- **1.0.4 — 2026-11-15: the fourth (alfa-quarto-15-11).**", "  - A detail of the fourth.",
+            "- **1.0.3 — 2026-11-14: the third (alfa-terzo-14-11, contract 1.9).**", "  - A detail of the third (beta-altro-3-1).",
+            "- **1.0.2 — 2026-11-13: the second (alfa-secondo-13-11).**"], n7.stdout + n7.stderr)
+T.check("RL7 --ids: the task ids the notes name, once each, not a version or a contract number; --summary says how many entries and ids",
+        i7.stdout.split() == ["alfa-quarto-15-11", "alfa-secondo-13-11", "alfa-terzo-14-11", "beta-altro-3-1"]
+        and "3 CHANGELOG entries (1.0.4 down to 1.0.2), 4 task ids" in s7.stdout, i7.stdout + s7.stdout)
+n7b, n7c, n7d = notes("1.0.1"), notes("1.0.0"), notes("7.7.7")
+T.check("RL7 a version right above a released one, or the last of its section: its own entry only; an unknown version fails; with no tag at all (or outside git) the version's entry only, as before",
+        n7b.stdout.splitlines() == ["- **1.0.1 — 2026-11-12: the first (alfa-primo-12-11).**", "  - Already out."]
+        and n7c.stdout.splitlines() == ["- **1.0.0 — 2026-11-11: the start.**"] and n7d.returncode == 1 and not n7d.stdout
+        and n_out.stdout == n_notag.stdout and n_out.stdout.splitlines() == ["- **1.0.4 — 2026-11-15: the fourth (alfa-quarto-15-11).**", "  - A detail of the fourth."],
+        n7b.stdout + n7c.stdout + n7d.stderr + n_out.stdout + n_notag.stdout)
+rs = (root / "release.sh").read_text()
+T.check("RL7 release.sh takes the notes from tools-release-notes.py, shows their summary in the preflight and puts the task ids in the public commit's message",
+        'python3 tools-release-notes.py "$VER" > "$NOTES"' in rs and 'tools-release-notes.py "$VER" --summary' in rs
+        and '${TASKS:+-m "Tasks: $TASKS"}' in rs and "awk -v v=\"$VER\" '$0 ~ \"^- \\\\*\\\\*\" v {f=1" not in rs, "")
+r = run(ver)
+T.check("RL7 release.sh --check prints the notes' summary in the preflight", r.returncode == 0 and "release notes: 1 CHANGELOG entry" in r.stdout, r.stdout[-500:] + r.stderr[-300:])
 shutil.rmtree(tmp)
 T.finish()

@@ -1142,7 +1142,8 @@ def carried_build(project, name, cache, webs=()):
 # resta com'e'
 _V = r"\d+\.\d+\.\d+(?![\w]|\.\d)"
 _CHAN_PREFIX = {"app": r"\b(?:[Aa]pp(?: Android)?(?: alla| la)? |[Ii]nstalla la )",
-                "web": r"\b[Ww]eb(?: gi(?:à|a'))?(?: alla| la)? "}
+                # 13/11 (supervisor-prove-canale-parentesi-13-11): anche «web (già alla 0.2.N)», con la parentesi
+                "web": r"\b[Ww]eb(?: \(?gi(?:à|a'))?(?: alla| la)? "}
 
 
 def _retext(text, old, new, old_ver, new_ver, channel=None):

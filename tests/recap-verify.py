@@ -116,10 +116,10 @@ fake_sum.write_text('#!/bin/sh\necho "$@" >> "%s"\necho \'{"alfa": {"fatto": "Te
 fake_sum.chmod(0o755)
 cfg_model = json.loads(cfg.read_text()); cfg_model["recap"]["summary"] = "model"; cfg.write_text(json.dumps(cfg_model))
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--date", "2026-09-09"], capture_output=True, text=True, env={**{"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_DIARY_FAKE_PROC": "1"}, "CM_CLAUDE_BIN": str(fake_sum)}, timeout=60)
-T.check("DI1b model summary: one sentence per project from ALL its stop messages, haiku -p called once", "alfa: Test sistemati e changelog aggiornato" in r.stdout and "sito.\u2060com: Risposta al cliente inviata" in r.stdout and (tmp / "sum-args.log").read_text().count("-p") == 1 and "riga buona senza email" in (tmp / "sum-args.log").read_text(), r.stdout + r.stderr)
+T.check("DI1b model summary: one sentence per project from ALL its stop messages, haiku -p called once", "alfa: Test sistemati e changelog aggiornato" in r.stdout and "sito.\u2060com: Risposta al cliente inviata" in r.stdout and (tmp / "sum-args.log").read_text().count("-p Per ogni") == 1 and "riga buona senza email" in (tmp / "sum-args.log").read_text(), r.stdout + r.stderr)
 T.check("DI1b «prossimo» only where the model gave one: not under closed rows", "prossimo: Attendere" not in r.stdout, r.stdout)
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--date", "2026-09-09"], capture_output=True, text=True, env={**{"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_DIARY_FAKE_PROC": "1"}, "CM_CLAUDE_BIN": str(fake_sum)}, timeout=60)
-T.check("DI1b second run served from the day's cache: no new model call", "alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args.log").read_text().count("-p") == 1, r.stdout)
+T.check("DI1b second run served from the day's cache: no new model call", "alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args.log").read_text().count("-p Per ogni") == 1, r.stdout)
 # DI1d (14/09): il cron delle 20:00 ha PATH=/usr/bin:/bin e claude sta solo in ~/.local/bin → prima «claude» non si
 # trovava, l'errore era inghiottito e i riassunti del giorno si scrivevano vuoti. Cache svuotata: il modello va chiamato.
 import shutil as _sh
@@ -131,7 +131,7 @@ local_claude.parent.mkdir(parents=True, exist_ok=True)
 local_claude.write_text(fake_sum.read_text().replace(str(tmp / "sum-args.log"), str(tmp / "sum-args-cron.log")))
 local_claude.chmod(0o755)
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--date", "2026-09-09"], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_DIARY_FAKE_PROC": "1"}, timeout=60)
-T.check("DI1d cron PATH (/usr/bin:/bin), claude only in ~/.local/bin: the model is found and the summary is there (before: empty summaries since 12/09)", "alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args-cron.log").is_file() and (tmp / "sum-args-cron.log").read_text().count("-p") == 1, r.stdout + r.stderr)
+T.check("DI1d cron PATH (/usr/bin:/bin), claude only in ~/.local/bin: the model is found and the summary is there (before: empty summaries since 12/09)", "alfa: Test sistemati e changelog aggiornato" in r.stdout and (tmp / "sum-args-cron.log").is_file() and (tmp / "sum-args-cron.log").read_text().count("-p Per ogni") == 1, r.stdout + r.stderr)
 local_claude.unlink()
 cfg_model["recap"]["summary"] = "last"; cfg.write_text(json.dumps(cfg_model))
 # DI1c: la riga del giorno in docs/recap.md di ogni progetto (dalla cache del modello finto)

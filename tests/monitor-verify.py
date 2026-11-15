@@ -321,9 +321,14 @@ c9 = show("giro")
 T.check("MO9 set --refresh: def.json.refresh {cmd, timeout_s 180, min_interval_s 60}; before it the card is not refreshable (refresh null)",
         r_set.returncode == 0 and d9.get("refresh") == {"cmd": CMD9, "timeout_s": 180, "min_interval_s": 60}
         and c9a.get("refreshable") is False and c9a.get("refresh") is None and "refresh" in c9a, f"{r_set.stdout}{r_set.stderr} {d9.get('refresh')} {c9a.get('refresh')}")
-T.check("MO9 the card: refreshable true, refresh idle with the seven fields, and the command's text nowhere in it (nor in the list)",
-        c9.get("refreshable") is True and c9.get("refresh") == {"state": "idle", "started": None, "ended": None, "rc": None, "message": None,
-                                                                 "retry_at": None, "timeout_s": 180}
+mo("add", "giro-vuoto", "--title", "Giro vuoto", "--form", "line", "--refresh", "echo x")
+_w9 = int((MON / "giro" / "points.jsonl").stat().st_mtime)
+# 15/11 (supervisor-monitor-testata-15-11): senza punti il giro e' idle; coi punti gia' scritti da fuori l'ultimo giro e' quella scrittura
+T.check("MO9 the card: refreshable true, refresh idle with the seven fields (no points yet; with points written outside a run: ok at that time, external), "
+        "and the command's text nowhere in it (nor in the list)",
+        c9.get("refreshable") is True and show("giro-vuoto").get("refresh") == {"state": "idle", "started": None, "ended": None, "rc": None, "message": None,
+                                                                                "retry_at": None, "timeout_s": 180}
+        and c9.get("refresh") == {"state": "ok", "started": None, "ended": _w9, "rc": None, "message": None, "retry_at": None, "timeout_s": 180, "external": True}
         and "letto 1 prezzo" not in json.dumps(c9, ensure_ascii=False) and "letto 1 prezzo" not in mo("list", "--json").stdout
         and "letto 1 prezzo" in mo("show", "giro").stdout, json.dumps(c9.get("refresh")))
 r_set_u = mo("set", "non-esiste", "--refresh", "true")

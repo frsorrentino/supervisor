@@ -654,6 +654,9 @@ def collect(read_screen=True):
             "socket": d.get("messagingSocketPath") or "",
             "registry": d["_registry"],
             "version": proc_version(pid, d.get("version")),
+            # 13/11/2026 (supervisor-logout-bg-13-11): una sessione di `claude --bg` ha "kind": "bg" nel registro (dal vivo,
+            # 2.1.325). Li' /logout scollega tutte le sessioni del PC, e nessun hook lo vede: lo si dice nella scheda
+            "bg": d.get("kind") == "bg",
         }
         row["attached"] = attached.get(tm) if tm else None
         # «aspetta una risposta»: prima il registro (status `waiting`, visto dal vivo il 09/09/2026
@@ -832,6 +835,8 @@ def render(rows):
             note += "  <- " + m("sessions.low_priority")
         elif r.get("low_priority") == "offered":
             note += "  <- " + m("sessions.low_priority_offered")
+        if r.get("bg"):
+            note += "  <- " + m("sessions.bg")
         if r.get("goal"):
             note += "  <- " + m("sessions.goal", goal=r["goal"][:60] + ("…" if len(r["goal"]) > 60 else ""), n=r.get("goal_iterations") or 0)
         lines.append(f"{r['pid']:<8} {r['account'][:13]:<13} {shown[:22]:<22} {state[:6]:<6} "
@@ -853,6 +858,8 @@ def render(rows):
                                min=max(1, round((CFG.get("sessions") or {}).get("orphan_grace_s", 120) / 60)))]
     if any(r.get("outdated") for r in rows):
         lines += ["", "  " + m("sessions.outdated", version=disk_version())]
+    if any(r.get("bg") for r in rows):
+        lines += ["", "  " + m("sessions.bg_logout")]
     if tmux("list-sessions") is None:
         # 11/11 (supervisor-macos-11-11): al primo uso tmux non e' ancora partito, non e' un guasto
         lines += ["", "  " + m("sessions.tmux_dead" if any(r.get("tmux") for r in rows) else "sessions.tmux_not_started")]

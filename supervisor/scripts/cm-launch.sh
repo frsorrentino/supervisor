@@ -261,6 +261,9 @@ if [ "$BG" = si ]; then
   echo "  cartella:  $CARTELLA"
   printf '%s\n' "$ESITO" | sed 's/^/  /'
   cm_msg launch.bg_howto "name=$NOME"
+  # 13/11/2026 (supervisor-logout-bg-13-11): dalla 2.1.323 /logout in una sessione --bg scollega tutto il PC, e
+  # UserPromptSubmit non lo riceve (misurato sulla 2.1.325): non si puo' fermare, lo si dice qui e nella scheda
+  cm_msg sessions.bg_logout | sed 's/^/  /'
   exit 0
 fi
 

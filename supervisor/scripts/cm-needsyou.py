@@ -4,6 +4,8 @@
   supervisor needs-you "<cosa serve>" [--until "<comando>"] [--expires 2h]
                                           questa sessione e' ferma per te: login, un codice, un tasto, un file
   supervisor needs-you "<cosa>" --task ID  la richiesta va sulla sessione del compito (24/10, contratto 1.84)
+  supervisor needs-you "<cosa>" --session NOME [--from CHI]
+                                          da fuori da una sessione: la richiesta va sulla sessione NOME (13/11)
   supervisor needs-you --clear            non serve piu' (lo fa anche il prompt dopo, da solo)
 
 Per una cosa che solo la persona puo' fare. La sessione passa a «ferma per te» con il motivo: il relay la mette in
@@ -21,6 +23,10 @@ Legata a un compito (24/10/2026, contratto 1.84: la master chiede il codice di a
 win:ads-widget, ed e' win:ads-widget che deve passare in «Aspettano te»): con `--task ID` la voce va sulla sessione del
 compito (la sessione del registro, o `where.session` del contratto), con `task` e `from` (chi l'ha chiesta). Se il
 compito non ha una sessione viva resta su chi chiede, come prima, sempre con `task`.
+
+Da fuori da una sessione (13/11/2026, supervisor-sportello-rc-13-11: lo sportello, che e' `claude remote-control` e non
+una sessione, quando non riesce a registrarsi): con `--session NOME` la voce va sulla sessione NOME, con `from` = il
+valore di `--from`. Se NOME non e' viva il testo va nella sua casella, e lo legge quando torna.
 """
 import importlib.util
 import json
@@ -119,12 +125,45 @@ def session_row(name):
     return None
 
 
+def pop_option(argv, opt):
+    """(valore di `opt` o None, argv senza l'opzione, errore): le opzioni di `--session`, fuori da parse_args."""
+    if opt not in argv:
+        return None, argv, None
+    i = argv.index(opt)
+    if i + 1 >= len(argv) or not argv[i + 1].strip() or argv[i + 1].startswith("--"):
+        return None, argv, M("needs_you.option_needs_value", opt=opt)
+    return argv[i + 1].strip(), argv[:i] + argv[i + 2:], None
+
+
+def for_session(name, reason, until=None, expires_s=None, from_=None):
+    """La richiesta di chi non e' una sessione, sulla sessione `name`; se non e' viva, nella sua casella."""
+    row = session_row(name)
+    if row:
+        return mark(row, reason, until=until, expires_s=expires_s, cwd=os.getcwd(), from_=from_)
+    try:
+        _load("cm-inbox").put(name, M("needs_you.to_master", name=from_ or "supervisor", reason=reason), from_ or "supervisor")
+    except Exception as e:   # noqa: BLE001
+        print(f"{M('needs_you.no_session_named', name=name)} ({e})", file=sys.stderr)
+        return 3
+    print(M("needs_you.session_away", name=name, reason=reason))
+    return 0
+
+
 def main(argv):
-    words, until, expires, task, err = parse_args(argv)
+    session, argv, err = pop_option(list(argv), "--session")
+    from_, argv, err2 = pop_option(argv, "--from")
+    words, until, expires, task, err3 = parse_args(argv)
+    err = err or err2 or err3
     if err:
         print(err, file=sys.stderr)
         print(M("needs_you.usage"), file=sys.stderr)
         return 2
+    if session:
+        reason = " ".join(" ".join(words).split())[:200]
+        if not reason or reason == "--clear":
+            print(M("needs_you.usage"), file=sys.stderr)
+            return 2
+        return for_session(session, reason, until=until, expires_s=expires, from_=from_)
     row = own_row()
     if not row:
         print(M("needs_you.no_session"), file=sys.stderr)
@@ -187,7 +226,7 @@ def mark(row, reason, until=None, expires_s=None, cwd=None, task=None, from_=Non
             (rd / "hook").touch()
         except OSError:
             pass
-    print(M("needs_you.saved", name=name, reason=reason) + (" " + M("needs_you.saved_for", task=task, by=from_) if from_ else ""))
+    print(M("needs_you.saved", name=name, reason=reason) + (" " + M("needs_you.saved_for", task=task, by=from_) if from_ and task else ""))
     if until:
         print(M("needs_you.saved_until", cmd=rec["until"]))
     return 0

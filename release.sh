@@ -14,7 +14,9 @@
 #                    and BRIEF.md (this workstation's plans and notes).
 #   4b. publish    — the same tree WITHOUT docs/ and BRIEF.md committed on the local branch
 #                    `public` (its own history, first commit orphan) and pushed as origin/main
-#   5. tag+release — v<v> on the PUBLIC commit, GitHub release with notes from CHANGELOG + zip
+#   5. tag+release — v<v> on the PUBLIC commit, GitHub release with notes from CHANGELOG + zip. The notes are the
+#                    entry <v> and every entry under it that was never released (tools-release-notes.py: down to
+#                    the first entry whose version has a tag); the task ids they name go in the public commit too
 #   6. install     — copies the plugin into the cache of every local account that has it
 #                    installed and updates installed_plugins.json (hooks run from the cache:
 #                    T53, live sessions keep their old version until they restart)
@@ -55,6 +57,10 @@ bash "$OBS_SRC/check.sh" "$PLUGIN" \
   || { echo "FAIL: the claude-observe copy differs from its source — python3 $OBS_SRC/sync.py $PLUGIN"; exit 1; }
 python3 tools-privacy-check.py --quiet \
   || { echo "FAIL: privacy check (docs/privacy-blocklist.txt) — neutralize before publishing"; exit 1; }
+# 15/11/2026: le note coprono ogni voce mai uscita (cinque versioni erano pronte in main senza release); qui si vede
+# prima di pubblicare quante voci e quanti id di compiti entrano
+python3 tools-release-notes.py "$VER" --summary \
+  || { echo "FAIL: could not extract $VER notes from CHANGELOG"; exit 1; }
 echo "preflight ok: $VER in plugin.json and CHANGELOG, README badge dynamic; tag v$VER free; nothing untracked in $PLUGIN; privacy ok"
 
 echo "== 2/6 test suites (must be green BEFORE the commit) =="
@@ -111,7 +117,10 @@ PUB_TREE=$(GIT_INDEX_FILE="$TMPIDX" git write-tree)
 rm -f "$TMPIDX"
 PARENT=()
 git rev-parse -q --verify refs/heads/public >/dev/null && PARENT=(-p "$(git rev-parse refs/heads/public)")
-PUB=$(git commit-tree "$PUB_TREE" "${PARENT[@]}" -m "release: $VER")
+# gli id dei compiti delle note anche nel messaggio del commit pubblico: origin/main ha un commit per release, mai la
+# storia di main, e chi cerca un id nei commit di origin/main lo trova qui
+TASKS="$(python3 tools-release-notes.py "$VER" --ids | tr '\n' ' ' | sed 's/ *$//')"
+PUB=$(git commit-tree "$PUB_TREE" "${PARENT[@]}" -m "release: $VER" ${TASKS:+-m "Tasks: $TASKS"})
 git update-ref refs/heads/public "$PUB"
 git push origin public:main
 echo "public commit $PUB (tree without docs/ and BRIEF.md)"
@@ -122,8 +131,9 @@ git tag -a "v$VER" -m "v$VER — ${TITLE:-release}" "$PUB"
 git push origin "v$VER"
 NOTES=$(mktemp)
 # 29/10/2026: le voci stanno una dopo l'altra senza righe vuote, e le note prendevano tutto il CHANGELOG da qui in giu'
-# (GitHub: «body is too long», 0.8.83): finiscono alla voce dopo, a una riga vuota o a un titolo
-awk -v v="$VER" '$0 ~ "^- \\*\\*" v {f=1; print; next} f && (/^- \*\*/ || /^$/ || /^#/) {exit} f {print}' CHANGELOG.md > "$NOTES"
+# (GitHub: «body is too long», 0.8.83). 15/11/2026: la voce della versione e quelle sotto mai uscite, fino alla prima
+# che ha un tag, a una riga vuota o a un titolo (tools-release-notes.py)
+python3 tools-release-notes.py "$VER" > "$NOTES"
 [ -s "$NOTES" ] || { echo "FAIL: could not extract $VER notes from CHANGELOG"; exit 1; }
 gh release create "v$VER" --title "v$VER — ${TITLE:-release}" --notes-file "$NOTES" "$(readlink -f "$ZIP")"
 rm -f "$NOTES"

@@ -49,6 +49,11 @@ esegue con `nice -n 19 sh -c CMD` nella home, con SUPERVISOR_MONITOR_ID nell'amb
 intervallo minimo dalla fine dell'ultimo giro (uscita 4). Lo stato sta in refresh.json {state: idle|running|ok|error,
 started, ended, rc, message}; `running` senza nessuno che tiene il blocco = giro interrotto, letto come errore. Ogni
 giro scrive una riga `monitor-refresh` nel registro (ledger.jsonl). Il comando scrive i valori con `monitor point`.
+
+La testata con piu' serie e l'ultimo giro (1.147, 15/11/2026, supervisor-monitor-testata-15-11): valore e variazione
+della scheda sono della serie peggiore rispetto alla soglia (`value_series` ne dice il nome), le soglie scattate
+vengono dalla peggiore, e la voce in «Dalla master» la nomina. «Ultimo giro» segue l'ultima scrittura dei punti, anche
+quella di un cron che non passa da `monitor refresh` (refresh.external).
 """
 import datetime as dt
 import fcntl
@@ -250,10 +255,39 @@ def _url_of(d, name, url_by):
     return url_by.get(name) or ((d.get("links") or {}).get(name or "") if isinstance(d.get("links"), dict) else None) or None
 
 
+def _margin(a, last):
+    """Di quanto l'ultimo valore passa la soglia, in frazione della soglia (134% contro 80% = 0,675); negativo se non la
+    passa; None per le soglie senza numero (new_min, new_max)."""
+    if a.get("kind") not in ("below", "above") or a.get("value") is None:
+        return None
+    m = last - a["value"] if a["kind"] == "above" else a["value"] - last
+    return m / abs(a["value"]) if a["value"] else m
+
+
+def _head(d, series, hits):
+    """La serie della testata (15/11/2026, supervisor-monitor-testata-15-11: firebase-consumo diceva «da guardare: 0,1%»,
+    la prima serie, mentre la soglia dell'80% la passava un'altra, al 134%): con una soglia scattata la serie che la
+    passa di piu'; senza, quella piu' vicina a una soglia col numero; senza soglie col numero la prima che ha valori."""
+    first = next((x for x in series if x[1]), series[0] if series else ("", []))
+    if hits:
+        return next((x for x in series if (x[0] or None) == hits[0]["series"]), first)
+    best = None
+    for a in d.get("alerts") or []:
+        for name, pts in series:
+            if a.get("series") not in (None, "", name) or not pts:
+                continue
+            m = _margin(a, pts[-1][1])
+            if m is not None and (best is None or m > best[0]):
+                best = (m, (name, pts))
+    return best[1] if best else first
+
+
 def _hits(d, series, url_by=None):
-    """Le soglie che scattano adesso: [{kind, value, series, text, url}]."""
+    """Le soglie che scattano adesso: [{kind, value, series, text, url}], la serie peggiore rispetto alla soglia per
+    prima (15/11/2026). Con piu' serie il testo dice sempre di quale serie si parla, anche per una soglia senza serie."""
     out = []
     url_by = url_by or {}
+    many = sum(1 for _, pts in series if pts) > 1
     for a in d.get("alerts") or []:
         for name, pts in series:
             if a.get("series") not in (None, "", name) or not pts:
@@ -263,8 +297,11 @@ def _hits(d, series, url_by=None):
             hit = (a["kind"] == "below" and last < a["value"]) or (a["kind"] == "above" and last > a["value"]) or \
                   (a["kind"] == "new_min" and prev and last < min(prev)) or (a["kind"] == "new_max" and prev and last > max(prev))
             if hit:
-                out.append(dict(alert_view(a, d.get("unit") or ""), series=name or None, url=_url_of(d, name, url_by)))
-    return out
+                h = dict(alert_view(a, d.get("unit") or ""), series=name or None, url=_url_of(d, name, url_by))
+                if many and name and not a.get("series"):
+                    h["text"] += f" · {name}"
+                out.append((_margin(a, last) or 0, h))
+    return [h for _, h in sorted(out, key=lambda x: -x[0])]   # sorted e' stabile: a pari margine l'ordine delle soglie
 
 
 def alert_view(a, unit):
@@ -311,14 +348,16 @@ def card(mid, d=None, pts=None):
             seq = [(p["ts"], p["value"]) for p in ps]
         raw.append((name, seq))
     hits = _hits(d, raw, url_by)
-    main = next((s for s in raw if s[1]), raw[0] if raw else ("", []))
+    main = _head(d, raw, hits)
     last = main[1][-1] if main[1] else None
     c = {"id": mid, "title": d["title"], "form": form, "unit": unit or None, "status": "watch" if hits else "ok",
          "verdict": d.get("verdict") or None, "verdict_at": d.get("verdict_at"),
          "value": None, "delta": None, "delta_pct": None, "delta_since": None,
          "at": max((p["ts"] for p in pts), default=None), "source": d.get("source") or None, "every": d.get("every") or None,
          "example": bool(d.get("example")), "alerts": [alert_view(a, unit) for a in d.get("alerts") or []], "hits": hits,
-         "series": [], "link": link(mid), "url": None}
+         "series": [], "link": link(mid), "url": None,
+         # 1.147: di quale serie sono value e delta, quando la scheda ne ha piu' d'una con valori (altrimenti null)
+         "value_series": (main[0] or None) if sum(1 for _, seq in raw if seq) > 1 else None}
     c["refresh"] = refresh_view(mid, d)   # 1.133: mai il comando, solo lo stato dell'ultimo giro
     c["refreshable"] = c["refresh"] is not None
     if form == "status":
@@ -368,7 +407,7 @@ def summary():
 
 
 def line_of(c):
-    body = c["verdict"] or " ".join(x for x in (c["value"], f"({c['delta']})" if c["delta"] else None) if x) or M("monitor.no_value")
+    body = c["verdict"] or " ".join(x for x in (c.get("value_series"), c["value"], f"({c['delta']})" if c["delta"] else None) if x) or M("monitor.no_value")
     return f"{c['title']}: {body}" + (f" {c['link']}" if c["link"] else "")
 
 
@@ -429,6 +468,16 @@ def refresh_view(mid, d):
             v.update(state="error", message=M("monitor.refresh_interrupted"))
     if v["state"] != "running" and isinstance(v["ended"], int) and r["min_interval_s"]:
         v["retry_at"] = v["ended"] + r["min_interval_s"]
+    # 15/11/2026 (supervisor-monitor-testata-15-11): i valori arrivano anche da fuori (un cron che scrive i punti senza
+    # `monitor refresh`), e «ultimo giro» restava alla data dell'ultimo giro chiesto. Se points.jsonl e' stato scritto
+    # dopo la fine di quel giro, l'ultimo giro e' quello: riuscito, all'ora dell'ultima scrittura, external true.
+    # retry_at resta quello del giro chiesto: l'intervallo minimo vale per il comando.
+    try:
+        wrote = int((_dir(mid) / "points.jsonl").stat().st_mtime)
+    except OSError:
+        wrote = None
+    if v["state"] != "running" and wrote and wrote > int(v["ended"] or v["started"] or 0):
+        v.update(state="ok", started=None, ended=wrote, rc=None, message=None, external=True)
     return v
 
 
@@ -521,8 +570,15 @@ def sync(mid, c=None):
         d["accepted_live"].pop(key, None)
     elif key not in d["never"] and key not in d["accepted_live"]:
         reason = "; ".join(h["text"] for h in c["hits"])
-        text = (c["verdict"] or f"{c['title']}: {reason}" + (f" ({c['value']})" if c["value"] else ""))[:SG.TEXT_MAX]
-        prompt = M("monitor.suggest_prompt", title=c["title"], reason=reason, value=c["value"] or "-", id=mid, link=c["link"] or "-")
+        # 15/11: con piu' serie il valore e' quello della serie peggiore, col suo nome; una frase di chi raccoglie che
+        # non la nomina la porta in coda
+        name = c.get("value_series")
+        value = " ".join(x for x in (name, c["value"]) if x)
+        text = c["verdict"] or f"{c['title']}: {reason}" + (f" ({c['value']})" if c["value"] else "")
+        if c["verdict"] and name and name not in c["verdict"]:
+            text = f"{c['verdict']} · {value}"
+        text = text[:SG.TEXT_MAX]
+        prompt = M("monitor.suggest_prompt", title=c["title"], reason=reason, value=value or "-", id=mid, link=c["link"] or "-")
         SG.upsert(d, now, "monitor", key, text, prompt[:SG.PROMPT_MAX], SUGGEST_TTL_S, source="script")
         x = next(x for x in d["items"] if x.get("key") == key)
         if c["link"]:
@@ -753,7 +809,7 @@ def cmd_show(argv):
         print(json.dumps(c, ensure_ascii=False))
         return 0
     print(f"{c['title']} ({c['id']}, {c['form']}{', ' + M('monitor.example') if c['example'] else ''})")
-    print(f"  {M('monitor.status_' + c['status'])}: {c['value'] or '-'}{'  ' + c['delta'] if c['delta'] else ''}")
+    print(f"  {M('monitor.status_' + c['status'])}: {c['value_series'] + ' ' if c.get('value_series') else ''}{c['value'] or '-'}{'  ' + c['delta'] if c['delta'] else ''}")
     if c["verdict"]:
         print(f"  {c['verdict']}")
     for s in c["series"]:
@@ -765,7 +821,8 @@ def cmd_show(argv):
         v = c["refresh"]
         when = dt.datetime.fromtimestamp(v["ended"] or v["started"]).strftime("%d/%m %H:%M") if (v["ended"] or v["started"]) else "-"
         print(f"  {M('monitor.refresh_label')}: {r['cmd']}  ({r['timeout_s']} s, {M('monitor.refresh_every')} {r['min_interval_s']} s)")
-        print(f"  {M('monitor.refresh_last')}: {M('monitor.refresh_state_' + v['state'])} {when}{' · ' + v['message'] if v['message'] else ''}")
+        print(f"  {M('monitor.refresh_last')}: {M('monitor.refresh_state_' + v['state'])} {when}{' · ' + v['message'] if v['message'] else ''}"
+              f"{' · ' + M('monitor.refresh_external') if v.get('external') else ''}")
     if c["link"]:
         print(f"  {c['link']}")
     return 0

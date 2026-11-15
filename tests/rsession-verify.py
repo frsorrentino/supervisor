@@ -166,6 +166,59 @@ r = launch(str(seg), "--host", "win", "--no-window")
 T.check("RS3 a private key in a tracked file → refused naming the file, nothing sent",
         r.returncode == 6 and "chiave.txt" in r.stderr and not any(c["verb"] == "seed" for c in calls()[n0:]), r.stdout + r.stderr)
 
+# RS3b (13/11/2026, supervisor-segreti-finti-test-13-11): le chiavi finte dei test degli scanner. Il repo le dichiara in
+# .cm-offload.json ("secret_examples"), e in quei file passa solo la forma nota di una chiave finta; il resto resta un segreto.
+_SNAP = ("import importlib.util as u, sys\n"
+         "s = u.spec_from_file_location('rsess', sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)\n"
+         "try:\n    print('OK', m.snapshot_check(sys.argv[2])[0])\nexcept m.Refused as e:\n    print('REFUSED', e)\n")
+
+
+def snap(d):
+    r = subprocess.run([sys.executable, "-c", _SNAP, str(T.SCRIPTS / "cm-rsession.py"), str(d)], capture_output=True, text=True, env=env(), timeout=60)
+    return (r.stdout + r.stderr).strip()
+
+
+_HEAD = "-----BEGIN OPENSSH " + "PRIVATE KEY-----"   # spezzata: queste righe non devono sembrare una chiave
+_FAKES = "\n".join([r'put("id_rsa", "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n")',
+                    r'k = {"private_key": "-----BEGIN PRIVATE KEY-----\\nfake\\n-----END PRIVATE KEY-----\\n"}',
+                    r'w("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----\n")']) + "\n"
+_DECL = json.dumps({"secret_examples": ["tests/esempi.py"]})
+_n3 = [0]
+
+
+def snap_of(files):
+    _n3[0] += 1
+    d = ws / "personali" / f"finte-{_n3[0]}"
+    d.mkdir(parents=True)
+    repo(d, files)
+    return snap(d)
+
+
+s_ok = snap_of({"tests/esempi.py": _FAKES, ".cm-offload.json": _DECL, "a.txt": "uno\n"})
+s_undeclared = snap_of({"tests/esempi.py": _FAKES, "a.txt": "uno\n"})
+s_other = snap_of({"tests/esempi.py": _FAKES, "tests/altro.py": _FAKES, ".cm-offload.json": _DECL})
+s_long = snap_of({"tests/esempi.py": _FAKES + 'k = "' + _HEAD + "\\n" + "b3BlbnNzaC1rZXkt" * 12 + '\\n"\n', ".cm-offload.json": _DECL})
+s_pem = snap_of({"tests/esempi.py": _FAKES + _HEAD + "\nb3BlbnNzaC1rZXktdjEAAAAA\n", ".cm-offload.json": _DECL})
+s_token = snap_of({"tests/esempi.py": _FAKES + 't = "' + "ghp" + "_" + "a1B2" * 9 + '"\n', ".cm-offload.json": _DECL})
+s_same = snap_of({"tests/esempi.py": r'x = ("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n", "' + "ghp" + "_" + "a1B2" * 9 + '")' + "\n", ".cm-offload.json": _DECL})
+T.check("RS3b fake keys in a file the repository declares (.cm-offload.json, secret_examples) are not secrets: the snapshot leaves",
+        s_ok.startswith("OK "), s_ok)
+T.check("RS3b the same file not declared, or the same fake keys in another file → refused naming the file",
+        s_undeclared.startswith("REFUSED") and "tests/esempi.py" in s_undeclared and s_other.startswith("REFUSED") and "tests/altro.py" in s_other
+        and "tests/esempi.py" not in s_other, f"{s_undeclared} | {s_other}")
+T.check("RS3b a real secret in the declared file stays blocked: a key with a full body, a PEM header that ends its line, a token on "
+        "another line, a token on the line of a fake key",
+        all(x.startswith("REFUSED") and "tests/esempi.py" in x for x in (s_long, s_pem, s_token, s_same)), f"{s_long} | {s_pem} | {s_token} | {s_same}")
+_root = Path(__file__).resolve().parent.parent
+_decl_p = _root / ".cm-offload.json"
+_own = json.loads(_decl_p.read_text()).get("secret_examples") if _decl_p.is_file() else None
+_files = {".cm-offload.json": _decl_p.read_text()} if _own else {}
+for _f in sorted(_root.glob("tests/*.py")):
+    _files[f"tests/{_f.name}"] = _f.read_text()
+s_own = snap_of(_files) if _own else "no .cm-offload.json at the root of this repository"
+T.check("RS3b this repository declares its own tests with fake keys: every file it names is there, and its tests leave without any "
+        "exclusion from the configuration", bool(_own) and all((_root / x).is_file() for x in _own) and s_own.startswith("OK "), f"{_own} {s_own}")
+
 # RS4
 (rdir / "src" / "a.txt").write_text("uno\ndue\n")
 (rdir / "win.txt").write_bytes(b"riga uno\r\nriga due\r\n")

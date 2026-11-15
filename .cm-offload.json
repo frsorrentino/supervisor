@@ -1,0 +1,8 @@
+{
+  "secret_examples": [
+    "tests/diff-verify.py",
+    "tests/offload-verify.py",
+    "tests/relay-setup-verify.py",
+    "tests/rsession-verify.py"
+  ]
+}

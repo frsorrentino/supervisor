@@ -31,7 +31,11 @@ supervisor offload ~/film --recipe render   # the exact commit, the declared ass
 - **What travels.** `git archive` of the exact commit (a dirty tree is refused,
   or sent as `git stash create` with `--dirty`); `.env*`, keys and credentials
   never leave, and a scan for private keys and known tokens blocks the send
-  naming the file. Ignored assets travel once: the host keeps a content-addressed
+  naming the file. A repository whose tests carry fake keys names those files
+  in `.cm-offload.json` at its root (`"secret_examples": ["tests/x.py"]`):
+  there the scan lets through only a private-key header written inside a
+  string with a body of at most 80 characters; a full key, a PEM file or a
+  token in the same file still blocks the send. Ignored assets travel once: the host keeps a content-addressed
   cache. Dependencies install once per lockfile hash. Results come back with
   their sha256 checked, into an ignored output folder or the state directory,
   never over a tracked file.

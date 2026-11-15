@@ -85,7 +85,7 @@ R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
 STREAM_SILENCE_S = 45   # keep-alive di Firebase ogni 30 s, piu' 15 di margine
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -298,19 +298,123 @@ def log_path():
     return Path(cm.expand(R.get("log") or "")) if R.get("log") else rdir() / "relay.log"
 
 
-def log(line):
-    p = log_path()
+# 13/11/2026 (supervisor-agenda-raffica-13-11): una web che ripeteva `agenda` 175 volte al secondo portava relay.log a
+# 5 MB in due minuti; resta un solo relay.log.1, e le righe FAILED di un altro guasto sparivano in pochi minuti.
+# - Le righe uguali di fila si scrivono una volta: le altre si contano, e il conteggio esce quando arriva una riga
+#   diversa, o ogni LOG_REPEAT_FLUSH_S finche' la ripetizione dura (e all'uscita del processo).
+# - Gli errori (FAILED, → ERR, non scritto, NON mandato) vanno anche in <log>-errors-AAAA-MM-GG.log, un file per giorno
+#   tenuto ERR_LOG_DAYS giorni: la rotazione di relay.log non li porta via. Li' due errori sono lo stesso se cambiano
+#   solo l'id del comando, i tempi e i numeri (un push che fallisce ogni 30 s): una riga, poi il conteggio con
+#   l'ultima, al piu' ogni ERR_REPEAT_FLUSH_S. Un giorno non passa ERR_LOG_DAY_MAX.
+LOG_REPEAT_FLUSH_S = 60
+ERR_REPEAT_FLUSH_S = 600
+ERR_LOG_DAYS = 14
+ERR_LOG_DAY_MAX = 2 * 1024 * 1024
+ERR_LINE = re.compile(r"\bFAILED\b|→ ERR\b|non scritto|NON mandato")
+_LOG_LOCK = threading.Lock()
+_LOG_REP = {"line": None, "n": 0, "last": 0.0, "flushed": 0.0}
+_ERR_REP = {"key": None, "n": 0, "last": 0.0, "flushed": 0.0, "line": ""}
+_LOG_ATEXIT = []
+
+
+def _stamp(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t))
+
+
+def _log_append(p, lines, max_bytes=None, rotate=False):
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         try:
-            if p.stat().st_size > LOG_MAX_BYTES:
+            if max_bytes and p.stat().st_size > max_bytes:
+                if not rotate:
+                    return
                 os.replace(p, p.with_name(p.name + ".1"))
         except OSError:
             pass
         with open(p, "a") as f:
-            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+            f.write("".join(x + "\n" for x in lines))
     except OSError:
         pass
+
+
+def err_log_path(now=None):
+    lp = log_path()
+    return lp.with_name(f"{lp.stem}-errors-{time.strftime('%Y-%m-%d', time.localtime(now or time.time()))}.log")
+
+
+def err_log_prune(now):
+    """Via i file degli errori piu' vecchi di ERR_LOG_DAYS giorni: si guarda quando comincia il file di un giorno nuovo."""
+    lp = log_path()
+    oldest = time.strftime("%Y-%m-%d", time.localtime(now - ERR_LOG_DAYS * 86400))
+    for f in lp.parent.glob(f"{lp.stem}-errors-*.log"):
+        m = re.fullmatch(re.escape(lp.stem) + r"-errors-(\d{4}-\d{2}-\d{2})\.log", f.name)
+        if m and m.group(1) < oldest:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
+def _err_key(line):
+    line = re.sub(r"^cmd \S+:", "cmd:", line)
+    line = re.sub(r" · (fila|dall'arrivo) .*$", "", line)
+    return re.sub(r"\d+(?:[.,]\d+)?", "N", line)
+
+
+def _err_repeat(rep):
+    return f"{_stamp(rep['last'])} ↑ ripetuto altre {rep['n']} volte, l'ultimo alle {time.strftime('%H:%M:%S', time.localtime(rep['last']))}: {rep['line']}"
+
+
+def _err_log(line, now):
+    p = err_log_path(now)
+    if not p.exists():
+        err_log_prune(now)
+    rep, k = _ERR_REP, _err_key(line)
+    if k == rep["key"]:
+        rep["n"] += 1; rep["last"] = now; rep["line"] = line
+        if now - rep["flushed"] >= ERR_REPEAT_FLUSH_S:
+            _log_append(p, [_err_repeat(rep)], ERR_LOG_DAY_MAX)
+            rep.update(n=0, flushed=now)
+        return
+    out = [_err_repeat(rep)] if rep["n"] else []
+    rep.update(key=k, n=0, last=now, flushed=now, line=line)
+    _log_append(p, out + [f"{_stamp(now)} {line}"], ERR_LOG_DAY_MAX)
+
+
+def _log_repeat(rep):
+    return f"{_stamp(rep['last'])} ↑ ripetuta altre {rep['n']} volte, l'ultima alle {time.strftime('%H:%M:%S', time.localtime(rep['last']))}"
+
+
+def log_flush():
+    """I conteggi rimasti in sospeso, alla chiusura del processo."""
+    with _LOG_LOCK:
+        if _LOG_REP["n"]:
+            _log_append(log_path(), [_log_repeat(_LOG_REP)], LOG_MAX_BYTES, rotate=True)
+            _LOG_REP.update(n=0)
+        if _ERR_REP["n"]:
+            _log_append(err_log_path(_ERR_REP["last"]), [_err_repeat(_ERR_REP)], ERR_LOG_DAY_MAX)
+            _ERR_REP.update(n=0)
+
+
+def log(line, now=None):
+    now = now or time.time()
+    line = str(line)
+    with _LOG_LOCK:
+        if not _LOG_ATEXIT:
+            import atexit
+            atexit.register(log_flush); _LOG_ATEXIT.append(1)
+        if ERR_LINE.search(line):
+            _err_log(line, now)
+        rep = _LOG_REP
+        if line == rep["line"]:
+            rep["n"] += 1; rep["last"] = now
+            if now - rep["flushed"] >= LOG_REPEAT_FLUSH_S:
+                _log_append(log_path(), [_log_repeat(rep)], LOG_MAX_BYTES, rotate=True)
+                rep.update(n=0, flushed=now)
+            return
+        out = [_log_repeat(rep)] if rep["n"] else []
+        rep.update(line=line, n=0, last=now, flushed=now)
+        _log_append(log_path(), out + [f"{_stamp(now)} {line}"], LOG_MAX_BYTES, rotate=True)
 
 
 def read_json(p, default):
@@ -431,6 +535,22 @@ def key():
 
 def put_encrypted(path, obj):
     return rtdb("PUT", path, C.encrypt(obj, key()), {"print": "silent"})
+
+
+def state_pub(sealed, state):
+    """1.148 (15/11/2026, supervisor-push-etag-15-11): l'impronta dello stato appena pubblicato, {etag, published_at}.
+    etag = i primi 16 caratteri esadecimali dello SHA-1 del campo `enc` del documento scritto in /state: chi lo ha
+    scaricato lo ricalcola da quello che ha, senza decifrare."""
+    return {"etag": etag_of(sealed["enc"]), "published_at": state.get("published_at")}
+
+
+def fcm_pub(pub):
+    """I due campi facoltativi di una sveglia FCM: lo stato che c'e' adesso su /state. Dalla misura del 15/11 il 99%
+    dei download era /state, 35,5 KB riletti interi da 4 dispositivi a ogni sveglia di evento: con l'etag chi ha gia'
+    quello stato non lo riscarica. Vuoto se non si sa (un last-state.json scritto prima della 1.148)."""
+    if not isinstance(pub, dict) or not pub.get("etag"):
+        return {}
+    return {"etag": pub["etag"], "published_at": pub.get("published_at")}
 
 
 def fcm_send(data):
@@ -1301,7 +1421,7 @@ def collect_sources(now=None):
         "state_max_kb": R.get("state_max_kb") or 8,
         "rows": rows, "ledger": ledger, "questions": questions,
         "quota": _memo("quota", lambda: _json_cmd("quota", "--json", expect="{") or {}, ttl=300, min_age=120, deps=_quota_files()),
-        "projects": inv, "night": night_queue(), "night_report": night_report_latest(), "recap": recap_today(now), "ops": list(OPS), "slash": slash_allowed(),
+        "projects": inv, "night": night_queue(), "night_report": night_report_latest(), "recap": recap_today(now), "ops": offered_ops(), "slash": slash_allowed(),
         "follow": followed(), "awaiting": aw, "next": nexts, "next_at": nexts_at, "tools": tools,
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "activity": read_json(device_activity_path(), {}), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
@@ -2111,12 +2231,125 @@ def _s(x):
     return f"{x:.1f}".replace(".", ",")
 
 
+# 13/11/2026 (supervisor-push-falliti-13-11): su un Mac, dopo un riavvio, il demone avviato da cron non leggeva la
+# cartella dei progetti sotto Desktop (macOS la nega ai processi di cron senza Accesso completo al disco): ogni push
+# dava «[Errno 1] Operation not permitted», il worker riprovava ogni 30 s e la guardia ogni minuto, in silenzio. L'app
+# e' rimasta ~20 ore sullo stato del giorno prima; `doctor` dava 0 FAIL e `relay status` «serve: VIVO».
+# Le push fallite di fila si contano in <relay.dir>/push-fails.json: da quando, quante, l'ultimo errore, se questo
+# processo legge la cartella dei progetti, le fallite dell'ultima ora. Alla PUSH_FAILS_TELL-esima la persona lo sa, una
+# volta: un evento `relay_stale` all'app (non passa dalla raccolta, quindi parte anche cosi') e Telegram se c'e'. Alla
+# prima push riuscita il conto torna a zero; l'ultimo errore resta, per `relay status`.
+PUSH_FAILS_TELL = 3
+TCC_FOLDERS = ("Desktop", "Documents", "Downloads")
+
+
+def is_macos():
+    return sys.platform == "darwin" or os.environ.get("CM_FAKE_MACOS") == "1"
+
+
+def projects_root():
+    return os.path.realpath(cm.expand(CFG["workspace"]["root"]))
+
+
+def tcc_folder(path=None):
+    """Su macOS, la cartella protetta (Desktop, Documents, Downloads) sotto cui sta `path` (la cartella dei progetti), o ''."""
+    if not is_macos():
+        return ""
+    p = os.path.realpath(path or projects_root())
+    for name in TCC_FOLDERS:
+        base = os.path.realpath(str(cm.home() / name))
+        if p == base or p.startswith(base + os.sep):
+            return name
+    return ""
+
+
+def root_unreadable():
+    """L'errore con cui questo processo non legge la cartella dei progetti, o ''."""
+    try:
+        with os.scandir(projects_root()) as it:
+            next(it, None)
+        return ""
+    except OSError as e:
+        return str(e)
+
+
+def push_fails_path():
+    return rdir() / "push-fails.json"
+
+
+def push_fails():
+    d = read_json(push_fails_path(), {})
+    return d if isinstance(d, dict) else {}
+
+
+def push_fails_tell(d):
+    """Dice alla persona, una volta, che le push falliscono di fila. True se almeno un canale l'ha preso."""
+    title = M("relay.push_fails_title", n=d["n"], since=_hm(d["since"]))
+    body = M("relay.push_fails_body", error=d.get("error") or "?")
+    if d.get("root_error") and tcc_folder():
+        body += " " + M("relay.push_fails_tcc", folder=tcc_folder())
+    body += " " + M("relay.push_fails_see")
+    told = False
+    try:
+        emit("relay_stale", title, body)
+        told = True
+    except Exception as e:   # noqa: BLE001 — senza rete o senza chiave resta Telegram, e il prossimo tentativo
+        log(f"push fallite: evento non mandato ({str(e)[:120]})")
+    try:
+        told = bool(_load("cm-bot").send(title + "\n" + body, watch_quiet=False)) or told
+    except Exception as e:   # noqa: BLE001
+        log(f"push fallite: avviso Telegram non mandato ({str(e)[:120]})")
+    return told
+
+
+def push_failed_note(e, origin, now=None):
+    now = now or time.time()
+    d = push_fails()
+    if not d.get("n"):
+        d.update(since=now, told=False, n=0)
+    d["n"] = int(d["n"]) + 1
+    d.update(last_at=now, error=S.one_line(str(e))[:300], origin=str(origin or "?"), root_error=root_unreadable(), pid=os.getpid())
+    d["recent"] = [t for t in (d.get("recent") or []) if isinstance(t, (int, float)) and now - t < 3600][-500:] + [now]
+    d.pop("ok_at", None)
+    write_json(push_fails_path(), d)
+    if d["n"] >= PUSH_FAILS_TELL and not d.get("told"):
+        d["told"] = push_fails_tell(d)
+        write_json(push_fails_path(), d)
+
+
+def push_ok_note(now=None):
+    if not push_fails_path().exists():
+        return
+    d = push_fails()
+    if d.get("n"):
+        log(f"push: ripartite dopo {d['n']} fallite di fila dalle {_hm(d.get('since') or 0)}")
+        d.update(n=0, told=False, ok_at=now or time.time())
+        write_json(push_fails_path(), d)
+
+
 def push(dry_run=False, now=None, origin="diretta", requested=None, stamp=None, light=False):
     """Una push. Il lock copre raccolta, eventi e PUT; FCM, avvisi e pulizie (m["post"]) girano dopo averlo lasciato
     (08/10, fase 1). `stamp`: la richiesta del ripiego senza demone; se dopo il lock push-request ha un timbro piu'
     nuovo, la push la fa chi l'ha scritto e questa esce senza raccogliere (None)."""
     if dry_run:
         return _push(True, now)
+    try:
+        st = _push_run(now, origin, requested, stamp, light)
+    except Exception as e:   # noqa: BLE001 — 13/11: ogni push fallita si conta, poi l'errore torna a chi l'ha chiesta
+        try:
+            push_failed_note(e, origin)
+        except Exception as e2:   # noqa: BLE001
+            log(f"push fallite: conto non scritto ({str(e2)[:120]})")
+        raise
+    if st is not None:
+        try:
+            push_ok_note()
+        except OSError:
+            pass
+    return st
+
+
+def _push_run(now, origin, requested, stamp, light):
     # una push alla volta: due in parallelo leggono lo stesso «stato precedente» e scrivono due volte gli stessi
     # eventi (dal vivo 16:22 del 12/09: la domanda e' arrivata due volte sul bus)
     t0, cpu0 = time.time(), _cpu()
@@ -2257,6 +2490,7 @@ def _light(m):
         sealed = C.encrypt(state, key())
         rtdb("PUT", "state", sealed, {"print": "silent"})
         usage_add(state_pubs=1, state_bytes=len(json.dumps(sealed)))
+        last["pub"] = state_pub(sealed, state)   # 1.148: l'impronta di cio' che e' su /state, per le sveglie
     elif m.get("skipped"):
         usage_add(state_skipped=1)
     m["published"] = time.time()
@@ -2307,11 +2541,13 @@ def _push(dry_run=False, now=None, m=None):
         log(f"stato locale non scritto: {ex}")
     k = None if local_only() else key()
     m["collected"] = time.time()
+    pub = last.get("pub")   # 1.148: l'impronta dello stato su /state; uno stato non ripubblicato tiene la sua
     try:
         if k and not m.get("skipped"):
             sealed = C.encrypt(state, k)
             rtdb("PUT", "state", sealed, {"print": "silent"})
             usage_add(state_pubs=1, state_bytes=len(json.dumps(sealed)))
+            pub = state_pub(sealed, state)
         elif k:
             usage_add(state_skipped=1)
         if events and k:
@@ -2326,7 +2562,7 @@ def _push(dry_run=False, now=None, m=None):
     m["published"] = time.time()
     m["events"] = len(events)
     pub_history_add(m["put_at"])
-    write_json(last_p, {"state": state, "full": full, "seq": seq - 1, "pushed_at": now, "names": names})
+    write_json(last_p, dict({"state": state, "full": full, "seq": seq - 1, "pushed_at": now, "names": names}, **({"pub": pub} if pub else {})))
     write_json(beat_path(), {"fp": fp, "full_at": now})
 
     def post():
@@ -2355,7 +2591,9 @@ def _push(dry_run=False, now=None, m=None):
         for e in events:
             try:
                 # 1.62: «quiet» anche nella sveglia, cosi' l'app sa senza leggere l'evento che non deve suonare
-                fcm_send({"kind": e["kind"], "session": e["session"], "ts": e["ts"], "key": e["key"], **({"quiet": "1"} if e.get("quiet") else {})})
+                # 1.148: con l'etag e il published_at dello stato appena pubblicato, chi lo ha gia' non lo riscarica
+                fcm_send({"kind": e["kind"], "session": e["session"], "ts": e["ts"], "key": e["key"], **({"quiet": "1"} if e.get("quiet") else {}),
+                          **fcm_pub(pub)})
             except (urllib.error.URLError, OSError, ValueError) as ex:
                 woken = False
                 log(f"fcm FAILED: {ex}")
@@ -2508,7 +2746,8 @@ def emit(kind, title, body, ref=None, account=None, now=None, session=None, extr
     try:
         if not k:
             raise OSError("local only")
-        fcm_send({"kind": kind, "session": session, "ts": now, "key": ev["key"]})
+        # 1.148: un evento che non nasce dal diff non cambia /state: la sveglia porta l'impronta di quello che c'e' gia'
+        fcm_send({"kind": kind, "session": session, "ts": now, "key": ev["key"], **fcm_pub(last.get("pub"))})
     except (urllib.error.URLError, OSError, ValueError) as ex:
         log(f"fcm FAILED ({kind}): {ex}")
     log(f"evento {kind}: {ev['title']}")
@@ -3643,10 +3882,88 @@ def raccolta_after_pair():
         log(f"prima-raccolta dopo il pairing FAILED: {e}")
 
 
+def offered_ops():
+    """13/11/2026 (supervisor-agenda-raffica-13-11): le op che lo stato offre. agenda e agenda_set solo con un
+    relay.agenda_file che c'e': senza, un'app che le vedeva in `ops` chiedeva l'agenda e riceveva «no agenda file»."""
+    off = () if agenda_path() else ("agenda", "agenda_set")
+    return [o for o in OPS if o not in off]
+
+
+# 13/11/2026 (supervisor-agenda-raffica-13-11): la web, avuto «no agenda file», richiedeva subito: 10.512 richieste in
+# 60 s, il demone al 57-61% di CPU a macchina ferma. Lo stesso comando (stessa op, sessione, argomento e ogni altro
+# campo) dallo stesso client, ripetuto a raffica, si limita: i primi CMD_BURST in un secondo si eseguono come sempre (due
+# parti di una pagina che chiedono la stessa cosa, un doppio tocco, una richiesta rifatta dopo aver cambiato qualcosa);
+# dal successivo la chiave e' «calda» e si esegue al piu' una volta ogni CMD_RATE_S, finche' non passa un secondo senza
+# ripetizioni. Chi ripete mentre e' calda riceve l'esito dell'ultimo eseguito, col proprio id, senza esecuzione, registro
+# ne' osservazioni; se quello e' ancora in corso lo aspetta, e solo dopo RATE_WAIT_S senza esito riceve un rifiuto breve.
+# Un comando dell'utente eseguito toglie gli esiti delle letture tenuti qui: la lettura che lo segue vede cosa ha cambiato.
+CMD_RATE_S = 1.0
+CMD_BURST = 3
+RATE_WAIT_S = 60
+RATE_KEEP = 200
+_RATE = {}
+_RATE_LOCK = threading.Lock()
+
+
+def rate_key(cmd):
+    client = str(cmd.get("uid") or "") or f"{cmd.get('by') or '?'}/{cmd.get('device') or ''}"
+    rest = {k: v for k, v in cmd.items() if k not in ("id", "issued", "uid", "by", "device", "at")}
+    return client + " " + json.dumps(rest, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def rate_limited(cmd, now):
+    """(None, voce) se il comando va eseguito (e da ora conta lui); (CmdResult, None) per chi lo ha ripetuto a raffica."""
+    k = rate_key(cmd)
+    with _RATE_LOCK:
+        cur = _RATE.get(k)
+        runs = [t for t in cur["runs"] if now - t < CMD_RATE_S] if cur else []
+        hot = bool(cur and cur["hot"] and now - cur["seen"] < CMD_RATE_S)   # un secondo senza ripetizioni la raffredda
+        if cur:
+            cur["seen"] = now
+        go = (not runs) if hot else len(runs) < CMD_BURST
+        if go:
+            if len(_RATE) > RATE_KEEP:
+                for old in [x for x, v in _RATE.items() if now - v["seen"] >= CMD_RATE_S and v["ev"].is_set()]:
+                    _RATE.pop(old, None)
+            cur = _RATE[k] = {"runs": runs + [now], "seen": now, "hot": hot, "res": None, "ev": threading.Event(),
+                              "passive": str(cmd.get("op") or "") in PASSIVE_OPS}
+            return None, cur
+        cur["hot"] = True
+    cid = str(cmd.get("id") or "")
+    log(f"cmd limitato: {cmd.get('op')} {cmd.get('session') or ''} da {cmd.get('by') or '?'}{' (locale)' if cmd.get('_local') else ''}"
+        f" · ripetuto a raffica, non eseguito")
+    cur["ev"].wait(RATE_WAIT_S)
+    res = cur["res"]
+    if res is None:
+        return {"id": cid, "ok": False, "text": M("relay.cmd_rate_limited"), "at": int(time.time())}, None
+    return dict(res, id=cid, at=int(time.time())), None
+
+
+def rate_done(entry, res):
+    with _RATE_LOCK:
+        entry["res"] = res
+        if res is not None and not entry["passive"]:
+            for k in [x for x, v in _RATE.items() if v["passive"] and v["ev"].is_set()]:
+                _RATE.pop(k, None)
+    entry["ev"].set()
+
+
 def run_cmd(cmd, arrived=None):
     """Esegue un Cmd (gia' in chiaro, con `id`) e ne ritorna il CmdResult: log, registro, osservazioni e push dopo
     i comandi che cambiano lo stato. Lo usano il daemon sul bus e l'API locale. `arrived` = quando e' arrivato dallo
     stream (fase 0, 07/10: la fila prima dell'esecuzione)."""
+    limited, entry = rate_limited(cmd, time.time())
+    if limited is not None:
+        return limited
+    res = None
+    try:
+        res = _run_cmd(cmd, arrived)
+    finally:
+        rate_done(entry, res)
+    return res
+
+
+def _run_cmd(cmd, arrived=None):
     cid = str(cmd.get("id") or "")
     t_in = time.time()
     active = str(cmd.get("op") or "") not in PASSIVE_OPS
@@ -4117,8 +4434,72 @@ def install():
     lines += ["# supervisor relay: l'orologio (ascolto dei comandi, battito di /state ogni minuto)"] + cron_lines()
     crontab_write("\n".join(lines) + "\n")
     print(M("relay.cron_installed", s=int(R.get("heartbeat_s") or 60)))
+    cron_disk_access()
     ensure()
     return 0
+
+
+# 13/11/2026 (supervisor-push-falliti-13-11): su macOS i processi avviati da cron non entrano in Desktop, Documenti e
+# Download finche' /usr/sbin/cron non ha l'Accesso completo al disco. Il demone avviato a mano dal terminale legge; quello
+# che cron rialza dopo un riavvio no. `relay install` lo dice e lo prova con un job di cron vero, che elenca la cartella
+# dei progetti una volta: l'esito resta in <relay.dir>/cron-probe.json per `doctor`.
+CRON_PROBE_WAIT_S = 75
+CRON_PROBE_MARK = "supervisor cron-probe"
+
+
+def cron_probe_path():
+    return rdir() / "cron-probe.json"
+
+
+def cron_probe(root, wait=None):
+    """(True, '') se cron legge `root`, (False, errore) se no, (None, '') se il job non ha risposto entro `wait` secondi."""
+    import shlex
+    wait = float(os.environ.get("CM_CRON_PROBE_WAIT_S") or wait or CRON_PROBE_WAIT_S)
+    out, rc = rdir() / "cron-probe.out", rdir() / "cron-probe.rc"
+    for f in (out, rc):
+        f.unlink(missing_ok=True)
+    line = f"* * * * * /bin/ls {shlex.quote(root)} >/dev/null 2>{shlex.quote(str(out))}; echo $? >{shlex.quote(str(rc))} # {CRON_PROBE_MARK}"
+    crontab_write(crontab_read().rstrip("\n") + "\n" + line + "\n")
+    got = None
+    try:
+        end = time.time() + wait
+        while time.time() < end:
+            try:
+                got = rc.read_text().strip() or None
+            except OSError:
+                got = None
+            if got:
+                break
+            time.sleep(0.5)
+    finally:
+        crontab_write("\n".join(l for l in crontab_read().splitlines() if CRON_PROBE_MARK not in l) + "\n")
+    if not got:
+        return None, ""
+    try:
+        err = S.one_line(out.read_text(errors="replace"))[:200]
+    except OSError:
+        err = ""
+    for f in (out, rc):
+        f.unlink(missing_ok=True)
+    return (True, "") if got == "0" else (False, err or f"ls: exit {got}")
+
+
+def cron_disk_access():
+    """Su macOS con la cartella dei progetti sotto una cartella protetta: avvisa e verifica. Altrove non fa nulla."""
+    folder = tcc_folder()
+    if not folder:
+        cron_probe_path().unlink(missing_ok=True)
+        return None
+    root = projects_root()
+    wait = int(float(os.environ.get("CM_CRON_PROBE_WAIT_S") or CRON_PROBE_WAIT_S))
+    print(M("relay.cron_tcc_check", folder=folder, s=wait), flush=True)
+    try:
+        ok, err = cron_probe(root)
+    except (OSError, subprocess.SubprocessError) as e:
+        ok, err = None, str(e)
+    write_json(cron_probe_path(), {"at": time.time(), "ok": ok, "error": err, "root": root, "folder": folder})
+    print(M("relay.cron_tcc_ok") if ok else M("relay.cron_tcc_fail", root=root, error=err) if ok is False else M("relay.cron_tcc_unknown", s=wait), flush=True)
+    return ok
 
 
 def uninstall():
@@ -4147,6 +4528,12 @@ def status():
             key="ok" if C.load_key(rdir()) else "assente (relay pair)", sa="ok" if sa_path().is_file() else f"assente ({sa_path()})",
             serve=serve_s, last=(time.strftime("%H:%M:%S", time.localtime(last["pushed_at"])) if last.get("pushed_at") else "-"),
             cron="yes" if "supervisor relay" in crontab_read() else "no"))
+    # 13/11 (supervisor-push-falliti-13-11): «serve: VIVO» e l'ultima push non dicevano che ogni push falliva
+    pf = push_fails()
+    if pf.get("last_at"):
+        now = time.time()
+        print(M("relay.status_error", at=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pf["last_at"])), error=pf.get("error") or "?",
+                hour=len([t for t in (pf.get("recent") or []) if isinstance(t, (int, float)) and now - t < 3600]), streak=int(pf.get("n") or 0)))
     return 0
 
 

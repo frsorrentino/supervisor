@@ -179,9 +179,8 @@ def snapshot_check(folder):
     sha = git(folder, "rev-parse", "HEAD").strip()
     off = _load("cm-offload")
     globs = S["secret_globs"]
-    scan = subprocess.run(["git", "-C", folder, "grep", "-I", "-l", "-E", "-e", off.SECRET_RE, sha, "--", "."]
-                          + off.secret_pathspecs(globs), capture_output=True, text=True)
-    hits = [l.split(":", 1)[1] if ":" in l else l for l in scan.stdout.splitlines()]
+    # 13/11 (supervisor-segreti-finti-test-13-11): le chiavi finte dei file che il repo dichiara non sono segreti
+    hits = off.secret_hits(folder, sha, ["."] + off.secret_pathspecs(globs))
     if hits:
         raise Refused(M("rsession.rule_secrets_found", files=", ".join(hits[:5])))
     dirty = [l[3:] for l in git(folder, "status", "--porcelain").splitlines() if l.strip()]

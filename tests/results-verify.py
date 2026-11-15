@@ -264,9 +264,9 @@ T.check("results IX6 a new index looks back 48 hours; what came more than a day 
 # ------------------------------------------------------------------ FX fixture
 F = {f: json.loads((T.ROOT / f"tests/fixtures/relay/{f}.json").read_text()) for f in ("state-1-question", "state-2-idle", "state-3-stale")}
 fr = F["state-3-stale"].get("results") or {}
-T.check("results FX1 state-3 carries results with the code's keys, and every state's ops end with the three result ops",
+T.check("results FX1 state-3 carries results with the code's keys, and every state's ops have the three result ops, last before max_sessions_set (1.145)",
         list(fr) == ["n_unseen", "items"] and fr["items"] and all(list(x) == KEYS for x in fr["items"])
-        and all(x["ops"][-3:] == ["results", "result_seen", "result_note"] for x in F.values()), json.dumps(fr)[:300])
+        and all(x["ops"][-4:-1] == ["results", "result_seen", "result_note"] for x in F.values()), json.dumps(fr)[:300])
 cs = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())
 ops = {c["op"] for c in cs["cmd"]}
 view_res = [json.loads(r["text"]) for r in cs["result"] if r["text"].startswith('{"groups"')]

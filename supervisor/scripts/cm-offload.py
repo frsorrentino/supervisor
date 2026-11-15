@@ -551,6 +551,50 @@ def secret_pathspecs(globs):
     return out
 
 
+# 13/11/2026 (supervisor-segreti-finti-test-13-11): i test degli scanner portano chiavi finte, e la scansione le prendeva
+# per segreti: per far partire il repo si toglievano i file dalla fotografia con scheduler.secret_globs nella config.
+# Ora il repo lo dichiara da se': <radice>/.cm-offload.json, "secret_examples": [percorsi dalla radice], letto dal commit
+# che parte. In un file dichiarato passa SOLO la forma nota di una chiave finta: l'intestazione di una chiave privata
+# dentro una stringa, seguita sulla stessa riga da un a capo scritto con la barra («\n»), da un corpo di al piu'
+# FAKE_KEY_BODY caratteri e da un altro a capo scritto (una chiave vera ha un corpo di centinaia di caratteri, e in un
+# file PEM l'intestazione chiude la riga). Tolte le chiavi finte la riga si riguarda: un token, o una chiave vera, nello
+# stesso file o sulla stessa riga resta un segreto.
+FAKE_KEY_BODY = 80
+FAKE_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----\\{1,2}n[A-Za-z0-9+/=]{0,%d}\\{1,2}n(?:-----END [A-Z ]*PRIVATE KEY-----)?" % FAKE_KEY_BODY)
+
+
+def secret_examples(top, commit):
+    r = subprocess.run(["git", "-C", top, "show", f"{commit}:.cm-offload.json"], capture_output=True, text=True)
+    try:
+        data = json.loads(r.stdout) if r.returncode == 0 else {}
+    except ValueError:
+        data = {}
+    ex = data.get("secret_examples") if isinstance(data, dict) else None
+    return {str(x) for x in ex} if isinstance(ex, list) else set()
+
+
+def secret_hits(top, commit, specs):
+    """I file del commit con un segreto (SECRET_RE), in ordine, fuori dalle chiavi finte dei file dichiarati."""
+    # -e: il pattern comincia con «-----BEGIN» e senza -e git lo prenderebbe per un'opzione
+    scan = subprocess.run(["git", "-C", top, "grep", "-z", "-I", "-n", "-E", "-e", SECRET_RE, commit, "--"] + specs,
+                          capture_output=True, text=True, errors="replace")
+    examples = None
+    hits = []
+    for row in scan.stdout.split("\n"):
+        parts = row.split("\0", 2)
+        if len(parts) != 3:
+            continue
+        path = parts[0].split(":", 1)[1] if ":" in parts[0] else parts[0]
+        if path in hits:
+            continue
+        if examples is None:
+            examples = secret_examples(top, commit)
+        if path in examples and not re.search(SECRET_RE, FAKE_KEY_RE.sub("", parts[2])):
+            continue
+        hits.append(path)
+    return hits
+
+
 def is_secret_name(rel_path, globs):
     base = os.path.basename(rel_path)
     return any(fnmatch.fnmatch(base, g) for g in globs)
@@ -572,10 +616,7 @@ def prepare(job):
     job["commit"] = commit
     globs = S["secret_globs"]
     specs = ["."] + secret_pathspecs(globs)
-    # -e: il pattern comincia con «-----BEGIN» e senza -e git lo prenderebbe per un'opzione
-    scan = subprocess.run(["git", "-C", top, "grep", "-I", "-l", "-E", "-e", SECRET_RE, commit, "--"] + specs,
-                          capture_output=True, text=True, cwd=folder)
-    hits = [l.split(":", 1)[1] if ":" in l else l for l in scan.stdout.splitlines()]
+    hits = secret_hits(top, commit, specs)
     if hits:
         raise Refused(M("offload.secret_found", files=", ".join(hits[:5])))
     tree = git(top, "ls-tree", "-r", "-l", "--full-tree", commit, "--", job["sub"] if job["sub"] != "." else ".")

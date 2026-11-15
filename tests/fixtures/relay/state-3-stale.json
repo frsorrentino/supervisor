@@ -183,7 +183,8 @@
     "feedback_app",
     "results",
     "result_seen",
-    "result_note"
+    "result_note",
+    "max_sessions_set"
   ],
   "slash": [
     "compact",
@@ -343,7 +344,7 @@
       "id": "s-4f7d6e8a58",
       "kind": "waiting",
       "key": "waiting:task:ledger-vendor-ticket",
-      "text": "Check again: the vendor's answer on ticket 4411",
+      "text": "Check again: vendor's answer on 4411",
       "at": 1789199200,
       "expires_at": 1789292800,
       "rank": 5,

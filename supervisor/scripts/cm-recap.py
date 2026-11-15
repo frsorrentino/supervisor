@@ -17,6 +17,19 @@ Con --send lo manda su Telegram alle chat di `allowFrom` (stesso bot del plugin;
 confligge col polling, solo getUpdates è esclusivo) in HTML: i link non occupano spazio.
 
 Il *quanto è costato* non sta qui: sono le ricevute di fable-director. Qui c'è il *cosa è successo*.
+
+Tempo massimo (15/11/2026, supervisor-recap-appeso-15-11: `supervisor diary` restava muto per piu' di 100 secondi, e
+si fermava a mano): il recap non stampa niente finche' non ha il riassunto del modello, un `claude -p` che aveva 120
+secondi, non veniva ricordato quando scadeva e veniva richiamato una seconda volta per docs/recap.md. Ora: il comando
+intero ha `recap.max_s` secondi (150; 0 = senza limite), e allo scadere esce con 124 e una riga che dice a che punto
+era; il riassunto ha `recap.summary_timeout_s` (60) e mai piu' di quanto resta, gira con l'input chiuso e in un gruppo
+suo, ucciso intero allo scadere; se non arriva il recap esce lo stesso con l'ultimo messaggio di ogni progetto, lo
+dice su stderr, e non richiede il modello per SUMMARY_RETRY_S (mezz'ora) ne' una seconda volta nello stesso giro.
+Misurato sul Chromebook il 15/11: il solo avvio di `claude -p` costa 17 secondi, e il riassunto di quel giorno passava
+i 120. Per questo il modello parte senza server MCP, strumenti, comandi slash e sessione su disco (SUMMARY_LEAN; se la
+CLI non li conosce si riprova senza), e il recap con --send, quello del cron che nessuno aspetta, ha piu' tempo:
+`recap.send_max_s` (420) per il comando e tutto quello che resta per il riassunto, anche dopo uno non arrivato. Il
+riassunto che arriva li' resta nella cache del giorno, e il recap chiesto a mano dopo lo trova subito.
 """
 import argparse
 import datetime as dt
@@ -25,8 +38,10 @@ import importlib.util
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -53,6 +68,52 @@ cm = _load("cm-config")
 CFG = cm.load(warn=False)
 M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 D = CFG["recap"]
+MAX_S = 150               # recap.max_s: il tempo massimo del comando intero
+SUMMARY_TIMEOUT_S = 60    # recap.summary_timeout_s: quello del riassunto del modello
+SUMMARY_RESERVE_S = 15    # cio' che resta al recap dopo il riassunto (scrivere, mandare)
+SUMMARY_RETRY_S = 1800    # dopo un riassunto non arrivato, per quanto non si richiede
+SEND_MAX_S = 420          # recap.send_max_s: il tempo massimo con --send (il cron: nessuno aspetta, il riassunto serve)
+# il modello del riassunto non usa strumenti: senza server MCP, strumenti, comandi slash e sessione su disco parte prima
+SUMMARY_LEAN = ["--strict-mcp-config", "--tools", "", "--disable-slash-commands", "--no-session-persistence"]
+RUN = {"t0": time.time(), "phase": "start", "asked": set()}
+
+
+class TooLong(BaseException):
+    """Il tempo massimo e' scaduto. BaseException: nessun `except Exception` lungo la strada lo deve inghiottire."""
+
+
+def phase(name):
+    RUN["phase"] = name
+
+
+def max_s():
+    key, default = ("send_max_s", SEND_MAX_S) if RUN.get("send") else ("max_s", MAX_S)
+    try:
+        return max(0, int(D.get(key, default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def run_capped(cmd, timeout, **kw):
+    """L'uscita standard di `cmd`, o None se non finisce in `timeout` secondi. L'input e' chiuso (un `claude -p` con un
+    input aperto lo aspetta), il comando ha un gruppo suo e allo scadere, o se il recap viene fermato, muore tutto."""
+    p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                         errors="replace", start_new_session=True, **kw)
+    try:
+        out, _ = p.communicate(timeout=timeout)
+        return out
+    except subprocess.TimeoutExpired:
+        return None
+    finally:
+        if p.poll() is None:
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            try:
+                p.communicate(timeout=5)
+            except (subprocess.TimeoutExpired, OSError, ValueError):
+                pass
 
 
 def ledger_path():
@@ -217,9 +278,9 @@ def tab_icons():
         return {}
     try:
         runner = [sys.executable, cli] if cli.endswith(".py") else ["node", cli]
-        p = subprocess.run(runner + ["get_tabs", "--format", "json"], capture_output=True, text=True, timeout=20)
-        tabs = json.loads(p.stdout)
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+        phase("icons")
+        tabs = json.loads(run_capped(runner + ["get_tabs", "--format", "json"], 20) or "")
+    except (OSError, ValueError):
         return {}
     out = {}
     for t in tabs if isinstance(tabs, list) else tabs.get("tabs", []):
@@ -281,7 +342,7 @@ def summaries(groups, label):
     except (OSError, ValueError):
         cache = {}
 
-    def unpack(v):   # v1: stringa (solo «fatto»); v2: {"fatto","prossimo"}
+    def unpack(v):   # v1: stringa (solo «fatto»); v2: {"fatto","prossimo"}; {"failed_at"}: non arrivato
         if isinstance(v, dict):
             return (str(v.get("fatto") or ""), str(v.get("prossimo") or ""))
         return (str(v or ""), "")
@@ -290,14 +351,20 @@ def summaries(groups, label):
         t = (t or "").strip().rstrip(".")
         return t if len(t) <= n else t[:n] + "…"
 
+    now = time.time()
+
+    def failed_lately(v):   # 15/11: un riassunto non arrivato si ricorda, e per mezz'ora non si richiede
+        return isinstance(v, dict) and v.get("failed_at") and now - float(v["failed_at"]) < SUMMARY_RETRY_S
+
     missing = {}
     for name, g in todo.items():
         key = f"{name}|{g['account']}|{len(g['lasts'])}"
-        if key in cache:            # anche vuoto (il modello non ha risposto per questo nome): niente nuove chiamate
-            done, nxt = unpack(cache[key])
+        v = cache.get(key)
+        if key in cache and not (isinstance(v, dict) and v.get("failed_at") and (RUN.get("send") or not failed_lately(v))):
+            done, nxt = unpack(v)   # anche vuoto (il modello non ha risposto per questo nome): niente nuove chiamate
             if done:
                 out[id(g)] = (done, nxt)
-        else:
+        elif key not in RUN["asked"]:   # nello stesso giro il modello si chiede una volta sola
             missing[name] = g
     if missing:
         lang = "italiano" if CFG.get("language") == "it" else "English"
@@ -312,13 +379,35 @@ def summaries(groups, label):
         claude = cm.claude_bin()   # dal cron il PATH non ha ~/.local/bin (14/09: riassunti vuoti dal 12/09)
         env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"}   # account di default (T68)
         try:
-            p = subprocess.run([claude, "-p", prompt, "--model", str(D.get("summary_model", "haiku")), "--max-turns", "1"],
-                               capture_output=True, text=True, timeout=int(D.get("summary_timeout_s", 120)), env=env,
-                               cwd=str(Path(cm.expand(CFG["state_dir"]))))
-            m = re.search(r"\{.*\}", p.stdout, re.S)
+            limit = int(D.get("summary_timeout_s", SUMMARY_TIMEOUT_S))
+        except (TypeError, ValueError):
+            limit = SUMMARY_TIMEOUT_S
+        def left():
+            return int(max_s() - (time.time() - RUN["t0"]) - SUMMARY_RESERVE_S)
+
+        if RUN.get("armed"):   # mai piu' di quanto resta al comando intero, meno il tempo per scrivere e mandare
+            limit = max(1, left() if RUN.get("send") else min(limit, left()))
+        phase("summary")
+        RUN["asked"].update(f"{n}|{g['account']}|{len(g['lasts'])}" for n, g in missing.items())
+        raw, got = None, {}
+        try:
+            t_ask = time.time()
+            for extra in (SUMMARY_LEAN, []):
+                wait = limit - int(time.time() - t_ask)
+                if wait < 1:
+                    break
+                raw = run_capped([claude, "-p", prompt, "--model", str(D.get("summary_model", "haiku")), "--max-turns", "1"] + extra, wait,
+                                 env=env, cwd=str(Path(cm.expand(CFG["state_dir"]))))
+                m = re.search(r"\{.*\}", raw or "", re.S)
+                if raw is None or m:   # scaduto, o una risposta: basta. Uscita senza JSON (una CLI che non conosce le
+                    break              # opzioni leggere esce subito con un errore): si riprova senza
             got = json.loads(m.group(0)) if m else {}
-        except (OSError, ValueError, subprocess.TimeoutExpired):
+        except (OSError, ValueError):
             got = {}
+        if not isinstance(got, dict):
+            got = {}
+        if raw is None:   # non e' arrivato in tempo: il recap esce lo stesso, con l'ultimo messaggio di ogni progetto
+            print(M("recap.summary_timeout", n=limit, min=SUMMARY_RETRY_S // 60), file=sys.stderr)
         for name, g in missing.items():
             done, nxt = unpack(got.get(name))
             key = f"{name}|{g['account']}|{len(g['lasts'])}"
@@ -328,6 +417,8 @@ def summaries(groups, label):
                 cache[key] = entry
             elif got:
                 cache[key] = ""      # risposta arrivata ma senza questo nome: si ripiega e non si richiede
+            elif raw is None:
+                cache[key] = {"failed_at": int(now)}
         try:
             cache_p.parent.mkdir(parents=True, exist_ok=True)
             cache_p.write_text(json.dumps(cache, ensure_ascii=False, indent=1))
@@ -553,6 +644,7 @@ def write_project_log(groups, said, day):
 def calendar_now():
     """(scadenze in avviso, errore) dal calendario; mai un'eccezione: il recap esce comunque."""
     try:
+        phase("calendar")
         cal = _load("cm-calendar")
         return cal.deadlines() if cal.url() else None
     except Exception:   # noqa: BLE001
@@ -566,6 +658,7 @@ def to_app(text, day):
 
 
 def send(text, as_html):
+    phase("send")
     bot = _load("cm-bot")
     if not bot.token():
         print(M("bot.no_token", path=CFG["bot"]["token_file"]), file=sys.stderr)
@@ -632,6 +725,7 @@ def build(argv):
     ap.add_argument("--full", "--tutto", dest="full", action="store_true")
     ap.add_argument("--json", dest="as_json", action="store_true")
     a = ap.parse_args(argv)
+    phase("ledger")
     if a.since:
         events = read_events(since=dt.datetime.now() - dt.timedelta(hours=a.since))
         label = M("recap.label_since", h=a.since)
@@ -647,8 +741,32 @@ def build(argv):
 
 
 def main(argv):
+    """Il comando, dentro il suo tempo massimo: allo scadere una riga chiara e uscita 124, mai un recap appeso."""
     if argv and argv[0] in ("install", "uninstall", "status"):
         return {"install": install, "uninstall": uninstall, "status": status}[argv[0]]()
+    RUN["send"] = "--send" in argv or "--invia" in argv
+    n = max_s()
+
+    def stop(signum, frame):
+        raise TooLong()
+
+    armed = bool(n) and hasattr(signal, "SIGALRM")
+    RUN.update(t0=time.time(), armed=armed)
+    if armed:
+        signal.signal(signal.SIGALRM, stop)
+        signal.alarm(n)
+    try:
+        return run(argv)
+    except TooLong:
+        sys.stdout.flush()
+        print(M("recap.too_long", n=n, phase=M("recap.phase_" + RUN["phase"])), file=sys.stderr)
+        return 124
+    finally:
+        if armed:
+            signal.alarm(0)
+
+
+def run(argv):
     a, sessions, groups, label = build(argv)
     if a.as_json:
         def ser(g):
@@ -670,12 +788,16 @@ def main(argv):
     deadlines = calendar_now() if (not day or day >= _load("cm-calendar").today()) else None
     plain = render_short(groups, label, as_html=False, between=between, deadlines=deadlines)
     print(plain)
+    sys.stdout.flush()
     if day:
-        n, rel = write_project_log(groups, summaries(groups, label), day)
+        said = summaries(groups, label)
+        phase("log")
+        n, rel = write_project_log(groups, said, day)
         if n:
             print(M("recap.log_written", n=n, file=rel))
     if a.send:
         if day:
+            phase("send")
             to_app(plain, day)
         return send(render_short(groups, label, as_html=True, between=between, deadlines=deadlines), True)
     return 0

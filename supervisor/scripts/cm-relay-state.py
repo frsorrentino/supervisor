@@ -575,6 +575,10 @@ def build_session(row, src):
         out["finished"] = True
     if (src.get("duplicates") or {}).get(tmux):
         out["duplicate_of"] = src["duplicates"][tmux]
+    # 1.146 (13/11/2026, supervisor-logout-bg-13-11): `bg` true per una sessione viva di `claude --bg` (assente = no): la
+    # sua scheda avvisa che li' /logout scollega tutte le sessioni del PC e cancella i login MCP e i segreti dei plugin
+    if row.get("bg") and st != "gone":
+        out["bg"] = True
     # 1.38 (05/10/2026): le voci della riga «Prossimi:» dell'ultimo messaggio, [{text, blocking}], solo quando ci sono
     # e quando c'e' l'esito (non mentre la sessione e' ferma su una domanda)
     stops = [r for r in events if r.get("event") == "stop"]

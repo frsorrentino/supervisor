@@ -178,8 +178,13 @@ def step_relay(st):
     if rc != 0:
         st.add("fail", "relay", first_line(out, f"relay web rc {rc}")); return None
     rc2, out2 = run("relay", "install", timeout=120)
+    # 13/11 (supervisor-push-falliti-13-11): su macOS, con i progetti sotto Desktop, Documenti o Download, `relay install`
+    # prova con un job di cron che cron legga la cartella; se no (o senza risposta) la riga che lo dice nomina /usr/sbin/cron
+    tcc = next((x.strip() for x in out2.splitlines() if "/usr/sbin/cron" in x), None)
     if rc2 != 0:
         st.add("warn", "relay", M("install.relay_no_cron", line=first_line(out2, f"relay install rc {rc2}")))
+    elif tcc:
+        st.add("warn", "relay", tcc)
     elif sys.platform != "darwin" and not cron_running():
         # WSL e i contenitori hanno spesso crontab ma nessun cron acceso: il demone batte da se', ma dopo un riavvio
         # nessuno lo riaccende

@@ -11,6 +11,8 @@ RT1 da tag a tag (auto-… → auto-…): «app 0.2.1» nel dove (indietro di du
 RT2 da web a web: «web 0.2.4» nel dove e nel fai diventa la nuova; «app 0.2.3» resta
 RT3 un testo che non nomina versioni resta com'e'
 RT4 una prova gia' sulla build piu' nuova col testo rimasto a una versione di prima del suo canale si allinea sul posto
+RT5 (supervisor-prove-canale-parentesi-13-11) «web (gia' alla 0.2.N)», con la parentesi fra il nome del canale e «gia'», e'
+    l'altro canale in una prova dell'app: resta, anche quando N e' la versione appena lasciata; in una prova web si aggiorna
 """
 import importlib.util
 import json
@@ -84,4 +86,12 @@ T.check("RT3 a text naming no version is carried unchanged", live("rt-plain") ==
 T.check("RT4 a test already on the newest pre-release whose text was left at an older version of its channel is aligned in place, same test number; the other channel stays",
         [tuple(r) for r in con.execute("SELECT n, build, dove, fai FROM prove WHERE task='rt-now' AND superseded_at IS NULL")]
         == [(n_now, AB, "app 0.2.6, telefono", "Installa la 0.2.6. Web già alla 0.2.4")], str(live("rt-now")))
+_p5 = "Sulla web (già alla 0.2.3) si vede; app 0.2.3, poi Web (gia' alla 0.2.3)"
+T.check("RT5 «web (già alla 0.2.N)», with the parenthesis between the channel's name and «già», is the other channel in an app test: "
+        "it stays when N is the version just left, and the app's version moves",
+        TK._retext(_p5, "auto-a", "auto-b", "0.2.3", "0.2.6", "app") == "Sulla web (già alla 0.2.3) si vede; app 0.2.6, poi Web (gia' alla 0.2.3)",
+        TK._retext(_p5, "auto-a", "auto-b", "0.2.3", "0.2.6", "app"))
+T.check("RT5 in a web test «web (già alla 0.2.N)» names the test's own channel and moves, also when left behind; the app's version stays",
+        TK._retext("web (già alla 0.2.2), app 0.2.2", "web-0.2.3 (aaaaaaa)", "web-0.2.6 (bbbbbbb)", "0.2.3", "0.2.6", "web") == "web (già alla 0.2.6), app 0.2.2",
+        TK._retext("web (già alla 0.2.2), app 0.2.2", "web-0.2.3 (aaaaaaa)", "web-0.2.6 (bbbbbbb)", "0.2.3", "0.2.6", "web"))
 T.finish()

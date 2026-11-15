@@ -89,7 +89,8 @@ T.check("PW1 after RESULT_TTL_S the results leave Firebase with ONE PATCH of nul
         str(CALLS))
 
 # PW2
-RL.execute = lambda cmd: (True, '{"items": [1, 2, 3]}') if cmd.get("op") == "monitors" else (True, "fatto")
+RL._RATE.clear()   # 13/11 (supervisor-agenda-raffica-13-11): la stessa lettura di meno di un secondo fa, fatta con un'altra esecuzione finta
+RL.execute =lambda cmd: (True, '{"items": [1, 2, 3]}') if cmd.get("op") == "monitors" else (True, "fatto")
 r1 = RL.run_cmd({"id": "e1", "op": "monitors", "device": "web", "by": "maintainer"})
 r2 = RL.run_cmd({"id": "e2", "op": "monitors", "device": "web", "by": "maintainer", "etag": r1.get("etag")})
 r3 = RL.run_cmd({"id": "e3", "op": "monitors", "device": "web", "by": "maintainer", "etag": "0000000000000000"})

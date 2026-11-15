@@ -261,7 +261,7 @@ SRC1 = {
 KINDS = {"personal": "personal", "work": "work"}   # 1.8: come li calcola il relay dalla config del test
 SRC1["account_kinds"] = KINDS
 # 1.55: field-notes ha risolto al terminale la sua domanda di prima
-SRC1["resolved"] = {"field-notes": {"id": "q-1789120500-1", "text": "Commit the README changes now?", "at": 1789210600}}
+SRC1["resolved"] = {"field-notes": {"id": "q-1789120500-1", "text": "Commit the README?", "at": 1789210600}}
 # 1.62: atlas-shop e' attaccata e qualcuno ha premuto un tasto 30 s fa → at_pc; 1.64: le cartelle madri dei progetti
 SRC1["rows"][1]["pc_activity"] = 1789210770
 SRC1["project_parents"] = [ROOT_WS + "/personal", ROOT_WS + "/work/clients", ROOT_WS + "/work/own"]
@@ -388,7 +388,7 @@ SRC2["suggestions"] = [
      "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
     {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Night report ready",
      "prompt": "Read me last night's report", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
-    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Close the paused orbit-docs tasks?",
+    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Close the paused tasks?",
      "prompt": "Close the two paused orbit-docs tasks", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
 SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
@@ -428,7 +428,7 @@ SRC3["suggestions"] = [
      "prompt": "A next step left halfway in session atlas-shop", "at": 1789199400, "expires_at": 1789293000, "rank": 4, "source": "script"},
     {"id": "s-3e8c5d6f49", "kind": "unsaved", "key": "unsaved:orbit-docs:3d1b2c4e-0000-4000-8000-000000000004", "text": "orbit-docs: 2 files not committed when it closed",
      "prompt": "Session orbit-docs closed with 2 uncommitted files", "at": 1789199300, "expires_at": 1789292900, "rank": 4, "source": "script"},
-    {"id": "s-4f7d6e8a58", "kind": "waiting", "key": "waiting:task:ledger-vendor-ticket", "text": "Check again: the vendor's answer on ticket 4411",
+    {"id": "s-4f7d6e8a58", "kind": "waiting", "key": "waiting:task:ledger-vendor-ticket", "text": "Check again: vendor's answer on 4411",
      "prompt": "Time to check again the external wait of task ledger-vendor-ticket", "at": 1789199200, "expires_at": 1789292800, "rank": 5, "source": "script"},
     # 1.94 (28/10): lo smistamento delle note di claude-observe di un plugin
     {"id": "s-7c4a9b1d85", "kind": "observe", "key": "observe:chrome-bridge:2026-W38", "text": "chrome-bridge: 12 new error notes, top «No tab with id»: sort them?",
@@ -667,6 +667,11 @@ T.check("R4 push: exit 0, /state on the bus is {v:1, enc} and decrypts to the sa
 evs = {kk: C.decrypt(v, k) for kk, v in list((STORE.get("events") or {}).items())}
 T.check("R4 first push: /events has launched ×3 and the question (encrypted, key <ts>_<seq>); FCM sent one data message per event with kind and session; last-state.json written", sorted(e["kind"] for e in evs.values()) == ["launched", "launched", "launched", "question"] and all(kk == evs[kk]["key"] for kk in evs) and len(CALLS["fcm"]) == 4 and any(m["message"]["data"]["kind"] == "question" and m["message"]["data"]["session"] == "ledger-api" and m["message"]["topic"] == "watch" for m in CALLS["fcm"]) and (rdir2 / "last-state.json").is_file(), str(evs) + str(CALLS["fcm"])[:300])
 n_fcm, n_ev = len(CALLS["fcm"]), len(STORE["events"])
+import hashlib as _h4  # noqa: E402
+_et4 = _h4.sha1(STORE["state"]["enc"].encode()).hexdigest()[:16]
+T.check("R4 (1.148) every FCM of the first push carries etag (the first 16 hex of the SHA-1 of /state's enc) and published_at (the state's), as strings",
+        len(CALLS["fcm"]) == 4 and all(m["message"]["data"].get("etag") == _et4 and m["message"]["data"].get("published_at") == str(_pub4["published_at"])
+                                       for m in CALLS["fcm"]), str([m["message"]["data"] for m in CALLS["fcm"]]) + " " + _et4)
 ts1 = C.decrypt(STORE["state"], k)["ts"]
 time.sleep(1.1)
 r = relay("push")
@@ -1408,8 +1413,12 @@ n_calls = len(cm_calls())
 res = send_cmd(dict(CMDS[17], id="6f1c2d3e-0128-4000-8000-000000000301", session="orbit-docs"))
 T.check("R18 (1.21) interrupt on a gone session → ok false «orbit-docs is not running», no interrupt run",
         res and res["ok"] is False and res["text"] == "orbit-docs is not running" and not any(c.startswith("interrupt") for c in cm_calls()[n_calls:]), str(res))
-T.check("R18 (1.21) /state carries ops = the relay's allow-list, with interrupt (the app shows Stop only when it is there)",
-        json.loads(relay("push", "--dry-run").stdout).get("ops") == R_OPS and "interrupt" in R_OPS and F1["ops"] == R_OPS, str(R_OPS))
+# 13/11 (1.143, supervisor-agenda-raffica-13-11): senza relay.agenda_file (questa configurazione) agenda e agenda_set non
+# sono offerte; la fixture e' di un'installazione con l'agenda e le porta
+T.check("R18 (1.21) /state carries ops = the relay's allow-list, with interrupt (the app shows Stop only when it is there); "
+        "(1.143) agenda and agenda_set only with an agenda file",
+        json.loads(relay("push", "--dry-run").stdout).get("ops") == [o for o in R_OPS if o not in ("agenda", "agenda_set")]
+        and "interrupt" in R_OPS and F1["ops"] == R_OPS, str(R_OPS))
 # R19 (contratto 1.22, 30/09): la chat vera per il telefono — op transcript dal jsonl della sessione, a pagine
 import re as _re19
 tdir19 = home / ".claude" / "projects" / _re19.sub(r"[^A-Za-z0-9]", "-", str((ws / "personal" / "field-notes").resolve()))
@@ -1739,7 +1748,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-28:-25] == ["suggestion", "close_preview", "close"] and all(s["ops"][-28:-25] == R_OPS[-28:-25] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-29:-26] == ["suggestion", "close_preview", "close"] and all(s["ops"][-29:-26] == R_OPS[-29:-26] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3722,7 +3731,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-31] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-32] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3751,7 +3760,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-30] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-30:-28] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-31] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-31:-29] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -3875,7 +3884,8 @@ T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalle
 _ev62 = [e for e in EV if e["kind"] == "task_stalled"]
 T.check("R62 (1.76) events-sample carries a task_stalled event: ref = the task, session = the one whose turn it is, one line per task in the body",
         len(_ev62) == 1 and _ev62[0]["ref"] == "ledger-migrations-011" and _ev62[0]["session"] == "ledger-api" and _ev62[0]["body"].startswith("- ledger-migrations-011 (") and ev_ok(_ev62[0]), str(_ev62))
-_small62 = dict(_cm62[1], title="t", short="s", next="n", expected=None, outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "ok"})   # 06/11 (1.129): "ok", approval_close in ops   # small entries: the cut, not their size
+_small62 = dict(_cm62[1], title="t", short="s", next="n", project="p", expected=None,   # 13/11 (1.145): project "p", max_sessions_set in ops
+ outcome_kind=None, approved_by="m", last_step={"at": 1789213800, "kind": "state", "text": "ok"})   # 06/11 (1.129): "ok", approval_close in ops   # small entries: the cut, not their size
 # 24/10: senza i ricorrenti — fit_state tiene il posto di published_at e il taglio a 10 non entrava piu'
 _big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], published_today=[], approvals=[], elicitations=[], suggestions=[], usage_today=[], needs_you={}, commitments=[dict(_small62, task=f"t-{i:02d}") for i in range(40)]), 1789214400)   # 1.81: without the approval of state-2 (the cut at 10 sits 27 bytes under the cap)
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
@@ -4302,7 +4312,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-19] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-20] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

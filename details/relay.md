@@ -644,6 +644,26 @@ Fixture: `state-3-stale.json` (the phone with `cmd_at`; the browser with `cmd_at
 and a `seen` from the relay's arrival, no `/seen`; the Pixel 7 with a `seen` from
 the relay's arrival only).
 
+Contract 1.145 (13/11/2026, the maximum number of sessions could be changed only by hand in the configuration; task supervisor-max-sessioni-app-13-11, for the app app-tabellone-frazioni-13-11). Additive, `v` stays 1.
+
+- **op `max_sessions_set`**, in `state.ops` only of the relays that can do it, a command (not a passive read): `arg` = a whole number from 1 to 20 inclusive, as text («7»; a JSON number is taken too). It sets `sessions.max_sessions` in the user's configuration and nothing else: the rest of the file stays as it is. The CmdResult's `text` is JSON `{"max_sessions": n}` with the new value.
+- It holds at once: after an ok the relay publishes the state, with `kpi_health.sessions_max` = n (op `kpi`), the advice `too_many` uses it, and the launch cap reads it at the next launch.
+- A value out of range, not a whole number or empty → `ok: false`, «max_sessions out of range 1-20», nothing written. A configuration file that cannot be read or is not JSON is not touched: `ok: false`, «max_sessions: the configuration was not changed (…)».
+
+Fixture: `cmd-result-sample.json` (…1400 a new maximum, …1401 out of range); `max_sessions_set` last in the `ops` of the three states.
+
+Contract 1.144 (13/11/2026, a colleague's Mac after a restart: the relay started by cron could not read the projects folder under Desktop, every push failed for about twenty hours and nobody was told; task supervisor-push-falliti-13-11). No new key, `v` stays 1.
+
+- **An event `relay_stale` is also sent while the pushes fail**, once per run of failures, at the third failed push in a row: title «the phone is not being updated: N pushes failed in a row since HH:MM», body the last error and what to do (on macOS with the projects under Desktop, Documents or Downloads: Full Disk Access for `/usr/sbin/cron`). The event does not go through the collection of the state, so it leaves even when the projects folder cannot be read. With a bot configured the same text goes to Telegram. The event sent when the state moves again stays as it was (1.45).
+- The relay counts the failed pushes in `<relay.dir>/push-fails.json`. `relay status` adds the last error (time and message) and the failed pushes of the last hour and in a row. `doctor` gives FAIL `relay_root_unreadable` or `relay_push_failed` while pushes are failing (the last one within 15 minutes), WARN `relay_state_old` when the daemon is alive and the state was last published more than 10 minutes ago.
+- On macOS, when the projects folder is under Desktop, Documents or Downloads, `relay install` says that cron needs Full Disk Access and checks it with a test cron job that lists the folder once (up to 75 s; the job is removed from the crontab). The result stays in `<relay.dir>/cron-probe.json`: `doctor` gives FAIL `cron_disk_access_fail` or PASS `cron_disk_access_ok`, and `setup` shows the warning in its relay step.
+
+Contract 1.143 (13/11/2026, a colleague's install with no agenda: the web app asked `agenda` 10,512 times in a minute; task supervisor-agenda-raffica-13-11, for the app app-agenda-raffica-13-11). No new key, `v` stays 1.
+
+- **`ops` carries `agenda` and `agenda_set` only when `relay.agenda_file` names a file that exists.** Without it the app does not show the agenda and does not ask for it. A request sent anyway is still answered «no agenda file» (…0387).
+- **The same command from the same client, repeated in a burst, runs at most once a second.** Same means every field but `id` and `issued`; the client is `uid`, or `by` and `device` without it. The first three in a second run as always; from the fourth, and until a second passes with no repeat, a repeat gets the CmdResult of the one that ran, with its own `id` and `at`, and nothing runs; while that one is still running the repeat waits for it (only after 60 s with no result it gets `ok: false` with «the same command again in under a second: not run»). A command of the user that ran drops the kept results of the reads, so the read that follows it runs. A client must not answer an error by asking again at once.
+- `relay.log` writes equal lines in a row once, then «↑ ripetuta altre N volte». Errors (`FAILED`, `→ ERR`) are also in `relay-errors-YYYY-MM-DD.log` in the same folder, one file a day, kept 14 days.
+
 Contract 1.142 (12/11/2026, seen by the master at 21:26 on the web app: #/attesa/wc90a9e6b58, a choice already made, opened as «Scelta fatta» with no image; task supervisor-file-scheda-chiusa-12-11). Additive, `v` stays 1.
 
 - **Op `file` serves the declared files of a card in the archive**, not only while the request is open: an answered choice, a discarded round, a test already marked, for as long as `attesa` with `archive: true` finds the card (180 days from the request). Only the paths a request or a test declared (`files[].path` with `session` null); nothing else.
@@ -1420,3 +1440,28 @@ scheduled tasks do not run: the relay covers «sessions closed, machine awake»,
 not «machine off» — on a Chromebook, set the power options so the machine does
 not sleep while charging. And the diary reports *what happened*, not what it
 cost: costs stay where they are measured (for me, fable-director).
+
+Contract 1.146 (13/11/2026, since Claude Code 2.1.323 a `/logout` given in a `claude --bg` session signs out every session on the PC and deletes the MCP logins and the plugins' secrets; task supervisor-logout-bg-13-11). Additive, `v` stays 1.
+
+- **`bg`** on a session of `state.sessions`: `true` for a live session started with `claude --bg` (`"kind": "bg"` in Claude Code's session registry), absent otherwise and for a session that is gone.
+- The card of a session with `bg: true` carries a warning: a `/logout` there signs out every session on this PC and deletes the MCP logins and the plugins' secrets; to change account, close the sessions and use `claude auth logout` / `claude auth login` from a terminal.
+- supervisor cannot refuse it: measured on Claude Code 2.1.325 with the real payload, the `UserPromptSubmit` hook does not receive `/logout`, neither in a terminal session nor in an attached `--bg` one (`docs/prove/2026-11-13-logout-hook.md`).
+
+Contract 1.147 (15/11/2026, a `multiples` monitor of a service's usage said «da guardare: 0,1%», its first series, while the series past the 80% threshold was another one, at 134%; and «ultimo giro» stayed at the last run asked by hand while a cron wrote new values every day; task supervisor-monitor-testata-15-11). Additive, `v` stays 1.
+
+- **The head of a card with several series.** `value`, `delta`, `delta_pct` and `delta_since` are those of one series: with a threshold hit, the series furthest past its threshold, in proportion to the threshold (134 against «above 80» is 67.5% past; 2 against «below 10» is 80% past); with none hit, the series closest to a `below` or `above` threshold; with no such threshold, the first series with values, as before.
+- **`value_series`** on the card: the name of that series when the card has more than one series with values, null otherwise. Show it next to `value` («Scaricati nel mese 134%»): without it the head reads as the monitor's only number.
+- **`hits`** come worst first, in the same order, and with several series the `text` of each names its series also when the threshold is bound to none («sopra 80% · Scaricati nel mese»).
+- **«Dalla master».** The item's text and prompt carry the worst series and its value. A collector's `verdict` that does not name that series gets « · <series> <value>» at its end.
+- **`refresh`** follows the last real update. When `points.jsonl` was written after the end of the last run asked with `monitor_refresh` or `monitor refresh` (a cron that writes points by itself), the card's `refresh` is `state: "ok"`, `ended` the time of that write, `started`, `rc` and `message` null, and the new field **`external: true`** (absent otherwise). So a monitor never run on request but fed from outside is `ok`, not `idle`. `retry_at` stays the one of the run asked on request. A run asked later, or one that fails after the last write, shows as itself.
+- Fixture: `cmd-result-sample.json` …1310, …1311 and …1320 get `value_series` after `url` («Yoga 9i» on the `multiples`, null on the `tile`). `state-1/2/3` unchanged.
+
+Contract 1.148 (15/11/2026, the measure of the day: 99% of the downloads were `/state`, 35.5 KB read whole by 4 devices at every event push; task supervisor-push-etag-15-11, for the app app-push-etag-15-11). Additive, `v` stays 1.
+
+- **The FCM data message of an event** (one per event, on the relay's topic, every value a string: `kind`, `session` when the event has one, `ts`, `key`, `quiet` «1» for a quiet event) gets two optional fields about the `/state` that is on the bus when the message leaves:
+  - **`etag`**: the first 16 hexadecimal characters, lower case, of the SHA-1 of the UTF-8 text of the field `enc` of the document at `/state` (`{v: 1, enc}`). Whoever downloaded `/state`, by a GET or from the stream, computes it from what it has, without decrypting.
+  - **`published_at`**: the `published_at` of that state (epoch seconds, three decimals), the same number that is inside the decrypted state.
+- **What the client does.** When the message carries `etag` and it equals the etag of the `/state` the client already holds, the client does not read `/state` again; the same when `published_at` is not newer than the `published_at` of the state it holds. Otherwise it reads `/state` as before. The event itself is still read from `/events` by its `key`.
+- **When they are there.** An event from the state's diff (question, done, gone, …) leaves after the new state is written: the fields are those of the new state. An event that does not come from the diff (`recap`, `night_report`, `quota`, …) does not change `/state`: the fields are those of the state already there, so a client that is up to date reads nothing. A state that was not written again because it was equal keeps its etag.
+- **When they are missing.** A relay before 1.148, or the first messages after an update until the next publication of `/state`: no `etag`, no `published_at`, and the client reads `/state` as before. A client that does not know the fields ignores them.
+- Nothing changes in `/state`, `/events` or the ops. Fixture: `fcm-event-sample.json` (`data`: an event with the two fields, a quiet one, one from an older relay without them).
