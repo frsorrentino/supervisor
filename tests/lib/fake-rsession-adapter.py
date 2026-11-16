@@ -9,7 +9,11 @@ talk: un messaggio rende la sessione busy; 1,5 s dopo la lettura successiva scri
 dialog-<nome>.json come la console di Windows (cursore «>») e muove il cursore con i tasti; Invio scrive la
 scelta nel transcript (tool_result) e chiude il dialogo.
 08/11: FAKE_WIN_READ_FAIL=1 la lettura scade come sull'host vero (HostError unreachable, timeout 120s), il post riesce;
-FAKE_WIN_READ_FAIL_FIRST=N scadono solo le prime N letture (contate in FAKE_WIN_ROOT/read-fails)."""
+FAKE_WIN_READ_FAIL_FIRST=N scadono solo le prime N letture (contate in FAKE_WIN_ROOT/read-fails).
+16/11: FAKE_WIN_LIMIT=nome la sessione e' ferma su un limite d'uso, come win:supervisor-app il 16/11 dalle 17:44: ogni
+messaggio riceve in risposta l'errore dell'API («You've hit your Fable limit …», isApiErrorMessage, error rate_limit),
+che la lettura mette in errors e non in texts; post e lettura dicono block, come cm-session.js. FAKE_WIN_STALE_BLOCK=nome:
+il blocco c'e' (l'ultima voce era l'errore: il modello e' appena stato cambiato) ma la sessione risponde."""
 import importlib.util
 import json
 import os
@@ -33,6 +37,18 @@ def note(verb, **kw):
         f.write(json.dumps({"verb": verb, **kw}) + "\n")
 
 
+LIMIT_TEXT = "You've hit your Fable limit · resets Nov 19, 3am (Europe/Rome). /model to switch models."
+
+
+def _limited(name):
+    return name in os.environ.get("FAKE_WIN_LIMIT", "").split(",")
+
+
+def _block(name):
+    stale = name in os.environ.get("FAKE_WIN_STALE_BLOCK", "").split(",")
+    return {"kind": "limit", "error": "rate_limit", "text": LIMIT_TEXT, "at": "2026-11-16T16:44:08.000Z"} if _limited(name) or stale else None
+
+
 def registry():
     p = ROOT / "registry.json"
     return json.loads(p.read_text()) if p.exists() else []
@@ -44,7 +60,9 @@ class FakeWin:
 
     def status(self):
         note("status")
-        return {"ok": True, "sessions": [{"alive": not e.get("closed"), "entry": e} for e in registry()]}
+        # 16/11 (supervisor-blocco-permanente-16-11): «_api» nel registro finto e' lo stato api che cm-remote.ps1 legge
+        return {"ok": True, "sessions": [dict({"alive": not e.get("closed"), "entry": {k: v for k, v in e.items() if k != "_api"}},
+                                              **({"api": e["_api"]} if "_api" in e else {})) for e in registry()]}
 
     def session_prepare(self, rdir, here=None):
         note("prepare", rdir=rdir)
@@ -161,7 +179,7 @@ class FakeWin:
         off = self._tr(name).stat().st_size if self._tr(name).exists() else 0
         e.update(status="busy", pending=text, posted=time.time())
         self._save(e)
-        return {"ok": True, "offset": off, "status": "idle"}
+        return {"ok": True, "offset": off, "status": "idle", "block": _block(name)}
 
     def session_read(self, name, offset, last=False, **kw):
         if os.environ.get("FAKE_WIN_READ_FAIL"):
@@ -180,19 +198,25 @@ class FakeWin:
         if e.get("pending") is not None and time.time() - e["posted"] > 1.5:
             with open(self._tr(name), "a") as f:
                 f.write(json.dumps({"type": "user", "message": {"content": e["pending"]}}) + "\n")
-                f.write(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "RISPOSTA: " + e["pending"]}]}}) + "\n")
+                if _limited(name):
+                    f.write(json.dumps({"type": "assistant", "isApiErrorMessage": True, "error": "rate_limit",
+                                        "message": {"content": [{"type": "text", "text": LIMIT_TEXT}]}}) + "\n")
+                else:
+                    f.write(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "RISPOSTA: " + e["pending"]}]}}) + "\n")
             e.update(status="idle", pending=None)
             self._save(e)
         forced = dict(x.split(":", 1) for x in os.environ.get("FAKE_WIN_STATUS", "").split(",") if ":" in x)
         status = forced.get(name) or e.get("status") or "idle"
         data = self._tr(name).read_bytes() if self._tr(name).exists() else b""
         off = len(data) if offset == "end" else int(offset)
-        texts = []
+        texts, errors = [], []
         for l in data[off:].decode().splitlines():
             d = json.loads(l)
-            if d["type"] == "assistant":
+            if d["type"] == "assistant" and d.get("isApiErrorMessage"):   # 16/11: come cm-session.js
+                errors.append({"kind": "limit", "error": d.get("error"), "text": d["message"]["content"][0]["text"]})
+            elif d["type"] == "assistant":
                 texts += [c["text"] for c in d["message"]["content"]]
-        return {"status": status, "alive": True, "texts": texts[-1:] if last else texts, "offset": len(data)}
+        return {"status": status, "alive": True, "texts": texts[-1:] if last else texts, "errors": errors, "block": _block(name), "offset": len(data)}
 
     def session_close(self, name, force=False):
         note("close", name=name, force=force)

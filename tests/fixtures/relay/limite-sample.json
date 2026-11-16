@@ -1,0 +1,76 @@
+{
+  "state_attention": {
+    "kind": "quota_limit",
+    "session": "win:supervisor-app",
+    "ref": "win:supervisor-app",
+    "title": "win:supervisor-app è ferma: limite di Fable fino al 19/11 alle 3",
+    "since": 1794847448,
+    "actions": [
+      "other_model",
+      "at_reset"
+    ],
+    "other_model": "Opus 5.5",
+    "reset_at": 1795053600,
+    "window": "model",
+    "closes": "check",
+    "wid": "w51bc7a2fbe"
+  },
+  "attese": [
+    {
+      "id": "w51bc7a2fbe",
+      "type": "chat",
+      "kind": "limite",
+      "session": "win:supervisor-app",
+      "task": null,
+      "text": "win:supervisor-app è ferma: limite di Fable fino al 19/11 alle 3",
+      "options": null,
+      "at": 1794847448,
+      "answer": {
+        "op": "quota_route",
+        "session": "win:supervisor-app",
+        "arg": "other_model"
+      },
+      "link": "https://app.example/#/attesa/w51bc7a2fbe",
+      "label": "decide",
+      "label_text": "Decidi",
+      "card": null,
+      "files": null,
+      "description": null,
+      "advice": null,
+      "card_id": "w51bc7a2fbe",
+      "state": "open",
+      "answered": null,
+      "title": "win:supervisor-app è ferma: limite di Fable fino al 19/11 alle 3",
+      "actions": [
+        {
+          "label": "Continua con Opus 5.5",
+          "style": "primary",
+          "cmd": {
+            "session": "win:supervisor-app",
+            "op": "quota_route",
+            "arg": "other_model"
+          }
+        },
+        {
+          "label": "Riprendi al reset",
+          "style": "secondary",
+          "cmd": {
+            "session": "win:supervisor-app",
+            "op": "quota_route",
+            "arg": "at_reset"
+          }
+        },
+        {
+          "label": "Fatto",
+          "style": "secondary",
+          "cmd": {
+            "session": null,
+            "op": "attention_done",
+            "arg": "win:supervisor-app",
+            "kind": "quota_limit"
+          }
+        }
+      ]
+    }
+  ]
+}

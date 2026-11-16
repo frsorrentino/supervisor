@@ -141,7 +141,7 @@ def _from_state(state):
         i = wid_attention(x)
         if not i:
             continue
-        k = {"turn_blocking": "prossimi"}.get(x["kind"], x["kind"])
+        k = {"turn_blocking": "prossimi", "quota_limit": "limite"}.get(x["kind"], x["kind"])
         s = sessions.get(x.get("session")) or {}
         a = {"id": i, "type": "chat", "kind": k, "session": x.get("session"), "task": None, "text": x.get("title"), "options": None, "at": x.get("since")}
         if k == "question":
@@ -149,6 +149,11 @@ def _from_state(state):
             opts = [o if isinstance(o, dict) else {"label": str(o)} for o in (q.get("options") or []) if o]
             # l'op answer vuole il numero dell'opzione in arg e l'id della domanda in question (contratto 1.55)
             a.update(options=opts or None, answer={"op": "answer", "session": x.get("session"), "question": x.get("ref")})
+        elif k == "limite":
+            # 16/11/2026 (supervisor-blocco-permanente-16-11): una sessione ferma su un limite, coi tasti del quota_limit
+            # (le strade nell'ordine dell'evento) e «Fatto»; il titolo e' quello chiaro del relay
+            a.update(answer={"op": "quota_route", "session": x.get("session"), "arg": (x.get("actions") or ["at_reset"])[0]},
+                     _routes=list(x.get("actions") or []), _other_model=x.get("other_model"))
         elif k == "prossimi":
             a.update(options=[st["text"] for st in s.get("next_steps") or [] if st.get("text")] or None,
                      answer={"op": "prompt", "arg": x.get("session"), "done": {"op": "attention_done", "arg": x.get("session"), "kind": "turn_blocking"}})
@@ -158,7 +163,7 @@ def _from_state(state):
     return out
 
 
-LABELS = {"ok": "decide", "pausa": "decide", "login": "decide", "choice": "choose", "prova": "verify", "prossimi": "reply", "question": "reply", "needs_you": "reply"}
+LABELS = {"ok": "decide", "pausa": "decide", "login": "decide", "limite": "decide", "choice": "choose", "prova": "verify", "prossimi": "reply", "question": "reply", "needs_you": "reply"}
 
 
 def _options(opts, cut=None):
@@ -224,6 +229,16 @@ def _actions(a, prova=False):
     if k == "question":
         return [_act(None, {"op": "answer", "session": a.get("session"), "arg": str(o["n"]), "question": an.get("question")}, "primary" if o.get("recommended") else "option",
                      label=o["label"], **rec(o)) for o in opts]
+    if k == "limite":
+        # 16/11 (supervisor-blocco-permanente-16-11): una strada per tasto (quota_route), la prima e' quella in evidenza
+        out = []
+        for r in a.pop("_routes", None) or []:
+            label = {"other_model": M("attese.act_other_model", model=a.get("_other_model") or "Opus"), "other_account": M("attese.act_other_account"),
+                     "at_reset": M("attese.act_at_reset")}.get(r)
+            if label:
+                out.append(_act(None, {"op": "quota_route", "session": a.get("session"), "arg": r}, "secondary" if out else "primary", label=label))
+        a.pop("_other_model", None)
+        return out + [_act("done", {"op": "attention_done", "arg": a.get("session"), "kind": "quota_limit"})]
     if k in ("prossimi", "needs_you"):
         done = {"op": "attention_done", "arg": a.get("session"), "kind": "turn_blocking" if k == "prossimi" else "needs_you"}
         return [_act(None, {"op": "prompt", "session": a.get("session"), "arg": o["value"]}, "option", label=o["label"]) for o in opts] + \

@@ -1,0 +1,25 @@
+
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   ~\AppData\Local\Temp\cc-model-win\work
+
+
+> ciao
+
+● Ciao.
+
+✻ Baked for 0s · done 19:33
+
+> /model
+  ⎿  Set model to Opus 5.5 for this session only
+
+
+
+
+
+
+                                                            ◐ medium · /effort
+────────────────────────────────────────────────────────────── prova-model-win ─
+>
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

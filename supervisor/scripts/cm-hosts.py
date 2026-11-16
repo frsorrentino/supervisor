@@ -791,7 +791,93 @@ def poll_one(name, force=False):
             forward_to_master(name, (snap.get("status") or {}).get("sessions") or [])
         except Exception:   # noqa: BLE001 — come la copia: mai far cadere il giro del sondatore
             pass
+        try:
+            blocks_round(name, (snap.get("status") or {}).get("sessions") or [])
+        except Exception as e:   # noqa: BLE001 — come sopra; la riga resta nel registro del sondatore
+            print(f"blocks {name}: {e}", file=sys.stderr)
     return snap
+
+
+_RS = None
+
+
+def _rs():
+    global _RS
+    _RS = _RS or _load("cm-relay-state")
+    return _RS
+
+
+BLOCK_NEEDS_YOU_S = 7 * 86400   # un login non rifatto resta una settimana, poi scade con l'avviso alla sessione
+
+
+def relay_limit(row, blk):
+    """Il quota_limit del relay per una sessione di un altro host, staccato, come lo lancia l'hook di StopFailure per
+    quelle di qui: titolo, strade e voce in «Serve te» e fra le attese."""
+    if not (CFG.get("relay") or {}).get("enabled"):
+        return
+    try:
+        subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", row["name"], str(blk.get("text") or "")[:500], "",
+                          str(blk.get("resets_at") or "")], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        pass
+
+
+def _drop_block_needs_you(f):
+    """Toglie il needs-you di un blocco (source «block»), mai quello che la sessione ha chiesto da se'."""
+    try:
+        if json.loads(f.read_text()).get("source") == "block":
+            f.unlink(missing_ok=True)
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
+def blocks_round(host, sessions):
+    """16/11/2026 (supervisor-blocco-permanente-16-11, chiesto dal manutentore): win:supervisor-app e' rimasta ferma sul limite
+    di Fable per un'ora e mezza e nessuna voce l'ha detto, perche' su win gli hook di supervisor non arrivano al relay.
+    Lo stato dell'host (cm-remote.ps1) dice per ogni sessione viva se l'ultima voce della sua trascrizione e' un errore
+    dell'API (api.block). Un blocco nuovo apre una voce sola: il limite (di un modello o della quota) il quota_limit
+    del relay, coi tasti; il login un needs-you «… è ferma: serve un login». Lo stesso blocco alle letture dopo non
+    riapre niente (blocks.json); senza blocco il needs-you del login va via qui, il quota_limit lo chiude il relay
+    leggendo le stesse righe (attention_open)."""
+    p = state_dir() / "hosts" / "blocks.json"
+    seen = read_json(p, {}) or {}
+    seen = seen if isinstance(seen, dict) else {}
+    before = json.dumps(seen, sort_keys=True)
+    rows = {r.get("session_id"): r for r in remote_session_rows() if r.get("host") == host and r.get("session_id")}
+    nyd = Path(cm.expand(CFG["state_dir"])) / "needs-you"
+    live = set()
+    for s in sessions:
+        e = s.get("entry") or {}
+        sid = str(e.get("sessionId") or "")
+        api = s.get("api")
+        if not sid or not s.get("alive") or not isinstance(api, dict):
+            continue
+        live.add(sid)
+        blk = api.get("block") if isinstance(api.get("block"), dict) else None
+        kind = (blk or {}).get("kind")
+        prev = seen.get(sid) if isinstance(seen.get(sid), dict) else {}
+        if kind in ("limit", "login"):
+            info = _rs().limit_info(blk.get("text") or "") if kind == "limit" else {}
+            key = f"{kind}|{blk.get('resets_at') or info.get('at') or ''}|{info.get('model') or ''}"
+            row = rows.get(sid)
+            if row and prev.get("key") != key:
+                if kind == "limit":
+                    relay_limit(row, blk)
+                else:
+                    _load("cm-needsyou").mark(row, M("block.login", name=row["name"]), expires_s=BLOCK_NEEDS_YOU_S, source="block", quiet=True)
+                seen[sid] = {"key": key, "kind": kind, "host": host, "name": row["name"], "at": int(time.time())}
+        elif prev:
+            # niente piu' blocco: un turno riuscito dopo l'errore
+            if prev.get("kind") == "login":
+                _drop_block_needs_you(nyd / f"{sid}.json")
+            seen.pop(sid, None)
+    for sid in [k for k, v in seen.items() if isinstance(v, dict) and v.get("host") == host and k not in live]:
+        if seen[sid].get("kind") == "login":   # la sessione non c'e' piu'
+            _drop_block_needs_you(nyd / f"{sid}.json")
+        seen.pop(sid, None)
+    if json.dumps(seen, sort_keys=True) != before:
+        write_json(p, seen)
 
 
 MASTER_MARK = re.compile(r"^\W{0,4}(Per la master|For the master)\W{0,4}:", re.I)
@@ -929,6 +1015,11 @@ def remote_session_rows():
                          "transcript": str(mirror_path(name, e.get("sessionId") or "")) if e.get("sessionId") else "",
                          # 10/10: la cartella di qui da cui e' partita (il record di launch --host), per il recap
                          "local_dir": str((read_json(state_dir() / "rsessions" / f"{e.get('name')}.json") or {}).get("dir") or "") if e.get("name") else ""})
+            # 16/11 (supervisor-blocco-permanente-16-11): l'errore dell'API su cui la sessione e' ferma e l'ora della sua
+            # ultima voce, dallo stato dell'host (cm-remote.ps1); assenti con l'aiutante di prima
+            if isinstance(s.get("api"), dict):
+                api = s["api"]
+                rows[-1].update(block=api.get("block") if isinstance(api.get("block"), dict) else None, api_last_at=_rs().utc_epoch(api.get("last_at")))
     return rows
 
 

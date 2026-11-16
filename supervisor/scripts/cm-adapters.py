@@ -608,7 +608,11 @@ ConvertTo-Json -Compress @{{ count = $n; dirty = $dirty }}""", timeout=300)
         # 08/11/2026 (supervisor-wait-win-lettura-08-11): un file per versione, scritto solo se manca. Prima ogni chiamata
         # riscriveva lo stesso %TEMP%\\cm-session.js, anche mentre il poller del relay lo stava usando; ogni tanto una
         # lettura la' restava ferma fino al timeout (56-120 s) mentre i comandi brevi rispondevano in meno di 1 s
-        raw = (REMOTE / "cm-session.js").read_bytes()
+        # 16/11/2026: lo script viaggia dentro -EncodedCommand, dove ogni byte ne pesa quasi tre. cm-session.js e' passato da
+        # 6,7 a 9,4 KB (supervisor-modello-win e supervisor-blocco-permanente) e un talk breve finiva su stdin invece che
+        # sulla riga di comando (win-cmdline-verify WL1): le righe di solo commento restano qui. Il codice non cambia.
+        src = (REMOTE / "cm-session.js").read_text(encoding="utf-8")
+        raw = "\n".join(l for l in src.split("\n") if not l.lstrip().startswith("//")).encode("utf-8")
         js = base64.b64encode(raw).decode()
         fname = f"cm-session-{hashlib.sha1(raw).hexdigest()[:10]}.js"
         argv = " ".join(self.q(a) for a in args)

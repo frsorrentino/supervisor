@@ -3062,14 +3062,14 @@ RL.quota_limit("work-ledger-api", _429, str(q85 / "missing.jsonl"))   # nessun m
 RL.rdir, RL._json_cmd, RL.emit, RL.attention_mark = _rd, _jc, _em, _am
 x85 = [g[2]["extra"] for g in got85]
 _om85 = RL.other_model()   # Opus dalla lista tune.models della config di prova
-_t85 = RL.M("relay.event_quota_model", name="ledger-api", model="Fable")
+_t85 = RL.M("relay.event_quota_model", name="ledger-api", model="Fable", until="")   # 16/11: «ledger-api è ferma: limite di Fable»
 T.check("R85 (1.85) quota_limit: the hook's 429 says no model, the transcript's last <synthetic> message does («reached your Fable limit») → window model, title «Fable limit reached», other_model «Opus 5.5» first, no at_reset without a time, no pass; once per limit",
         len(got85) == 3 and got85[0][1] == _t85 and "Fable" in _t85 and x85[0] == {"reset_at": None, "window": "model", "other_account": "personal", "other_model": _om85[1], "actions": ["other_model", "other_account"]}
         and _om85[0].startswith("claude-opus") and att85 and att85[0][3] == _t85, str(got85))
 _r85 = x85[1]["reset_at"] if len(x85) > 1 else None
 T.check("R85b (1.85) the limit of Opus itself → no other_model; the time in the message → reset_at and at_reset, said in the title",
         len(x85) > 1 and x85[1]["window"] == "model" and x85[1]["other_model"] is None and x85[1]["actions"] == ["other_account", "at_reset"]
-        and time.strftime("%H:%M", time.localtime(_r85)) == "23:10" and got85[1][1] == RL.M("relay.event_quota_model_reset", name="ledger-api", model="Opus 5.5", t="23:10"), str(got85[1:2]))
+        and time.strftime("%H:%M", time.localtime(_r85)) == "23:10" and got85[1][1] == RL.M("relay.event_quota_model", name="ledger-api", model="Opus 5.5", until=RL.until_text(_r85)), str(got85[1:2]))
 T.check("R85c (1.85) a quota stop without a model limit → the window from the quota (five hours), actions other_account and at_reset: «pass» is never proposed",
         len(x85) > 2 and x85[2]["window"] == "5h" and x85[2]["actions"] == ["other_account", "at_reset"] and x85[2]["other_model"] is None, str(x85[2:]))
 _n85 = time.mktime((2026, 10, 25, 20, 0, 0, 0, 0, -1))

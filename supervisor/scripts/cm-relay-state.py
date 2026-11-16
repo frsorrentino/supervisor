@@ -278,8 +278,12 @@ def wid_approval(task, at):
 
 
 def wid_attention(x):
-    """Una voce di attention che e' una domanda (question, needs_you, turn_blocking), o None per le altre."""
+    """Una voce di attention che e' una domanda (question, needs_you, turn_blocking), o None per le altre. 16/11/2026
+    (supervisor-blocco-permanente-16-11): anche una sessione ferma su un limite (quota_limit) e' un'attesa, coi suoi
+    tasti, nei due posti dell'analisi di supervisor-app (la sessione e Dalla master)."""
     k = x.get("kind")
+    if k == "quota_limit":
+        return wid("limite", x.get("ref"), int(x.get("since") or 0))
     if k == "question":
         return wid("question", x.get("ref"))
     if k == "needs_you":
@@ -853,7 +857,9 @@ def build_state(src, now, fit=True):
             for s in sessions if s.get("needs_you")]
     att += [{"kind": "turn_blocking", "session": s["name"], "ref": s["name"], "title": redact_preview(s["turn_blocking"]["text"]), "since": s["turn_blocking"]["at"], "closes": "prompt"}
             for s in sessions if s.get("turn_blocking") and not s.get("needs_you")]
-    att += [dict(x, session=canon_session(x.get("session"), src.get("rows")), closes="check" if x.get("kind") == "task_red" else "prompt") for x in (src.get("attention") or [])]
+    # 16/11 (supervisor-blocco-permanente-16-11): quota_limit si chiude quando il blocco non c'e' piu' (lo verifica il relay)
+    att += [dict(x, session=canon_session(x.get("session"), src.get("rows")), closes="check" if x.get("kind") in ("task_red", "quota_limit") else "prompt")
+            for x in (src.get("attention") or [])]
     # 1.130 (07/11): `wid`, l'id dell'attesa (cm-attese) per le domande — question, needs_you, turn_blocking — che
     # l'app apre come scheda «Ti aspetta» (#/attesa/<wid>); assente sulle altre voci
     for x in att:
@@ -1154,3 +1160,106 @@ def _fallback(fb):
     at = fb.get("at")
     return {"from": fb.get("from") or None, "to": str(fb["to"]), "category": fb.get("category") or None,
             "at": int(at) if isinstance(at, (int, float)) and at else None}
+
+
+# 16/11/2026 (supervisor-modello-win-16-11): il testo di un limite d'uso di Claude Code, per dirlo in chiaro. Le forme
+# viste: «You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.» (fino alla
+# 2.1.2xx), «You've hit your Fable limit · resets Nov 19, 3am (Europe/Rome). /model to switch models.» (2.1.323, il
+# 16/11 su win), «… resets 3:10pm», «resets at 23:10». Il modello comincia con la maiuscola: «your account's rate
+# limit», «your limit», «your weekly limit» non sono il limite di un modello.
+LIMIT_MODEL_RE = re.compile(r"\b(?:reached|hit) your ([A-Z][\w.\-]*(?: [\w.\-]+){0,2}?) limit\b")
+LIMIT_RESET_RE = re.compile(r"\bresets?\s+(?:at\s+|on\s+)?(?:([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?"
+                            r"\s*([ap]\.?m\.?)?(?:\s*\(([A-Za-z_]+(?:/[A-Za-z0-9_+\-]+){1,2})\))?", re.I)
+MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
+def limit_info(text, now=None):
+    """Dal testo di un limite: {model, at, month, day, hour, minute, tz}. model None se non e' il limite di un modello
+    (la quota delle 5 ore o della settimana); at (epoch) None se il testo non dice quando si rinnova; month e day solo
+    se dice il giorno; hour e minute come scritti, nel fuso che il testo dice (tz), altrimenti in quello locale. Senza
+    il giorno vale la prossima volta che viene quell'ora; con il giorno, quel giorno di quest'anno (dell'anno dopo se
+    sarebbe passato da piu' di sei mesi: «Jan 2» letto a fine dicembre)."""
+    import time as _time
+    text = " ".join(str(text or "").split())
+    m = LIMIT_MODEL_RE.search(text)
+    info = {"model": m.group(1).strip() if m else None, "at": None, "month": None, "day": None, "hour": None, "minute": None, "tz": None}
+    r = LIMIT_RESET_RE.search(text)
+    if not r:
+        return info
+    mon = (r.group(1) or "")[:3].lower()
+    h, mi, ap = int(r.group(3)), int(r.group(4) or 0), (r.group(5) or "").replace(".", "").lower()
+    if ap == "pm" and h < 12:
+        h += 12
+    elif ap == "am" and h == 12:
+        h = 0
+    if h > 23 or mi > 59 or (r.group(1) and mon not in MONTHS):
+        return info
+    tz = None
+    if r.group(6):
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(r.group(6))
+        except Exception:   # noqa: BLE001 — un fuso che qui non si conosce: l'ora locale
+            tz = None
+    now = _time.time() if now is None else float(now)
+    base = _dt.datetime.fromtimestamp(now, tz) if tz else _dt.datetime.fromtimestamp(now)
+    if r.group(1):
+        month, day = MONTHS.index(mon) + 1, int(r.group(2))
+        try:
+            at = base.replace(month=month, day=day, hour=h, minute=mi, second=0, microsecond=0)
+            if at.timestamp() < now - 183 * 86400:
+                at = at.replace(year=at.year + 1)
+        except ValueError:   # il 31/02 e simili
+            return info
+        info.update(month=month, day=day)
+    else:
+        at = base.replace(hour=h, minute=mi, second=0, microsecond=0)
+        if at.timestamp() <= now:
+            at += _dt.timedelta(days=1)
+    info.update(at=int(at.timestamp()), hour=h, minute=mi, tz=r.group(6) if tz else None)
+    return info
+
+
+# 16/11/2026 (supervisor-blocco-permanente-16-11): una voce della trascrizione che e' un errore dell'API, la stessa lettura
+# di apiError in remote/cm-session.js e di ApiState in remote/cm-remote.ps1. {kind, error, text, at, resets_at,
+# limit_type} o None. kind: limit (il limite d'uso: di un modello, della quota, dei crediti), login (serve entrare di
+# nuovo), error (il resto: un 5xx, un sovraccarico, un 429 di frequenza, che passano da soli). Dalla 2.1.323 la voce
+# porta apiError «usage_limit_reached» e quotaLimits {status rejected, resetsAt, rateLimitType}; le versioni vecchie
+# scrivevano il limite di un modello come messaggio <synthetic> («You've reached your Fable limit»), senza
+# isApiErrorMessage.
+API_LIMIT_CODE = re.compile(r"usage_limit|billing|credit", re.I)
+API_LIMIT_TEXT = re.compile(r"You've (?:hit|reached) your|out of (?:extra )?usage|usage credits|usage limit", re.I)
+API_LOGIN_CODE = re.compile(r"auth|oauth|login", re.I)
+API_LOGIN_TEXT = re.compile(r"/login|not logged in|invalid api key|oauth token|authentication", re.I)
+
+
+def api_error(d):
+    if not isinstance(d, dict) or d.get("type") != "assistant":
+        return None
+    msg = d.get("message") if isinstance(d.get("message"), dict) else {}
+    text = next((str(c["text"]) for c in (msg.get("content") or []) if isinstance(c, dict) and c.get("type") == "text" and c.get("text")), "")
+    if not d.get("isApiErrorMessage") and not (msg.get("model") == "<synthetic>" and (API_LIMIT_TEXT.search(text) or API_LOGIN_TEXT.search(text))):
+        return None
+    code = " ".join(str(x) for x in (d.get("error"), d.get("apiError")) if x)
+    q = d.get("quotaLimits") if isinstance(d.get("quotaLimits"), dict) else ((d.get("apiErrorParams") or {}).get("rate_limit_info") or {})
+    q = q if isinstance(q, dict) else {}
+    if API_LIMIT_CODE.search(code) or q.get("status") == "rejected" or API_LIMIT_TEXT.search(text):
+        kind = "limit"
+    elif API_LOGIN_CODE.search(code) or API_LOGIN_TEXT.search(text):
+        kind = "login"
+    else:
+        kind = "error"
+    resets = q.get("resetsAt")
+    return {"kind": kind, "error": str(d.get("error") or d.get("apiError") or "api_error"), "text": text[:300], "at": d.get("timestamp"),
+            "resets_at": int(resets) if isinstance(resets, (int, float)) and not isinstance(resets, bool) and resets > 0 else None,
+            "limit_type": str(q["rateLimitType"]) if q.get("rateLimitType") else None}
+
+
+def utc_epoch(ts):
+    """L'istante di un timestamp della trascrizione («2026-11-16T16:44:08.054Z», UTC), None se non si legge. epoch()
+    legge invece le ore locali del ledger."""
+    try:
+        t = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (t if t.tzinfo else t.replace(tzinfo=_dt.timezone.utc)).timestamp()

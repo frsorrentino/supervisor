@@ -76,7 +76,9 @@ ORDER =["low", "medium", "high", "xhigh", "max", "ultracode"]   # le posizioni d
 # Claude Code 2.1.283 (dal vivo il 26/09/2026): la lista di /model scorre — sette voci a schermo su undici, «↑ n.» sulla
 # prima riga visibile e «↓ n.» sull'ultima quando ce ne sono altre, «… +4 models» in coda; sulla riga del cursore la
 # freccia lascia il posto a «❯». Giu' oltre l'ultima voce torna alla prima.
-PICK_ROW = re.compile(r"^\s*[↑↓]?\s*(❯|>)?\s*[↑↓]?\s*(\d+)\.\s+(.+?)(?:\s+✔)?(?:\s{2,}.*)?$")
+# 16/11/2026 (supervisor-modello-win-16-11): la descrizione dopo l'etichetta (gruppo 4) e il segno del modello attuale
+# anche nella forma della console di Windows («√» invece di «✔»; il cursore e' «>», gia' accettato)
+PICK_ROW = re.compile(r"^\s*[↑↓]?\s*(❯|>)?\s*[↑↓]?\s*(\d+)\.\s+(.+?)(?:\s+[✔√])?(?:\s{2,}(.*))?$")
 DIM = re.compile(r"\x1b\[[0-9;]*m")
 # 10/10 (dal telefono: effort di una sessione su win → «sessione assente»): una sessione su un altro host si guida con
 # la sua console (adattatore, su Windows cm-console.ps1), una chiamata per lettura o per gruppo di tasti. Li' il
@@ -336,13 +338,32 @@ def remember(name, **fields):
 
 
 def picker_rows(scr):
-    """[(n, etichetta, cursore)] delle SOLE voci del selettore: le righe dopo l'ultimo «Select model». Sopra c'e' la
-    conversazione, e un elenco numerato scritto da Claude («4. Sonnet …») non deve diventare una voce."""
+    """[(n, etichetta, cursore, modello)] delle SOLE voci del selettore: le righe dopo l'ultimo «Select model». Sopra c'e'
+    la conversazione, e un elenco numerato scritto da Claude («4. Sonnet …») non deve diventare una voce.
+    `modello` e' l'inizio della descrizione, fino al primo «·»: dalla 2.1.323 le voci sono per famiglia («2. Opus») e
+    il modello sta li' («Opus 5.5 · Best for everyday…»), letto dal vivo su win il 16/11 (supervisor-modello-win-16-11)."""
     lines = scr.splitlines()
     start = max((i for i, l in enumerate(lines) if "Select model" in l), default=-1)
     if start < 0:
         return []
-    return [(int(m.group(2)), m.group(3).strip(), bool(m.group(1))) for m in map(PICK_ROW.match, lines[start + 1:]) if m]
+    return [(int(m.group(2)), m.group(3).strip(), bool(m.group(1)), (m.group(4) or "").split(" · ")[0].strip())
+            for m in map(PICK_ROW.match, lines[start + 1:]) if m]
+
+
+def row_is(choice, label, model):
+    """La voce del selettore vale per il modello scelto: per l'etichetta (fino alla 2.1.32x) o per il modello che la sua
+    descrizione nomina («Opus» con «Opus 5.5 · …»: l'alias della famiglia, oggi quel modello)."""
+    p = picks(choice)
+    return label in p or bool(model) and model in p
+
+
+def excerpt(scr, n=220):
+    """Cosa c'e' in fondo allo schermo, su una riga: il riquadro sotto l'ultimo bordo «▔▔▔» (un selettore, un dialogo),
+    altrimenti le righe sotto il prompt. Per dire, quando un cambio non va a segno, che cosa la sessione mostrava."""
+    lines = str(scr or "").splitlines()
+    top = max((i for i, l in enumerate(lines) if "▔▔▔▔" in l), default=-1)
+    text = flat("\n".join(lines[top + 1:])) if top >= 0 else below_prompt(scr)
+    return text[:n] + ("…" if len(text) > n else "")
 
 
 class wide:
@@ -490,22 +511,26 @@ def _set_model(name, wanted):
         return 4
     # verso la voce: di un salto quando e' a schermo, altrimenti una riga alla volta (la lista scorre e in fondo torna
     # in cima: un numero di riga gia' visto sotto il cursore vuol dire che la voce non c'e' in tutta la lista)
-    seen, on = set(), None
+    seen, on, scr = set(), None, ""
     for _ in range(40):
-        rows = picker_rows(screen(name))
-        cur = next(((n, label) for n, label, c in rows if c), None)
+        scr = screen(name)
+        rows = picker_rows(scr)
+        cur = next(((n, label, model) for n, label, c, model in rows if c), None)
         if not cur or cur[0] in seen:
             break
-        if cur[1] in picks(choice):
-            on = cur[1]
+        if row_is(choice, cur[1], cur[2]):
+            on = cur[2] if cur[2] in picks(choice) else cur[1]
             break
         seen.add(cur[0])
-        target = next((n for n, label, _ in rows if label in picks(choice)), 0)
+        target = next((n for n, label, _, model in rows if row_is(choice, label, model)), 0)
         keys(name, *((["Down" if target > cur[0] else "Up"] * abs(target - cur[0])) if target else ["Down"]))
         time.sleep(0.3)
     if not on:
+        seen_rows = "; ".join(f"{n}. {label}" + (f" ({model})" if model and model != label else "") for n, label, _, model in picker_rows(scr))
         cancel(name, "to use this session only")
         print(M("tune.no_option", name=name, label=picks(choice)[0]))
+        if seen_rows:
+            print(M("tune.rows_were", rows=seen_rows))
         return 4
     keys(name, "s", pause=0.3)
     line = wait_model(name, choice)
@@ -516,10 +541,14 @@ def _set_model(name, wanted):
             print(M("tune.compacting", name=name))
             return 4
     if not line:
-        if switch_dialog(screen(name)):   # il dialogo «Switch model?» ancora aperto: «2. No, go back», poi Esc sul selettore
+        scr = screen(name)
+        what = excerpt(scr)   # 16/11: cosa mostrava la sessione, prima di chiudere: un dialogo che supervisor non conosce
+        if switch_dialog(scr):   # il dialogo «Switch model?» ancora aperto: «2. No, go back», poi Esc sul selettore
             keys(name, "2", pause=0.5)
         cancel(name, "to use this session only")
         print(M("tune.no_confirm", name=name))
+        if what:
+            print(M("tune.screen_was", screen=what))
         return 4
     line = line.strip()
     remember(name, model={"id": choice["id"], "label": choice.get("label") or line})

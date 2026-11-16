@@ -80,6 +80,20 @@ supervisor offload ~/film --recipe render   # the exact commit, the declared ass
   `--force` and leaves the folder for `host fetch`. `talk` exits 5 when the
   message did not arrive (it waits in the inbox) and 7 when it arrived but the
   reply could not be read: do not send it again, `wait win:<name>` gets the reply.
+  A session stopped on an API error does not answer: when the last thing in its
+  transcript is a usage limit («You've hit your Fable limit · resets Nov 19, 3am»)
+  or a login error, `talk` says so instead of «delivered»: «win:<name> è ferma sul
+  limite di Fable fino al 19/11 alle 3: il messaggio è arrivato, la sessione non
+  può rispondere; per farla lavorare cambia modello (supervisor model …)». It exits
+  8, also when the reply is another API error; `wait` does the same and does not
+  show the last answer from before the limit as new. The error is never printed as
+  the session's reply.
+  A session there stopped on a usage limit or a login opens one item for you by
+  itself: the host's status says, for each live session, whether the last entry of
+  its transcript is an API error, and `hosts poll` opens the `quota_limit` (with
+  «Continua con Opus 5.5» and «Riprendi al reset») or, for a login, a needs-you.
+  The item goes when a turn works. It needs the helper of 0.8.175: run
+  `supervisor hosts update win` after updating.
   A read there gives up after 45 s and is tried three times; `wait` exits 7 in
   one line when it still fails. Each read takes at most 8 MB of the transcript.
   On Windows a script longer than the command line allows (32.767 characters,

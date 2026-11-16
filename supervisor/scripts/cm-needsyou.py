@@ -189,11 +189,13 @@ def main(argv):
     return mark(row, reason, until=until, expires_s=expires, cwd=os.getcwd())
 
 
-def mark(row, reason, until=None, expires_s=None, cwd=None, task=None, from_=None):
+def mark(row, reason, until=None, expires_s=None, cwd=None, task=None, from_=None, source=None, quiet=False):
     """La sessione della riga e' ferma per la persona: il file, la casella della master e la push. Anche da fuori
     (21/10/2026: cm-resume-quota.py, per una sessione senza finestra ferma sull'avviso di ripresa). 23/10: `until`
     (il comando che dice «fatto», lo prova il relay), `expires_s` (senza: un giorno), `cwd` (dove provarlo). 24/10:
-    `task` (il compito a cui e' legata) e `from_` (la sessione che l'ha chiesta, quando non e' questa)."""
+    `task` (il compito a cui e' legata) e `from_` (la sessione che l'ha chiesta, quando non e' questa). 16/11
+    (supervisor-blocco-permanente-16-11): `source` «block» per un blocco letto dalla trascrizione (il login): il prompt
+    dopo non la toglie, la toglie un turno riuscito; `quiet` niente righe sullo stdout (da un hook o dal sondatore)."""
     d = Path(cm.expand(CFG["state_dir"])) / "needs-you"
     f = d / f"{row['session_id']}.json"
     d.mkdir(parents=True, exist_ok=True)
@@ -207,6 +209,8 @@ def mark(row, reason, until=None, expires_s=None, cwd=None, task=None, from_=Non
         rec["task"] = str(task)[:120]
     if from_:
         rec["from"] = str(from_)[:120]
+    if source:
+        rec["source"] = str(source)[:40]
     f.write_text(json.dumps(rec, ensure_ascii=False))
     # la master lo sa in silenzio: un record gia' consegnato nella sua casella, e la riga del suo hook a ogni prompt
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
@@ -226,6 +230,8 @@ def mark(row, reason, until=None, expires_s=None, cwd=None, task=None, from_=Non
             (rd / "hook").touch()
         except OSError:
             pass
+    if quiet:
+        return 0
     print(M("needs_you.saved", name=name, reason=reason) + (" " + M("needs_you.saved_for", task=task, by=from_) if from_ and task else ""))
     if until:
         print(M("needs_you.saved_until", cmd=rec["until"]))

@@ -159,6 +159,57 @@ function JobInfo($d) {
     @{ status = $st; tail = $tail }
 }
 
+function ApiState($cdPath, $e) {
+    # 16/11/2026 (supervisor-blocco-permanente-16-11): l'ultima voce assistant della trascrizione della sessione (non di
+    # un sottoagente). Se e' un errore dell'API, block = {kind limit|login|error, error, text, at, resets_at, limit_type}:
+    # la sessione e' ferma li'. La stessa lettura di api_error (cm-relay-state.py) e di apiError (cm-session.js); si
+    # leggono gli ultimi 512 KB. last_at = l'ora di quella voce. $null se la trascrizione non c'e'.
+    try {
+        $slug = ([string]$e.cwd) -replace '[^A-Za-z0-9]', '-'
+        $f = Join-Path (Join-Path (Join-Path $cdPath 'projects') $slug) ([string]$e.sessionId + '.jsonl')
+        if (-not (Test-Path -LiteralPath $f)) { return $null }
+        $fs = [IO.File]::Open($f, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try {
+            $len = $fs.Length
+            $n = [int][Math]::Min($len, 524288)
+            [void]$fs.Seek(-$n, [IO.SeekOrigin]::End)
+            $buf = New-Object byte[] $n
+            $got = 0
+            while ($got -lt $n) { $r = $fs.Read($buf, $got, $n - $got); if ($r -le 0) { break }; $got += $r }
+        } finally { $fs.Close() }
+        $lines = [Text.Encoding]::UTF8.GetString($buf, 0, $got) -split "`n"
+        $first = if ($len -le 524288) { 0 } else { 1 }
+        for ($i = $lines.Count - 1; $i -ge $first; $i--) {
+            $l = $lines[$i]
+            if ($l -notmatch '"type"\s*:\s*"assistant"') { continue }
+            if ($l -match '"isSidechain"\s*:\s*true') { continue }
+            $at = if ($l -match '"timestamp"\s*:\s*"([^"]+)"') { $Matches[1] } else { $null }
+            if ($l -notmatch '"isApiErrorMessage"\s*:\s*true' -and $l -notmatch '"model"\s*:\s*"<synthetic>"') { return @{ block = $null; last_at = $at } }
+            try { $d = $l | ConvertFrom-Json } catch { return @{ block = $null; last_at = $at } }
+            $text = ''
+            foreach ($c in @($d.message.content)) { if ($c -and $c.type -eq 'text' -and $c.text) { $text = [string]$c.text; break } }
+            $limitText = $text -match "You've (hit|reached) your|out of (extra )?usage|usage credits|usage limit"
+            $loginText = $text -match '/login|not logged in|invalid api key|oauth token|authentication'
+            if (-not $d.isApiErrorMessage -and -not $limitText -and -not $loginText) { return @{ block = $null; last_at = $at } }
+            $code = ([string]$d.error + ' ' + [string]$d.apiError).Trim()
+            $q = $d.quotaLimits
+            if (-not $q -and $d.apiErrorParams) { $q = $d.apiErrorParams.rate_limit_info }
+            $kind = 'error'
+            if ($code -match 'usage_limit|billing|credit' -or ($q -and $q.status -eq 'rejected') -or $limitText) { $kind = 'limit' }
+            elseif ($code -match 'auth|oauth|login' -or $loginText) { $kind = 'login' }
+            $resets = $null
+            if ($q -and $q.resetsAt) { $resets = [int64]$q.resetsAt }
+            $lt = $null
+            if ($q -and $q.rateLimitType) { $lt = [string]$q.rateLimitType }
+            $err = 'api_error'
+            if ($d.error) { $err = [string]$d.error } elseif ($d.apiError) { $err = [string]$d.apiError }
+            if ($text.Length -gt 300) { $text = $text.Substring(0, 300) }
+            return @{ block = @{ kind = $kind; error = $err; text = $text; at = $at; resets_at = $resets; limit_type = $lt }; last_at = $at }
+        }
+        return @{ block = $null; last_at = $null }
+    } catch { return $null }
+}
+
 function Cmd-Status {
     $os = Get-CimInstance Win32_OperatingSystem
     $jobs = @{}
@@ -171,7 +222,9 @@ function Cmd-Status {
             $e = ReadJson $_.FullName
             if ($e) {
                 $alive = [bool](Get-Process -Id ([int]$_.BaseName) -ErrorAction SilentlyContinue)
-                [void]$sess.Add(@{ config_dir = $cd.Name; alive = $alive; entry = $e })
+                $item = @{ config_dir = $cd.Name; alive = $alive; entry = $e }
+                if ($alive) { $api = ApiState $cd.FullName $e; if ($api) { $item.api = $api } }
+                [void]$sess.Add($item)
             }
         }
     }

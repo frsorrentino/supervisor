@@ -1,0 +1,25 @@
+
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Fable 5.2 · API Usage Billing
+ ▝▝   ▝▝   ~\AppData\Local\Temp\cc-model-win\work
+
+
+> ciao
+
+● Ciao.
+
+✻ Baked for 0s · done 19:33
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────── prova-model-win ─
+>
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

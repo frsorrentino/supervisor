@@ -428,6 +428,30 @@ def registry_update(closed=""):
 _TMUX_NAME = {}
 
 
+def block_needs_you(f):
+    """16/11 (supervisor-blocco-permanente-16-11): il needs-you e' quello di un blocco (source «block»)?"""
+    try:
+        return json.loads(f.read_text()).get("source") == "block"
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def open_block_needs_you(sid, kind):
+    """16/11 (supervisor-blocco-permanente-16-11): la sessione e' ferma su un blocco che chiede la persona (il login): un
+    needs-you che il prompt dopo non toglie. Uno per blocco: un altro turno fallito non lo riscrive (niente avviso nuovo)."""
+    f = STATE / "needs-you" / f"{sid}.json"
+    if f.exists() and block_needs_you(f):
+        return
+    try:
+        spec = importlib.util.spec_from_file_location("cm_needsyou", HERE / "cm-needsyou.py")
+        ny = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ny)
+        name = my_tmux_name() or sid[:8]
+        ny.mark({"session_id": sid, "name": name, "tmux": name}, M(f"block.{kind}", name=name), expires_s=7 * 86400, source="block", quiet=True)
+    except Exception:   # noqa: BLE001 — un hook non cade mai
+        pass
+
+
 def my_tmux_name():
     if os.environ.get("CM_HOOK_TMUX_NAME"):   # detach.sh read it before letting go: after /exit the pane may be gone
         return os.environ["CM_HOOK_TMUX_NAME"]
@@ -890,7 +914,11 @@ def run_event(argv):
     elif ev == "UserPromptSubmit":
         if sid:
             (STATE / "waiting" / sid).unlink(missing_ok=True)
-            (STATE / "needs-you" / f"{sid}.json").unlink(missing_ok=True)   # 1.68: il prompt dopo chiude «ferma per te»
+            # 1.68: il prompt dopo chiude «ferma per te»; 16/11 (supervisor-blocco-permanente-16-11): non quella di un blocco (il
+            # login), che resta finche' un turno non riesce
+            ny = STATE / "needs-you" / f"{sid}.json"
+            if ny.exists() and not block_needs_you(ny):
+                ny.unlink(missing_ok=True)
         ledger("prompt", p)   # l'inizio del turno (turn_started per il polso)
         rec_id = record_person_prompt(p)   # 22/10: l'ok scritto qui vale (casella della sessione, origine terminal)
         mark("record")
@@ -941,6 +969,9 @@ def run_event(argv):
         # «waiting» con la domanda gia' risposta (14/09: answered e outcome partiti 3 minuti tardi)
         if sid:
             (STATE / "waiting" / sid).unlink(missing_ok=True)
+            ny = STATE / "needs-you" / f"{sid}.json"
+            if ny.exists() and block_needs_you(ny):   # 16/11: un turno riuscito, il blocco (il login) non c'e' piu'
+                ny.unlink(missing_ok=True)
         # 16/11/2026 (supervisor-hook-lenti-16-11): 16 scadenze a 20 s in dieci giorni. Qui resta cio' che deve rispondere
         # (registro, riavvio armato, coda, casella); cio' che legge la trascrizione o carica moduli pesanti va a StopLate,
         # un figlio staccato: i prompt «unverified» del turno, il /clear dopo un passaggio di consegne, modello ed effort
@@ -1008,10 +1039,19 @@ def run_event(argv):
         # 1.85 (25/10/2026): il testo dell'errore e la trascrizione al relay. Il limite di un modello («You've reached your
         # Fable limit») sta nel messaggio <synthetic> della trascrizione: qui arriva solo il 429 generico
         # (l'ultimo messaggio dell'assistente conta solo con la frase del limite: puo' essere la risposta di prima)
-        last = " ".join(str(p.get("last_assistant_message") or "").split())[:300]
-        last = last if re.search(r"(reached|hit) your .{1,40} limit", last) else ""
+        last_all = " ".join(str(p.get("last_assistant_message") or "").split())[:300]
+        last = last_all if re.search(r"(reached|hit) your .{1,40} limit", last_all) else ""
         said = (err + (" " + last if last and last not in err else "")).strip()
-        if name and re.search(r"rate.?limit|usage.?limit|limit reached|(reached|hit) your .{1,40} limit|quota", said, re.I):
+        # 16/11/2026 (supervisor-blocco-permanente-16-11): il login non e' un turno da riprendere con «continua»: la sessione e'
+        # ferma finche' qualcuno non entra di nuovo. Un needs-you che resta finche' un turno non riesce (Stop lo toglie).
+        # Conta il codice dell'errore; il testo solo senza codice e solo se comincia come l'errore: l'ultimo messaggio puo'
+        # essere la risposta di prima, che parla magari proprio di autenticazione
+        code = str(p.get("error", "")).strip()
+        login = sid and not PRIVATE and (re.search(r"auth|oauth|login", code, re.I) or (
+            code in ("", "unknown") and re.match(r"\W*(Please run /login|Invalid API key|OAuth token|Not logged in)", last_all, re.I)))
+        if login:
+            open_block_needs_you(sid, "login")
+        elif name and re.search(r"rate.?limit|usage.?limit|limit reached|(reached|hit) your .{1,40} limit|quota", said, re.I):
             subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "quota-limit", name, said[:500], str(p.get("transcript_path") or "")],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         elif name:

@@ -537,12 +537,14 @@ def _drain(a, name, offset):
     return texts
 
 
-def read_reply(a, name, offset, max_wait, quiet):
+def read_reply(a, name, offset, max_wait, quiet, errors=None):
     """Come wait_reply di cm-talk: si legge finche' la sessione torna idle dopo essere stata busy (o il transcript
     resta fermo `quiet` secondi con del testo, o se ne va); tetto max_wait. (testi, errore): l'errore e' la lettura
-    fallita (08/11: su win una lettura scadeva a 120 s dopo un post riuscito), i testi quelli letti fin li'."""
+    fallita (08/11: su win una lettura scadeva a 120 s dopo un post riuscito), i testi quelli letti fin li'.
+    16/11 (supervisor-modello-win-16-11): gli errori dell'API arrivati come risposta (il limite d'uso, il login) vanno
+    in `errors` se chi chiama passa una lista, e chiudono l'attesa come una risposta."""
     start = last_change = time.time()
-    texts, seen_busy = [], False
+    texts, seen_busy, errs = [], False, errors if errors is not None else []
     while True:
         try:
             d = _read(a, name, offset)
@@ -552,17 +554,50 @@ def read_reply(a, name, offset, max_wait, quiet):
         if d.get("texts"):
             texts += d["texts"]
             last_change = time.time()
+        if d.get("errors"):
+            errs += d["errors"]
+            last_change = time.time()
         st = d.get("status")
         seen_busy = seen_busy or st == "busy"
-        if st == "gone" or (st == "idle" and (seen_busy or texts) and time.time() - last_change > 1.5):
+        if st == "gone" or (st == "idle" and (seen_busy or texts or errs) and time.time() - last_change > 1.5):
             break
-        if texts and time.time() - last_change > quiet:
+        if (texts or errs) and time.time() - last_change > quiet:
             break
         if time.time() - start > max_wait:
             print(M("talk.timeout", s=max_wait))
             break
         time.sleep(2)
     return texts, None
+
+
+BLOCKED_RC = 8   # 16/11: consegnato, ma al posto della risposta un errore dell'API (il limite d'uso, il login, altro)
+
+
+def blocked_line(target, blk):
+    """16/11 (supervisor-modello-win-16-11, la frase concordata con la master): la riga per una sessione che risponde
+    con un errore dell'API. Il limite di un modello: «X è ferma sul limite di Fable fino al 19/11 alle 3: il messaggio
+    è arrivato, la sessione non può rispondere; per farla lavorare cambia modello (supervisor model X "Opus 5.5")».
+    La quota, il login e gli altri errori: la frase loro, col testo dell'errore."""
+    text = " ".join(str(blk.get("text") or blk.get("error") or "").split())[:240]
+    kind = blk.get("kind") if blk.get("kind") in ("limit", "login") else "error"
+    if kind != "limit":
+        return M(f"rsession.blocked_{kind}", name=target, text=text)
+    info = _load("cm-relay-state").limit_info(text)
+    until = ""
+    if info["hour"] is not None:
+        hm = f"{info['hour']}:{info['minute']:02d}"
+        t = str(info["hour"]) if not info["minute"] else hm
+        until = (M("rsession.until_day", day=info["day"], month=info["month"], time=t, hm=hm) if info["day"]
+                 else M("rsession.until_time", time=t, hm=hm))
+    if not info["model"]:
+        return M("rsession.blocked_limit", name=target, until=until, text=text)
+    # il modello su cui proseguire: Opus dalla lista di tune.models, come la strada «altro modello» del relay; un altro
+    # della lista se il limite e' proprio di Opus
+    fam = info["model"].split()[0].lower()
+    models = [m for m in (CFG.get("tune") or {}).get("models") or [] if m.get("id") and fam not in f"{m['id']} {m.get('label') or ''}".lower()]
+    other = next((m for m in models if "opus" in m["id"]), models[0] if models else None)
+    cmd = f'supervisor model {target} "{other.get("label") or other["id"]}"' if other else f"supervisor model {target} …"
+    return M("rsession.blocked_limit_model", name=target, model=info["model"], until=until, cmd=cmd)
 
 
 def cmd_talk(argv):
@@ -587,12 +622,27 @@ def cmd_talk(argv):
         print(M("rsession.post_failed", host=hname, name=name, error=str(e)[-300:], id=rec["id"]), file=sys.stderr)
         return 5
     inbox.mark(rec["id"], "delivered", f"pipe:{hname}")
-    print(M("talk.sent", name=f"{hname}:{name}", via=f"pipe ({hname})"), file=sys.stderr)
+    # 16/11/2026 (supervisor-modello-win-16-11): una sessione ferma sul limite d'uso riceve il messaggio e risponde ogni
+    # volta solo «You've hit your … limit»: «consegnato» faceva credere che stesse lavorando, e quella riga sembrava vecchia
+    blk = d.get("block") or None
+    target = f"{hname}:{name}"
+    blocked = bool(blk and blk.get("kind") in ("limit", "login"))
+    if blocked:
+        print(blocked_line(target, blk), file=sys.stderr)
+    else:
+        print(M("talk.sent", name=target, via=f"pipe ({hname})"), file=sys.stderr)
     if "--no-wait" in rest:
-        return 0
-    texts, err = read_reply(a, name, d.get("offset", 0), max_wait, quiet)
+        return BLOCKED_RC if blocked else 0
+    errors = []
+    texts, err = read_reply(a, name, d.get("offset", 0), max_wait, quiet, errors)
+    if blocked and texts:   # ferma all'invio (l'ultima voce era l'errore), ma ha risposto: il blocco e' passato
+        print(M("rsession.unblocked", name=target), file=sys.stderr)
     for t in texts:
         print(t)
+    if errors and not texts and not err:
+        if not blocked or errors[-1].get("kind") != blk.get("kind"):   # la riga detta all'invio basta una volta
+            print(blocked_line(target, errors[-1]), file=sys.stderr)
+        return BLOCKED_RC
     if err:
         # 08/11 (supervisor-talk-win-consegnato-08-11): il messaggio e' arrivato, non si e' letta la risposta. Codice
         # suo (7), distinto dall'invio fallito (5), cosi' chi chiama non lo rimanda: due talk a win uscivano «unreachable»
@@ -621,12 +671,19 @@ def cmd_wait(argv):
         print(M("wait.idle", name=f"{hname}:{name}", status=d.get("status")))
         texts = _drain(a, name, offset)
         if not texts:
-            texts = _read(a, name, 0, last=True).get("texts") or []
+            last = _read(a, name, 0, last=True)
+            d = dict(d, block=last.get("block") or d.get("block"))
+            # 16/11: ferma su un errore dell'API, l'ultima risposta vera e' di prima del blocco: non si mostra come nuova
+            texts = [] if (d.get("block") or {}).get("kind") in ("limit", "login") else (last.get("texts") or [])
     except Exception as e:   # noqa: BLE001 — 08/11: mai un traceback, una riga e un codice suo (7, come talk)
         print(M("rsession.wait_unread", host=hname, name=name, error=str(e)[-300:]), file=sys.stderr)
         return 7
     for t in texts:
         print(t)
+    blk = d.get("block") or None
+    if blk and blk.get("kind") in ("limit", "login"):   # 16/11: ferma, non «tornata idle con una risposta»
+        print(blocked_line(f"{hname}:{name}", blk), file=sys.stderr)
+        return BLOCKED_RC
     return 0
 
 

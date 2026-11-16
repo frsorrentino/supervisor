@@ -173,6 +173,40 @@ def transcript_of(row):
     return str(p) if p.is_file() else ""
 
 
+def api_state(row, tail_bytes=512 * 1024):
+    """16/11/2026 (supervisor-blocco-permanente-16-11): {block, last_at} di una sessione. block e' l'errore dell'API
+    dell'ultima voce assistant della trascrizione (cm-relay-state.api_error; None se e' una risposta), last_at l'ora di
+    quella voce (epoch). Le voci dei sottoagenti non contano. Per una sessione di un altro host li dice lo stato
+    dell'host (i campi block e api_last_at della riga, da hosts poll); None quando non si sa (l'aiutante di quell'host e'
+    di prima, o la trascrizione non c'e')."""
+    if row and row.get("host") and row.get("host") != "local":
+        if "block" not in row and "api_last_at" not in row:
+            return None
+        return {"block": row.get("block"), "last_at": row.get("api_last_at")}
+    path = transcript_of(row)
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - tail_bytes))
+            lines = f.read().split(b"\n")
+    except OSError:
+        return None
+    for raw in reversed(lines[1:] if size > tail_bytes else lines):
+        if b'"assistant"' not in raw:
+            continue
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(d, dict) or d.get("type") != "assistant" or d.get("isSidechain"):
+            continue
+        return {"block": _rs().api_error(d), "last_at": _rs().utc_epoch(d.get("timestamp"))}
+    return {"block": None, "last_at": None}
+
+
 def pending_ask(path, window=1024 * 1024):
     """09/10: la domanda aperta di un transcript — l'ultimo AskUserQuestion dell'assistente senza ancora il suo
     tool_result → (domanda, [etichette delle opzioni]) della prima domanda, o None. Per le sessioni di un altro host,

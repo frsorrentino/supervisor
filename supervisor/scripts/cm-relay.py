@@ -4638,8 +4638,9 @@ def quota_window(acc):
 # («You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.»); il payload di
 # StopFailure porta solo il 429 generico («would exceed your account's rate limit»). Il nome comincia con la maiuscola:
 # «reached your account's …» non e' un modello.
-LIMIT_MODEL = re.compile(r"reached your ([A-Z][\w.\-]*(?: [\w.\-]+){0,2}) limit")
-LIMIT_RESET = re.compile(r"\bresets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*([ap]m)?\b", re.I)
+# 16/11/2026 (supervisor-blocco-permanente-16-11): «hit your Fable limit» della 2.1.323 e il giorno del reset («resets Nov 19,
+# 3am (Europe/Rome)»): il lettore e' cm-relay-state.limit_info, lo stesso di talk
+LIMIT_MODEL = S.LIMIT_MODEL_RE
 OTHER_MODEL_ID, OTHER_MODEL_LABEL = "claude-opus-5-5[1m]", "Opus 5.5"
 
 
@@ -4650,25 +4651,22 @@ def other_model():
 
 
 def reset_from_text(text, now=None):
-    """1.85: l'istante del reset scritto nel messaggio del limite («resets 3:10pm», «resets at 23:10»), il prossimo nel
-    futuro in ora locale; None se il messaggio non dice l'ora."""
-    m = LIMIT_RESET.search(text or "")
-    if not m:
-        return None
-    h, mi, ap = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
-    if ap == "pm" and h < 12:
-        h += 12
-    elif ap == "am" and h == 12:
-        h = 0
-    if h > 23 or mi > 59:
-        return None
-    now = time.time() if now is None else now
-    lt = time.localtime(now)
-    for d in (0, 1):
-        t = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + d, h, mi, 0, 0, 0, -1))
-        if t > now:
-            return int(t)
-    return None
+    """1.85: l'istante del reset scritto nel messaggio del limite («resets 3:10pm», «resets at 23:10», dal 16/11 anche
+    «resets Nov 19, 3am (Europe/Rome)»), il prossimo nel futuro; None se il messaggio non dice l'ora."""
+    return S.limit_info(text, now)["at"]
+
+
+def until_text(reset, now=None):
+    """16/11/2026 (supervisor-blocco-permanente-16-11, il titolo chiaro chiesto dalla master): « fino alle 15:10» oggi,
+    « fino al 19/11 alle 3» un altro giorno, "" senza l'ora; nell'ora di qui."""
+    if not reset:
+        return ""
+    lt, nt = time.localtime(float(reset)), time.localtime(now or time.time())
+    hm = f"{lt.tm_hour}:{lt.tm_min:02d}"
+    t = str(lt.tm_hour) if not lt.tm_min else hm
+    if (lt.tm_year, lt.tm_yday) == (nt.tm_year, nt.tm_yday):
+        return M("relay.until_time", t=t, hm=hm)
+    return M("relay.until_day", d=lt.tm_mday, m=lt.tm_mon, t=t, hm=hm)
 
 
 def limit_text(text, transcript="", session_id="", tries=3, pause=1.0):
@@ -4713,42 +4711,57 @@ def limit_text(text, transcript="", session_id="", tries=3, pause=1.0):
     return text or ""
 
 
-def quota_limit(tm, text="", transcript=""):
+def quota_limit(tm, text="", transcript="", resets_at=None):
     """1.58 (14/10, dagli spunti della valutazione di Kaya): la sessione `tm` ha toccato il limite della quota (l'hook di
     StopFailure). Un evento quota_limit al telefono con l'ora del reset e le strade, una per tasto, che l'op
     quota_route esegue: other_account (handoff sull'altro account), at_reset (riprende da sola al reset).
     1.85 (25/10/2026): il limite di un modello («reached your Fable limit», dal testo dell'hook o dalla trascrizione)
     → window «model», other_model per primo (Opus, se il modello fermo non e' gia' Opus), at_reset solo se il messaggio
-    dice l'ora; «pass» non si propone piu' (inutile al limite della quota, detto dal telefono). Uno per sessione e finestra di reset."""
+    dice l'ora; «pass» non si propone piu' (inutile al limite della quota, detto dal telefono). Uno per sessione e finestra di reset.
+    16/11/2026 (supervisor-blocco-permanente-16-11): il testo della 2.1.323 («You've hit your Fable limit · resets Nov 19,
+    3am (Europe/Rome)»), letto col giorno e il fuso; `resets_at` (epoch, il quotaLimits della voce) quando il testo non
+    dice l'ora; anche per una sessione di win (hosts poll), senza «altro account»; il titolo in parole semplici («X è
+    ferma: limite di Fable fino al 19/11 alle 3»); la voce di «Serve te» porta strade, modello e reset (l'attesa
+    «limite») e resta finche' il blocco c'e' (attention_open)."""
     row = next((r for r in (_json_cmd("sessions", "--json", "--no-screen") or []) if (r.get("tmux") or r.get("name")) == tm), None)
     if not row:
         return 0
     acc = row.get("account") or ""
-    mm = LIMIT_MODEL.search(limit_text(text, transcript, row.get("session_id") or ""))
-    model = mm.group(1).strip() if mm else None
+    remote = bool(row.get("host")) and row.get("host") != "local"
+    info = S.limit_info(limit_text(text, transcript, row.get("session_id") or ""))
+    model = info["model"]
+    try:
+        given = int(float(resets_at)) if resets_at else None
+    except (TypeError, ValueError):
+        given = None
     if model:
-        window, reset = "model", reset_from_text(mm.string)
+        window, reset = "model", info["at"] or given
         key = f"model:{model}:{reset or time.strftime('%Y-%m-%d %H')}"
     else:
-        window, reset = quota_window(acc)
-        key = reset
+        window, qreset = quota_window(acc)
+        reset = info["at"] or given or qreset
+        key = str(reset)
     p = rdir() / "quota-limits.json"
     seen = read_json(p, {})
-    if seen.get(tm) == key:
+    seen = seen if isinstance(seen, dict) else {}
+    prev = seen.get(tm)
+    if (prev.get("key") if isinstance(prev, dict) else prev) == key:
         return 0
-    seen[tm] = key
+    # 16/11: col reset, che «riprendi al reset» usa per il limite di un modello (prima: sempre quello della quota)
+    seen[tm] = {"key": key, "reset": int(reset) if reset else None, "window": window, "model": model}
     write_json(p, seen)
-    other = other_account(acc)
+    other = None if remote else other_account(acc)   # il passaggio a un altro account parte da qui: non per una sessione di win
     alt = other_model() if model and not model.lower().startswith("opus") else None
     name = S.short_name(tm, prefixes())
-    when = time.strftime("%H:%M", time.localtime(float(reset))) if reset else "?"
+    until = until_text(reset)
     if model:
-        title = M("relay.event_quota_model_reset" if reset else "relay.event_quota_model", name=name, model=model, t=when)
+        title = M("relay.event_quota_model", name=name, model=model, until=until)
         actions = (["other_model"] if alt else []) + (["other_account"] if other else []) + (["at_reset"] if reset else [])
     else:
-        title = M("relay.event_quota_limit", name=name, window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=when)
+        title = M("relay.event_quota_5h" if window == "5h" else "relay.event_quota_week", name=name, until=until)
         actions = (["other_account"] if other else []) + ["at_reset"]
-    attention_mark("quota_limit", name, name, title)
+    attention_mark("quota_limit", name, name, title,
+                   extra={"actions": actions, "other_model": alt[1] if alt else None, "reset_at": int(reset) if reset else None, "window": window})
     emit("quota_limit", title, "", ref=name, account=acc, session=name,
          extra={"reset_at": int(reset) if reset else None, "window": window, "other_account": other,
                 "other_model": alt[1] if alt else None, "actions": actions})
@@ -4798,6 +4811,7 @@ def needs_you_of(rows, now=None):
         return {}
     now = float(now or time.time())
     by_sid = {r.get("session_id"): (r.get("tmux") or r.get("name")) for r in rows if r.get("session_id") and r.get("status") != "dead"}
+    row_by_sid = {r.get("session_id"): r for r in rows if r.get("session_id") and r.get("status") != "dead"}
     out = {}
     for f in d.glob("*.json"):
         tm = by_sid.get(f.stem)
@@ -4819,6 +4833,14 @@ def needs_you_of(rows, now=None):
             ledger_write("needs-you-expired", session=tm, reason=reason)
             _wake(tm, M("relay.needs_you_expired", name=tm, reason=reason, when=time.strftime("%H:%M", time.localtime(now))))
             continue
+        # 16/11/2026 (supervisor-blocco-permanente-16-11): un blocco letto dalla trascrizione (il login, source «block») va
+        # via da solo quando la sessione ha un turno riuscito dopo la voce, senza svegliarla: e' gia' ripartita
+        if rec.get("source") == "block":
+            st = core.api_state(row_by_sid.get(f.stem))
+            if st is not None and not st.get("block") and float(st.get("last_at") or 0) > float(rec.get("at") or 0):
+                f.unlink(missing_ok=True)
+                ledger_write("needs-you-done", session=tm, reason=reason, how="unblocked")
+                continue
         until = str(rec.get("until") or "")
         if until and now - float(rec.get("checked_at") or 0) >= NEEDS_CHECK_EVERY_S:
             rc = needs_check(until, rec.get("cwd"))
@@ -4895,14 +4917,16 @@ def attention_reminders(full, now):
         write_json(p, live)
 
 
-def attention_mark(kind, session, ref, title, now=None, remove=False):
+def attention_mark(kind, session, ref, title, now=None, remove=False, extra=None):
     """1.66 (14/10): le cose che aspettano la persona oltre alle domande — un turno fallito (1.61), una sessione ferma
     per la quota (1.58), un task rosso (1.57) — restano in attention.json finche' non si risolvono. `remove` toglie
-    quella di quel tipo e riferimento (un task tornato verde)."""
+    quella di quel tipo e riferimento (un task tornato verde). 16/11 (supervisor-blocco-permanente-16-11): `extra`, i
+    campi in piu' della voce (per quota_limit: actions, other_model, reset_at, window)."""
     p = rdir() / "attention.json"
     items = [x for x in read_json(p, []) if isinstance(x, dict) and not (x.get("kind") == kind and x.get("ref") == ref)]
     if not remove:
-        items.append({"kind": kind, "session": session, "ref": ref, "title": S.redact_preview(S.one_line(title))[:200], "since": int(now or time.time())})
+        items.append(dict({k: v for k, v in (extra or {}).items() if k not in ("kind", "session", "ref", "title", "since")},
+                          kind=kind, session=session, ref=ref, title=S.redact_preview(S.one_line(title))[:200], since=int(now or time.time())))
     write_json(p, items)
 
 
@@ -4915,11 +4939,22 @@ def attention_open(rows, ledger):
         failures_settle(set())   # anche senza voci: un evento rimasto aperto da prima (16/10, la master)
         return []
     sid_of = {S.short_name(r.get("name") or r.get("tmux") or "", prefixes()): r.get("session_id") or "" for r in rows if r.get("status") != "dead"}
+    row_of = {S.short_name(r.get("name") or r.get("tmux") or "", prefixes()): r for r in rows if r.get("status") != "dead"}
     keep = []
     for x in items:
         if x.get("kind") in ("turn_failed", "quota_limit"):
             sid = sid_of.get(x.get("session") or "")
-            if not sid or any(e.get("event") == "prompt" and e.get("session_id") == sid and S.epoch(e.get("ts")) > int(x.get("since") or 0) for e in ledger):
+            if not sid:
+                continue
+            since = int(x.get("since") or 0)
+            # 16/11/2026 (supervisor-blocco-permanente-16-11): il limite resta finche' c'e'. Un prompt che riprende il
+            # limite (la master che riprova) non lo chiude: lo chiude un turno riuscito dopo la voce, letto dalla
+            # trascrizione (per win dallo stato dell'host). Quando non si sa (l'aiutante di win e' di prima) vale il prompt.
+            st = core.api_state(row_of.get(x.get("session") or "")) if x.get("kind") == "quota_limit" else None
+            if st is not None:
+                if not st.get("block") and float(st.get("last_at") or 0) > since:
+                    continue
+            elif any(e.get("event") == "prompt" and e.get("session_id") == sid and S.epoch(e.get("ts")) > since for e in ledger):
                 continue
         keep.append(x)
     if keep != items:
@@ -5073,6 +5108,12 @@ def quota_route(cmd, session, tm, arg):
         return True, M("relay.cmd_quota_model", name=session, model=label)
     if a == "at_reset":
         window, reset = quota_window(acc)
+        # 16/11 (supervisor-blocco-permanente-16-11): il limite di un modello si rinnova alla sua ora (19/11 alle 3), non
+        # a quella della quota: quota_limit l'ha scritta in quota-limits.json
+        lim = read_json(rdir() / "quota-limits.json", {})
+        lim = (lim.get(tm) if isinstance(lim, dict) else None) or {}
+        if isinstance(lim, dict) and lim.get("window") == "model" and lim.get("reset"):
+            reset = lim["reset"]
         if not reset:
             return False, M("relay.cmd_quota_no_reset", account=acc)
         gp = Path(cm.expand(CFG["state_dir"])) / "guard.json"
@@ -5172,7 +5213,8 @@ def main(argv):
     if cmd == "turn-failed":   # 1.61: lanciato dall'hook di StopFailure, in background
         return turn_failed(rest[0], rest[1] if len(rest) > 1 else "") if rest and R.get("enabled") else 0
     if cmd == "quota-limit":   # 1.58: lanciato dall'hook di StopFailure, in background
-        return quota_limit(rest[0], rest[1] if len(rest) > 1 else "", rest[2] if len(rest) > 2 else "") if rest and R.get("enabled") else 0
+        return quota_limit(rest[0], rest[1] if len(rest) > 1 else "", rest[2] if len(rest) > 2 else "", rest[3] if len(rest) > 3 else None) \
+            if rest and R.get("enabled") else 0
     if cmd == "task-check":   # 1.57: lanciato dall'hook di Stop, in background
         return task_check(rest[0]) if rest and R.get("enabled") else 0
     if cmd == "setup":   # il progetto Firebase, guidato (R2, 24/09): la sua CLI, non cryptography ne' crontab
