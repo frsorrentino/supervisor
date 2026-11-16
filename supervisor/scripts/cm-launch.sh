@@ -154,12 +154,18 @@ fi
 # tmux riscrive i punti in trattini bassi dentro i nomi di sessione: passare
 # "sito.com" e poi cercarlo con quel nome fa dichiarare morta una sessione viva.
 # Si normalizza prima, cosi' il nome passato e quello cercato coincidono.
+# 16/11/2026 (supervisor-master-prefisso-16-11): la sessione della radice porta SEMPRE il nome nudo, anche quando la
+# cartella della radice e' di un account con un tmux_prefix. Prima diventava «<prefisso>master», e tutto il resto di
+# supervisor cerca la master col nome nudo (hook, relay, casella, attese): con la cartella dei progetti di un account
+# col prefisso la master era aperta e nessuno la riconosceva. L'account della master si sa dalla sua cartella, non dal nome.
+RADICE=no; VECCHIO=""
 if [ "$(readlink -f "$CARTELLA")" = "$(readlink -f "$(eval echo "$CM_WORKSPACE_ROOT")")" ]; then
-  BASE="$CM_WORKSPACE_ROOT_SESSION_NAME"
+  BASE="$CM_WORKSPACE_ROOT_SESSION_NAME"; RADICE=si
+  [ -n "$PREFIX" ] && VECCHIO="$PREFIX$BASE"
 else
   BASE=$(basename "$CARTELLA" | tr "$CM_SESSION_NAME_SANITIZE_CHARS" "$(printf '%*s' "${#CM_SESSION_NAME_SANITIZE_CHARS}" '' | tr ' ' '-')")
+  BASE="$PREFIX$BASE"
 fi
-BASE="$PREFIX$BASE"
 # 16/10/2026 (dal vivo il 15/10 alle 23:40): una sessione --bg non sta in tmux, quindi has-session non la vedeva e un
 # secondo `launch --bg` nella stessa cartella riprendeva lo stesso nome: due «pix-claude-plugins», e l'app in crash
 # sulla chiave doppia. Un nome e' preso anche quando lo porta una sessione VIVA del registro di Claude Code, di ogni
@@ -178,6 +184,11 @@ nome_preso() {
   done
   return 1
 }
+# una master aperta prima dell'aggiornamento ha ancora il nome col prefisso: una seconda nella stessa cartella no. Si
+# dice di chiuderla e riaprirla (la conversazione riprende), e ci si ferma
+if [ "$RADICE" = si ] && [ -n "$VECCHIO" ] && [ -z "$HOST" ] && nome_preso "$VECCHIO"; then
+  cm_msg launch.root_old_name "old=$VECCHIO" "name=$BASE" >&2; exit 6
+fi
 # 28/10/2026: un claude rimasto senza il suo tmux con questo nome (il doppione che non risponde) si chiude prima: altrimenti
 # la sua voce nel registro tiene il nome e la sessione nuova diventa «-2», accanto a lui. Restart passa di qui.
 if [ -z "$HOST" ] && [ "$BG" != si ]; then

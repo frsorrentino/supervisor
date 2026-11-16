@@ -209,8 +209,14 @@ def week_check(acc, s, t):
 
 
 def account_of_name(name):
-    """L'account dal prefisso del nome tmux (accounts.<n>.tmux_prefix); senza prefisso, quello di default."""
+    """L'account dal prefisso del nome tmux (accounts.<n>.tmux_prefix); senza prefisso, quello di default. La sessione
+    della radice (16/11/2026) non ha mai prefisso: il suo account e' quello della cartella della radice."""
     best = CFG["default_account"]
+    ws = CFG.get("workspace") or {}
+    if name == str(ws.get("root_session_name") or "master") and ws.get("root"):
+        acc = cm.account_for(CFG, ws["root"])[0]
+        if acc in CFG["accounts"]:
+            return acc
     for acc, a in CFG["accounts"].items():
         pfx = a.get("tmux_prefix") or ""
         if pfx and name.startswith(pfx):

@@ -18,7 +18,9 @@ sessions per account under its table; `wait` says when it returns on an open
 goal (idle with a goal not met is «Goal paused», not finished work).
 
 The `work-` in front of two names is the tmux prefix of the `work` account in the
-demo set: every account has its own, set in `accounts.<name>.tmux_prefix`.
+demo set: every account has its own, set in `accounts.<name>.tmux_prefix`. The root
+session is the exception: it is always called `workspace.root_session_name`
+(«master»), with no prefix, whichever account its folder belongs to.
 
 ## Launch by a piece of a name
 

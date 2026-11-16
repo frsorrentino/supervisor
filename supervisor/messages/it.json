@@ -192,6 +192,7 @@
   "launch.mkdir_failed": "supervisor launch: impossibile creare {path}",
   "launch.missing_dir": "supervisor launch: la cartella non esiste: {path}\n  passare --create per crearla",
   "launch.not_a_dir": "supervisor launch: esiste ma non è una cartella: {path}",
+  "launch.root_old_name": "supervisor launch: la sessione della radice è aperta col nome vecchio «{old}» (aperta prima dell'aggiornamento). Ora si chiama sempre «{name}», senza il prefisso dell'account: chiudila con `supervisor close {old}` e rilancia, la conversazione riprende da dov'era.",
   "launch.resume_missing": "supervisor launch: nessuna conversazione «{id}» per questa cartella.\n  cercata in: {dir}",
   "launch.resume_recent": "  le più recenti (id, peso, ultima modifica):",
   "launch.unknown_profile": "supervisor launch: profilo sconosciuto «{profile}» (in config: {known})",

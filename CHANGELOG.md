@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.173 — 2026-11-16: the master keeps its name when the projects folder belongs to an account with a name prefix (supervisor-master-prefisso-16-11).**
+  - When the projects folder belongs to an account with a `tmux_prefix`, `launch` and the shell's `claude` named its session «<prefix>master». Everything else looks for the master under its bare name: the hooks, the relay, the inbox, the session count. The master was open and nothing recognised it.
+  - The root session is now always called `workspace.root_session_name` («master»), with no prefix. Its account comes from its folder, so its tab keeps the account's shape. Sessions of projects keep their prefix as before.
+  - After the update, a master opened before it still carries the old name. `supervisor launch` of the root then opens no second one: it says to close the old one with `supervisor close <prefix>master` and launch again; the conversation picks up where it was.
+  - If the projects folder belongs to the account with no prefix, as in most setups, nothing changes. New test: `tests/master-prefisso-verify.py`.
 - **0.8.172 — 2026-11-16: supervisor's hooks and its relay weigh much less on a loaded machine (supervisor-hook-lenti-16-11).**
   - On a busy machine supervisor's hooks ran into their time limits: in ten days, 27 times on the hook before a Bash command, 16 on the hook at the end of a turn, 6 on the one at a prompt. Measured there under load, even starting a shell took over half a second.
   - The hook before every Bash or Monitor command, and the one after every tool call, started Python each time and almost always had nothing to do. A small shell filter now decides first: an ordinary command starts no Python at all. The guard still sees every command that names push, release, publish or tmux, and decides as before.

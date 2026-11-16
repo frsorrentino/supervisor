@@ -192,6 +192,7 @@
   "launch.mkdir_failed": "supervisor launch: cannot create {path}",
   "launch.missing_dir": "supervisor launch: the directory does not exist: {path}\n  pass --create to create it",
   "launch.not_a_dir": "supervisor launch: exists but is not a directory: {path}",
+  "launch.root_old_name": "supervisor launch: the root session is open under its old name “{old}” (opened before the update). It is now always called “{name}”, without the account's prefix: close it with `supervisor close {old}` and launch again, the conversation picks up where it was.",
   "launch.resume_missing": "supervisor launch: no conversation “{id}” for this directory.\n  looked in: {dir}",
   "launch.resume_recent": "  most recent (id, size, last modified):",
   "launch.unknown_profile": "supervisor launch: unknown profile “{profile}” (configured: {known})",

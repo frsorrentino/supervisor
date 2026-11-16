@@ -74,9 +74,13 @@ _cm_wrap() {
   fi
   # stesso schema di nomi di launch, cosi' sessions e talk li riconoscono allo stesso modo
   local base nome n=2
+  # 16/11/2026 (supervisor-master-prefisso-16-11): la sessione della radice porta sempre il nome nudo, come in launch:
+  # con il prefisso dell'account («pix-master») nessuno la riconosceva come master
   if [ "$(readlink -f "$PWD")" = "$(readlink -f "$(eval echo "$CM_WORKSPACE_ROOT")")" ]; then base="$CM_WORKSPACE_ROOT_SESSION_NAME"
-  else base="$(basename "$PWD" | tr "$CM_SESSION_NAME_SANITIZE_CHARS" "$(printf '%*s' "${#CM_SESSION_NAME_SANITIZE_CHARS}" '' | tr ' ' '-')")"; fi
-  base="$(_cm_get "$acc" TMUX_PREFIX)$base"
+  else
+    base="$(basename "$PWD" | tr "$CM_SESSION_NAME_SANITIZE_CHARS" "$(printf '%*s' "${#CM_SESSION_NAME_SANITIZE_CHARS}" '' | tr ' ' '-')")"
+    base="$(_cm_get "$acc" TMUX_PREFIX)$base"
+  fi
   nome="$base"
   while _cm_tmux has-session -t "=$nome" 2>/dev/null; do nome="$base-$n"; n=$((n + 1)); done
   # Il titolo si scrive qui: il nome tmux e' gia' deciso ed e' la chiave del registro dei colori.

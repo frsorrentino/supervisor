@@ -3,7 +3,8 @@
 #
 # Carica la configurazione UNA volta (export CM_* + MSG_*), poi:
 #   cm_tmux ...              tmux con il socket giusto (CM_TMUX_ARGS nei test, tmux.socket in config)
-#   cm_account_of_name NOME  account dal prefisso tmux (prefisso piu' lungo vince; "" = quello senza prefisso)
+#   cm_account_of_name NOME  account dal prefisso tmux (prefisso piu' lungo vince; "" = quello senza prefisso); per
+#                            la sessione della radice, che non ha prefisso, l'account della sua cartella
 #   cm_get ACCOUNT CAMPO     campo di un account (CONFIG_DIR, TMUX_PREFIX, SHAPE, SHELL_COMMAND, LABEL)
 #   cm_msg CHIAVE k=v ...    messaggio formattato nella lingua configurata
 #   cm_orphan_hook           hook tmux session-closed: chiude i claude rimasti senza pannello (28/10/2026)
@@ -88,6 +89,11 @@ cm_get() {  # cm_get personale TMUX_PREFIX
 
 cm_account_of_name() {
   local nome="$1" best="" bestlen=-1 acc pfx
+  # 16/11/2026: la sessione della radice non ha prefisso; il suo account e' quello della cartella della radice
+  if [ "$nome" = "${CM_WORKSPACE_ROOT_SESSION_NAME:-master}" ]; then
+    acc="$(python3 "$CM_SCRIPTS/cm-config.py" --account-for "$(eval echo "$CM_WORKSPACE_ROOT")" 2>/dev/null)"
+    [ -n "$acc" ] && { printf '%s' "$acc"; return; }
+  fi
   for acc in $CM_ACCOUNTS_KEYS; do
     pfx="$(cm_get "$acc" TMUX_PREFIX)"
     if [ -z "$pfx" ]; then
