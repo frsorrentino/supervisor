@@ -1567,7 +1567,7 @@ _c31 = {"schema_version": 1, "task": {"id": "atlas-release-2-4", "title": "Relea
         "check": {"cmd": "true", "cwd": None, "timeout_s": 30}, "perimeter": [], "lane": "closed", "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
 _t31 = lambda *a, **k: subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), *a], capture_output=True, text=True, env=ENV, timeout=30, **k)  # noqa: E731
 _t31("add", "-", input=json.dumps(_c31))
-_t31("wait-ok", "atlas-release-2-4", "--what", "tag v2.4", "--where", "production")
+_t31("wait-ok", "atlas-release-2-4", "--consiglio", "va bene: prova", "--what", "tag v2.4", "--where", "production")
 _oks31 = lambda: [(a["by_"], a["text"]) for a in json.loads(_t31("show", "atlas-release-2-4", "--json").stdout)["approvals"] if a["by_"]]  # noqa: E731
 n_calls = len(cm_calls())
 r31a = send_cmd(CMDS[32])
@@ -1676,7 +1676,7 @@ T.check("R67 (1.81) approvals[] carries options (the labels, in order) for a tas
         d67["approvals"] == [{"task": "atlas-checkout-layout", "title": "Checkout layout of atlas-shop", "what": "pick the checkout layout", "where": "atlas-shop, branch checkout", "deploy": False, "requested_at": 1789211700, "options": ["Strada A", "Strada B"], "wid": "w4b90c5f596"}]
         and (F2["approvals"] or [{}])[0].get("options") == ["Strada A", "Strada B"], str(d67["approvals"]))
 _t31("add", "-", input=json.dumps({"schema_version": 1, "task": dict(_c31["task"], id="atlas-checkout-layout")}))
-_t31("wait-ok", "atlas-checkout-layout", "--what", "pick", "--where", "branch", "--options", "Strada A|Strada B")
+_t31("wait-ok", "atlas-checkout-layout", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "pick", "--where", "branch", "--options", "Strada A|Strada B")
 n67 = len(cm_calls())
 r67a = send_cmd(CMDS[78])
 r67b = send_cmd(CMDS[79])

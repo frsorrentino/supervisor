@@ -1,0 +1,35 @@
+{
+  "_": "Contract 1.149: two items of /state.approvals with the advice of whoever asks. `advice` is there only when the card has one, with only the keys that say something: {text, approve} on an ok card, {text, option} on a choice. When the state is over its 8 KB cap `advice` is the first optional field dropped: the card's own data comes from the ops attese and attesa, which always carry it.",
+  "approvals": [
+    {
+      "task": "atlas-release-2-4",
+      "title": "Release 2.4 of atlas-shop",
+      "what": "tag v2.4 and push to origin main",
+      "where": "production (shop.example.com)",
+      "deploy": true,
+      "requested_at": 1789210600,
+      "advice": {
+        "text": "Tested on staging; a tag undoes it",
+        "approve": true
+      },
+      "wid": "wd2f87e85e2"
+    },
+    {
+      "task": "atlas-checkout-layout",
+      "title": "Checkout layout of atlas-shop",
+      "what": "pick the checkout layout",
+      "where": "atlas-shop, branch checkout",
+      "deploy": false,
+      "requested_at": 1789214100,
+      "options": [
+        "Strada A",
+        "Strada B"
+      ],
+      "advice": {
+        "text": "Fewer steps to pay",
+        "option": "Strada A"
+      },
+      "wid": "w4b90c5f596"
+    }
+  ]
+}

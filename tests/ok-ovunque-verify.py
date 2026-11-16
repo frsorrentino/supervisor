@@ -176,7 +176,7 @@ with T.PrivateTmux() as tm:
 
     # ------------------------------------------------------------------ OV4: carta con scelta
     add("t5")
-    cm("wait-ok", "t5", "--what", "quale build", "--where", "Play", "--options", "A|B")
+    cm("wait-ok", "t5", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "quale build", "--where", "Play", "--options", "A|B")
     msg = inbox_put("master", "la B", "relay")
     rc, out, err = cm("ok", "t5", "--by", "maintainer", "--inbox", msg, env=AS["master"])
     T.check("OV4 a card that asks a choice: without --choice refused, nothing written", rc != 0 and "--choice" in err and show("t5")["state"] == "awaiting_ok", err)
@@ -188,14 +188,14 @@ with T.PrivateTmux() as tm:
 
     # ------------------------------------------------------------------ OV5: l'ok nella sessione del compito
     add("t6")
-    cm("wait-ok", "t6", "--what", "push", "--where", "github")
+    cm("wait-ok", "t6", "--consiglio", "va bene: prova", "--what", "push", "--where", "github")
     msg = inbox_put("sess", "ok pubblica", "terminal")
     reset_talks()
     rc, out, err = cm("ok", "t6", "--by", "maintainer", "--inbox", msg, env=AS["sess"])
     T.check("OV5 the ok written in the task's own session: approved; the master is told, the session itself is not",
             rc == 0 and show("t6")["state"] == "approved" and "talk master" in talks() and "talk sess" not in talks(), out + err + talks())
     add("t6b")
-    cm("wait-ok", "t6b", "--what", "push", "--where", "github")
+    cm("wait-ok", "t6b", "--consiglio", "va bene: prova", "--what", "push", "--where", "github")
     msg = inbox_put("master", "ok anche questo", "relay")
     reset_talks()
     rc, out, err = cm("approve", "t6b", "--by", "maintainer", "--inbox", msg, env=AS["master"])
@@ -229,7 +229,7 @@ with T.PrivateTmux() as tm:
     T.check("OV9 --ko with two tests open and no --prove: refused (the other test is not a «no»), nothing written",
             rc != 0 and "--prove" in err and len(TK.prove_pending(TK.connect(), "t10")) == 2 and not [x for x in prove()["ko"] if x["task"] == "t10"], err)
     add("t11")
-    cm("wait-ok", "t11", "--what", "x", "--where", "y")
+    cm("wait-ok", "t11", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
     rc, out, err = cm("ok", "t11", "--by", "maintainer", "--inbox", msg, "--ko", "no", env=AS["master"])
     T.check("OV10 --ko on a card: refused, the card stays", rc != 0 and show("t11")["state"] == "awaiting_ok", err)
 
@@ -241,7 +241,7 @@ with T.PrivateTmux() as tm:
 
     # ------------------------------------------------------------------ OV12: le guardie della casella restano
     add("t13")
-    cm("wait-ok", "t13", "--what", "x", "--where", "y")
+    cm("wait-ok", "t13", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
     sess_msg = inbox_put("master", "ok da una sessione", "session")
     _r1 = cm("ok", "t13", "--by", "maintainer", "--inbox", sess_msg, env=AS["master"])
     good = inbox_put("master", "ok", "relay")
@@ -258,7 +258,7 @@ with T.PrivateTmux() as tm:
 
     # ------------------------------------------------------------------ OV13: «Tocca a te» spento
     add("t14")
-    cm("wait-ok", "t14", "--what", "x", "--where", "y")
+    cm("wait-ok", "t14", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
     (state_dir / "needs-you").mkdir(exist_ok=True)
     _ny = state_dir / "needs-you" / "sid-x.json"
     _ny.write_text(json.dumps({"reason": "serve il tuo ok", "at": int(time.time()), "name": "sess", "task": "t14", "expires_at": int(time.time()) + 3600}))
@@ -269,8 +269,8 @@ with T.PrivateTmux() as tm:
 
     # ------------------------------------------------------------------ OV14: una scelta, due carte
     add("t15"); add("t16")
-    cm("wait-ok", "t15", "--what", "x", "--where", "y", "--options", "A|B")
-    cm("wait-ok", "t16", "--what", "x", "--where", "y", "--options", "A|B")
+    cm("wait-ok", "t15", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "x", "--where", "y", "--options", "A|B")
+    cm("wait-ok", "t16", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "x", "--where", "y", "--options", "A|B")
     rc, out, err = cm("ok", "t15", "t16", "--by", "maintainer", "--inbox", good, "--choice", "A", env=AS["master"])
     T.check("OV14 one choice for two cards: refused, ask which (an ok never widens)", rc != 0 and show("t15")["state"] == "awaiting_ok" and show("t16")["state"] == "awaiting_ok", err)
 
@@ -299,7 +299,7 @@ with T.PrivateTmux() as tm:
 
     # ------------------------------------------------------------------ OH: l'hook del prompt
     add("h1")
-    cm("wait-ok", "h1", "--what", "x", "--where", "y")
+    cm("wait-ok", "h1", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
     out = hook("sess", "va bene, procedi")
     _ids = sorted((state_dir / "inbox" / "sess").glob("*.json"), key=lambda p: p.stat().st_mtime)
     _id = json.loads(_ids[-1].read_text())["id"] if _ids else "?"
@@ -330,7 +330,7 @@ with T.PrivateTmux() as tm:
     for _lang in ("it", "en"):
         _k = (T.PLUGIN / f"kernel_{_lang}.md").read_text()
         T.check(f"kernel ({_lang}) rule 12 names task ok with --prove, --choice and --ko, under the cap",
-                all(x in _k for x in ("task ok ID --by", "--prove 72-80", "--choice", "--ko")) and len(_k) <= 3700, str(len(_k)))
+                all(x in _k for x in ("task ok ID --by", "--prove 72-80", "--choice", "--ko")) and len(_k) <= 3715, str(len(_k)))
     T.check("task --help names task ok", "supervisor task ok" in cm("--help")[1], "")
 
 T.finish()

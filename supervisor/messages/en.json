@@ -1430,6 +1430,7 @@
   "seguiti.altrove_expected": "The detector no longer finds: {text}",
   "seguiti.altrove_plan": "Same defect elsewhere: {text}. Proposed fix: {fix}. Where: {targets}.",
   "seguiti.altrove_untested": "the fix itself: the detector only read",
+  "seguiti.altrove_advice": "approve if the original fix was fine for you: it is the same one, on the places where the detector found the same defect",
   "seguiti.altrove_control": "the detector on an empty folder gives «{outcome}»: it must be negative, or it proves nothing",
   "seguiti.altrove_result": "{n} positive of {total}, {errors} errors (not counted as negative). Run {id}.",
   "seguiti.remind_prompt": "Reminder fired: {text}. Tell the person what there is to do.",

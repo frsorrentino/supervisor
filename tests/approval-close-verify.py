@@ -57,9 +57,9 @@ def add(tid, session):
 add("ac-scelta", "alfa")
 add("ac-solo", None)
 add("ac-ok", "alfa")
-cm("wait-ok", "ac-scelta", "--what", "come si apre la pagina", "--where", "app telefono", "--options", "A|B|C")
-cm("wait-ok", "ac-solo", "--what", "pubblico?", "--where", "web")
-cm("wait-ok", "ac-ok", "--what", "pubblico?", "--where", "web")
+cm("wait-ok", "ac-scelta", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "come si apre la pagina", "--where", "app telefono", "--options", "A|B|C")
+cm("wait-ok", "ac-solo", "--consiglio", "va bene: prova", "--what", "pubblico?", "--where", "web")
+cm("wait-ok", "ac-ok", "--consiglio", "va bene: prova", "--what", "pubblico?", "--where", "web")
 cm("approve", "ac-ok", "--by", "maintainer", "--pin", "x")   # puo' fallire senza PIN: si approva dal registro sotto
 sp = importlib.util.spec_from_file_location("cm_relay_ac", T.SCRIPTS / "cm-relay.py")
 RL = importlib.util.module_from_spec(sp)
@@ -109,7 +109,7 @@ T.check("AC3 unknown or invalid id: an error; a task with no session goes back t
         not ok4 and "sconosciuto" in t4 and not ok5 and r6.returncode == 0 and json.loads(r6.stdout) == {"task": "ac-solo", "closed": True, "state": "assigned"}
         and st_solo == "assigned", f"{t4} {t5} {r6.stdout} {r6.stderr} {st_solo}")
 
-cm("wait-ok", "ac-scelta", "--what", "di nuovo", "--where", "app", "--options", "A|B")
+cm("wait-ok", "ac-scelta", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "di nuovo", "--where", "app", "--options", "A|B")
 ok7, t7 = RL.execute({"op": "approval_close", "arg": "ac-scelta", "device": "phone", "by": "maintainer"})
 T.check("AC4 the op goes through the relay's execute", "approval_close" in RL.OPS and ok7 and json.loads(t7)["closed"] is True, f"{ok7} {t7}")
 
@@ -125,8 +125,8 @@ os.environ.update(ENV5)
 ENV.update(ENV5)
 add("atlas-pages-layout", "atlas-shop")
 add("atlas-release-2-4", "atlas-shop")
-cm("wait-ok", "atlas-pages-layout", "--what", "layout", "--where", "web", "--options", "A|B")
-cm("wait-ok", "atlas-release-2-4", "--what", "release", "--where", "web")
+cm("wait-ok", "atlas-pages-layout", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "layout", "--where", "web", "--options", "A|B")
+cm("wait-ok", "atlas-release-2-4", "--consiglio", "va bene: prova", "--what", "release", "--where", "web")
 sp5 = importlib.util.spec_from_file_location("cm_relay_ac5", T.SCRIPTS / "cm-relay.py")
 RL5 = importlib.util.module_from_spec(sp5)
 sp5.loader.exec_module(RL5)

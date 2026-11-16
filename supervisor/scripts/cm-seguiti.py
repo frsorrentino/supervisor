@@ -328,7 +328,8 @@ def cmd_altrove(args):
             print(errs[0], file=sys.stderr)
             return 1
         subprocess.run([str(HERE / "supervisor"), "task", "wait-ok", got, "--what", fix[:300], "--where", ", ".join(Path(x).name for x in v["positive"])[:300],
-                        "--untested", M("seguiti.altrove_untested"), "--undo", "in-parte"], check=False)
+                        "--untested", M("seguiti.altrove_untested"), "--undo", "in-parte",
+                        "--consiglio", M("seguiti.altrove_advice")], check=False)   # 1.149: ogni carta porta il consiglio
         r["task"] = got
         wj(p, r)
         print(got)

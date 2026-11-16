@@ -975,6 +975,12 @@ def fit_state(state, max_kb=8):
         return size_of(state) <= cap
     if fits():
         return state
+    # 1.149 (16/11): il consiglio sulle carte (fino a 230 byte l'una) cade subito dopo: la scheda lo legge da `attese`,
+    # che non ha tetto; nello stato serve solo agli elenchi
+    for a in state.get("approvals") or []:
+        a.pop("advice", None)
+    if fits():
+        return state
     gone = sorted((s for s in state["sessions"] if s["state"] == "gone"), key=lambda s: s.get("since") or 0)
     for s in gone[:max(0, len(gone) - KEEP_GONE)]:
         state["sessions"].remove(s)

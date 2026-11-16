@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.171 — 2026-11-16: every decision that waits for you carries the session's advice and its reason (supervisor-consiglio-carte-16-11, contract 1.149).**
+  - Asked from the web app: on every decision in «Ti aspetta», the suggestion marked «consigliata» and a short reason for it. A session that asks for an ok or a choice must now say what it advises and why, in one line: `supervisor task wait-ok` refuses a card without `--consiglio`, and the error says how to write it.
+  - On a choice the session also says which option it advises (`--consigliata N`). On an ok it advises to approve, or not to (`--consigliata no`). The app gets the reason in a new field, `advice`, and the mark on the advised option or button.
+  - `supervisor task advise ID --consiglio T [--option N]` adds the advice to a card that is already open, or changes it. Cards opened before this version have none until then.
+  - The rule the sessions read at every prompt tells them to always give it. Questions asked in chat are unchanged.
+  - The reason shows in the app once the app uses the new field: that is the app's task app-consiglio-carte-16-11. New test: `tests/consiglio-verify.py`.
 - **0.8.170 — 2026-11-16: with one account `claude` typed by hand runs inside tmux again, the restore after a restart works on macOS and in zsh, and `--help` never runs the command (supervisor-wrapper-un-account-16-11, supervisor-ripristino-macos-16-11, supervisor-help-esegue-16-11).**
   - Reported from a Mac with one account and zsh: the app said «senza master», and a `claude` started by hand could not be reached («no session …»). With one account the shell integration did not define the `claude` wrapper, so every `claude` typed in a terminal ran outside tmux, and one started in the projects folder did not become the master. The wrapper list is now always there. Aliases whose names have no dash had the same hidden fault.
   - On macOS the question «restore the sessions?» never came after a restart: the boot time was read from the microseconds of `sysctl kern.boottime`, so the machine looked decades old. It now reads the seconds.

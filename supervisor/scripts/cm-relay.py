@@ -1674,6 +1674,13 @@ def approvals_list():
             a["also"] = [{"task": str(x.get("task")), "short": str(x.get("short") or "")} for x in req["also"]]
         if isinstance(req.get("precedent"), dict):
             a["precedent"] = req["precedent"]
+        adv = req.get("advice")   # 1.149 (16/11): il consiglio di chi chiede; solo le chiavi che dicono qualcosa (8 KB)
+        if isinstance(adv, dict) and adv.get("text"):
+            a["advice"] = {"text": S.one_line(str(adv["text"]))[:200]}
+            if adv.get("option"):
+                a["advice"]["option"] = S.one_line(str(adv["option"]))[:24]
+            elif adv.get("approve") is not None:
+                a["advice"]["approve"] = bool(adv["approve"])
         out.append(a)
     return sorted(out, key=lambda a: (a["requested_at"] or 0, a["task"] or ""))
 

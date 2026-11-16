@@ -14,8 +14,13 @@
   supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
-  supervisor task wait-ok ID --what W --where D [--options "A|B"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]
-  supervisor task wait-ok ID --what W --desc T --option "A|pro e contro|a.png,b.png" --option "B|…" [--where D]   (1.137: la scheda di scelta)
+  supervisor task wait-ok ID --what W --where D --consiglio T [--consigliata si|no] [--options "A|B" --consigliata N] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]
+  supervisor task wait-ok ID --what W --desc T --option "A|pro e contro|a.png,b.png" --option "B|…" --consiglio T --consigliata N [--where D]   (1.137: la scheda di scelta)
+                                                --consiglio T (1.149, obbligatorio): cosa consigli e perche', in una riga (al piu' 200
+                                                caratteri). Carta di ok: consigli di approvare; --consigliata no = consigli di non
+                                                approvare. Carta di scelta: --consigliata N (o l'etichetta) dice quale opzione; vale
+                                                anche «(consigliata)» in fondo a una sola etichetta. Una carta senza consiglio e' rifiutata
+  supervisor task advise ID --consiglio T [--option N|--consigliata X]   (1.149: il consiglio su una carta gia' aperta, o lo cambia)
   supervisor task redo ID --by B --reason T       (1.137: «nessuna, rifare»: il giro resta scartato col motivo, la sessione lo sa)
   supervisor task withdraw ID --by B [--reason R]  1.129: la persona chiude la carta senza ok; la richiesta esce
                                                 «superata», il compito torna a running (o assigned), sessione e master lo sanno
@@ -342,6 +347,9 @@ def connect(create=True):
             con.execute(f"ALTER TABLE approvals ADD COLUMN {c} TEXT")
         con.execute("ALTER TABLE approvals ADD COLUMN closed_at INTEGER")
         con.commit()
+    if "advice" not in cols:   # 1.149 (16/11): il consiglio della sessione sulla carta, {text, option, approve}
+        con.execute("ALTER TABLE approvals ADD COLUMN advice TEXT")
+        con.commit()
     if "files" not in {r[1] for r in con.execute("PRAGMA table_info(prove)")}:   # 1.137: e quelli di una prova
         con.execute("ALTER TABLE prove ADD COLUMN files TEXT")
         con.commit()
@@ -607,6 +615,52 @@ def parse_option_cards(raws, project):
 
 DESC_MAX = 1500
 ARCHIVE_DAYS = 180
+ADVICE_MAX = 200   # 1.149: il consiglio e' una riga
+REC_MARK = re.compile(r"\s*\((?:recommended|consigliat[ao])\)\s*$", re.I)   # come cm-relay-state.RECOMMENDED
+ADVICE_HOW = ('--consiglio "what you advise and why, in one line" — on an ok card you advise to approve (--consigliata no: you advise '
+              'not to); on a choice card add --consigliata N, the number or the label of the option you advise')
+ADVICE_YES, ADVICE_NO = ("si", "sì", "yes", "y", "ok", "approva", "approve"), ("no", "n", "non-approvare", "reject")
+
+
+def parse_advice(text, pick, opts, verb="wait-ok"):
+    """1.149 (16/11/2026, supervisor-consiglio-carte-16-11; la persona alle 10:24 e alle 10:29: «vorrei che aggiungessi ad ogni
+    decisione da prendere in ti aspetta il tuo suggerimento con consigliato» e «una breve motivazione del consiglio»). Il
+    consiglio di chi chiede, {text, option, approve}: `text` la motivazione in una riga; per una scelta `option` e'
+    l'etichetta consigliata (da --consigliata N o etichetta, altrimenti l'unica etichetta con «(consigliata)»); per un ok
+    `approve` e' true, o false con --consigliata no. Esce col motivo e con come scriverlo: una carta senza consiglio non nasce."""
+    t = " ".join(str(text or "").split())
+    if not t:
+        sys.exit(f"task {verb}: every card carries your advice. Add {ADVICE_HOW}")
+    if len(t) > ADVICE_MAX:
+        sys.exit(f"task {verb} --consiglio: at most {ADVICE_MAX} characters, one line (it has {len(t)})")
+    p = " ".join(str(pick).split()) if pick is not None else None
+    if opts:
+        marked = [o for o in opts if REC_MARK.search(o)]
+        if p is None:
+            if len(marked) != 1:
+                sys.exit(f"task {verb}: a choice card says which option you advise. Add --consigliata N (1-{len(opts)}) or the option's label")
+            label = marked[0]
+        elif p.isdigit() and 1 <= int(p) <= len(opts):
+            label = opts[int(p) - 1]
+        else:
+            label = next((o for o in opts if o == p or REC_MARK.sub("", o) == p), None)
+            if label is None:
+                sys.exit(f"task {verb} --consigliata: «{p[:40]}» is not one of the options: a number 1-{len(opts)} or one of {' | '.join(opts)}")
+        return {"text": t, "option": label, "approve": None}
+    if p is None or p.lower() in ADVICE_YES:
+        return {"text": t, "option": None, "approve": True}
+    if p.lower() in ADVICE_NO:
+        return {"text": t, "option": None, "approve": False}
+    sys.exit(f"task {verb} --consigliata: on an ok card it is si or no (you advise to approve, or not to), not «{p[:40]}»")
+
+
+def advice_of(raw):
+    """Il consiglio salvato in una richiesta, o None (le carte nate prima della 1.149)."""
+    try:
+        a = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return a if isinstance(a, dict) and a.get("text") else None
 
 
 def rounds_of(con, tid):
@@ -627,7 +681,7 @@ def rounds_of(con, tid):
         g = {"n": r["n"], "wid": S_.wid_approval(tid, r["at"]) if S_ else None, "at": int(r["at"]), "what": r["what"], "where": r["where_"],
              "options": json.loads(r["options"]) if r["options"] else None, "detail": json.loads(r["detail"]) if r["detail"] else None,
              "files": files_of(r["files"]), "untested": r["untested"], "undo": r["undo"], "undo_how": r["undo_how"],
-             "state": None, "reason": None, "by": None, "answered_at": None, "choice": None}
+             "advice": advice_of(r["advice"]), "state": None, "reason": None, "by": None, "answered_at": None, "choice": None}
         if r["closed_kind"]:
             g.update(state="redo" if r["closed_kind"] == "redo" else "closed", reason=r["closed_reason"], by=r["closed_by"], answered_at=r["closed_at"])
         elif ans is not None:
@@ -2181,7 +2235,7 @@ def decisions(con, now_=None, snoozed=False):
                                                  options=json.loads(a["options"]) if a and a["options"] else None, since=int(a["at"]) if a else int(r["updated_at"]),
                                                  where="here", untested=a["untested"] if a else None, undo=a["undo"] if a else None, undo_how=a["undo_how"] if a else None,
                                                  precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None,
-                                                 files=files_of(a["files"]) if a else None)))
+                                                 files=files_of(a["files"]) if a else None, advice=advice_of(a["advice"]) if a else None)))
             continue
         pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         if pz and pz["waits"] == "person" and not prove_pending(con, tid):
@@ -2683,8 +2737,10 @@ def main(argv):
         if as_json:
             # contratto 1.37 (05/10): la richiesta di ok (wait-ok: cosa esce e dove) per «Da approvare» nell'app
             for r in rows:
-                a = con.execute("SELECT what, where_, at, options FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+                a = con.execute("SELECT what, where_, at, options, advice FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
                 r["request"] = {"what": a["what"], "where": a["where_"], "at": a["at"]} if a else None
+                if a and advice_of(a["advice"]):   # 1.149: il consiglio di chi chiede
+                    r["request"]["advice"] = advice_of(a["advice"])
                 if a and a["options"]:   # 1.81: le opzioni di una scelta
                     r["request"]["options"] = json.loads(a["options"])
                 if a:   # 1.99: ok informato, solo quando ci sono
@@ -2944,6 +3000,8 @@ def main(argv):
         desc, option_raws = _opt(args, "--desc"), []
         while "--option" in args:
             option_raws.append(_opt(args, "--option"))
+        adv_text = _opt(args, "--consiglio") if "--consiglio" in args else _opt(args, "--advice")
+        adv_pick = _opt(args, "--consigliata") if "--consigliata" in args else _opt(args, "--recommended")
         undo, undo_how = parse_undo(args, "wait-ok")
         if option_raws and options is not None:
             sys.exit("task wait-ok: --options or --option, not both")
@@ -2952,8 +3010,8 @@ def main(argv):
         if option_raws or desc is not None:
             where = where or "-"   # 1.137: una scheda di scelta non pubblica niente: dove e' facoltativo
         if not what or not where or not args:
-            sys.exit("usage: task wait-ok ID --what W --where D [--options \"A|B\"] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]\n"
-                     "       task wait-ok ID --what W --desc \"what to decide and why\" --option \"A|pros and cons|a.png\" --option \"B|…|b.png\" [--where D]   (a choice card)")
+            sys.exit("usage: task wait-ok ID --what W --where D --consiglio T [--consigliata si|no] [--options \"A|B\" --consigliata N] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]\n"
+                     "       task wait-ok ID --what W --desc \"what to decide and why\" --option \"A|pros and cons|a.png\" --option \"B|…|b.png\" --consiglio T --consigliata N [--where D]   (a choice card)")
         if files is not None:
             files = parse_files(files, get_task(con, args[0])["project"], "wait-ok")
         detail = None
@@ -2969,9 +3027,11 @@ def main(argv):
         untested = " ".join(untested.split()) if untested else None
         opts = parse_options(options) if options is not None else None   # 1.81: il compito chiede una scelta
         get_task(con, args[0])
-        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also, files, detail) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?,?,?)",
+        advice = parse_advice(adv_text, adv_pick, opts)   # 1.149: dopo le opzioni (i loro errori prima), prima di scrivere
+        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also, files, detail, advice) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?,?,?,?)",
                     (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None, untested, undo, undo_how, json.dumps(also) if also else None,
-                     json.dumps(files, ensure_ascii=False) if files else None, json.dumps(detail, ensure_ascii=False) if detail else None))   # la richiesta: by NULL finche' nessuno approva
+                     json.dumps(files, ensure_ascii=False) if files else None, json.dumps(detail, ensure_ascii=False) if detail else None,
+                     json.dumps(advice, ensure_ascii=False)))   # la richiesta: by NULL finche' nessuno approva
         set_state(con, args[0], "awaiting_ok")
         con.commit()
         r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
@@ -2981,6 +3041,22 @@ def main(argv):
             orig = follows_apply(con, args[0])   # 05/11: il seguito di un compito approvato
             if orig:
                 print(f"{args[0]}: approved as a follow-up of {orig}")
+        return 0
+    if verb == "advise":   # 1.149: il consiglio su una carta gia' aperta (nata prima della regola), o un consiglio che cambia
+        adv_text = _opt(args, "--consiglio") if "--consiglio" in args else _opt(args, "--advice")
+        adv_pick = next((_opt(args, f) for f in ("--option", "--consigliata", "--recommended") if f in args), None)
+        if len(args) != 1:
+            sys.exit("usage: task advise ID --consiglio T [--option N|--consigliata X]   (the advice on the open card of the task)")
+        row = get_task(con, args[0])
+        a = con.execute("SELECT n, options, advice FROM approvals WHERE task=? AND by_ IS NULL AND closed_kind IS NULL ORDER BY n DESC LIMIT 1", (args[0],)).fetchone()
+        if row["state"] != "awaiting_ok" or a is None:
+            sys.exit(f"task advise: {args[0]} has no open card ({row['state']}): the advice goes with task wait-ok")
+        advice = parse_advice(adv_text, adv_pick, json.loads(a["options"]) if a["options"] else None, "advise")
+        con.execute("UPDATE approvals SET advice=? WHERE n=?", (json.dumps(advice, ensure_ascii=False), a["n"]))
+        con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (now(), args[0]))
+        con.commit()
+        print(f"{args[0]}: advice " + ("changed" if advice_of(a["advice"]) else "added") + " — "
+              + (f"{advice['option']}: " if advice["option"] else ("" if advice["approve"] else "not to approve: ")) + advice["text"])
         return 0
     if verb == "redo":   # 1.137: «nessuna, rifare» dal terminale, come approval_redo dal telefono
         by, reason = _opt(args, "--by"), _opt(args, "--reason")

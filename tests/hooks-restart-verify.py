@@ -111,7 +111,8 @@ k = r.stdout
 # 23/10: 2800, la regola 12 con il PIN; 23/10 18:53: 2900, la regola 12 «un ok vale sempre, anche d'altra sessione»;
 # 23/10 19:40: 3000, la regola 11 con --until/--expires
 # 01/11: 3700, la regola 9 con «Tipo:» e le sei definizioni (il maintainer: esiti raggruppati per categoria)
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3700 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 16/11: 3715, la regola 12 con --consiglio (il maintainer: ogni carta di decisione col consiglio)
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3715 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
@@ -200,7 +201,7 @@ c7 = {"schema_version": 1, "task": {"id": "gantt-apk", "title": "APK del Gantt s
       "outcome": {"expected": "l'utente vede il Gantt sul telefono", "kind": "install"}}}
 E7 = env(CM_TASKS_DB=str(db7))
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "add", "-"], input=json.dumps(c7), capture_output=True, text=True, env=E7, timeout=30)
-subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "wait-ok", "gantt-apk", "--what", "push e release", "--where", "GitHub"], capture_output=True, text=True, env=E7, timeout=30)
+subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "wait-ok", "gantt-apk", "--consiglio", "va bene: prova", "--what", "push e release", "--where", "GitHub"], capture_output=True, text=True, env=E7, timeout=30)
 T.device_ok("approve", "gantt-apk", "maintainer", "ok", E7)
 m7 = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 s7 = hook("SessionStart", {"session_id": "sid-m", "cwd": str(home), "source": "startup"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))

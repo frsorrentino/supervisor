@@ -253,7 +253,7 @@ add("cm-e"); cm("pause", "cm-e", "--reason", "Aspetta  la   scelta", "--waits", 
 add("cm-f"); cm("pause", "cm-f", "--reason", "aspetta la scelta", "--waits", "person")
 add("cm-g"); cm("pause", "cm-g", "--reason", "Google risponde", "--waits", "external", "--recheck", "2d")
 add("cm-h"); cm("pause", "cm-h", "--reason", "nota mia")
-add("cm-i"); cm("wait-ok", "cm-i", "--what", "release 2.0", "--where", "GitHub")
+add("cm-i"); cm("wait-ok", "cm-i", "--consiglio", "va bene: prova", "--what", "release 2.0", "--where", "GitHub")
 add("cm-j"); cm("pause", "cm-j", "--reason", "Serve il login su SiteGround", "--waits", "person")
 add("cm-k"); cm("pause", "cm-k", "--reason", "Serve il login, ma basta il telefono", "--waits", "person", "--da-qui")
 add("cm-l"); cm("pause", "cm-l", "--reason", "Guarda la mail", "--waits", "person", "--al-pc")
@@ -346,31 +346,31 @@ T.check("cinque_minuti CM6 no model call: the registry never launches claude", "
 
 # ------------------------------------------------------------------ ok_informato
 add("oi1")
-rc = cm("wait-ok", "oi1", "--what", "release", "--where", "Play", "--untested", "il gesto sul telefono vero", "--undo", "in-parte", "--undo-how", "si ritira la versione, chi l'ha scaricata la tiene")
+rc = cm("wait-ok", "oi1", "--consiglio", "va bene: prova", "--what", "release", "--where", "Play", "--untested", "il gesto sul telefono vero", "--undo", "in-parte", "--undo-how", "si ritira la versione, chi l'ha scaricata la tiene")
 _row = next(r for r in json.loads(cm("list", "--json")[1]) if r["id"] == "oi1")
 T.check("ok_informato OI1 wait-ok keeps what is untested and how to go back, in task list --json",
         rc[0] == 0 and _row["request"]["untested"] == "il gesto sul telefono vero" and _row["request"]["undo"] == "in-parte" and _row["request"]["undo_how"].startswith("si ritira"), str(_row))
 _ap = {a["task"]: a for a in RL.approvals_list()}
 T.check("ok_informato OI1 the card has them with no model in between", _ap["oi1"]["untested"] == "il gesto sul telefono vero" and _ap["oi1"]["undo"] == "in-parte" and _ap["oi1"]["undo_how"].startswith("si ritira"), str(_ap["oi1"]))
-add("oi1b"); cm("wait-ok", "oi1b", "--what", "x", "--where", "y")
+add("oi1b"); cm("wait-ok", "oi1b", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
 _ap = {a["task"]: a for a in RL.approvals_list()}
 T.check("ok_informato OI1 not declared: the fields are absent, the relay invents nothing (the app says «non dichiarato»)", not {"untested", "undo", "undo_how", "precedent"} & set(_ap["oi1b"]), str(_ap["oi1b"]))
 for _v, _want in (("sì", "si"), ("si", "si"), ("no", "no"), ("yes", "si"), ("partly", "in-parte")):
     add(f"oi-v{_want}{len(_v)}")
-    cm("wait-ok", f"oi-v{_want}{len(_v)}", "--what", "x", "--where", "y", "--undo", _v)
+    cm("wait-ok", f"oi-v{_want}{len(_v)}", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--undo", _v)
     _r = next(r for r in json.loads(cm("list", "--json")[1]) if r["id"] == f"oi-v{_want}{len(_v)}")
     T.check(f"ok_informato OI1 --undo {_v} is stored as {_want}", _r["request"]["undo"] == _want, str(_r["request"]))
 add("oi2")
-_b1 = cm("wait-ok", "oi2", "--what", "x", "--where", "y", "--undo", "forse")
-_b2 = cm("wait-ok", "oi2", "--what", "x", "--where", "y", "--undo-how", "così")
-_b3 = cm("wait-ok", "oi2", "--what", "x", "--where", "y", "--untested", "z" * 301)
+_b1 = cm("wait-ok", "oi2", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--undo", "forse")
+_b2 = cm("wait-ok", "oi2", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--undo-how", "così")
+_b3 = cm("wait-ok", "oi2", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--untested", "z" * 301)
 T.check("ok_informato OI2 refused, nothing asked: an unknown --undo, --undo-how without --undo, a --untested over 300 characters",
         _b1[0] != 0 and _b2[0] != 0 and _b3[0] != 0 and show("oi2")["state"] != "awaiting_ok", str((_b1, _b2, _b3)))
 add("oi3-orig", extra=())
 T.check("ok_informato OI3 --defect-of needs a task that exists", add("oi3-x", extra=("--defect-of", "nessuno"))[0] != 0 and cm("show", "oi3-x")[0] != 0, "")
 add("oi3-fix", extra=("--defect-of", "oi3-orig"))
 add("oi3-simile")
-cm("wait-ok", "oi3-fix", "--what", "x", "--where", "y"); cm("wait-ok", "oi3-orig", "--what", "x", "--where", "y"); cm("wait-ok", "oi3-simile", "--what", "unit oi3-orig", "--where", "y")
+cm("wait-ok", "oi3-fix", "--consiglio", "va bene: prova", "--what", "x", "--where", "y"); cm("wait-ok", "oi3-orig", "--consiglio", "va bene: prova", "--what", "x", "--where", "y"); cm("wait-ok", "oi3-simile", "--consiglio", "va bene: prova", "--what", "unit oi3-orig", "--where", "y")
 _ap = {a["task"]: a for a in RL.approvals_list()}
 T.check("ok_informato OI3 the precedent is a real link, named: the fix points to what it fixes", _ap["oi3-fix"]["precedent"]["task"] == "oi3-orig" and _ap["oi3-fix"]["precedent"]["relation"] == "fixes" and _ap["oi3-fix"]["precedent"]["short"], str(_ap["oi3-fix"]))
 T.check("ok_informato OI3 and the original names the defect found in it", _ap["oi3-orig"]["precedent"]["task"] == "oi3-fix" and _ap["oi3-orig"]["precedent"]["relation"] == "defect", str(_ap["oi3-orig"]))
@@ -388,10 +388,10 @@ T.check("ok_informato OI4 the ok items of task decisioni carry what wait-ok was 
 for _lang in ("it", "en"):
     _k = (T.PLUGIN / f"kernel_{_lang}.md").read_text()
     _r12 = next(x for x in _k.splitlines() if x.startswith("12."))
-    T.check(f"ok_informato OI5 rule 12 ({_lang}) asks for --untested, --undo and --undo-how at wait-ok", all(x in _r12 for x in ("wait-ok", "--untested", "--undo", "--undo-how")), _r12)
+    T.check(f"ok_informato OI5 rule 12 ({_lang}) asks for --untested, --undo and --undo-how at wait-ok", all(x in _r12 for x in ("wait-ok", "--consiglio T", "--untested", "--undo", "--undo-how")), _r12)
     T.check(f"ok_informato OI5 rule 12 ({_lang}) is whole: approve --inbox, try again, never send-keys, never an ok written by the session",
             all(x in _r12 for x in ("task ok ID --by <", "--prove 72-80", "--choice", "--ko", "--inbox <id>", "supervisor inbox <", "«try again»", "tmux send-keys", "paste-buffer")), _r12)
-    T.check(f"ok_informato OI5 kernel ({_lang}) under its cap", len(_k) <= 3700, str(len(_k)))
+    T.check(f"ok_informato OI5 kernel ({_lang}) under its cap", len(_k) <= 3715, str(len(_k)))   # 16/11: 3715, la regola 12 con --consiglio (la persona: ogni carta col consiglio)
 
 # ------------------------------------------------------------------ compito_dal_piano
 def has_ok(tid):
@@ -404,10 +404,10 @@ def impegno(tid):
 
 for _t in ("cd-p", "cd-c1", "cd-c2", "cd-x", "cd-late"):
     add(_t)
-_b = (cm("wait-ok", "cd-p", "--what", "x", "--where", "y", "--also", "cd-c1,nessuno"), cm("wait-ok", "cd-p", "--what", "x", "--where", "y", "--also", "cd-p"))
+_b = (cm("wait-ok", "cd-p", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--also", "cd-c1,nessuno"), cm("wait-ok", "cd-p", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--also", "cd-p"))
 T.check("compito_dal_piano --also refuses a task that does not exist, or the task itself; no card", all(r[0] != 0 for r in _b) and show("cd-p")["state"] != "awaiting_ok", str(_b))
 T.check("compito_dal_piano task --help names --also", "--also" in cm("--help")[1], "")
-_rc = cm("wait-ok", "cd-p", "--what", "x", "--where", "y", "--also", "cd-c1,cd-c2")
+_rc = cm("wait-ok", "cd-p", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--also", "cd-c1,cd-c2")
 _ap = {a["task"]: a for a in RL.approvals_list()}
 T.check("compito_dal_piano the card lists them by name, before the ok", _rc[0] == 0 and [(x["task"], bool(x["short"])) for x in _ap["cd-p"]["also"]] == [("cd-c1", True), ("cd-c2", True)], str(_ap["cd-p"]))
 T.check("compito_dal_piano declaring writes no ok", not has_ok("cd-c1") and not has_ok("cd-p") and impegno("cd-c1") is None, "")
@@ -420,7 +420,7 @@ T.check("compito_dal_piano approving the card: each child gets an ok that quotes
 T.check("compito_dal_piano the child appears among the commitments, approved", impegno("cd-c1") is not None and impegno("cd-c1")["approved"] is True, str(impegno("cd-c1")))
 T.check("compito_dal_piano a task not declared inherits nothing", not has_ok("cd-x") and impegno("cd-x") is None, "")
 T.check("compito_dal_piano a task added after the ok inherits nothing: the old ok covers only its own card", cm("show", "cd-late")[0] == 0 and not has_ok("cd-late"), "")
-_rc = cm("wait-ok", "cd-p", "--what", "x", "--where", "y", "--also", "cd-late")
+_rc = cm("wait-ok", "cd-p", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--also", "cd-late")
 T.check("compito_dal_piano declaring it after the ok is a new card, and the old ok does not reach it", _rc[0] == 0 and show("cd-p")["state"] == "awaiting_ok" and not has_ok("cd-late"), str(_rc))
 _spec = importlib.util.spec_from_file_location("cm_tasks_t", T.SCRIPTS / "cm-tasks.py")
 TK = importlib.util.module_from_spec(_spec)
@@ -435,7 +435,7 @@ _con = TK.connect()
 _con.execute("INSERT INTO standing (project, kind, by_, text, inbox_id, created_at) VALUES (?,?,?,?,?,?)", (os.path.realpath(proj), "custom", "maintainer", "regola", "x", 1))
 _con.commit()
 _con.close()
-cm("wait-ok", "cd-s", "--what", "x", "--where", "y", "--also", "cd-sc")
+cm("wait-ok", "cd-s", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--also", "cd-sc")
 T.check("compito_dal_piano a standing ok never approves a card with --also: the person must see it", show("cd-s")["state"] == "awaiting_ok" and not has_ok("cd-s") and not has_ok("cd-sc"), str(show("cd-s")["state"]))
 _con = TK.connect()
 _con.execute("DELETE FROM standing")
@@ -448,7 +448,7 @@ T.check("compito_dal_piano the relay: a card that changed under the touch is ref
 _a2 = RL.approve_task(dict(PHONE, also=["cd-sc"]), "cd-s")
 T.check("compito_dal_piano the relay: the list the app showed, the ok reaches the child", _a2[0] is True and has_ok("cd-s") and has_ok("cd-sc"), str(_a2))
 add("cd-o"); add("cd-oc")
-cm("wait-ok", "cd-o", "--what", "x", "--where", "y", "--also", "cd-oc")
+cm("wait-ok", "cd-o", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--also", "cd-oc")
 _a3 = RL.approve_task(dict(PHONE), "cd-o")
 T.check("compito_dal_piano the relay: an older app that never showed the list approves the parent only", _a3[0] is True and has_ok("cd-o") and not has_ok("cd-oc"), str(_a3))
 RL.wake_after_approve = _wk
@@ -467,7 +467,7 @@ T.check("chat_esito no line, no outcome or an unknown value: outcome_type absent
 T.check("chat_esito the «Tipo:» line stays out of the text, the rest stays", "Tipo" not in _ents["c1.0"]["text"] and "Esito: release fuori" in _ents["c1.0"]["text"] and "Prossimi" in _ents["c1.0"]["text"] and "Type" not in _ents["c2.0"]["text"], _ents["c1.0"]["text"])
 
 # ------------------------------------------------------------------ ok_variabile
-add("ov-1"); cm("wait-ok", "ov-1", "--what", "x", "--where", "y")
+add("ov-1"); cm("wait-ok", "ov-1", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
 add("ov-c")
 for _lab, _e in (("CM_APPROVE_VIA=relay inside a session", {"CLAUDECODE": "1", "CM_APPROVE_VIA": "relay"}), ("CLAUDECODE removed", {}), ("CM_APPROVE_VIA=relay alone", {"CM_APPROVE_VIA": "relay"})):
     _r = subprocess.run([CLI, "task", "approve", "ov-1", "--by", "maintainer", "--text", "ok"], capture_output=True, text=True, env=dict(ENV, **_e), timeout=60)
@@ -534,8 +534,8 @@ cm("pause", "spieg", "--reason", "Proposta del 28/10 22:22: aspetta l'ok del mai
 add("spieg-s"); cm("pause", "spieg-s", "--reason", "Quale layout scegli per il checkout?", "--waits", "person")
 add("spieg-pc"); cm("pause", "spieg-pc", "--reason", "Serve il login sul pannello SiteGround", "--waits", "person")
 add("spieg-w"); cm("pause", "spieg-w", "--reason", "Manca la foto del prodotto", "--waits", "person")
-add("spieg-o", plan="Pubblica."); cm("wait-ok", "spieg-o", "--what", "pubblica", "--where", "qui")
-add("spieg-c"); cm("wait-ok", "spieg-c", "--what", "layout", "--where", "qui", "--options", "A|B")
+add("spieg-o", plan="Pubblica."); cm("wait-ok", "spieg-o", "--consiglio", "va bene: prova", "--what", "pubblica", "--where", "qui")
+add("spieg-c"); cm("wait-ok", "spieg-c", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "layout", "--where", "qui", "--options", "A|B")
 _dec = {i["task"]: i for g in json.loads(cm("decisioni", "--json")[1])["groups"] for i in g["items"] if i.get("task")}
 _sp = _dec["spieg"]
 T.check("decisione_spiegata the whole title and the start of the plan, beside the reason", _sp["title"] == "Feedback dalla app: raccoglierlo in un posto solo" and _sp["plan_start"].startswith("Proposta: spostare il feedback") and _sp["reason"].startswith("Proposta del 28/10"), str(_sp))
@@ -550,7 +550,7 @@ _nd = next(json.loads(_nr[c["id"]]["text"]) for c in _ndc["cmd"] if c["op"] == "
 T.check("decisione_spiegata the contract's sample carries the fields", all({"title", "plan_start", "asks"} <= set(i) for g in _nd["groups"] for i in g["items"]), "")
 for _lang in ("it", "en"):
     _k = (T.ROOT / f"supervisor/kernel_{_lang}.md").read_text()
-    T.check(f"decisione_spiegata kernel ({_lang}) rule 12 asks a pause to say what it asks, under the cap", ("cosa chiedi" in _k or "what you ask" in _k) and len(_k) <= 3700, str(len(_k)))
+    T.check(f"decisione_spiegata kernel ({_lang}) rule 12 asks a pause to say what it asks, under the cap", ("cosa chiedi" in _k or "what you ask" in _k) and len(_k) <= 3715, str(len(_k)))
 T.check("decisione_spiegata task pause's help says so", "mai solo «aspetta l'ok»" in cm("--help")[1], "")
 
 # prova_strutturata (03/11/2026, contratto 1.107, supervisor-prove-strutturate-03-11): la prova che una pausa aspetta,
@@ -596,7 +596,7 @@ _sb = show("ps-b")
 T.check("prova_strutturata PS6 «Non va»: no confirmation, the pause closed, the task back to its session with the text, no check started",
         _ok_nv and cm("confirmed", "ps-b")[0] != 0 and group_of("ps-b") is None and _sb["state"] == "assigned" and not SPAWNS
         and any(w[0] == "sess" and "Le categorie non restano chiuse" in w[1] for w in WAKES) and "Le categorie non restano chiuse" in _sb["steps"][-1]["text"], _txt_nv + str(WAKES))
-add("ps-ok"); cm("wait-ok", "ps-ok", "--what", "pubblica", "--where", "qui")
+add("ps-ok"); cm("wait-ok", "ps-ok", "--consiglio", "va bene: prova", "--what", "pubblica", "--where", "qui")
 T.check("prova_strutturata PS7 provato on a group with no pause (an ok card) is refused: an ok stays approve",
         RL.decisione_op(dict(PHONE, action="provato"), group_of("ps-ok")["key"])[0] is False and show("ps-ok")["state"] == "awaiting_ok", "")
 _crs7 = json.loads((T.ROOT / "tests/fixtures/relay/cmd-result-sample.json").read_text())

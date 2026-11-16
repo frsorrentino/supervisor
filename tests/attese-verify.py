@@ -70,8 +70,8 @@ def add(tid, session):
 add("at-ok", "alfa")
 add("at-scelta", "beta")
 add("at-prova", "alfa")
-cm("task", "wait-ok", "at-ok", "--what", "pubblico la 1.0?", "--where", "web", "--untested", "il login su iOS", "--undo", "si", "--undo-how", "tolgo il tag")
-cm("task", "wait-ok", "at-scelta", "--what", "quale sfondo?", "--where", "app in produzione", "--options", "Scuro (consigliata)|Chiaro")
+cm("task", "wait-ok", "at-ok", "--consiglio", "va bene: prova", "--what", "pubblico la 1.0?", "--where", "web", "--untested", "il login su iOS", "--undo", "si", "--undo-how", "tolgo il tag")
+cm("task", "wait-ok", "at-scelta", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "quale sfondo?", "--where", "app in produzione", "--options", "Scuro (consigliata)|Chiaro")
 cm("task", "prova", "at-prova", "--build", "b1", "--dove", "home", "--fai", "apri la home", "--atteso", "si vede")
 NOW = int(time.time())
 state = {"sessions": [{"name": "gamma", "question": {"id": "q-17", "text": "Quale?", "options": [{"label": "Uno"}, {"label": "Due"}], "asked_at": NOW - 50}},
@@ -121,9 +121,9 @@ T.check("AT1 link <web_app_url>/#/attesa/<id> and the answering op of each wait"
 # AT2
 st_ids = {a["task"]: a["wid"] for a in approvals}
 att_ids = [RL.S.wid_attention(x) for x in state["attention"]]
-cm("task", "wait-ok", "at-ok", "--what", "pubblico la 1.1?", "--where", "web")
+cm("task", "wait-ok", "at-ok", "--consiglio", "va bene: prova", "--what", "pubblico la 1.1?", "--where", "web")
 time.sleep(1.1)
-cm("task", "wait-ok", "at-ok", "--what", "pubblico la 1.2?", "--where", "web")
+cm("task", "wait-ok", "at-ok", "--consiglio", "va bene: prova", "--what", "pubblico la 1.2?", "--where", "web")
 RL._MEMO.clear() if hasattr(RL, "_MEMO") else None
 new_ok = next((a for a in AT.collect() if a.get("task") == "at-ok"), {})
 cfg.write_text(json.dumps(dict(cfg_data, relay=dict(cfg_data["relay"], web_app_url=""))))
@@ -236,8 +236,8 @@ T.check("AT7 the recommended option's command goes through execute as it is (app
 (tmp / "segreto.txt").write_text("non dichiarato")
 add("al-scelta", "beta")
 add("al-prova", "alfa")
-r8 = cm("task", "wait-ok", "al-scelta", "--what", "quale home?", "--where", "app", "--options", "A|B", "--files", "mock/home-a.png, mock/home-b.pdf")
-r8bad = cm("task", "wait-ok", "al-scelta", "--what", "x", "--where", "y", "--files", "mock/manca.png")
+r8 = cm("task", "wait-ok", "al-scelta", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "quale home?", "--where", "app", "--options", "A|B", "--files", "mock/home-a.png, mock/home-b.pdf")
+r8bad = cm("task", "wait-ok", "al-scelta", "--consiglio", "va bene: prova", "--what", "x", "--where", "y", "--files", "mock/manca.png")
 r8p = cm("task", "prova", "al-prova", "--build", "b2", "--dove", "home", "--fai", "guarda", "--atteso", "uguale", "--files", str(tmp / "mock" / "home-a.png"))
 w8 = {a.get("task"): a for a in AT.collect()}
 c8, p8 = w8.get("al-scelta") or {}, w8.get("al-prova") or {}
@@ -316,7 +316,7 @@ T.check("AT9 op attesa without declared files: the files of the message it comes
 # giri nella stessa scheda, archivio dopo la risposta
 add("sc-1", "beta")
 (tmp / "mock" / "c.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"1" * 10)
-r10 = cm("task", "wait-ok", "sc-1", "--what", "Tasto che sposta la master", "--desc", "Dove mettere il tasto rotondo che sposta la master fra i monitor.",
+r10 = cm("task", "wait-ok", "sc-1", "--consiglio", "va bene: prova", "--what", "Tasto che sposta la master", "--desc", "Dove mettere il tasto rotondo che sposta la master fra i monitor.",
          "--option", "A frecce (consigliata)|chiaro, ma copre il testo|mock/home-a.png", "--option", "B pannello|si vede lo schermo, occupa spazio|mock/c.png,mock/home-b.pdf")
 c10 = next((a for a in AT.collect() if a.get("task") == "sc-1"), {})
 o10 = c10.get("options") or [{}, {}]
@@ -337,7 +337,7 @@ T.check("AT10 approval_redo: without a reason refused; with it the round is disc
         and "nessuna, rifare" in talklog.read_text() and "troppo grandi" in talklog.read_text(), f"{rd0} {rd1} {st10} {talklog.read_text()[-300:]!r}")
 f_r1 = RL.execute({"op": "file", "session": None, "arg": str((tmp / "mock" / "c.png").resolve()), "id": "sc-file-1", "_local": True, "device": "phone"})
 time.sleep(1.1)
-r10b = cm("task", "wait-ok", "sc-1", "--what", "Tasto che sposta la master, giro 2", "--desc", "Più piccoli.", "--option", "C piccolo|discreto|mock/c.png", "--option", "D bordo|sempre visibile")
+r10b = cm("task", "wait-ok", "sc-1", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "Tasto che sposta la master, giro 2", "--desc", "Più piccoli.", "--option", "C piccolo|discreto|mock/c.png", "--option", "D bordo|sempre visibile")
 c10b = next((a for a in AT.collect() if a.get("task") == "sc-1"), {})
 ok10b, t10b = RL.execute({"op": "attesa", "arg": c10b.get("id"), "device": "phone"})
 x10b = json.loads(t10b) if ok10b else {}
@@ -359,11 +359,11 @@ T.check("AT10 the id of an earlier round opens the same card from the archive (o
         ar0[0] and y0["id"] == y1["id"] and y0["card_id"] == c10["id"]
         and RL.execute({"op": "attesa", "arg": "w0000000000", "archive": True, "device": "phone"})[0] is False, json.dumps(y0, ensure_ascii=False)[:300])
 add("sc-2", "beta")
-cm("task", "wait-ok", "sc-2", "--what", "x", "--option", "A|", "--option", "B")
+cm("task", "wait-ok", "sc-2", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "x", "--option", "A|", "--option", "B")
 rr = cm("task", "redo", "sc-2", "--by", "tester", "--reason", "nessuna va bene")
 T.check("AT10 task redo from the terminal does the same as approval_redo; --option and --options together are refused",
         rr.returncode == 0 and json.loads(cm("task", "show", "sc-2").stdout)["state"] == "running"
-        and cm("task", "wait-ok", "sc-2", "--what", "x", "--options", "A|B", "--option", "C").returncode != 0, rr.stdout + rr.stderr)
+        and cm("task", "wait-ok", "sc-2", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "x", "--options", "A|B", "--option", "C").returncode != 0, rr.stdout + rr.stderr)
 smp8 = {r["id"].split("-")[1]: r for r in SAMPLE["result"]}
 s_one8 = json.loads(smp8["1301"]["text"])
 T.check("AT8 the contract's samples: …1301 attesa with two files carrying the fields of the real answer; …1370 op file of an attachment with session null",

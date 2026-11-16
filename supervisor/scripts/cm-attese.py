@@ -91,6 +91,7 @@ def _from_registry(now_):
                     a["card"] = {k: it.get(f) for k, f in (("what", "what"), ("where", "where_to"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how"))
                                  if it.get(f)} or None
                     a["files"] = it.get("files") or None   # 1.137: i file da guardare (wait-ok --files)
+                    a["_advice"] = it.get("advice")   # 1.149: il consiglio di chi chiede
                     a["_card"] = tk.card_of(con, it["task"])   # 1.137: la scheda e i suoi giri
                     out.append(a)
                 elif k == "pause":
@@ -195,8 +196,11 @@ def _actions(a, prova=False):
     k, an, opts = a["kind"], a.get("answer") or {}, a.get("options") or []
     rec = lambda o: {"recommended": True} if o.get("recommended") else {}  # noqa: E731
     if k == "ok":
-        return [_act("approve", {"op": "approve", "arg": a["task"], "text": "ok"}, "primary"),
-                _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
+        # 1.149: il consiglio segna il tasto consigliato, «Approva» o, se chi chiede consiglia di no, «Chiudi senza ok»
+        adv = a.get("advice") or {}
+        yes, no = ({"recommended": True} if adv.get("approve") is True else {}), ({"recommended": True} if adv.get("approve") is False else {})
+        return [_act("approve", {"op": "approve", "arg": a["task"], "text": "ok"}, "primary", **yes),
+                _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text", **no)]
     if k == "choice":
         # 1.137: «Nessuna, rifare» col motivo, prima di «Chiudi senza ok»
         return [_act(None, {"op": "approve", "arg": a["task"], "text": "ok", "choice": o["value"]}, "primary" if o.get("recommended") else "option", label=o["label"], **rec(o))
@@ -238,11 +242,32 @@ def _option_details(options, details):
     return options
 
 
+def advice_view(adv, options):
+    """1.149 (16/11/2026): il consiglio di chi chiede, come lo vede l'app: {text, option, approve} o null. `text` la
+    motivazione in una riga; `option` il value dell'opzione consigliata di una scelta (null per un ok); `approve` true o
+    false per un ok (null per una scelta). Segna anche le opzioni: recommended true sulla consigliata e solo su quella."""
+    if not isinstance(adv, dict) or not adv.get("text"):
+        return None
+    out = {"text": S.one_line(str(adv["text"]))[:200], "option": None, "approve": adv.get("approve") if not options else None}
+    if options and adv.get("option"):
+        want = S.one_line(str(adv["option"]))[:24]
+        hit = next((o for o in options if o.get("value") == want), None)
+        if hit is not None:
+            out["option"] = hit["value"]
+            for o in options:
+                if o is hit:
+                    o["recommended"] = True
+                else:
+                    o.pop("recommended", None)
+    return out
+
+
 def round_view(g):
-    """Un giro della scheda come lo vede l'app: {id, at, text, description, options, files, state, reason, by, answered_at, choice}."""
+    """Un giro della scheda come lo vede l'app: {id, at, text, description, options, files, advice, state, reason, by, answered_at, choice}."""
     opts = _options(g.get("options"), 24) if g.get("options") else None
     det = g.get("detail") or {}
-    return {"id": g["wid"], "at": g["at"], "text": g.get("what"), "description": det.get("description"), "options": _option_details(opts, det.get("options")),
+    adv = advice_view(g.get("advice"), opts)
+    return {"id": g["wid"], "at": g["at"], "text": g.get("what"), "description": det.get("description"), "options": _option_details(opts, det.get("options")), "advice": adv,
             "files": [file_item(f) for f in g.get("files") or []] or None, "state": g["state"], "reason": g.get("reason"), "by": g.get("by"),
             "answered_at": g.get("answered_at"), "choice": g.get("choice")}
 
@@ -292,7 +317,7 @@ def archived(i):
     a = {"id": last["wid"], "type": "carta", "kind": "choice" if last.get("options") else "ok", "session": _short(row["session"]) if row and row["session"] else None,
          "task": tid, "text": v["text"], "options": v["options"], "at": last["at"], "answer": None,
          "card": {k: last.get(f) for k, f in (("what", "what"), ("where", "where"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how")) if last.get(f)} or None,
-         "link": link(last["wid"]), "files": v["files"], "description": v["description"], "card_id": card["card_id"], "state": last["state"],
+         "link": link(last["wid"]), "files": v["files"], "description": v["description"], "advice": v["advice"], "card_id": card["card_id"], "state": last["state"],
          "answered": {"by": last.get("by"), "at": last.get("answered_at"), "choice": last.get("choice"), "reason": last.get("reason")} if last["state"] != "replaced" else None,
          "rounds": [round_view(g) for g in card["rounds"][:-1]]}
     a["label"] = LABELS.get(a["kind"], "decide")
@@ -321,6 +346,8 @@ def _finish(a):
     cur = (card or {}).get("rounds", [None])[-1] if card else None
     a["description"] = ((cur or {}).get("detail") or {}).get("description")
     _option_details(a["options"], ((cur or {}).get("detail") or {}).get("options"))
+    # 1.149: il consiglio di chi chiede (null fuori dalle carte e per quelle nate prima); segna l'opzione o il tasto
+    a["advice"] = advice_view(a.pop("_advice", None), a["options"]) if a["kind"] in ("ok", "choice") else None
     a["card_id"] = card["card_id"] if card else a["id"]
     a.setdefault("state", "open")
     a.setdefault("answered", None)

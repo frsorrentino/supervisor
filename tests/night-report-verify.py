@@ -149,7 +149,7 @@ for tid, title in (("v1", "schema"), ("v2", "migrazione"), ("v3", "deploy")):
             "attempts_max": 3, "data_class": "internal", "requested_by": "test"}}
     subprocess.run([CM, "task", "add", "-"], input=json.dumps(task), capture_output=True, text=True, env=ENV)
 subprocess.run([CM, "task", "start", "v2"], capture_output=True, text=True, env=ENV)
-subprocess.run([CM, "task", "wait-ok", "v3", "--what", "release 1.2", "--where", "produzione"], capture_output=True, text=True, env=ENV)
+subprocess.run([CM, "task", "wait-ok", "v3", "--consiglio", "va bene: prova", "--what", "release 1.2", "--where", "produzione"], capture_output=True, text=True, env=ENV)
 con = sqlite3.connect(str(tmp / "tasks.db"))
 con.execute("UPDATE tasks SET state='done' WHERE id='v1'")
 con.commit()

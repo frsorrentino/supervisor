@@ -72,7 +72,7 @@ T.check("IM1 amend with a value out of the list refused, the importance unchange
 
 # IM2 dedotta
 add("im-undo", P["undo"])
-cm("wait-ok", "im-undo", "--what", "manda la PEC", "--where", "qui", "--undo", "no")
+cm("wait-ok", "im-undo", "--consiglio", "va bene: prova", "--what", "manda la PEC", "--where", "qui", "--undo", "no")
 add("im-dep", P["dep"], outcome={"expected": "il sito pubblicato", "kind": "deploy", "proof": "deploy"},
     check={"cmd": "true || curl -s https://example.invalid", "cwd": None, "timeout_s": 30})
 add("im-rino", P["rino"])

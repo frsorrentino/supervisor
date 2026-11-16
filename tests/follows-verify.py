@@ -79,7 +79,7 @@ add("orig-b")
 add("seg-b", follows="orig-b")
 T.check("OS2 origin not yet approved: no ok at add", oks("seg-b") == [], "")
 person_ok("orig-b")
-r2 = cm("wait-ok", "seg-b", "--what", "la parte dell'app", "--where", "app")
+r2 = cm("wait-ok", "seg-b", "--consiglio", "va bene: prova", "--what", "la parte dell'app", "--where", "app")
 T.check("OS2 approved later: the ok arrives at the follow-up's wait-ok (follows written in the contract), state approved",
         "approved as a follow-up of orig-b" in r2[1] and len(oks("seg-b")) == 1 and json.loads(cm("show", "seg-b", "--json")[1])["state"] == "approved", str(r2))
 
@@ -96,7 +96,7 @@ c = sqlite3.connect(DB); c.execute("UPDATE tasks SET state='cancelled' WHERE id=
 add("seg-canc", "--follows", "orig-canc")
 add("orig-card")
 person_ok("orig-card")
-cm("wait-ok", "orig-card", "--what", "un'altra cosa", "--where", "qui")
+cm("wait-ok", "orig-card", "--consiglio", "va bene: prova", "--what", "un'altra cosa", "--where", "qui")
 add("seg-card", "--follows", "orig-card")
 T.check("OS3 an origin closed green passes the ok; one with no ok of the person, cancelled, or waiting on a new card does not",
         len(oks("seg-done")) == 1 and oks("seg-none") == [] and oks("seg-canc") == [] and oks("seg-card") == [],
@@ -107,10 +107,10 @@ add("orig-c")
 person_ok("orig-c")
 add("seg-c", follows="orig-c")
 c = sqlite3.connect(DB); c.execute("DELETE FROM approvals WHERE task='seg-c'"); c.execute("UPDATE tasks SET state='assigned' WHERE id='seg-c'"); c.commit(); c.close()
-r4 = cm("wait-ok", "seg-c", "--what", "quale strada", "--where", "qui", "--options", "A|B")
+r4 = cm("wait-ok", "seg-c", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "quale strada", "--where", "qui", "--options", "A|B")
 T.check("OS4 a card with options (a choice) is never inherited: it stays awaiting_ok", "follow-up" not in r4[1] and oks("seg-c") == []
         and json.loads(cm("show", "seg-c", "--json")[1])["state"] == "awaiting_ok", str(r4))
-cm("wait-ok", "seg-a", "--what", "di nuovo", "--where", "qui")
+cm("wait-ok", "seg-a", "--consiglio", "va bene: prova", "--what", "di nuovo", "--where", "qui")
 T.check("OS4 a follow-up that already has an ok does not get a second one", len(oks("seg-a")) == 1, str(oks("seg-a")))
 
 # OS5

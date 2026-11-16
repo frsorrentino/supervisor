@@ -89,7 +89,7 @@ T.check("G3 the task is closed → denied again", hook("git push").startswith("d
 # G4 fuori da un piano: un ok registrato apre la corsia
 c = {"schema_version": 1, "task": node("solo", None)}
 cm("task", "add", "-", stdin=json.dumps(c))
-cm("task", "wait-ok", "solo", "--what", "tag v1", "--where", "github")
+cm("task", "wait-ok", "solo", "--consiglio", "va bene: prova", "--what", "tag v1", "--where", "github")
 T.check("G4 awaiting ok (asked, nobody approved) → denied", hook("git push --tags").startswith("deny"), "")
 T.device_ok("approve", "solo", "maintainer (phone)", "ok", ENV)
 T.check("G4 the ok recorded → allowed", hook("git push --tags") == "allow", "")

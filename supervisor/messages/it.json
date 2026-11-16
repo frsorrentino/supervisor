@@ -1430,6 +1430,7 @@
   "seguiti.altrove_expected": "Il rivelatore non trova più: {text}",
   "seguiti.altrove_plan": "Stesso difetto altrove: {text}. Correzione proposta: {fix}. Dove: {targets}.",
   "seguiti.altrove_untested": "la correzione stessa: il rivelatore ha solo letto",
+  "seguiti.altrove_advice": "approva se la correzione di partenza ti è andata bene: è la stessa, sui punti dove il rivelatore ha trovato lo stesso difetto",
   "seguiti.altrove_control": "il rivelatore su una cartella vuota dà «{outcome}»: serve negativo, altrimenti non dimostra niente",
   "seguiti.altrove_result": "{n} positivi su {total}, {errors} errori (non contano come negativi). Giro {id}.",
   "seguiti.remind_prompt": "Promemoria scattato: {text}. Di' alla persona cosa c'è da fare.",

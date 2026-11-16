@@ -109,7 +109,7 @@ T.check("T5 a result outside the contract is refused", rc == 2 and "$.outcome: o
 
 # T6 corsia chiusa fuori da un piano: attende ok, poi approvato con chi, cosa, dove
 add(contract("p1", lane="closed"))
-cm("wait-ok", "p1", "--what", "release 0.5.12", "--where", "github frsorrentino/supervisor")
+cm("wait-ok", "p1", "--consiglio", "va bene: prova", "--what", "release 0.5.12", "--where", "github frsorrentino/supervisor")
 st1 = show("p1")["state"]
 _l6 = json.loads(cm("list", "--state", "awaiting_ok", "--json")[1])
 T.check("T6 (contract 1.37) list --json carries the ok request of a task waiting for it: {what, where, at}",
@@ -162,7 +162,7 @@ state9 = tmp / "state"
 cfg9 = tmp / "config.json"
 cfg9.write_text(json.dumps({"language": "en", "state_dir": str(state9), "workspace": {"root_session_name": "master"}}))
 add(contract("ok9"))
-cm("wait-ok", "ok9", "--what", "release", "--where", "github")
+cm("wait-ok", "ok9", "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
 CC = {"CLAUDECODE": "1", "CC_SUPERVISOR_CONFIG": str(cfg9)}
 rc, out, err = cm("approve", "ok9", "--by", "maintainer", "--text", "ok", env=CC)
 T.check("T10 from a Claude session, --text alone → refused, it asks for --inbox; nothing recorded",
@@ -188,7 +188,7 @@ with T.PrivateTmux() as tm:
     good = inbox_put("master", "Dall'utente via telefono. Sì, tutte e due", "relay")
     for tid in ("i1", "i2", "i3", "i4", "i5"):
         add(contract(tid))
-        cm("wait-ok", tid, "--what", "release", "--where", "github")
+        cm("wait-ok", tid, "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
     rc, out, err = cm("approve", "i1", "--by", "maintainer", "--inbox", good, "--text", "release after the diff", env=M9)
     a = show("i1")["approvals"][-1]
     T.check("T10 --inbox from the master, a relay message of now → approved; the text quotes the message, with its id and the note",
@@ -246,14 +246,14 @@ cm("pause", "as_ext", "--reason", "Google deve approvare", "--waits", "external"
 cm("pause", "as_extnone", "--reason", "Google deve approvare", "--waits", "external")
 cm("start", "as_paused")
 cm("pause", "as_paused", "--reason", "in coda nel programma")
-cm("wait-ok", "as_ok", "--what", "x", "--where", "y")
+cm("wait-ok", "as_ok", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
 _con = sqlite3.connect(str(tmp / "tasks.db"))
 _con.execute("UPDATE tasks SET state='approved' WHERE id='as_ok'")
 _con.commit()
 cm("step", "as_worked", "scritto il modulo")
 add(contract("as_startok"))
 cm("start", "as_startok")
-cm("wait-ok", "as_startok", "--what", "x", "--where", "y")
+cm("wait-ok", "as_startok", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
 _con.execute("UPDATE tasks SET state='approved' WHERE id='as_startok'")
 _con.commit()
 cm("start", "as_resumed")
@@ -337,7 +337,7 @@ cm("pause", "p1", "--reason", "dopo la 0.9", env=IT)
 T.check("T15 PAUSA: reason on the paused line", any("- p1 ·" in l and "PAUSA: dopo la 0.9" in l for l in cm("impegni", env=IT)[1].splitlines()), cm("impegni", env=IT)[1])
 for i in range(9):
     add(contract(f"m{i}", lane="closed"))
-    cm("wait-ok", f"m{i}", "--what", "x", "--where", "y")
+    cm("wait-ok", f"m{i}", "--consiglio", "va bene: prova", "--what", "x", "--where", "y")
 brief = cm("impegni", "--brief", env=IT)[1]
 full = cm("impegni", env=IT)[1]
 T.check("T15 --brief: the header, 8 items, then «… e altri N»; the full text has them all", len(brief.splitlines()) == 10 and brief.splitlines()[-1].startswith("… e altri ")
@@ -497,7 +497,7 @@ with T.PrivateTmux() as tm:
     A19 = dict(M19, TMUX_PANE=pane_a)
     for tid, sess in (("s1", "altra"), ("s2", "altra"), ("s3", "altra"), ("s4", None), ("s5", "altra")):
         add(contract(tid, where={"project": str(proj), "session": sess, "host": "local", "account": None}))
-        cm("wait-ok", tid, "--what", "push", "--where", "github")
+        cm("wait-ok", tid, "--consiglio", "va bene: prova", "--what", "push", "--where", "github")
     term = inbox_put("altra", "ok, pubblica pure", "terminal")
     rc, out, err = cm("approve", "s1", "--by", "maintainer", "--inbox", term, env=A19)
     a19 = show("s1")["approvals"][-1] if show("s1")["approvals"] else {}
@@ -522,7 +522,7 @@ with T.PrivateTmux() as tm:
     M21 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_m)
     for tid in ("v1", "v2", "v3"):
         add(contract(tid))
-        cm("wait-ok", tid, "--what", "release", "--where", "github")
+        cm("wait-ok", tid, "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
     term21 = inbox_put("master", "ok al rilascio di chrome-bridge 1.30.6", "terminal")
     rc, out, err = cm("approve", "v1", "--by", "maintainer", "--inbox", term21, env=M21)
     T.check("T21 the master, a message the person typed in its terminal (origin terminal) → approved; the text quotes it with origin terminal, to master",
@@ -544,7 +544,7 @@ with T.PrivateTmux() as tm:
             f21.write(json.dumps(row) + "\n")
     for tid in ("v4", "v5", "v6"):
         add(contract(tid))
-        cm("wait-ok", tid, "--what", "release", "--where", "github")
+        cm("wait-ok", tid, "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
     u4 = inbox_put("master", "ok alla 0.8.48", "unverified", transcript=str(tr21))
     line21("ok alla 0.8.48")
     rc, out, err = cm("approve", "v4", "--by", "maintainer", "--inbox", u4, env=M21)
@@ -614,7 +614,7 @@ with T.PrivateTmux() as tm:
     A22 = dict(CC, CM_TMUX_ARGS=tm.env["CM_TMUX_ARGS"], TMUX_PANE=pane_a)
     for tid in ("w1", "w2", "w3", "w4", "w5"):
         add(contract(tid, where={"project": str(proj), "session": "altra", "host": "local", "account": None}))
-        cm("wait-ok", tid, "--what", "release", "--where", "github")
+        cm("wait-ok", tid, "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
     rc, out, err = cm("approve", "w1", "--by", "maintainer", "--pin", "1234", "--text", "ok alla 0.8.49", env=A22)
     a22 = show("w1")["approvals"][-1]
     T.check("T22 approve --pin with the right PIN from any session (not the master, not the task's) → approved; the text says PIN and the session, never the PIN itself",
@@ -651,7 +651,7 @@ with T.PrivateTmux() as tm:
     tr23 = tmp / "transcript-23.jsonl"
     for tid in ("x1", "x2"):
         add(contract(tid))
-        cm("wait-ok", tid, "--what", "release", "--where", "github")
+        cm("wait-ok", tid, "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
     u1 = inbox_put("master", "ok alla 0.8.50", "unverified", transcript=str(tr23))
 
     def late23():
@@ -674,12 +674,12 @@ with T.PrivateTmux() as tm:
 # T25 (1.81, 23/10/2026 23:11, supervisor-app «scelte con tasti»): un compito che chiede una scelta — wait-ok --options,
 # list --json le porta, approve vuole --choice fra quelle
 add(contract("ch1", lane="closed"))
-rc, out, err = cm("wait-ok", "ch1", "--what", "pick the checkout layout", "--where", "atlas-shop, branch checkout", "--options", "Strada A | Strada B")
+rc, out, err = cm("wait-ok", "ch1", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "pick the checkout layout", "--where", "atlas-shop, branch checkout", "--options", "Strada A | Strada B")
 _l25 = json.loads(cm("list", "--state", "awaiting_ok", "--json")[1])
 T.check("T25 (1.81) wait-ok --options \"A|B\" → awaiting_ok; list --json carries request.options (labels trimmed); the other requests have no such key",
         rc == 0 and show("ch1")["state"] == "awaiting_ok" and next(x["request"].get("options") for x in _l25 if x["id"] == "ch1") == ["Strada A", "Strada B"]
         and all("options" not in (x["request"] or {}) for x in _l25 if x["id"] != "ch1"), out + err + json.dumps(_l25)[:300])
-bad25 = {o: cm("wait-ok", "ch1", "--what", "x", "--where", "y", "--options", o) for o in ("Solo una", "A|B|C|D|E", "A|A", "|B", "A|" + "x" * 25)}
+bad25 = {o: cm("wait-ok", "ch1", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "x", "--where", "y", "--options", o) for o in ("Solo una", "A|B|C|D|E", "A|A", "|B", "A|" + "x" * 25)}
 T.check("T25 one label, five, a duplicate, an empty one or one over 24 characters → refused", all(r[0] != 0 and "2 to 4 distinct labels" in r[2] for r in bad25.values()), str({k: v[2][:70] for k, v in bad25.items()}))
 rc1, _, err1 = cm("approve", "ch1", "--by", "maintainer (phone)", "--text", "ok")
 rc2, _, err2 = cm("approve", "ch1", "--by", "maintainer (phone)", "--text", "ok", "--choice", "Strada C")
@@ -691,7 +691,7 @@ T.check("T25 approve without --choice → «choose one of Strada A, Strada B»; 
         and rc3 == 0 and s25["state"] == "approved" and s25["approvals"][-1]["choice"] == "Strada B" and s25["approvals"][-1]["by_"] == "maintainer (phone)"
         and s25["approvals"][0]["options"] == ["Strada A", "Strada B"] and s25["approvals"][-1]["options"] is None, err1 + err2 + err3 + json.dumps(s25["approvals"]))
 add(contract("ch2", lane="closed"))
-cm("wait-ok", "ch2", "--what", "release", "--where", "github")
+cm("wait-ok", "ch2", "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
 rc4, _, err4 = cm("approve", "ch2", "--by", "maintainer (phone)", "--text", "ok", "--choice", "Strada A")
 T.check("T25 --choice on a task without options → refused, state unchanged", rc4 != 0 and "no options to choose from" in err4 and show("ch2")["state"] == "awaiting_ok", err4)
 
@@ -699,7 +699,7 @@ T.check("T25 --choice on a task without options → refused, state unchanged", r
 # anche se la sessione fa task start; task ok --choice la accetta ancora
 add(contract("ch3", lane="closed"))
 cm("start", "ch3")
-cm("wait-ok", "ch3", "--what", "one step: which cache", "--where", "atlas-shop", "--options", "Redis | Memoria")
+cm("wait-ok", "ch3", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "one step: which cache", "--where", "atlas-shop", "--options", "Redis | Memoria")
 rc5, out5, err5 = cm("start", "ch3")
 s5 = show("ch3")
 _l5 = json.loads(cm("list", "--state", "awaiting_ok", "--json")[1])
@@ -709,7 +709,7 @@ T.check("T25b task start on a task waiting for a choice keeps it: still awaiting
 rc6, _, err6 = cm("approve", "ch3", "--by", "maintainer (phone)", "--text", "Memoria", "--choice", "Memoria")
 T.check("T25b after that start the person's choice is still accepted", rc6 == 0 and show("ch3")["state"] == "approved" and show("ch3")["approvals"][-1]["choice"] == "Memoria", err6)
 add(contract("ch4", lane="closed"))
-cm("wait-ok", "ch4", "--what", "release", "--where", "github")
+cm("wait-ok", "ch4", "--consiglio", "va bene: prova", "--what", "release", "--where", "github")
 cm("start", "ch4")
 T.check("T25b the same for a plain ok request: start keeps awaiting_ok", show("ch4")["state"] == "awaiting_ok", show("ch4")["state"])
 cm("approve", "ch4", "--by", "maintainer (phone)", "--text", "ok")
@@ -729,23 +729,23 @@ with T.PrivateTmux() as tm:
     rc, out, err = cm("standing", "add", "--by", "maintainer", "--inbox", inbox_put("master", "Regia: sì", "cron"), "--project", str(proj), "--kind", "release", env=M24)
     T.check("T24 a cron prompt never makes a standing ok", rc != 0 and "origin cron" in err, err)
     add(contract("y1", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))
-    rc, out, err = cm("wait-ok", "y1", "--what", "release 0.8.52", "--where", "github", env=M24)
+    rc, out, err = cm("wait-ok", "y1", "--consiglio", "va bene: prova", "--what", "release 0.8.52", "--where", "github", env=M24)
     a24 = show("y1")["approvals"][-1]
     T.check("T24 wait-ok of a task of that project with outcome.kind release → approved at once, by the person, the text quoting the message and naming the rule",
             rc == 0 and "approved by standing ok n1" in out and show("y1")["state"] == "approved" and a24["by_"] == "maintainer" and "standing ok n1 for release" in a24["text"] and "inbox " + old24 in a24["text"], out + err + json.dumps(a24))
     (tmp / "other").mkdir(exist_ok=True)
     add(contract("y2", outcome={"expected": "deployed", "kind": "deploy"}, cmd="grep -q https:// ok.txt"))
-    rc, out, err = cm("wait-ok", "y2", "--what", "deploy", "--where", "prod", env=M24)
+    rc, out, err = cm("wait-ok", "y2", "--consiglio", "va bene: prova", "--what", "deploy", "--where", "prod", env=M24)
     add(contract("y3", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt", where={"project": str(tmp / "other"), "session": None, "host": "local", "account": None}))
-    rc3, out3, err3 = cm("wait-ok", "y3", "--what", "release", "--where", "github", env=M24)
+    rc3, out3, err3 = cm("wait-ok", "y3", "--consiglio", "va bene: prova", "--what", "release", "--where", "github", env=M24)
     T.check("T24 another kind (deploy) or another project → still awaiting_ok: the rule is scoped", rc == 0 and show("y2")["state"] == "awaiting_ok" and rc3 == 0 and show("y3")["state"] == "awaiting_ok", out + out3 + err + err3)
     add(contract("y5", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))
-    rc5, out5, err5 = cm("wait-ok", "y5", "--what", "release", "--where", "github", "--options", "Strada A|Strada B", env=M24)
+    rc5, out5, err5 = cm("wait-ok", "y5", "--consiglio", "va bene: prova", "--consigliata", "1", "--what", "release", "--where", "github", "--options", "Strada A|Strada B", env=M24)
     T.check("T25 (1.81) a task that asks a choice is never approved by a standing ok: it waits for the person", rc5 == 0 and "standing" not in out5 and show("y5")["state"] == "awaiting_ok", out5 + err5)
     rc, out, err = cm("standing", "list", env=M24)
     rcr, outr, errr = cm("standing", "remove", "1", env=M24)
     add(contract("y4", outcome={"expected": "release published", "kind": "release"}, cmd="grep -q version ok.txt"))
-    rc4, out4, err4 = cm("wait-ok", "y4", "--what", "release", "--where", "github", env=M24)
+    rc4, out4, err4 = cm("wait-ok", "y4", "--consiglio", "va bene: prova", "--what", "release", "--where", "github", env=M24)
     T.check("T24 standing list shows the rule; remove N revokes it: the next wait-ok waits for an ok again",
             rc == 0 and "n1" in out and "release" in out and rcr == 0 and "revoked" in outr and show("y4")["state"] == "awaiting_ok" and "standing" not in out4, out + outr + out4 + errr)
 # TSH (31/10/2026, nota 970c0d9c): il controllo gira con /bin/sh; provato a mano in bash passava, e cadeva solo a task done
