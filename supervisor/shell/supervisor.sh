@@ -29,7 +29,9 @@ eval "$(python3 "$_cm_root/scripts/cm-config.py" --sh 2>/dev/null)"
 _cm_fn_exists() { typeset -f "$1" >/dev/null 2>&1; }   # 11/11: in zsh `declare -F` dichiara un decimale
 
 _cm_tmux() {
-  if [ -n "${CM_TMUX_ARGS:-}" ]; then tmux ${CM_TMUX_ARGS} "$@"
+  # 16/11/2026: zsh non spezza ${CM_TMUX_ARGS} in parole («-L nome» restava un argomento solo, e tmux parlava a un
+  # altro server): eval lo spezza in tutte e due le shell
+  if [ -n "${CM_TMUX_ARGS:-}" ]; then eval "tmux $CM_TMUX_ARGS \"\$@\""
   elif [ -n "${CM_TMUX_SOCKET:-}" ]; then tmux -L "$CM_TMUX_SOCKET" "$@"
   else tmux "$@"; fi
 }
@@ -80,7 +82,10 @@ _cm_wrap() {
   # Il titolo si scrive qui: il nome tmux e' gia' deciso ed e' la chiave del registro dei colori.
   [ "${CM_TABS_TITLE:-true}" = true ] && printf '\033]0;%s\007' "$("$_cm_root/scripts/cm-color.sh" "$nome")"
   local -a args=()
-  [ -n "${CM_SESSION_CLAUDE_ARGS:-}" ] && read -ra args <<<"$CM_SESSION_CLAUDE_ARGS"
+  # 16/11/2026: `read -ra` e' di bash (in zsh l'opzione e' -A, e session.claude_args si perdeva): un ciclo sulle
+  # parole, che una sostituzione di comando non quotata spezza in tutte e due le shell
+  local _cm_w
+  if [ -n "${CM_SESSION_CLAUDE_ARGS:-}" ]; then for _cm_w in $(printf '%s' "$CM_SESSION_CLAUDE_ARGS"); do args+=("$_cm_w"); done; fi
   [ "${CM_SESSION_REMOTE_CONTROL:-true}" = true ] && args+=(--remote-control "$nome")
   args+=(-n "$nome")
   [ "${#envargs[@]}" -eq 0 ] && envargs=(CM_LAUNCHED=1)
@@ -140,7 +145,10 @@ if [ -n "$_cm_interactive" ] && [ -z "${TMUX:-}" ]; then
   # 11/11 (supervisor-macos-11-11): su macOS niente /proc/uptime ne' boot_id: l'avvio da sysctl kern.boottime
   _cm_boot=""
   if [ ! -r "${CM_UPTIME_FILE:-/proc/uptime}" ]; then
-    _cm_boot="$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9]*\).*/\1/p')"
+    # 16/11/2026 (supervisor-ripristino-macos-16-11): l'uscita e' «{ sec = 1794818459, usec = 110223 } Mon Nov 16 …»,
+    # e con «.*sec = » il sed prendeva l'ultimo, i microsecondi di usec: l'uptime risultava di decenni e la domanda
+    # di ripristino su macOS non compariva mai. Ancorato al primo campo.
+    _cm_boot="$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')"
   fi
   if [ -n "$_cm_boot" ]; then
     _cm_up_min=$(( ($(date +%s) - _cm_boot) / 60 )); _cm_bootid="boot-$_cm_boot"
@@ -154,7 +162,9 @@ if [ -n "$_cm_interactive" ] && [ -z "${TMUX:-}" ]; then
      && mkdir -p "${CM_STATE_DIR:-$HOME/.claude}/restore" \
      && mkdir "${CM_STATE_DIR:-$HOME/.claude}/restore/asked-$_cm_bootid" 2>/dev/null; then
     python3 "$_cm_root/scripts/cm-config.py" --msg shell.restore_prompt
-    ${CM_RESTORE_CMD:-"$_cm_root/scripts/supervisor" restore}
+    # 16/11/2026: zsh non spezza in parole un'espansione non quotata, e ${CM_RESTORE_CMD:-…} diventava il nome di
+    # UN comando («no such file or directory: …/supervisor restore»): in zsh il ripristino non partiva mai
+    if [ -n "${CM_RESTORE_CMD:-}" ]; then eval "$CM_RESTORE_CMD"; else "$_cm_root/scripts/supervisor" restore; fi
   fi
 fi
 unset _cm_cmd _cm_acc _cm_al _cm_sub _cm_ph _cm_age _cm_mine _cm_dove _cm_interactive _cm_boot _cm_up_min _cm_bootid

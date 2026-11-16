@@ -51,7 +51,9 @@ uptime_high = tmp / "uptime-high"; uptime_high.write_text("99999.0 100.0\n")
 def base_env(**extra):
     e = {"PATH": f"{home}/bin:{os.environ['PATH']}", "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg),
          "CM_TMUX_ARGS": tm.env["CM_TMUX_ARGS"], "FAKE_CLAUDE_ARGS_LOG": str(argslog), "FAKE_CLAUDE_SCENARIO": "plain",
-         "CM_UPTIME_FILE": str(uptime_high), "TERM": "xterm-256color"}
+         "CM_UPTIME_FILE": str(uptime_high), "TERM": "xterm-256color",
+         # 16/11 (dalla segnalazione di un collega): una bash in italiano dice «claude è una funzione» e W1 cercava «is a function»
+         "LC_ALL": "C", "LANGUAGE": ""}
     e.update(extra)
     return e
 

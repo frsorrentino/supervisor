@@ -2,6 +2,13 @@
 
 ## 0.3.x
 
+- **0.8.170 — 2026-11-16: with one account `claude` typed by hand runs inside tmux again, the restore after a restart works on macOS and in zsh, and `--help` never runs the command (supervisor-wrapper-un-account-16-11, supervisor-ripristino-macos-16-11, supervisor-help-esegue-16-11).**
+  - Reported from a Mac with one account and zsh: the app said «senza master», and a `claude` started by hand could not be reached («no session …»). With one account the shell integration did not define the `claude` wrapper, so every `claude` typed in a terminal ran outside tmux, and one started in the projects folder did not become the master. The wrapper list is now always there. Aliases whose names have no dash had the same hidden fault.
+  - On macOS the question «restore the sessions?» never came after a restart: the boot time was read from the microseconds of `sysctl kern.boottime`, so the machine looked decades old. It now reads the seconds.
+  - In zsh the restore command was taken as one word («no such file or directory») and never ran. In zsh the wrapper also lost `session.claude_args`. Both work in bash and zsh now.
+  - `supervisor restore --help` ran the restore, `supervisor launch -h` took «-h» for a folder, and `relay --help` printed its usage as an error. `supervisor <command> --help` or `-h` now prints the command's help, exits 0 and never runs the command, for every command.
+  - After the update, open a new terminal, or run `source ~/.zshrc` (`~/.bashrc` in bash): the wrapper is defined when the shell starts. A `claude` already running outside tmux stays unreachable until you close it and start it again.
+  - New tests: `tests/shell-un-account-verify.py` (bash and zsh, a fake macOS `sysctl`) and `tests/help-verify.py`. The shell tests force English, so they pass on a system in another language.
 - **0.8.169 — 2026-11-15: the wake-up push of an event says which state is on the bus, so a device that has it does not download it again (supervisor-push-etag-15-11, contract 1.148).**
   - Measured today: 99% of what the devices download from Firebase is the state, 35.5 KB read whole by 4 devices at every event push. The push now carries two optional fields: `etag`, a fingerprint of the state that is on the bus (the first 16 hex characters of the SHA-1 of its encrypted text), and `published_at`, its publication time.
   - An app that already holds that state can skip the download. Events that do not change the state, such as the evening recap, carry the fingerprint of the state already there. Older apps ignore the two fields, and nothing else in the relay's data changes.

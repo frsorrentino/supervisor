@@ -31,6 +31,28 @@ case "$(uname -s 2>/dev/null)" in
     esac ;;
 esac
 
+# 16/11/2026 (supervisor-help-esegue-16-11): `supervisor <comando> --help` (o -h) stampa l'aiuto del comando e non lo
+# esegue MAI. Prima `restore --help` eseguiva il ripristino, `launch -h` prendeva «-h» per una cartella, e `relay
+# --help`, `wait --help`, `inbox --help` uscivano con un errore o facevano altro. L'aiuto e' l'intestazione dello script
+# del comando (cm-help.py), che si trova leggendo la riga del comando nel `case` qui sotto: un punto solo, per tutti.
+help_of() {  # <cmd>: 0 con l'aiuto stampato, 1 se il comando non ha uno script (allora decide il `case`)
+  local c="$1" f
+  case "$c" in *[!a-z0-9-]*|"") return 1 ;; esac
+  f="$(awk -v c="$c" '
+        !hit && $0 ~ "^  ([a-z0-9-]+[|])*" c "([|][a-z0-9-]+)*[)]" { hit = 1; n = 0 }
+        hit { if (match($0, /\$S\/[A-Za-z0-9_.\/-]+/)) { print substr($0, RSTART + 3, RLENGTH - 3); exit } if (++n > 3) exit }
+      ' "${BASH_SOURCE[0]}")"
+  [ -n "$f" ] && [ -f "$S/$f" ] || return 1
+  python3 "$S/cm-help.py" "$S/$f" "$c"
+}
+case "${1:-}" in
+  -h|--help)
+    case "$cmd" in
+      help|--help|-h|version|--version|-v|root) ;;
+      *) if help_of "$cmd"; then exit 0; fi ;;
+    esac ;;
+esac
+
 unported() {  # <cmd> <fase> <equivalente legacy>
   python3 "$S/cm-config.py" --msg cli.unported "cmd=$1" "phase=$2" "legacy=$3" >&2
   exit 64

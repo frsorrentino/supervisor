@@ -813,16 +813,24 @@ def sh_value(v):
     return str(expand(v))
 
 
+SH_TAB_MAPS = ("CM_SHELL_WRAPPERS", "CM_SHELL_ALIASES")   # lette da shell/supervisor.sh come righe chiave<TAB>valore
+
+
 def flatten_sh(cfg, prefix="CM"):
     lines = []
 
     def walk(name, v):
         if isinstance(v, dict):
             lines.append(f"export {name}_KEYS={sh_quote(' '.join(v.keys()))}")
+            # 16/11/2026 (supervisor-wrapper-un-account-16-11): le mappe che la shell legge come lista
+            # «chiave<TAB>valore» (shell/supervisor.sh: CM_SHELL_WRAPPERS, CM_SHELL_ALIASES) si emettono SEMPRE cosi'.
+            # Prima la lista usciva solo se una chiave non era un identificatore: con un solo account,
+            # shell.wrappers = {"claude": "personale"}, non usciva, il wrapper `claude` non nasceva e ogni claude
+            # lanciato a mano girava fuori da tmux («senza master» nell'app). Le variabili per chiave restano.
             if all(IDENT.match(k) for k in v):
                 for k, x in v.items():
                     walk(f"{name}_{k.upper()}", x)
-            else:
+            if name in SH_TAB_MAPS or not all(IDENT.match(k) for k in v):
                 lines.append(f"export {name}={sh_quote(chr(10).join(f'{k}{chr(9)}{sh_value(x)}' for k, x in v.items()))}")
         elif isinstance(v, list) and v and isinstance(v[0], dict):
             # folder_map: path<TAB>account per riga, con ~ espansa

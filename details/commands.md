@@ -2,7 +2,8 @@
 
 Back to the [README](../README.md). The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 `affianca`…) come from `init --shell`; every flag accepts both spellings
-(`--crea`/`--create`, `--prova`/`--dry-run`).
+(`--crea`/`--create`, `--prova`/`--dry-run`). `supervisor <command> --help` (or `-h`) prints that command's help
+and never runs it.
 
 | command | what it does |
 |---|---|
