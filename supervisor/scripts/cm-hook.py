@@ -31,9 +31,19 @@ sessione. Tutto cio' che scrive sta in `state_dir`:
 Windows nativo (test del 27/09/2026): niente tmux, niente /proc, i .sh non si eseguono da Python. Ogni evento esce
 subito con 0 PRIMA di caricare la config; solo il primo SessionStart su quella macchina dice, in una riga, che serve
 WSL2. Prima il kernel veniva iniettato (inutilizzabile) e lo Stop dava un traceback a ogni turno.
+
+I tempi (16/11/2026, supervisor-hook-lenti-16-11): ogni esecuzione scrive una riga in <state_dir>/hook-times.jsonl
+{t, ev, ms, boot_ms, ph}: ms dall'avvio di py.sh alla fine, boot_ms fino alla config caricata, ph i millisecondi delle
+fasi che ne hanno presi almeno 5. `supervisor hook-times [--json]` li riassume per evento: quante volte, mediana, 90%,
+massimo e la fase piu' cara. Lo Stop fa subito cio' che deve rispondere (registro, coda, casella, riavvio armato) e
+lascia a un figlio staccato (StopLate) cio' che legge la trascrizione: i prompt da risolvere, il passaggio di consegne,
+un cambio di modello in attesa.
 """
 import os
 import sys
+import time as _time_mod
+
+_T_START = _time_mod.time()
 
 
 def windows_notice(argv):
@@ -73,6 +83,167 @@ _spec.loader.exec_module(cm)
 CFG = cm.load(warn=False)
 M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731   (1.68: la riga «Ti aspettano» nella master)
 STATE = Path(cm.expand(CFG["state_dir"]))
+_T_READY = time.time()
+
+# ------------------------------------------------------------------ i tempi veri (16/11/2026)
+TIMES_MAX = 300_000   # byte di hook-times.jsonl; oltre resta la meta' piu' recente
+_PH, _LAST = [], [_T_READY]
+
+
+def mark(name):
+    """Chiude una fase: i millisecondi dall'ultima chiamata vanno sotto `name`."""
+    now = time.time()
+    _PH.append((name, round((now - _LAST[0]) * 1000)))
+    _LAST[0] = now
+
+
+def _t0():
+    """Quando e' partito py.sh (CM_HOOK_T0), se e' di questo avvio; altrimenti quando e' partito questo file."""
+    try:
+        t = float((os.environ.get("CM_HOOK_T0") or "").replace(",", "."))
+    except ValueError:
+        return _T_START
+    return t if 0 <= _T_START - t < 120 else _T_START
+
+
+def times_write(ev):
+    try:
+        now, t0 = time.time(), _t0()
+        ph = {}
+        for k, v in _PH:
+            ph[k] = ph.get(k, 0) + v
+        row = {"t": round(now), "ev": ev, "ms": round((now - t0) * 1000), "boot_ms": round((_T_READY - t0) * 1000),
+               "ph": {k: v for k, v in ph.items() if v >= 5}}
+        f = STATE / "hook-times.jsonl"
+        STATE.mkdir(parents=True, exist_ok=True)
+        if f.exists() and f.stat().st_size > TIMES_MAX:
+            rows = f.read_text(errors="replace").splitlines()
+            f.write_text("\n".join(rows[len(rows) // 2:]) + "\n")
+        with open(f, "a") as h:
+            h.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
+
+
+def times_cmd(argv):
+    """`supervisor hook-times [--json]`: per evento quante esecuzioni, mediana, 90%, massimo e la fase piu' cara."""
+    rows = []
+    try:
+        for line in (STATE / "hook-times.jsonl").read_text(errors="replace").splitlines():
+            try:
+                r = json.loads(line)
+                if isinstance(r, dict) and r.get("ev") and isinstance(r.get("ms"), (int, float)):
+                    rows.append(r)
+            except ValueError:
+                continue
+    except OSError:
+        pass
+    out = []
+    for ev in sorted({r["ev"] for r in rows}):
+        ms = sorted(r["ms"] for r in rows if r["ev"] == ev)
+        ph = {}
+        for r in rows:
+            if r["ev"] == ev:
+                for k, v in (r.get("ph") or {}).items():
+                    ph[k] = ph.get(k, 0) + v
+        top = max(ph.items(), key=lambda kv: kv[1]) if ph else None
+        boot = sorted(r.get("boot_ms") or 0 for r in rows if r["ev"] == ev)
+        out.append({"ev": ev, "n": len(ms), "median_ms": ms[len(ms) // 2], "p90_ms": ms[min(len(ms) - 1, int(len(ms) * 0.9))], "max_ms": ms[-1],
+                    "boot_median_ms": boot[len(boot) // 2], "top_phase": top[0] if top else None,
+                    "top_phase_avg_ms": round(top[1] / len(ms)) if top else None,
+                    "since": min(r["t"] for r in rows if r["ev"] == ev)})
+    if "--json" in argv:
+        print(json.dumps(out))
+        return 0
+    if not out:
+        print(M("hook.times_none"))
+        return 0
+    print(M("hook.times_head"))
+    for o in out:
+        print(f"{o['ev']:<18} {o['n']:>5} {o['median_ms']:>7} {o['p90_ms']:>7} {o['max_ms']:>7} {o['boot_median_ms']:>7}  "
+              + (f"{o['top_phase']} ({o['top_phase_avg_ms']} ms)" if o["top_phase"] else "-"))
+    return 0
+
+
+def fast_cache():
+    """La cartella di stato per cm-fast.sh (che in bash non legge la config): un file per configurazione nella cache,
+    riscritto solo se cambia. Stessa chiave di cm-fast.sh: il percorso della config, i caratteri strani in «_»."""
+    try:
+        home = os.environ.get("HOME") or str(Path.home())
+        cfg = (os.environ.get("CC_SUPERVISOR_CONFIG") or os.environ.get("TEAM_SUPERVISOR_CONFIG") or os.environ.get("CLAUDE_MASTER_CONFIG")
+               or f"{os.environ.get('CM_HOME') or home}/.config/cc-supervisor/config.json")
+        f = Path(os.environ.get("XDG_CACHE_HOME") or f"{home}/.cache") / "cc-supervisor" / ("state-dir." + re.sub(r"[^A-Za-z0-9]", "_", cfg)[-180:])
+        want = str(STATE) + "\n"
+        try:
+            if f.read_text() == want:
+                return
+        except OSError:
+            pass
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(want)
+    except OSError:
+        pass
+
+
+def restart_armed():
+    """C'e' un riavvio armato (di qualunque sessione)? Solo allora serve cm-restart.sh, che da solo costa piu' di
+    meta' di uno Stop (bash, la config in bash, tmux): 366 ms su 686 misurati. Nel dubbio si'."""
+    try:
+        base = Path(cm.expand((CFG.get("restart") or {}).get("flag_file") or ""))
+        if not base.name:
+            return True
+        return base.exists() or any(base.parent.glob(base.stem + "-*.json"))
+    except (OSError, ValueError):
+        return True
+
+
+def spawn_late(p, full):
+    """Il resto dello Stop in un figlio staccato e a bassa priorita' (StopLate): l'hook risponde senza aspettarlo."""
+    try:
+        env = dict(os.environ, CM_HOOK_LATE_FULL="1" if full else "0", CM_HOOK_TMUX_NAME=my_tmux_name() or "")
+        env.pop("CM_HOOK_T0", None)
+        pr = subprocess.Popen([sys.executable, str(HERE / "cm-hook.py"), "StopLate"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, start_new_session=True, env=env)
+        pr.stdin.write(json.dumps(p).encode())
+        pr.stdin.close()
+    except (OSError, ValueError):
+        pass
+
+
+def stop_late(p):
+    """Cio' che lo Stop faceva in linea e che legge la trascrizione o carica moduli pesanti: i prompt «unverified» del
+    turno da risolvere, e (solo quando lo Stop non ha consegnato niente) il /clear dopo un passaggio di consegne e un
+    cambio di modello o effort in attesa."""
+    try:
+        os.nice(10)
+    except (OSError, AttributeError):
+        pass
+    tn = my_tmux_name()
+    try:   # 23/10 16:22: i prompt del turno, «unverified» all'hook, si risolvono dalla trascrizione
+        if tn:
+            inbox().resolve_box(tn)
+    except Exception:   # noqa: BLE001
+        pass
+    mark("resolve")
+    if os.environ.get("CM_HOOK_LATE_FULL") != "1":
+        return
+    try:   # 05/11 (supervisor-clear-dopo-handoff-05-11): un passaggio di consegne scritto nel turno → /clear da supervisor
+        spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
+        ho = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ho)
+        ho.on_stop(tn, p.get("transcript_path") or "")
+    except Exception:   # noqa: BLE001 — un aiuto in piu': mai far cadere lo Stop
+        pass
+    mark("handoff")
+    try:   # 05/11 (supervisor-modello-stato-05-11): un cambio di modello o effort chiesto durante il turno
+        spec = importlib.util.spec_from_file_location("cm_tune", HERE / "cm-tune.py")
+        tu = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tu)
+        if tn and tu.pending_of(tn):
+            tu.spawn_apply(tn)
+    except Exception:   # noqa: BLE001
+        pass
+    mark("tune")
 
 DAYS = {"it": ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
         "en": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]}
@@ -254,18 +425,24 @@ def registry_update(closed=""):
         pass
 
 
+_TMUX_NAME = {}
+
+
 def my_tmux_name():
     if os.environ.get("CM_HOOK_TMUX_NAME"):   # detach.sh read it before letting go: after /exit the pane may be gone
         return os.environ["CM_HOOK_TMUX_NAME"]
     pane = os.environ.get("TMUX_PANE", "")
     if not pane:
         return ""
+    if pane in _TMUX_NAME:   # 16/11: una chiamata a tmux per esecuzione dell'hook, non una per uso (lo Stop ne faceva sei)
+        return _TMUX_NAME[pane]
     try:
         r = subprocess.run(["tmux"] + os.environ.get("CM_TMUX_ARGS", "").split() + ["display-message", "-p", "-t", pane, "#{session_name}"],
                            capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return ""
-    return r.stdout.strip() if r.returncode == 0 else ""
+    _TMUX_NAME[pane] = r.stdout.strip() if r.returncode == 0 else ""
+    return _TMUX_NAME[pane]
 
 
 def ask_notify(p):
@@ -627,11 +804,27 @@ PRIVATE = False   # 12/11 (supervisor-ambito-sessioni-12-11): una sessione fuori
 
 
 def main(argv):
+    ev = argv[0] if argv else ""
+    if ev == "times":
+        return times_cmd(argv[1:])
+    try:
+        return run_event(argv)
+    finally:
+        if ev:
+            times_write(ev)
+
+
+def run_event(argv):
     global PRIVATE
     ev = argv[0] if argv else ""
     p = payload()
     sid = p.get("session_id", "")
     PRIVATE = not cm.cwd_in_scope(CFG, p.get("cwd") or "")
+    fast_cache()
+    mark("input")
+    if ev == "StopLate":
+        stop_late(p)
+        return 0
     if ev == "SessionStart":
         registry_update()
         (STATE / "waiting" / sid).unlink(missing_ok=True) if sid else None
@@ -652,6 +845,7 @@ def main(argv):
         ledger("start", p, source=p.get("source", ""), model=p.get("model") or None,   # 05/11: il modello del payload, misurato
                **chain)
         note_start_model(sid, p.get("model"))
+        mark("chain")
         k = kernel_text(p)
         if k:
             sys.stdout.write(k + "\n")
@@ -661,9 +855,11 @@ def main(argv):
         o = onboarding_block(p)   # 02/11: il copione dell'avvio, solo alla master e solo se serve
         if o:
             sys.stdout.write(o + "\n")
+        mark("kernel")
         c = commitments_block()   # P2: a ogni giro di regia, dal registro
         if c:
             sys.stdout.write(c + "\n")
+        mark("commitments")
         if handoff_line:
             sys.stdout.write(handoff_line + "\n")
         if src == "startup" and prev:   # 06/11: la conversazione di prima si riprende senza cercarne l'id
@@ -677,12 +873,14 @@ def main(argv):
                 sys.stdout.write(jb + "\n")
         except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
             pass
+        mark("jobs")
         try:   # 23/09: i messaggi arrivati mentre la sessione era chiusa (casella persistente)
             box = inbox().deliver_block(my_tmux_name(), p.get("cwd") or os.getcwd(), "session-start")
             if box:
                 sys.stdout.write(box + "\n")
         except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
             pass
+        mark("inbox")
         relay_push()
     elif ev == "SessionEnd":
         explicit = p.get("reason", "") in ("prompt_input_exit", "logout")
@@ -695,18 +893,22 @@ def main(argv):
             (STATE / "needs-you" / f"{sid}.json").unlink(missing_ok=True)   # 1.68: il prompt dopo chiude «ferma per te»
         ledger("prompt", p)   # l'inizio del turno (turn_started per il polso)
         rec_id = record_person_prompt(p)   # 22/10: l'ok scritto qui vale (casella della sessione, origine terminal)
+        mark("record")
         relay_push()   # 08/10 (fase 1): un prompt dalla tastiera arrivava alle app solo al giro del cron
         if CFG["hooks"]["local_time"]["enabled"]:
             sys.stdout.write(local_time() + "\n")
         line = waiting_for_you()
         if line:
             sys.stdout.write(line + "\n")
+        mark("waiting")
         c = commitments_block()   # P2 (22/10): gli impegni dal registro, non dai messaggi delle sessioni
         if c:
             sys.stdout.write(c + "\n")
+        mark("commitments")
         a = answers_pending_block(rec_id)   # 04/11: le voci che aspettano la persona, col comando unico
         if a:
             sys.stdout.write(a + "\n")
+        mark("answers")
     elif ev == "PermissionRequest":
         if sid:
             (STATE / "waiting").mkdir(parents=True, exist_ok=True)
@@ -739,12 +941,9 @@ def main(argv):
         # «waiting» con la domanda gia' risposta (14/09: answered e outcome partiti 3 minuti tardi)
         if sid:
             (STATE / "waiting" / sid).unlink(missing_ok=True)
-        try:   # 23/10 16:22: i prompt del turno, «unverified» all'hook, si risolvono ora dalla trascrizione
-            tm_name = my_tmux_name()
-            if tm_name:
-                inbox().resolve_box(tm_name)
-        except Exception:   # noqa: BLE001
-            pass
+        # 16/11/2026 (supervisor-hook-lenti-16-11): 16 scadenze a 20 s in dieci giorni. Qui resta cio' che deve rispondere
+        # (registro, riavvio armato, coda, casella); cio' che legge la trascrizione o carica moduli pesanti va a StopLate,
+        # un figlio staccato: i prompt «unverified» del turno, il /clear dopo un passaggio di consegne, modello ed effort
         msg = p.get("last_assistant_message") or ""
         try:   # 1.98: la riga «Tipo:» resta fuori dal ledger, da cui leggono recap, `next` e stato
             spec = importlib.util.spec_from_file_location("cm_relay_state", HERE / "cm-relay-state.py")
@@ -762,45 +961,42 @@ def main(argv):
         # la riga «Watch:» (12/09/2026): l'esito nudo per lo smartwatch, chiesto dal prefisso del bot
         watch = next((l[:200] for l in reversed(righe) if l.lower().lstrip("*_#> ").startswith("watch")), "")
         ledger("stop", p, last=last, tail=tail, esito=esito, watch=watch)
+        mark("ledger")
         relay_push()
         task_check_on_stop()
-        if CFG["hooks"]["restart_stop"]["enabled"]:
+        mark("push")
+        # cm-restart.sh solo con un riavvio armato: da solo era piu' di meta' del tempo di uno Stop
+        if CFG["hooks"]["restart_stop"]["enabled"] and restart_armed():
             r = subprocess.run([str(HERE / "cm-restart.sh"), "hook"], input=json.dumps(p), capture_output=True, text=True,
                                env={**os.environ, "CM_HOOK_SESSION_ID": sid})
+            mark("restart")
             if r.stdout.strip():
                 sys.stdout.write(r.stdout)
+                spawn_late(p, False)
                 return 0
         item = pop_queue(p)
+        mark("queue")
         if item:
             ledger("queue-pop", p, text=item.get("text", "")[:120])
             sys.stdout.write(json.dumps({"decision": "block",
                                          "reason": f"[supervisor queue] {item.get('text', '')}"}, ensure_ascii=False) + "\n")
+            spawn_late(p, False)
             return 0
         # 23/09: i messaggi arrivati mentre la sessione lavorava e non ha potuto riceverli (casella persistente)
-        if not p.get("stop_hook_active"):
+        if p.get("stop_hook_active"):
+            spawn_late(p, False)
+        else:
             try:
                 box = inbox().deliver_block(my_tmux_name(), p.get("cwd") or os.getcwd(), "stop")
             except Exception:   # noqa: BLE001
                 box = ""
+            mark("inbox")
             if box:
                 sys.stdout.write(json.dumps({"decision": "block", "reason": box}, ensure_ascii=False) + "\n")
+                spawn_late(p, False)
                 return 0
-            try:   # 05/11 (supervisor-clear-dopo-handoff-05-11): un passaggio di consegne scritto nel turno → /clear da supervisor
-                spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
-                ho = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(ho)
-                ho.on_stop(my_tmux_name(), p.get("transcript_path") or "")
-            except Exception:   # noqa: BLE001 — un aiuto in piu': mai far cadere lo Stop
-                pass
-            try:   # 05/11 (supervisor-modello-stato-05-11): un cambio di modello o effort chiesto durante il turno
-                tn = my_tmux_name()
-                spec = importlib.util.spec_from_file_location("cm_tune", HERE / "cm-tune.py")
-                tu = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(tu)
-                if tn and tu.pending_of(tn):
-                    tu.spawn_apply(tn)
-            except Exception:   # noqa: BLE001
-                pass
+            spawn_late(p, True)   # il passaggio di consegne e il cambio di modello: solo a turno chiuso davvero
+        mark("late")
     elif ev == "StopFailure":
         # 22/10/2026 (0.8.41, nota sul changelog 2.1.306): in 65 stop-failure del ledger error_details era sempre vuoto e il
         # motivo vero stava in last_assistant_message («the API error string itself»), che nessuno leggeva
@@ -822,7 +1018,8 @@ def main(argv):
             # 1.61 (14/10): ogni altro turno fallito (529 overloaded, 500, accesso) al telefono, con il motivo e «continua»
             subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "turn-failed", name, err[:500]], stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        subprocess.run([str(HERE / "cm-restart.sh"), "failed"], input=json.dumps(p), capture_output=True, text=True)
+        if restart_armed():   # 16/11: lo script solo se c'e' un riavvio armato da segnare fallito
+            subprocess.run([str(HERE / "cm-restart.sh"), "failed"], input=json.dumps(p), capture_output=True, text=True)
     return 0
 
 

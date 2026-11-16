@@ -71,8 +71,17 @@ def env(**extra):
     return e
 
 
+def _late():
+    f = state / "hook-times.jsonl"
+    return sum(1 for x in f.read_text().splitlines() if '"StopLate"' in x) if f.exists() else 0
+
+
 def hook(event, payload, **extra):
-    return subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), event], input=json.dumps(payload), capture_output=True, text=True, env=env(**extra), timeout=60)
+    n = _late() if event == "Stop" else 0
+    r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), event], input=json.dumps(payload), capture_output=True, text=True, env=env(**extra), timeout=60)
+    if event == "Stop":   # 16/11 (supervisor-hook-lenti-16-11): il resto dello Stop gira in un figlio staccato; qui lo si aspetta
+        T.wait_until(lambda: _late() > n, timeout=15)
+    return r
 
 
 ledger = state / "ledger.jsonl"

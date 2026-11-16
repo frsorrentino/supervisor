@@ -117,6 +117,7 @@ case "$cmd" in
   permissions|permessi)   exec python3 "$S/cm-tune.py" permissions "$@" ;;
   screen|schermo)         exec python3 "$S/cm-screen.py" "$@" ;;
   inbox|casella)          exec python3 "$S/cm-inbox.py" "$@" ;;
+  hook-times|tempi-hook)  exec python3 "$S/cm-hook.py" times "$@" ;;   # 16/11: i tempi veri degli hook, per evento
   pin)                    exec python3 "$S/cm-pin.py" "$@" ;;   # 23/10: il PIN degli ok
   host|macchina)          exec python3 "$S/cm-hosts.py" "$@" ;;
   hosts|macchine)         case "${1:-}" in poll|install|uninstall) exec python3 "$S/cm-hosts.py" "$@" ;; esac

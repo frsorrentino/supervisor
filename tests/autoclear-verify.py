@@ -114,6 +114,7 @@ f3 = mkfile("hook.md")
 t_hook = transcript("hook", [(NOW - 50, "handoff", [f"supervisor handoff --written {f3}"], "Fatto")])
 pay = {"session_id": "s-h", "cwd": str(tmp), "transcript_path": t_hook, "last_assistant_message": "Fatto", "stop_hook_active": False}
 r3 = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), "Stop"], input=json.dumps(pay), capture_output=True, text=True, env=HOOK_ENV, timeout=60)
+T.wait_until(lambda: ["hooked", str(f3)] in spawned(), timeout=15)   # 16/11: lo fa il figlio staccato dello Stop (StopLate), un attimo dopo
 T.check("AC3 the Stop hook starts it (no queue): the /clear for «hooked» after its handoff", ["hooked", str(f3)] in spawned(), r3.stderr[-400:] + r3.stdout[-200:])
 
 # AC4 — il caso della master del 05/11: handoff alle 15:11, /clear alle 15:11:30 e alle 15:13:41, primo prompt alle 15:16

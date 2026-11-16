@@ -2,6 +2,15 @@
 
 ## 0.3.x
 
+- **0.8.172 — 2026-11-16: supervisor's hooks and its relay weigh much less on a loaded machine (supervisor-hook-lenti-16-11).**
+  - On a busy machine supervisor's hooks ran into their time limits: in ten days, 27 times on the hook before a Bash command, 16 on the hook at the end of a turn, 6 on the one at a prompt. Measured there under load, even starting a shell took over half a second.
+  - The hook before every Bash or Monitor command, and the one after every tool call, started Python each time and almost always had nothing to do. A small shell filter now decides first: an ordinary command starts no Python at all. The guard still sees every command that names push, release, publish or tmux, and decides as before.
+  - The hook at the end of a turn took about four times less in our measure. It ran the restart script at every turn, also with no restart armed, and that was more than half its time. What reads the transcript now runs right after, in the background: resolving the prompts of the turn, the `/clear` after a handoff, a pending model or effort change.
+  - The relay was the main load: about a quarter of a CPU on average. A chat left open in the web app asks for new messages every 20 seconds; on a 38 MB transcript each request parsed megabytes again and read the whole event ledger. A page is now answered from memory while the transcript has not changed, the ledger is read only when the page reaches the start of the conversation, and a request for a message that is not there no longer scans the whole file.
+  - `task closed` (the «Fatto» list of the app) asked git for the remote of every project that ever closed a task, at every call. It now does so only for the tasks of the day shown.
+  - `supervisor hook-times` shows what the hooks really take on your machine, per event and per phase; each command line in the relay's log now carries the CPU it used.
+  - The hooks of claude-observe inside supervisor now carry the plugin's name in their command. Claude Code runs identical hook commands of different plugins only once, so supervisor's own was skipped when another plugin had the same one.
+  - New tests: `tests/hook-tempi-verify.py` and `tests/carico-relay-verify.py`.
 - **0.8.171 — 2026-11-16: every decision that waits for you carries the session's advice and its reason (supervisor-consiglio-carte-16-11, contract 1.149).**
   - Asked from the web app: on every decision in «Ti aspetta», the suggestion marked «consigliata» and a short reason for it. A session that asks for an ok or a choice must now say what it advises and why, in one line: `supervisor task wait-ok` refuses a card without `--consiglio`, and the error says how to write it.
   - On a choice the session also says which option it advises (`--consigliata N`). On an ok it advises to approve, or not to (`--consigliata no`). The app gets the reason in a new field, `advice`, and the mark on the advised option or button.

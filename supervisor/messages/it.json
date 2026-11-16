@@ -1515,6 +1515,8 @@
   "bg.block_more": "- e altri {n}",
   "bg.block_tail": "Guarda log ed effetti (un tag, un commit, un file) per capire fin dove è arrivato; poi rilancia quello che serve ancora con `supervisor bg -- COMANDO` (sopravvive alla sessione, log fuori da /tmp) oppure dì all'utente cosa si è perso. Non dare per fatto un lavoro interrotto.",
   "hook.prev_conversation": "CONVERSAZIONE DI PRIMA di «{name}»: {sid} (ultima scrittura {at}, {mb} MB). Questa conversazione è nuova. Se il lavoro di prima va ripreso: `supervisor restart arm --resume {sid}` (a fine turno la sessione riparte su quella) oppure /resume {sid} nel terminale. Se il riavvio pulito era voluto, ignora questa riga.",
+  "hook.times_none": "nessun tempo registrato: gli hook scrivono <state_dir>/hook-times.jsonl dalla 0.8.172, a ogni esecuzione",
+  "hook.times_head": "EVENTO             VOLTE MEDIANA     90% MASSIMO   AVVIO  FASE PIU' CARA (media)   — millisecondi",
   "restart.armed_resume": "  RIPRENDE la conversazione {sid}",
   "restart.bad_sid": "supervisor restart: --resume vuole l'id di una conversazione (es. 007cb593-…), non «{sid}»",
   "restore.resume_prompt": "Ripristino dopo un riavvio della macchina, prompt automatico: l'avvio ti ha elencato il lavoro interrotto. Controlla fin dove è arrivato, riprendi quello che serve ancora (con supervisor bg per i comandi lunghi) o dillo, poi continua da dove eri. Se non resta niente, dillo in una riga e fermati.",

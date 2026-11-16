@@ -1596,7 +1596,7 @@ def transcript_page(session, tm, arg, sid=None):
         path = core.transcript_of(row) if row else None
         if not path:
             return False, M("relay.cmd_interrupt_gone", name=session)
-        return transcript_read(path, n, mode, ref, chain_of(row, tm))
+        return transcript_read(path, n, mode, ref, lambda: chain_of(row, tm))
     if row.get("host") and row.get("host") != "local":
         # 09/10: la chat di una sessione su un altro host: prima i byte nuovi del suo transcript, nella copia locale
         try:
@@ -1614,7 +1614,7 @@ def transcript_page(session, tm, arg, sid=None):
         # a ieri una pagina vuota con ok (28/10, «sessione appena partita»), che l'app prende per la conversazione intera
         # e mette al posto delle voci che ha. Ora un rifiuto col motivo: l'app tiene quello che ha e riprova
         return False, M("relay.cmd_transcript_missing", name=session)
-    return transcript_read(path, n, mode, ref, chain_of(row, tm))
+    return transcript_read(path, n, mode, ref, lambda: chain_of(row, tm))   # la catena solo se serve: legge il ledger intero
 
 
 def chain_of(row, tm):
@@ -1627,16 +1627,56 @@ def chain_of(row, tm):
         return []
 
 
+# 16/11/2026 (supervisor-hook-lenti-16-11). Misurato sul Chromebook: il demone al 27% di CPU di media (62% in un thread),
+# e nel log 29 «transcript master · 200:after=<id>» in dieci minuti, uno ogni 20 s, dalla chat aperta nella web app su
+# una trascrizione di 37,9 MB. Ogni lettura analizzava almeno 2 MB di JSON e leggeva il ledger intero per la catena; con
+# una voce che la finestra non contiene si allargava fino al file intero, e alle conversazioni di prima, a ogni giro.
+TRANSCRIPT_CACHE_S = 120      # una pagina gia' calcolata vale finche' il file non cambia, e al piu' due minuti
+TRANSCRIPT_CACHE_N = 120
+AFTER_WINDOW_MAX = 16 * 1024 * 1024   # «after» non legge mai il file intero: oltre, le ultime voci con reset
+_TR_LOCK = threading.Lock()
+_TR_CACHE = {}    # (path, n, mode, ref) → (dimensione, mtime_ns, quando, risposta)
+_TR_MISS = {}     # (path, ref) → quando: una voce cercata e non trovata non compare dopo (gli id sono casuali)
+
+
 def transcript_read(path, n, mode, ref, chain=None):
+    """La pagina di voci di una trascrizione (vedi transcript_page), dalla cache se il file e' quello di prima: la
+    chat aperta ripete «after=<ultima voce>» ogni pochi secondi, e a sessione ferma la risposta e' la stessa. `chain`
+    puo' essere una funzione: la catena delle conversazioni si calcola solo se la pagina arriva all'inizio del file."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return _transcript_read(path, n, mode, ref, chain)
+    key, now_ = (str(path), n, mode, ref), time.time()
+    with _TR_LOCK:
+        hit = _TR_CACHE.get(key)
+    if hit and hit[0] == st.st_size and hit[1] == st.st_mtime_ns and now_ - hit[2] < TRANSCRIPT_CACHE_S:
+        return hit[3]
+    res = _transcript_read(path, n, mode, ref, chain)
+    with _TR_LOCK:
+        if len(_TR_CACHE) >= TRANSCRIPT_CACHE_N:
+            for k in sorted(_TR_CACHE, key=lambda k: _TR_CACHE[k][2])[:TRANSCRIPT_CACHE_N // 2]:
+                _TR_CACHE.pop(k, None)
+        _TR_CACHE[key] = (st.st_size, st.st_mtime_ns, now_, res)
+    return res
+
+
+def _transcript_read(path, n, mode, ref, chain=None):
     """La pagina di voci di una trascrizione (vedi transcript_page). 1.126: `chain` = le conversazioni di prima della
     stessa sessione (conversation_chain): quando la pagina arriva all'inizio del file, o la voce chiesta non c'e', si
     legge anche la precedente, con la sua voce «separator» in mezzo."""
     size = os.path.getsize(path)
+    with _TR_LOCK:
+        missed = mode == "after" and bool(ref) and (str(path), ref) in _TR_MISS
     for window in TRANSCRIPT_WINDOWS:
         start = 0 if window is None or window >= size else size - window
         entries = core.transcript_entries(path, start, diff_cap=(DF.ENTRY_LINES, DF.ENTRY_BYTES))
         ids = [e["id"] for e in entries]
         if ref and ref not in ids and start:
+            # 16/11: «after» su una voce che non c'e' non allarga fino al file intero (ne' oltre la prima finestra, se
+            # si sa gia' che manca): la risposta e' comunque le ultime voci con reset
+            if mode == "after" and (missed or (window is not None and window >= AFTER_WINDOW_MAX)):
+                break
             continue   # la voce e' piu' indietro: si allarga la finestra
         if not ref and len(entries) < n and start:
             continue
@@ -1647,7 +1687,9 @@ def transcript_read(path, n, mode, ref, chain=None):
         break
     entries = _with_compacts(path, start, entries)
     ids = [e["id"] for e in entries]
-    older = list(chain or []) if not start else []
+    # la catena solo quando serve (legge il ledger intero): la pagina e' arrivata all'inizio del file. E non per una voce
+    # di «after» che si sa gia' mancare: le conversazioni di prima sono state lette una volta, non c'era
+    older = [] if start or missed else list((chain() if callable(chain) else chain) or [])
     # 1.126: la conversazione di prima entra quando serve: la voce chiesta e' la' (la chat aperta dopo un /clear), o la
     # pagina dal fondo (o prima di una voce) arriva all'inizio di questo file
     while older:
@@ -1668,6 +1710,10 @@ def transcript_read(path, n, mode, ref, chain=None):
     if ref and ref not in ids:
         if mode != "after":
             return False, M("relay.cmd_transcript_unknown", id=ref)
+        with _TR_LOCK:   # 16/11: la prossima volta niente finestre larghe ne' conversazioni di prima per questa voce
+            if len(_TR_MISS) >= 500:
+                _TR_MISS.clear()
+            _TR_MISS[(str(path), ref)] = time.time()
         # 1.93 (28/10, «no entry … in the transcript» ×525 nelle note di claude-observe): la chat aperta chiede le voci
         # dopo l'ultima che ha; dopo un riavvio o un /clear quella voce non c'e' piu' e ogni giro falliva. Le ultime n
         # voci con reset true: l'app sostituisce la lista

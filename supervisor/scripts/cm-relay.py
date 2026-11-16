@@ -3979,17 +3979,19 @@ def _run_cmd(cmd, arrived=None):
     op_ = str(cmd.get("op") or "")
     with (EXEC_LOCK if active else FILE_LOCK if op_ in FILE_OPS else SLOW_LOCK if op_ in SLOW_READ_OPS else READ_LOCK):
         t_run = time.time()
+        cpu0 = time.thread_time()
         if active:
             _MEMO.clear()   # 29/10: un comando che cambia qualcosa decide sul fresco (approve legge le attese di ok)
         res = execute(cmd)
         if active:
             _MEMO.clear()   # e la push dopo di lui rilegge tutto
+        cpu = time.thread_time() - cpu0   # 16/11: la CPU del comando in questo processo (non quella dei figli)
     t_done = time.time()
     try:
         issued = float(cmd.get("issued") or 0)
     except (TypeError, ValueError):
         issued = 0.0
-    timing = (f" · fila {_s(t_run - (arrived or t_in))} s · esecuzione {_s(t_done - t_run)} s"
+    timing = (f" · fila {_s(t_run - (arrived or t_in))} s · esecuzione {_s(t_done - t_run)} s · cpu {_s(cpu)} s"
               + (f" · issued {_s(t_run - issued)} s (orologio del dispositivo)" if issued > 1e9 else ""))
     ok, text = res[0], res[1]
     extra = res[2] if len(res) > 2 and isinstance(res[2], dict) else {}   # 1.13: {"session": nome} dopo un launch

@@ -1515,6 +1515,8 @@
   "bg.block_more": "- and {n} more",
   "bg.block_tail": "Look at the log and the effects (a tag, a commit, a file) to see how far it got; then rerun what is still needed with `supervisor bg -- COMMAND` (it outlives the session, log outside /tmp) or tell the user what was lost. Never take an interrupted job as done.",
   "hook.prev_conversation": "PREVIOUS CONVERSATION of “{name}”: {sid} (last written {at}, {mb} MB). This conversation is new. If the earlier work should go on: `supervisor restart arm --resume {sid}` (at the end of the turn the session restarts on it) or /resume {sid} in the terminal. If the clean restart was intended, ignore this line.",
+  "hook.times_none": "no times recorded: the hooks write <state_dir>/hook-times.jsonl since 0.8.172, at every run",
+  "hook.times_head": "EVENT              RUNS  MEDIAN     90%     MAX    BOOT  DEAREST PHASE (average)  — milliseconds",
   "restart.armed_resume": "  RESUMES the conversation {sid}",
   "restart.bad_sid": "supervisor restart: --resume wants a conversation id (e.g. 007cb593-…), not “{sid}”",
   "restore.resume_prompt": "Restore after a machine restart, automatic prompt: the start listed the interrupted work for you. Check how far it got, resume what is still needed (supervisor bg for long commands) or say so, then go on from where you were. If nothing is left, say it in one line and stop.",

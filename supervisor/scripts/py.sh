@@ -25,4 +25,7 @@ if [ -z "$py" ]; then
   exit 0
 fi
 export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+# 16/11/2026 (supervisor-hook-lenti-16-11): l'ora di partenza, per il tempo vero di un hook compreso l'avvio di bash
+# e di python (bash 5: una variabile, nessun processo; altrove vuota, e l'hook conta da quando parte lui)
+export CM_HOOK_T0="${EPOCHREALTIME:-}"
 exec $py "$@"

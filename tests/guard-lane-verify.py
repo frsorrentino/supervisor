@@ -133,7 +133,7 @@ import fnmatch  # noqa: E402
 import re  # noqa: E402
 strict = [h for e in hooks.get("PreToolUse", []) if e.get("matcher") == "Bash" for h in e["hooks"] if "--strict" in h["command"]]
 plain_ = [h for e in hooks.get("PreToolUse", []) if e.get("matcher") == "Bash" for h in e["hooks"]
-          if "cm-lane-guard.py" in h["command"] and "--strict" not in h["command"]]
+          if "cm-fast.sh" in h["command"] and h["command"].endswith(" pre")]   # 16/11: la guardia passa dalla porta veloce (cm-fast.sh pre)
 T.check("G9 hooks.json: the strict entries carry an `if` on Bash, onFailure block and --strict through py.sh; the lane guard stays fail-open, unfiltered",
         strict and all(re.fullmatch(r"Bash\(.+\)", h.get("if", "")) and h.get("onFailure") == "block" and "py.sh" in h["command"] for h in strict)
         and len(plain_) == 1 and "onFailure" not in plain_[0] and "if" not in plain_[0], str(strict) + str(plain_))
@@ -179,7 +179,7 @@ T.check("G10 the guard treats a Monitor command as a Bash one: tmux send-keys de
         and hook("echo hello", tool="Monitor") == "allow" and hook("git push", T.tmpdir(), tool="Read") == "allow",
         str((hook("tmux send-keys -t x y", tool="Monitor"), hook("git push", T.tmpdir(), tool="Monitor"))))
 T.check("G10 hooks.json: every strict entry has its Monitor(…) twin under the Monitor matcher (under Bash it would never fire), and the lane guard runs on Monitor too",
-        strict and _mon_strict == [_twin(h) for h in strict] and sum("--strict" not in h["command"] and "cm-lane-guard.py" in h["command"] for h in _mon_h) == 1,
+        strict and _mon_strict == [_twin(h) for h in strict] and sum("--strict" not in h["command"] and "cm-fast.sh" in h["command"] and h["command"].endswith(" pre") for h in _mon_h) == 1,
         str(_mon_h))
 
 T.finish()

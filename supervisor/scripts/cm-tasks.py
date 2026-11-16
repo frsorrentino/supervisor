@@ -2447,17 +2447,27 @@ def closed(con, day=None, now_=None):
     import datetime as dt
     now_ = int(now_ or now())
     d0 = dt.date.fromisoformat(day) if day else dt.date.fromtimestamp(now_)
-    by_day = {}
-    for r in con.execute("SELECT * FROM tasks WHERE state IN ('done','failed','cancelled','superseded')").fetchall():
-        res = con.execute("SELECT outcome, reason, proof, at FROM results WHERE task=? AND accepted=1 ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
-        at = int(res["at"]) if res and r["state"] not in ("cancelled", "superseded") else int(r["updated_at"] or r["created_at"] or 0)
+    # 16/11/2026 (supervisor-hook-lenti-16-11): visto al 369% di CPU sul Chromebook. Per ogni compito chiuso di sempre
+    # leggeva il contratto e ne calcolava la prova, che chiede a git il remoto della cartella (un processo per progetto).
+    # Dei giorni prima serve solo il conteggio: una lettura sola per l'ora di chiusura, e la prova solo per il giorno chiesto
+    counts, mine = {}, []
+    for r in con.execute("SELECT t.id, t.state, t.updated_at, t.created_at, (SELECT at FROM results x WHERE x.task = t.id AND x.accepted = 1 "
+                         "ORDER BY x.n DESC LIMIT 1) AS res_at FROM tasks t WHERE t.state IN ('done','failed','cancelled','superseded')").fetchall():
+        at = int(r["res_at"]) if r["res_at"] is not None and r["state"] not in ("cancelled", "superseded") else int(r["updated_at"] or r["created_at"] or 0)
+        day_ = dt.date.fromtimestamp(at)
+        counts[day_] = counts.get(day_, 0) + 1
+        if day_ == d0:
+            mine.append((r["id"], at))
+    rows = []
+    for tid, at in mine:
+        r = con.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
+        res = con.execute("SELECT outcome, reason, proof, at FROM results WHERE task=? AND accepted=1 ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         task = json.loads(r["contract"])["task"]
         result = {"reason": res["reason"], "proof": json.loads(res["proof"])} if res else None
-        day_ = dt.date.fromtimestamp(at)
-        by_day.setdefault(day_, []).append({"task": r["id"], "title": r["title"], "short": short_of(task), "project": r["project"], "session": r["session"], "at": at,
-                                            "outcome": "green" if r["state"] == "done" else r["state"], "proof": proof_of(task, result)})
-    rows = sorted(by_day.get(d0, []), key=lambda x: -x["at"])
-    days = [{"date": d.isoformat(), "n": len(v)} for d, v in sorted(by_day.items(), reverse=True) if d < d0][:6]
+        rows.append({"task": r["id"], "title": r["title"], "short": short_of(task), "project": r["project"], "session": r["session"], "at": at,
+                     "outcome": "green" if r["state"] == "done" else r["state"], "proof": proof_of(task, result)})
+    rows.sort(key=lambda x: -x["at"])
+    days = [{"date": d.isoformat(), "n": k} for d, k in sorted(counts.items(), reverse=True) if d < d0][:6]
     return {"date": d0.isoformat(), "rows": rows, "days": days, "more": False}
 
 

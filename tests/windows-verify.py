@@ -78,8 +78,14 @@ cmds = [h["command"] for groups in hooks.values() for g in groups for h in g["ho
 cm = [c for c in cmds if "cm-hook.py" in c]
 # SessionEnd passa da detach.sh, che lancia py.sh staccato (2.1.287: 1,5 s per tutti gli hook di session.end)
 # 24/10/2026 (1.83): nove con Elicitation ed ElicitationResult
+# 16/11/2026 (supervisor-hook-lenti-16-11): PostToolUse e la guardia di PreToolUse passano da cm-fast.sh, che decide in
+# bash se serve python e, quando serve, lo lancia con py.sh: otto voci dirette piu' le tre della porta veloce
+fast = [c for c in cmds if "cm-fast.sh" in c]
+T.check("P5 the fast door (cm-fast.sh: PostToolUse, and the lane guard on Bash and Monitor) starts python through py.sh, never bare",
+        sorted(c.rsplit(" ", 1)[1] for c in fast) == ["post", "pre", "pre"] and "py.sh" in (T.SCRIPTS / "cm-fast.sh").read_text()
+        and "python3" not in (T.SCRIPTS / "cm-fast.sh").read_text().replace("# ", ""), json.dumps(fast))
 T.check("P5 every cm-hook.py hook runs through scripts/py.sh (SessionEnd through detach.sh, which runs py.sh)",
-        len(cm) == 9 and all(c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" ')
+        len(cm) == 8 and all(c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" ')
                              or (c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/detach.sh" ') and c.endswith(" SessionEnd"))
                              for c in cm)
         and 'py.sh' in (T.SCRIPTS / "detach.sh").read_text(), json.dumps(cm)[:400])

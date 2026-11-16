@@ -137,6 +137,8 @@ pay5 = {"session_id": "s-e", "cwd": str(tmp), "transcript_path": t_empty, "last_
 for _ in range(2):
     subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), "Stop"], input=json.dumps(pay5), capture_output=True, text=True, timeout=60,
                    env=dict(os.environ, CM_HOOK_TMUX_NAME="eps", CM_HOOK_SESSION_ID="s-e"))
+T.wait_until(lambda: SPAWN.exists(), timeout=15)   # 16/11: lo fa il figlio staccato dello Stop (StopLate), un attimo dopo
+time.sleep(2)   # e il secondo Stop non ne deve avviare un altro
 T.check("MS5 the Stop hook starts the executor for its own session, once (the lock)", SPAWN.exists() and SPAWN.read_text().split() == ["eps"], SPAWN.read_text() if SPAWN.exists() else "")
 HO = load("cm-handoff")
 pend_seq = iter([{"model": "x"}, {"model": "x"}, {}])

@@ -46,7 +46,7 @@ hooks = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
 ptf = [(e.get("matcher"), h["command"]) for e in hooks.get("PostToolUseFailure", []) for h in e["hooks"]]
 ss = [h["command"] for e in hooks.get("SessionStart", []) for h in e["hooks"]]
 T.check("OI2 PostToolUseFailure only to the copy (matcher Bash); SessionStart runs cm-hook and the copy",
-        ptf == [("Bash", 'bash "${CLAUDE_PLUGIN_ROOT}/observe/py.sh" "${CLAUDE_PLUGIN_ROOT}/observe/observe.py" hook')]
+        ptf == [("Bash", 'bash "${CLAUDE_PLUGIN_ROOT}/observe/py.sh" "${CLAUDE_PLUGIN_ROOT}/observe/observe.py" hook supervisor')]   # 16/11: il nome del plugin in coda, o Claude Code fonde i comandi uguali di plugin diversi
         and any("cm-hook.py\" SessionStart" in c for c in ss) and any("observe.py\" session-start" in c for c in ss), json.dumps(hooks)[:600])
 cli = T.PLUGIN / "scripts" / "supervisor"
 a = subprocess.run([str(cli), "observe", "add", "supervisor", "restart --clean perde la coda", "--class", "D"], capture_output=True, text=True, env=ENV)
