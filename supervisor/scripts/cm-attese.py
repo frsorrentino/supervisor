@@ -8,7 +8,11 @@ supervisor-attese-link-07-11).
 Un'attesa e' {id, type, kind, session, task, text, options, at, link, answer}:
   type   carta (dal registro: ok, scelta, pausa che aspetta la persona, prova, login) | chat (domanda in chat: la riga
          «Prossimi» con una voce «!», needs-you, una domanda AskUserQuestion)
-  kind   ok | choice | pausa | prova | login | prossimi | needs_you | question
+  kind   ok | choice | pausa | prova | login | prossimi | needs_you | question; 1.150 limite; 1.151 (16/11/2026,
+         supervisor-riall-1-dati-16-11: le attese sono la fonte unica di ogni voce per te) nonva (una prova segnalata «Non
+         va», chiusa con «Ora va»), rosso (un compito col controllo rosso), turno (un turno fallito, «Continua»), raccolta
+         (la Prima raccolta, senza sessione). Ogni voce del registro porta il suo gruppo di decisione (decision: chiave,
+         «Non ora» e «Lascia»); una prova il dettaglio di ciascuna (tests, build). La sessione e' il nome dello stato.
   answer {op, arg, ...}: l'op del relay che risponde, la stessa dei tasti della carta (approve, prova, decisione,
          prompt, attention_done, answer); null per il login, che rifa' la master
   title  una riga per gli elenchi; card.deploy; actions [{label, style, cmd, text_field?, recommended?}] (1.131)
@@ -69,8 +73,19 @@ def _short(name):
     return name
 
 
-def _from_registry(now_):
-    """Le carte del registro: ok e scelte, pause che aspettano la persona, login (da tk.decisions), prove da fare."""
+def _test(x, state):
+    """Una prova come la mostra Verifica: {id, build, dove, fai, atteso, files, state todo|ko, text, at}."""
+    return {"id": x["id"], "build": x.get("build"), "dove": x.get("dove"), "fai": x.get("fai"), "atteso": x.get("atteso"),
+            "files": [file_item(f) for f in x.get("files") or []] or None, "state": state, "text": x.get("text") if state == "ko" else None,
+            "at": x.get("at")}
+
+
+def registry_items(now_):
+    """Le carte del registro: ok e scelte, pause che aspettano la persona, needs-you e login (da tk.decisions), prove da
+    fare. 1.151: con quello che stava solo nelle op decisioni e prove: il gruppo di decisione di ogni voce (chiave per
+    «Non ora» e «Lascia», titolo, peso, cosa sblocca, qui o al PC, la nota), l'inizio del piano, il dettaglio di ogni
+    prova (build, dove, fai, atteso), le prove segnalate «Non va» e i compiti col controllo rosso. Un errore del registro
+    sale a chi chiama: il relay tiene allora le voci di prima, senza chiuderne nessuna per finta."""
     tk = _load("cm-tasks")
     con = tk.connect(create=False)
     if con is None:
@@ -79,13 +94,16 @@ def _from_registry(now_):
     try:
         d = tk.decisions(con, now_)
         for g in d.get("groups") or []:
+            dec = {"key": g["key"], "title": g.get("title"), "cause": g.get("cause"), "where": g.get("where"), "weight": g.get("weight"),
+                   "unblocks": g.get("unblocks") or [], "note": g.get("note"), "since": g.get("since")}
             for it in g.get("items") or []:
                 k = it.get("kind")
+                common = {"decision": dec, "plan_start": it.get("plan_start"), "asks": it.get("asks"), "where": it.get("where")}
                 if k == "ok":
                     kind = "choice" if it.get("options") else "ok"
                     a = {"id": wid_approval(it["task"], it.get("since")), "type": "carta", "kind": kind, "session": it.get("session"), "task": it["task"],
                          "text": it.get("what") or it.get("title"), "options": it.get("options") or None, "at": it.get("since"),
-                         "answer": {"op": "approve", "arg": it["task"]}}
+                         "answer": {"op": "approve", "arg": it["task"]}, **common, "precedent": it.get("precedent"), "also": it.get("also")}
                     # la carta del registro: cosa esce e dove, cosa non e' provato, se e come si torna indietro (wait-ok)
                     a["_short"] = it.get("short")
                     a["card"] = {k: it.get(f) for k, f in (("what", "what"), ("where", "where_to"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how"))
@@ -97,21 +115,23 @@ def _from_registry(now_):
                 elif k == "pause":
                     out.append({"id": wid("pausa", it["task"], it.get("since")), "type": "carta", "kind": "pausa", "session": it.get("session"), "task": it["task"],
                                 "text": it.get("reason"), "options": None, "at": it.get("since"), "answer": {"op": "decisione", "arg": g["key"]}, "_short": it.get("short"),
-                                "_prova": bool(it.get("prova"))})
+                                "_prova": bool(it.get("prova")), **common, "prova": it.get("prova"), "undo": it.get("undo"), "undo_how": it.get("undo_how")})
                 elif k == "login":
                     out.append({"id": wid("login", it.get("account"), it.get("expires_at")), "type": "carta", "kind": "login", "session": it.get("session"), "task": None,
-                                "text": it.get("reason"), "options": None, "at": it.get("since"), "answer": None})
+                                "text": it.get("reason"), "options": None, "at": it.get("since"), "answer": None, **common, "account": it.get("account"),
+                                "expires_at": it.get("expires_at")})
                 elif k == "needs_you":
                     out.append({"id": wid("needs_you", int(it.get("since") or 0)), "type": "chat", "kind": "needs_you", "session": it.get("session"),
                                 "task": it.get("task"), "text": it.get("reason"), "options": None, "at": it.get("since"),
-                                "answer": {"op": "attention_done", "arg": it.get("session"), "kind": "needs_you"}})
+                                "answer": {"op": "attention_done", "arg": it.get("session"), "kind": "needs_you"}, **common})
         p = tk.prove_list(con, now_)
         by_task = {}
         for gr in p.get("groups") or []:
             for x in gr.get("prove") or []:
                 by_task.setdefault(x["task"], []).append(x)
         for tid, xs in by_task.items():
-            ids = sorted(x["id"] for x in xs)
+            xs = sorted(xs, key=lambda x: x["id"])
+            ids = [x["id"] for x in xs]
             fs = {}
             for x in xs:   # 1.137: i file delle prove del compito, una volta ciascuno
                 for f in x.get("files") or []:
@@ -119,10 +139,52 @@ def _from_registry(now_):
             out.append({"id": wid("prova", tid, ids[0]), "type": "carta", "kind": "prova", "session": xs[0].get("session"), "task": tid, "_short": xs[0].get("short"),
                         "files": list(fs.values()) or None,
                         "text": "; ".join(f"{x['dove']}: {x['fai']}" for x in xs)[:600], "options": None, "at": min(int(x.get("at") or 0) for x in xs),
-                        "answer": {"op": "prova", "arg": ",".join(map(str, ids))}})
+                        "answer": {"op": "prova", "arg": ",".join(map(str, ids))},
+                        # 1.151: ogni prova, con la sua build: l'app dice «installa prima» per quelle di un'altra versione
+                        "tests": [_test(x, "todo") for x in xs], "build": max(xs, key=lambda x: (int(x.get("at") or 0), x["id"])).get("build")})
+        for x in p.get("ko") or []:   # 1.151: segnalata «Non va»; si chiude con «Ora va» o «Non serve piu'»
+            out.append({"id": wid("nonva", x["id"]), "type": "carta", "kind": "nonva", "session": x.get("session"), "task": x["task"], "_short": x.get("short"),
+                        "files": [f for f in x.get("files") or []] or None, "text": x.get("text"), "options": None, "at": x.get("at"),
+                        "answer": {"op": "prova", "arg": str(x["id"]), "result": "ok"}, "tests": [_test(x, "ko")], "build": x.get("build")})
+        for x in p.get("red") or []:   # 1.151: ogni prova ok e il compito aperto: il controllo e' rosso (reason) o sta girando (null)
+            out.append({"id": wid("rosso", x["task"], int(x.get("at") or 0)), "type": "carta", "kind": "rosso", "session": x.get("session"), "task": x["task"],
+                        "_short": x.get("short"), "text": x.get("reason") or M("attese.red_running"), "options": None, "at": x.get("at") or now_, "answer": None,
+                        "red": {"reason": x.get("reason"), "running": x.get("reason") is None}})
     finally:
         con.close()
     return out
+
+
+_from_registry = registry_items   # il nome di prima
+
+
+def raccolta_items(now_):
+    """1.151: la Prima raccolta come voce senza sessione, finche' la domanda e' aperta (come op prima_raccolta.ask)."""
+    try:
+        rc = _load("cm-raccolta")
+        s = rc.read_status() or {}
+        if not rc.asking(s):
+            return []
+        q = M("raccolta.consent_question", days=rc.DAYS)
+    except Exception:   # noqa: BLE001 — una voce in piu': mai far cadere le altre
+        return []
+    return [{"id": wid("raccolta", str(s.get("consent")), int(s.get("ask_after") or 0), int(s.get("asked_v") or 0)), "type": "carta", "kind": "raccolta",
+             "session": None, "task": None, "text": f"{q}\n{M('raccolta.consent_note')}", "options": None, "at": int(s.get("ask_after") or 0),
+             "answer": {"op": "prima_raccolta_azione", "action": "consent", "value": "si"}, "_short": q}]
+
+
+def _canon(name, alias=None, names=()):
+    """1.151: il nome della sessione come in state.sessions[].name: quello esatto; l'alias del relay («win:x» per un
+    compito registrato per «x»); il nome senza il prefisso dell'account; il solo nome dello stato che finisce con «:x»."""
+    if not name or name in names:
+        return name
+    if alias and name in alias:
+        return alias[name]
+    s = _short(name)
+    if s in names:
+        return s
+    hits = [n for n in names if str(n).split(":", 1)[-1] == s]
+    return hits[0] if len(hits) == 1 else s
 
 
 def _last_state():
@@ -141,7 +203,7 @@ def _from_state(state):
         i = wid_attention(x)
         if not i:
             continue
-        k = {"turn_blocking": "prossimi", "quota_limit": "limite"}.get(x["kind"], x["kind"])
+        k = {"turn_blocking": "prossimi", "quota_limit": "limite", "turn_failed": "turno", "task_red": "rosso"}.get(x["kind"], x["kind"])
         s = sessions.get(x.get("session")) or {}
         a = {"id": i, "type": "chat", "kind": k, "session": x.get("session"), "task": None, "text": x.get("title"), "options": None, "at": x.get("since")}
         if k == "question":
@@ -149,6 +211,10 @@ def _from_state(state):
             opts = [o if isinstance(o, dict) else {"label": str(o)} for o in (q.get("options") or []) if o]
             # l'op answer vuole il numero dell'opzione in arg e l'id della domanda in question (contratto 1.55)
             a.update(options=opts or None, answer={"op": "answer", "session": x.get("session"), "question": x.get("ref")})
+        elif k == "turno":   # 1.151: il turno fallito, «Continua» come il tasto dell'evento turn_failed
+            a["answer"] = {"op": "prompt", "session": x.get("session"), "arg": M("relay.continue_text")}
+        elif k == "rosso":   # 1.151: il compito rosso della guardia (ref = il compito)
+            a.update(type="chat", task=x.get("ref"), answer={"op": "attention_done", "arg": x.get("ref"), "kind": "task_red"})
         elif k == "limite":
             # 16/11/2026 (supervisor-blocco-permanente-16-11): una sessione ferma su un limite, coi tasti del quota_limit
             # (le strade nell'ordine dell'evento) e «Fatto»; il titolo e' quello chiaro del relay
@@ -163,7 +229,7 @@ def _from_state(state):
     return out
 
 
-LABELS = {"ok": "decide", "pausa": "decide", "login": "decide", "limite": "decide", "choice": "choose", "prova": "verify", "prossimi": "reply", "question": "reply", "needs_you": "reply"}
+LABELS = {"ok": "decide", "pausa": "decide", "login": "decide", "limite": "decide", "turno": "decide", "raccolta": "decide", "nonva": "verify", "rosso": "verify", "choice": "choose", "prova": "verify", "prossimi": "reply", "question": "reply", "needs_you": "reply"}
 
 
 def _options(opts, cut=None):
@@ -200,17 +266,50 @@ def _actions(a, prova=False):
     in cui la scheda li mostra; le opzioni prima, la consigliata col segno. [] per il login (lo rifa' la master)."""
     k, an, opts = a["kind"], a.get("answer") or {}, a.get("options") or []
     rec = lambda o: {"recommended": True} if o.get("recommended") else {}  # noqa: E731
+    # 1.151: «Non ora» (24 ore) e «Lascia perdere» (col motivo) del gruppo di decisione, come nell'op decisioni
+    key = (a.get("decision") or {}).get("key")
+    later = [_act("not_now", {"op": "decisione", "arg": key, "action": "not_now", "hours": 24})] if key else []
+    drop = [_act("drop", {"op": "decisione", "arg": key, "action": "drop"}, text_field="reason")] if key else []
     if k == "ok":
-        # 1.149: il consiglio segna il tasto consigliato, «Approva» o, se chi chiede consiglia di no, «Chiudi senza ok»
-        adv = a.get("advice") or {}
-        yes, no = ({"recommended": True} if adv.get("approve") is True else {}), ({"recommended": True} if adv.get("approve") is False else {})
-        return [_act("approve", {"op": "approve", "arg": a["task"], "text": "ok"}, "primary", **yes),
-                _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text", **no)]
+        return _actions_ok(a) + later + drop
     if k == "choice":
-        # 1.137: «Nessuna, rifare» col motivo, prima di «Chiudi senza ok»
-        return [_act(None, {"op": "approve", "arg": a["task"], "text": "ok", "choice": o["value"]}, "primary" if o.get("recommended") else "option", label=o["label"], **rec(o))
-                for o in opts] + [_act("redo", {"op": "approval_redo", "arg": a["task"]}, text_field="text"),
-                                  _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
+        return _actions_choice(a, opts, rec) + later + drop
+    if k == "login":
+        return later
+    if k == "nonva":
+        n = str((a.get("tests") or [{}])[0].get("id") or an.get("arg") or "")
+        return [_act("now_works", {"op": "prova", "arg": n, "result": "ok"}, "primary"), _act("retire", {"op": "prova", "arg": n, "result": "ritirata"})]
+    if k == "rosso":
+        return [_act("done", {"op": "attention_done", "arg": a.get("task"), "kind": "task_red"})] if a.get("type") == "chat" else []
+    if k == "turno":
+        return [_act("continue", {"op": "prompt", "session": a.get("session"), "arg": an.get("arg")}, "primary"),
+                _act("done", {"op": "attention_done", "arg": a.get("session"), "kind": "turn_failed"})]
+    if k == "raccolta":
+        return [_act(None, {"op": "prima_raccolta_azione", "action": "consent", "value": "si"}, "primary", label=M("raccolta.consent_yes")),
+                _act(None, {"op": "prima_raccolta_azione", "action": "consent", "value": "later"}, label=M("raccolta.consent_later"))]
+    if k == "needs_you" and key:
+        done = {"op": "attention_done", "arg": a.get("session"), "kind": "needs_you"}
+        return [_act(None, {"op": "prompt", "session": a.get("session"), "arg": o["value"]}, "option", label=o["label"]) for o in opts] + \
+               [_act("reply", {"op": "prompt", "session": a.get("session")}, text_field="arg"), _act("done", done)] + later + drop
+    return _actions_rest(a, k, an, opts, rec, prova)
+
+
+def _actions_ok(a):
+    # 1.149: il consiglio segna il tasto consigliato, «Approva» o, se chi chiede consiglia di no, «Chiudi senza ok»
+    adv = a.get("advice") or {}
+    yes, no = ({"recommended": True} if adv.get("approve") is True else {}), ({"recommended": True} if adv.get("approve") is False else {})
+    return [_act("approve", {"op": "approve", "arg": a["task"], "text": "ok"}, "primary", **yes),
+            _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text", **no)]
+
+
+def _actions_choice(a, opts, rec):
+    # 1.137: «Nessuna, rifare» col motivo, prima di «Chiudi senza ok»
+    return [_act(None, {"op": "approve", "arg": a["task"], "text": "ok", "choice": o["value"]}, "primary" if o.get("recommended") else "option", label=o["label"], **rec(o))
+            for o in opts] + [_act("redo", {"op": "approval_redo", "arg": a["task"]}, text_field="text"),
+                              _act("close", {"op": "approval_close", "arg": a["task"]}, text_field="text")]
+
+
+def _actions_rest(a, k, an, opts, rec, prova):
     if k == "prova":
         ids = str(an.get("arg") or "")
         return [_act("works", {"op": "prova", "arg": ids, "result": "ok"}, "primary"),
@@ -341,6 +440,8 @@ def archived(i):
         a["card"]["deploy"] = bool(DEPLOY_RE.search(f"{a['card'].get('what') or ''} {a['card'].get('where') or ''}"))
     a["title"] = (" ".join(str(short or v["text"] or "").split())[:TITLE_MAX]) or None
     a["actions"] = []
+    for k_ in ("decision", "plan_start", "asks", "where", "tests", "build", "precedent", "also"):   # 1.151: chiusa, i campi ci sono, null
+        a[k_] = None
     return a
 
 
@@ -349,9 +450,12 @@ def _finish(a):
     «Scegli», «Verifica», «Rispondi»), le opzioni come oggetti, card null fuori dalle carte di ok. 1.131: `title`, una riga
     per gli elenchi (il nome breve del compito per le carte, la domanda per la chat), card.deploy (la cosa o il posto
     nominano la produzione, come approvals[].deploy) e `actions`."""
-    a["label"] = LABELS.get(a["kind"], "decide")
+    # 1.151: una pausa che aspetta una prova sta in Verifica, come contava state.tocca (prove)
+    a["label"] = "verify" if a["kind"] == "pausa" and a.get("_prova") else LABELS.get(a["kind"], "decide")
     a["label_text"] = M("attese.label_" + a["label"])
     a["options"] = _options(a.get("options"), 24 if a["kind"] == "choice" else None)
+    for k_ in ("decision", "plan_start", "asks", "where", "tests", "build"):   # 1.151: sempre presenti, null quando non servono
+        a.setdefault(k_, None)
     a.setdefault("card", None)
     a.setdefault("files", None)   # 1.137: [{path, name, mime, size, kind, session}] o null; la lettura `file` li scarica (arg = path)
     if a["files"]:
@@ -375,25 +479,36 @@ def _finish(a):
     return a
 
 
-def collect(now_=None, state=None):
+def collect(now_=None, state=None, alias=None, registry=None):
     """Tutte le attese aperte, una per id, dalla piu' vecchia. Il registro prima: una needs-you del registro porta il
-    compito, quella dello stato il nome della sessione come lo vede l'app."""
+    compito, quella dello stato il nome della sessione come lo vede l'app. 1.151: `alias` (del relay, state_alias) e i
+    nomi dello stato danno a ogni voce la sessione col nome dello stato; `registry` le voci del registro gia' lette (il
+    relay le tiene se il registro non si legge); la Prima raccolta; il compito rosso della guardia (attention task_red)
+    sulla voce rossa del registro dello stesso compito, col suo «Fatto»."""
     now_ = int(now_ or time.time())
     state = _last_state() if state is None else state
+    if registry is None:
+        try:
+            registry = registry_items(now_)
+        except Exception:   # noqa: BLE001 — senza registro restano le domande in chat
+            registry = []
+    names = {s_.get("name") for s_ in state.get("sessions") or [] if s_.get("name")}
     seen = {}
-    try:
-        reg = _from_registry(now_)
-    except Exception:   # noqa: BLE001 — senza registro restano le domande in chat
-        reg = []
-    for a in reg + _from_state(state):
+    red = {}
+    for a in [dict(x) for x in registry] + raccolta_items(now_) + _from_state(state):
         if a["id"] in seen:
             if a["kind"] == "needs_you":   # lo stato sa il nome breve, il registro il compito
-                seen[a["id"]]["session"] = a["session"] or seen[a["id"]]["session"]
+                seen[a["id"]]["session"] = _canon(a["session"], alias, names) or seen[a["id"]]["session"]
             continue
-        a["session"] = _short(a["session"]) if a.get("session") else None
+        if a["kind"] == "rosso" and a.get("task") in red:   # la guardia e le prove dicono lo stesso compito rosso
+            red[a["task"]]["actions"].append(_act("done", {"op": "attention_done", "arg": a["task"], "kind": "task_red"}))
+            continue
+        a["session"] = _canon(a["session"], alias, names) if a.get("session") else None
         a["link"] = link(a["id"])
         _finish(a)
         seen[a["id"]] = a
+        if a["kind"] == "rosso" and a.get("task"):
+            red[a["task"]] = a
     return sorted(seen.values(), key=lambda a: (int(a.get("at") or 0), a["id"]))
 
 

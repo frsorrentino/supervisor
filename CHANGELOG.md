@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.176 — 2026-11-16: everything that waits for you is in one list, and the app's counts come from it (supervisor-riall-1-dati-16-11).**
+  - The maintainer chose direction A of the app's analysis: what waits for you shows in two places, the session and «Dalla master», with the same data from one source. Until now the same items came from six sources and were counted three ways. That gave «Verifica 5» over an empty list, and a choice still open an hour after its ok.
+  - The list of waiting items (`attese`) now has everything: also the tests reported «Non va» (with «Ora va»), the tasks whose check is red, a failed turn (with «Continua»), and the Prima raccolta. Each registry item carries its decision group with «Non ora» and «Lascia perdere», and each test its build, so the app can say «installa prima». Every item has the session's name as the app shows it («win:x» for a task registered for «x»).
+  - The counts in the state are counted from that same list, per kind and per session, so the number is the rows. A new signature tells the app when the list changed, and the ids closed in the last ten minutes let every device drop an item at once, wherever it was answered.
+  - A registry that cannot be read closes nothing: the last good read stays.
+  - Contract 1.151, additive; fixture `attese-rd-sample.json`. New test: `tests/riallineamento-dati-verify.py`.
 - **0.8.175 — 2026-11-16: a session stopped on a limit or on a login opens one item for you, which stays until the session works again, also on Windows (supervisor-blocco-permanente-16-11).**
   - On 16/11 a session on the Windows host stayed stopped on its Fable limit for an hour and a half, and the app never said so: supervisor's hooks do not reach the relay from there. The host's status now says, for each live session, whether the last entry of its transcript is an API error. `hosts poll` then opens the item a local session gets: for a limit, the `quota_limit` with its buttons («Continua con Opus 5.5», «Riprendi al reset»); for a login, a needs-you. One item and one notice per block. Run `supervisor hosts update win` after updating: the new status is in `cm-remote.ps1`.
   - The title says in plain words which session is stopped, why, and until when: «win:supervisor-app è ferma: limite di Fable fino al 19/11 alle 3».

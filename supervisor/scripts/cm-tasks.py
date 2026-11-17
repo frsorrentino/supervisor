@@ -2081,23 +2081,24 @@ def prove_list(con, now_=None):
     for row in con.execute(q, OPEN_STATES).fetchall():
         task = _contract_task(row)
         short = short_of(task)
+        sess = row["session"] or (task.get("where") or {}).get("session")   # 16/11 (riall-1): anche su ko e red
         live = _live_prove(con, row["id"])
         for r in live:
             base = {"id": r["n"], "task": row["id"], "short": short, "build": r["build"], "dove": r["dove"], "fai": r["fai"], "atteso": r["atteso"]}
             if files_of(r["files"]):   # 1.137: i file da guardare, solo se ci sono
                 base["files"] = files_of(r["files"])
             if r["result"] == "ko":
-                ko.append(dict(base, text=r["result_text"], at=r["result_at"]))
+                ko.append(dict(base, text=r["result_text"], at=r["result_at"], session=sess))
             elif r["result"] is None:
                 g = out.setdefault(r["build"], {"build": r["build"], "n": 0, "at": 0, "tasks": [], "prove": []})
                 g["n"] += 1
                 g["at"] = max(g["at"], r["at"])
                 if row["id"] not in g["tasks"]:
                     g["tasks"].append(row["id"])
-                g["prove"].append(dict(base, title=row["title"], session=row["session"] or (task.get("where") or {}).get("session"), project=row["project"], at=r["at"]))
+                g["prove"].append(dict(base, title=row["title"], session=sess, project=row["project"], at=r["at"]))
         if live and all(r["result"] == "ok" for r in live):
             st = con.execute("SELECT text, at FROM steps WHERE task=? AND kind='prova-red' AND at>=? ORDER BY n DESC LIMIT 1", (row["id"], max(r["result_at"] for r in live))).fetchone()
-            red.append({"task": row["id"], "short": short, "reason": st["text"] if st else None, "at": st["at"] if st else None})
+            red.append({"task": row["id"], "short": short, "reason": st["text"] if st else None, "at": st["at"] if st else None, "session": sess})
     groups = sorted(out.values(), key=lambda g: (-g["at"], g["build"]))
     try:   # 1.130: una scheda «Ti aspetta» per compito, come in `supervisor attese`
         S_ = _load("cm-relay-state")

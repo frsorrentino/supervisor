@@ -2188,15 +2188,17 @@ def plugins_op(op, arg):
     return ok, text
 
 
-def state_alias():
+def state_alias(rows=None):
     """04/11 (supervisor-approva-sessione-win-04-11, il maintainer: «perché la sua richiesta di approvazione non appare qui?»):
     {nome del registro → nome della sessione viva in state.sessions[].name}. Un compito dice la sua sessione col nome di
     quando e' nato («supervisor-app»), ma la sessione viva puo' chiamarsi «win:supervisor-app» (su win) o «pix-x» (nello
     stato «x»): l'app abbina gli ok alla scheda per nome e non li mostrava. Dalle righe vive dell'ultima push: il nome
     esatto di una sessione viva resta suo; un alias (tmux, nome corto, nome dopo «host:», remote_name) vale se e' di una
-    sola sessione."""
-    with _LIVE_LOCK:
-        rows = [r for r in (_LIVE["rows"] or []) if r.get("status") != "dead"]
+    sola sessione. 16/11 (supervisor-riall-1-dati-16-11): `rows`, le righe della push in corso; senza, quelle dell'ultima."""
+    if rows is None:
+        with _LIVE_LOCK:
+            rows = list(_LIVE["rows"] or [])
+    rows = [r for r in rows if r.get("status") != "dead"]
     name = lambda r: S.short_name(r.get("name") or r.get("tmux") or "", prefixes())  # noqa: E731 — come build_session
     exact = {name(r) for r in rows}
     alias = {}
@@ -2207,6 +2209,62 @@ def state_alias():
         for k in keys - {"", n}:
             alias.setdefault(k, set()).add(n)
     return {k: next(iter(v)) for k, v in alias.items() if len(v) == 1 and k not in exact}
+
+
+ATTESE_CLOSED_S, ATTESE_CLOSED_MAX = 600, 10   # 1.151: quanto resta un id chiuso in state.attese.closed, e quanti
+_ATTESE = {"mod": None, "reg": None}
+
+
+def attese_mod():
+    """cm-attese caricato una volta: la push lo usa a ogni giro."""
+    if _ATTESE["mod"] is None:
+        _ATTESE["mod"] = _load("cm-attese")
+    return _ATTESE["mod"]
+
+
+def attese_view(full, now, rows=None, write=True):
+    """16/11/2026 (supervisor-riall-1-dati-16-11, contratto 1.151: la direzione A dell'analisi di supervisor-app, scelta
+    dal manutentore): le attese sono la fonte unica di ogni voce per te, e si contano qui, sullo stato intero appena
+    costruito. Da qui state.attese {rev, n, closed}, state.tocca e sessions[].tocca: il numero sono le righe. Una voce
+    che c'era alla push di prima e ora non c'e' (chiusa da un dispositivo, al PC, dalla sessione o da sola) sta in closed
+    per ATTESE_CLOSED_S, cosi' ogni dispositivo la toglie subito. Un registro che non si legge non chiude niente: valgono
+    le sue voci dell'ultima lettura buona (senza una lettura buona, niente). La lista va in attese.json: l'op attese la
+    rida' uguale."""
+    AT = attese_mod()
+    sd = Path(cm.expand(CFG["state_dir"]))
+    try:
+        reg = _memo("attese_registry", lambda: AT.registry_items(int(now)), ttl=60,
+                    deps=[tasks_version, str(sd / "needs-you"), str(sd / "login-expiry.json")])
+        _ATTESE["reg"] = copy.deepcopy(reg)
+    except Exception as e:   # noqa: BLE001 — sqlite occupato, un registro rotto: le voci dell'ultima lettura buona
+        log(f"attese: registro non letto ({e})")
+        if _ATTESE["reg"] is None:
+            return None
+        reg = copy.deepcopy(_ATTESE["reg"])
+    items = AT.collect(int(now), state=full, alias=state_alias(rows), registry=reg)
+    rev = S.attese_rev(items)
+    ids = [a["id"] for a in items]
+    cur = set(ids)
+    p = rdir() / "attese-state.json"
+    prev = read_json(p, {}) or {}
+    closed = [c for c in (prev.get("closed") or []) if isinstance(c, dict) and c.get("id") not in cur and now - float(c.get("at") or 0) < ATTESE_CLOSED_S]
+    had = {c["id"] for c in closed}
+    closed = (closed + [{"id": i, "at": int(now)} for i in prev.get("ids") or [] if i not in cur and i not in had])[-ATTESE_CLOSED_MAX:]
+    if write and (prev.get("rev") != rev or prev.get("closed") != closed or prev.get("ids") != ids or not (rdir() / "attese.json").exists()):
+        write_json(p, {"rev": rev, "ids": ids, "closed": closed, "at": int(now)})
+        write_json(rdir() / "attese.json", {"at": int(now), "rev": rev, "items": items})
+    tot, by = S.tocca_of(items)
+    full["attese"] = {"rev": rev, "n": len(items), "closed": closed}
+    full["tocca"] = dict(tot, today=(full.get("tocca") or {}).get("today") or {"n": 0, "items": []})
+    for s in full.get("sessions") or []:
+        c, old = by.get(s.get("name")) or {}, s.get("tocca") or {}
+        tc = {"prove": c.get("prove", 0), "decidi": c.get("decidi", 0), "rispondi": c.get("rispondi", 0),
+              "guarda": int(old.get("guarda") or 0), "segui": int(old.get("segui") or 0)}   # guarda e segui: le loro fonti
+        if any(tc.values()):
+            s["tocca"] = tc
+        else:
+            s.pop("tocca", None)
+    return items
 
 
 def commitments_list():
@@ -2517,6 +2575,10 @@ def _push(dry_run=False, now=None, m=None):
     # gli eventi si calcolano sullo stato INTERO; il taglio per la dimensione tocca solo cio' che si pubblica (23/09:
     # una sessione viva tolta da fit_state diventava «gone» e il polso diceva «Session closed»)
     full = S.build_state(src, now, fit=False)
+    try:   # 1.151 (16/11, riall-1): le attese, fonte unica delle voci per te; state.attese e i conti dello stato da li'
+        attese_view(full, now, src["rows"], write=not dry_run)
+    except Exception as e:   # noqa: BLE001 — un extra: mai bloccare la push
+        log(f"attese: non calcolate ({e})")
     if not dry_run:
         try:   # 1.96 (29/10): inizio e fine delle attese per la timeline e kpi_waits, da oggi in poi
             _kpi().record_waits(full, now, rdir())

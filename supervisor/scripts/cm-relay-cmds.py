@@ -2134,8 +2134,17 @@ ATTESA_ID_RE = re.compile(r"w[0-9a-f]{10}")
 
 def attese_op():
     """1.130 (07/11, supervisor-attese-link-07-11): op attese, una lettura: ogni domanda che aspetta la persona (carte del
-    registro e domande in chat), {at, items: [{id, type, kind, session, task, text, options, at, link, answer}]}."""
-    return True, json.dumps({"at": int(time.time()), "items": _load("cm-attese").collect()}, ensure_ascii=False)
+    registro e domande in chat), {at, items: [{id, type, kind, session, task, text, options, at, link, answer}]}.
+    1.151 (16/11, supervisor-riall-1-dati-16-11): la lista che l'ultima push ha contato (attese.json), con la sua `rev`,
+    cosi' le righe sono il numero di state.tocca; senza una push recente, le voci lette adesso."""
+    d = read_json(rdir() / "attese.json", {}) or {}
+    if isinstance(d.get("items"), list) and time.time() - float(d.get("at") or 0) < ATTESE_FRESH_S:
+        return True, json.dumps({"at": int(d.get("at") or time.time()), "rev": d.get("rev"), "items": d["items"]}, ensure_ascii=False)
+    items = attese_mod().collect(alias=state_alias())
+    return True, json.dumps({"at": int(time.time()), "rev": S.attese_rev(items), "items": items}, ensure_ascii=False)
+
+
+ATTESE_FRESH_S = 600   # 1.151: oltre, la lista dell'ultima push e' vecchia (il relay non spinge): si rilegge
 
 
 def monitors_op(arg):

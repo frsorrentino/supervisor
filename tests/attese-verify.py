@@ -100,7 +100,8 @@ q = by.get("question") or {}
 ny = by.get("needs_you") or {}
 px = by.get("prossimi") or {}
 T.check("AT1 cards (ok, choice with options, prova) and chat waits (question, needs-you, Prossimi with its items) in one list, ids w+10 hex, the same twice",
-        sorted(by) == ["choice", "needs_you", "ok", "prossimi", "prova", "question"] and len(w1) == 6
+        # 1.151: anche il turno fallito («turno») e la Prima raccolta, mai fatta in questa cartella, sono voci
+        sorted(by) == ["choice", "needs_you", "ok", "prossimi", "prova", "question", "raccolta", "turno"] and len(w1) == 8
         and all(AT.ID_RE.fullmatch(a["id"]) for a in w1) and [a["id"] for a in w1] == [a["id"] for a in w2]
         and ok.get("task") == "at-ok" and ok.get("type") == "carta" and ok.get("text") == "pubblico la 1.0?" and ok.get("session") == "alfa"
         and lab(ch) == ["Scuro", "Chiaro"] and ch["options"][0].get("recommended") is True and ch["options"][0]["value"] == "Scuro (consigliata)"
@@ -130,7 +131,7 @@ cfg.write_text(json.dumps(dict(cfg_data, relay=dict(cfg_data["relay"], web_app_u
 off = RL._load("cm-attese")
 cfg.write_text(json.dumps(cfg_data))
 T.check("AT2 the state carries the same ids (approvals[].wid, wid_attention); a new request of the same task gets a new id; web_app_url \"\" = no link",
-        st_ids == {"at-ok": ok["id"], "at-scelta": ch["id"]} and att_ids == [q["id"], ny["id"], px["id"], None]
+        st_ids == {"at-ok": ok["id"], "at-scelta": ch["id"]} and att_ids == [q["id"], ny["id"], px["id"], (by.get("turno") or {}).get("id")]
         and new_ok.get("id") not in (None, ok["id"]) and off.link("w0123456789") is None,
         f"{st_ids} {att_ids} {new_ok.get('id')} {ok['id']}")
 
@@ -176,7 +177,7 @@ T.check("AT4 op attesa: the wait with msg from the session's transcript; a bad o
         "attesa" in RL.OPS and "attese" in RL.OPS and okx and rx.get("id") == cur["id"] and (rx.get("msg") or {}).get("id") == "a3.0"
         and (rx.get("msg") or {}).get("session_id") == "sid-alfa" and "1.0" in (rx.get("msg") or {}).get("text", "") and rx["msg"].get("uuid") == "a3"
         and rx["msg"].get("key") == "Serve il tuo ok per pubblicare la 1.0: la release esce sul sito."
-        and not bad[0] and not gone[0] and "non aspetta" in gone[1] and okl and len(json.loads(tl)["items"]) == 6
+        and not bad[0] and not gone[0] and "non aspetta" in gone[1] and okl and len(json.loads(tl)["items"]) == 8
         and cli.returncode == 0 and f"{WEB}/#/attesa/{cur['id']}" in cli.stdout,
         f"{okx} {tx[:400]} {bad} {gone} {cli.stdout[:300]} {cli.stderr[:300]}")
 
@@ -197,7 +198,7 @@ real_card = next(a for a in json.loads(tl)["items"] if a["kind"] == "choice")
 real_chat = next(a for a in json.loads(tl)["items"] if a["kind"] == "prossimi")
 opt_keys = {"n", "label", "value", "recommended", "description", "files"}   # files dal 1.137
 T.check("AT6 the cmd-result-sample examples (…1300 attese, …1301 attesa, …1302 closed) carry the fields of the real answers",
-        set(s_list) == {"at", "items"} and set(s_list["items"][0]) == set(real_card) and set(s_list["items"][1]) == set(real_chat)
+        set(s_list) == {"at", "rev", "items"} and set(s_list["items"][0]) == set(real_card) and set(s_list["items"][1]) == set(real_chat)
         and set(s_one) == set(rx) and set(s_one["msg"]) == set(rx["msg"])
         and set(s_one["answer"]) == set(real_card["answer"]) and set(s_list["items"][1]["answer"]) == set(real_chat["answer"])
         and all(set(o) <= opt_keys and {"n", "label", "value"} <= set(o) for a in s_list["items"] for o in a["options"] or [])
@@ -215,7 +216,8 @@ def acts(a):
 answer_cmd = next(x["cmd"] for x in q["actions"] if x["label"] == "Due")
 T.check("AT7 title is one line (the task's short name for a card, the question for chat), card.deploy names production, actions are the card's buttons",
         ok["title"] == "t at-ok" and q["title"] == "Quale?" and px["title"] == "Riga a sinistra" and ok["card"]["deploy"] is False and ch["card"]["deploy"] is True
-        and acts(ok) == [("Approva", "primary", "approve", None), ("Chiudi senza ok", "secondary", "approval_close", "text")]
+        and acts(ok) == [("Approva", "primary", "approve", None), ("Chiudi senza ok", "secondary", "approval_close", "text"),
+                         ("Non ora", "secondary", "decisione", None), ("Lascia perdere", "secondary", "decisione", "reason")]   # 1.151
         and acts(ch)[0] == ("Scuro", "primary", "approve", None) and ch["actions"][0].get("recommended") is True and ch["actions"][0]["cmd"]["choice"] == "Scuro (consigliata)"
         and acts(ch)[1] == ("Chiaro", "option", "approve", None) and acts(ch)[2][2] == "approval_redo" and acts(ch)[3][2] == "approval_close"
         and acts(pv) == [("Va", "primary", "prova", None), ("Non va", "secondary", "prova", "text")] and pv["actions"][0]["cmd"]["result"] == "ok"
@@ -326,7 +328,7 @@ T.check("AT10 one wait-ok opens the choice card: description, each option with i
         and [f["name"] for f in c10["files"]] == ["home-a.png", "c.png", "home-b.pdf"] and c10["card_id"] == c10["id"] and c10["state"] == "open" and c10["answered"] is None,
         json.dumps(c10, ensure_ascii=False)[:900] + r10.stderr)
 T.check("AT10 the card's buttons: the options, then «Nessuna, rifare» (op approval_redo, the reason in text), then «Chiudi senza ok»",
-        [x["label"] for x in c10["actions"]] == ["A frecce", "B pannello", "Nessuna, rifare", "Chiudi senza ok"]
+        [x["label"] for x in c10["actions"]] == ["A frecce", "B pannello", "Nessuna, rifare", "Chiudi senza ok", "Non ora", "Lascia perdere"]   # 1.151
         and c10["actions"][2]["cmd"] == {"session": None, "op": "approval_redo", "arg": "sc-1"} and c10["actions"][2]["text_field"] == "text", json.dumps(c10["actions"], ensure_ascii=False))
 talklog.write_text("")
 rd0 = RL.execute({"op": "approval_redo", "arg": "sc-1", "text": "  ", "device": "phone", "by": "phone-pixel8"})

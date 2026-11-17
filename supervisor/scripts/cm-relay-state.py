@@ -284,6 +284,12 @@ def wid_attention(x):
     k = x.get("kind")
     if k == "quota_limit":
         return wid("limite", x.get("ref"), int(x.get("since") or 0))
+    # 16/11/2026 (supervisor-riall-1-dati-16-11, contratto 1.151): le attese sono la fonte unica di ogni voce per te,
+    # anche il turno fallito (Continua) e il compito rosso
+    if k == "turn_failed":
+        return wid("turno", x.get("ref"), int(x.get("since") or 0))
+    if k == "task_red":
+        return wid("rosso", x.get("ref"), int(x.get("since") or 0))
     if k == "question":
         return wid("question", x.get("ref"))
     if k == "needs_you":
@@ -981,6 +987,12 @@ def fit_state(state, max_kb=8):
         return size_of(state) <= cap
     if fits():
         return state
+    # 1.151 (16/11, supervisor-riall-1-dati-16-11): gli id delle voci chiuse da poco cadono per primi: la firma (rev) che
+    # cambia basta all'app per rileggere le attese
+    if (state.get("attese") or {}).get("closed"):
+        state["attese"].pop("closed", None)
+        if fits():
+            return state
     # 1.149 (16/11): il consiglio sulle carte (fino a 230 byte l'una) cade subito dopo: la scheda lo legge da `attese`,
     # che non ha tetto; nello stato serve solo agli elenchi
     for a in state.get("approvals") or []:
@@ -1263,3 +1275,29 @@ def utc_epoch(ts):
     except ValueError:
         return None
     return (t if t.tzinfo else t.replace(tzinfo=_dt.timezone.utc)).timestamp()
+
+
+# 16/11/2026 (supervisor-riall-1-dati-16-11, contratto 1.151): i conti di «Tocca a te» dalle stesse voci delle attese,
+# cosi' il numero sono le righe. label verify → prove, decide e choose → decidi, reply → rispondi.
+TOCCA_OF_LABEL = {"verify": "prove", "decide": "decidi", "choose": "decidi", "reply": "rispondi"}
+
+
+def tocca_of(items):
+    """({n, prove, decidi, rispondi}, {sessione: {prove, decidi, rispondi}}) dalle attese; le voci senza sessione contano
+    solo nel totale."""
+    tot = {"n": 0, "prove": 0, "decidi": 0, "rispondi": 0}
+    by = {}
+    for a in items or []:
+        k = TOCCA_OF_LABEL.get(a.get("label"), "decidi")
+        tot["n"] += 1
+        tot[k] += 1
+        if a.get("session"):
+            d = by.setdefault(a["session"], {"prove": 0, "decidi": 0, "rispondi": 0})
+            d[k] += 1
+    return tot, by
+
+
+def attese_rev(items):
+    """La firma delle attese: cambia quando entra o esce una voce, o ne cambiano il titolo o i tasti."""
+    sig = [[a.get("id"), a.get("title"), [b.get("label") for b in a.get("actions") or []]] for a in items or []]
+    return hashlib.sha1(json.dumps(sig, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]

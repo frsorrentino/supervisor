@@ -1,0 +1,441 @@
+{
+  "attese": {
+    "at": 1794850200,
+    "rev": "e4eaf1f0b9",
+    "items": [
+      {
+        "id": "wd44db7b16f",
+        "type": "carta",
+        "kind": "raccolta",
+        "session": null,
+        "task": null,
+        "text": "Per completare la configurazione, effettua la scansione delle sessioni.\nI dati restano su questo computer (al telefono arrivano cifrati); il primo giro della master usa una piccola parte della quota.",
+        "options": null,
+        "at": 0,
+        "answer": {
+          "op": "prima_raccolta_azione",
+          "action": "consent",
+          "value": "si"
+        },
+        "link": "https://app.example.test/#/attesa/wd44db7b16f",
+        "label": "decide",
+        "label_text": "Decidi",
+        "decision": null,
+        "plan_start": null,
+        "asks": null,
+        "where": null,
+        "tests": null,
+        "build": null,
+        "card": null,
+        "files": null,
+        "description": null,
+        "advice": null,
+        "card_id": "wd44db7b16f",
+        "state": "open",
+        "answered": null,
+        "title": "Per completare la configurazione, effettua la scansione delle sessioni.",
+        "actions": [
+          {
+            "label": "Scansiona",
+            "style": "primary",
+            "cmd": {
+              "session": null,
+              "op": "prima_raccolta_azione",
+              "action": "consent",
+              "value": "si"
+            }
+          },
+          {
+            "label": "Non ora",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "prima_raccolta_azione",
+              "action": "consent",
+              "value": "later"
+            }
+          }
+        ]
+      },
+      {
+        "id": "w17f9a258a0",
+        "type": "carta",
+        "kind": "ok",
+        "session": "win:alfa",
+        "task": "app-x",
+        "text": "Pubblico la 1.4 sul Play Store?",
+        "options": null,
+        "at": 1794849000,
+        "answer": {
+          "op": "approve",
+          "arg": "app-x"
+        },
+        "decision": {
+          "key": "a1b2c3d4e5f6",
+          "title": "Pubblico la 1.4 sul Play Store?",
+          "cause": null,
+          "where": "here",
+          "weight": 2,
+          "unblocks": [
+            "app-x",
+            "app-x2"
+          ],
+          "note": null,
+          "since": 1794849000
+        },
+        "plan_start": "La 1.4 porta la riga nuova in home.",
+        "asks": "ok",
+        "where": "here",
+        "precedent": null,
+        "also": null,
+        "card": {
+          "what": "Pubblico la 1.4 sul Play Store?",
+          "where": "Play Store",
+          "undo": "si",
+          "undo_how": "ritiro la release",
+          "deploy": false
+        },
+        "files": null,
+        "link": "https://app.example.test/#/attesa/w17f9a258a0",
+        "label": "decide",
+        "label_text": "Decidi",
+        "tests": null,
+        "build": null,
+        "description": null,
+        "advice": {
+          "text": "le prove sono verdi",
+          "option": null,
+          "approve": true
+        },
+        "card_id": "w17f9a258a0",
+        "state": "open",
+        "answered": null,
+        "title": "pubblica 1.4",
+        "actions": [
+          {
+            "label": "Approva",
+            "style": "primary",
+            "cmd": {
+              "session": null,
+              "op": "approve",
+              "arg": "app-x",
+              "text": "ok"
+            },
+            "recommended": true
+          },
+          {
+            "label": "Chiudi senza ok",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "approval_close",
+              "arg": "app-x"
+            },
+            "text_field": "text"
+          },
+          {
+            "label": "Non ora",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "decisione",
+              "arg": "a1b2c3d4e5f6",
+              "action": "not_now",
+              "hours": 24
+            }
+          },
+          {
+            "label": "Lascia perdere",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "decisione",
+              "arg": "a1b2c3d4e5f6",
+              "action": "drop"
+            },
+            "text_field": "reason"
+          }
+        ]
+      },
+      {
+        "id": "wdd48019c59",
+        "type": "carta",
+        "kind": "prova",
+        "session": "win:alfa",
+        "task": "app-y",
+        "files": null,
+        "text": "home: apri la home; impostazioni: cambia tema",
+        "options": null,
+        "at": 1794849100,
+        "answer": {
+          "op": "prova",
+          "arg": "1301,1302"
+        },
+        "tests": [
+          {
+            "id": 1301,
+            "build": "1.4.0-rc2",
+            "dove": "home",
+            "fai": "apri la home",
+            "atteso": "la riga nuova",
+            "files": null,
+            "state": "todo",
+            "text": null,
+            "at": 1794849100
+          },
+          {
+            "id": 1302,
+            "build": "1.4.0-rc2",
+            "dove": "impostazioni",
+            "fai": "cambia tema",
+            "atteso": "resta scuro",
+            "files": null,
+            "state": "todo",
+            "text": null,
+            "at": 1794849100
+          }
+        ],
+        "build": "1.4.0-rc2",
+        "link": "https://app.example.test/#/attesa/wdd48019c59",
+        "label": "verify",
+        "label_text": "Verifica",
+        "decision": null,
+        "plan_start": null,
+        "asks": null,
+        "where": null,
+        "card": null,
+        "description": null,
+        "advice": null,
+        "card_id": "wdd48019c59",
+        "state": "open",
+        "answered": null,
+        "title": "riga in home",
+        "actions": [
+          {
+            "label": "Va",
+            "style": "primary",
+            "cmd": {
+              "session": null,
+              "op": "prova",
+              "arg": "1301,1302",
+              "result": "ok"
+            }
+          },
+          {
+            "label": "Non va",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "prova",
+              "arg": "1301",
+              "result": "ko"
+            },
+            "text_field": "text"
+          }
+        ]
+      },
+      {
+        "id": "w20a798a5c0",
+        "type": "carta",
+        "kind": "nonva",
+        "session": "delta",
+        "task": "app-z",
+        "files": null,
+        "text": "Non entra col codice",
+        "options": null,
+        "at": 1794849200,
+        "answer": {
+          "op": "prova",
+          "arg": "1290",
+          "result": "ok"
+        },
+        "tests": [
+          {
+            "id": 1290,
+            "build": "1.3.9",
+            "dove": "login",
+            "fai": "entra col codice",
+            "atteso": "la home",
+            "files": null,
+            "state": "ko",
+            "text": "Non entra col codice",
+            "at": 1794849200
+          }
+        ],
+        "build": "1.3.9",
+        "link": "https://app.example.test/#/attesa/w20a798a5c0",
+        "label": "verify",
+        "label_text": "Verifica",
+        "decision": null,
+        "plan_start": null,
+        "asks": null,
+        "where": null,
+        "card": null,
+        "description": null,
+        "advice": null,
+        "card_id": "w20a798a5c0",
+        "state": "open",
+        "answered": null,
+        "title": "login col codice",
+        "actions": [
+          {
+            "label": "Ora va",
+            "style": "primary",
+            "cmd": {
+              "session": null,
+              "op": "prova",
+              "arg": "1290",
+              "result": "ok"
+            }
+          },
+          {
+            "label": "Non serve più",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "prova",
+              "arg": "1290",
+              "result": "ritirata"
+            }
+          }
+        ]
+      },
+      {
+        "id": "waa6b32e538",
+        "type": "carta",
+        "kind": "rosso",
+        "session": "delta",
+        "task": "app-w",
+        "text": "npm test: 2 failing",
+        "options": null,
+        "at": 1794849300,
+        "answer": null,
+        "red": {
+          "reason": "npm test: 2 failing",
+          "running": false
+        },
+        "link": "https://app.example.test/#/attesa/waa6b32e538",
+        "label": "verify",
+        "label_text": "Verifica",
+        "decision": null,
+        "plan_start": null,
+        "asks": null,
+        "where": null,
+        "tests": null,
+        "build": null,
+        "card": null,
+        "files": null,
+        "description": null,
+        "advice": null,
+        "card_id": "waa6b32e538",
+        "state": "open",
+        "answered": null,
+        "title": "build web",
+        "actions": [
+          {
+            "label": "Fatto",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "attention_done",
+              "arg": "app-w",
+              "kind": "task_red"
+            }
+          }
+        ]
+      },
+      {
+        "id": "w3fb836e1c5",
+        "type": "chat",
+        "kind": "turno",
+        "session": "delta",
+        "task": null,
+        "text": "delta: turno fallito (529 Overloaded)",
+        "options": null,
+        "at": 1794850000,
+        "answer": {
+          "op": "prompt",
+          "session": "delta",
+          "arg": "riprendi da dove eri"
+        },
+        "link": "https://app.example.test/#/attesa/w3fb836e1c5",
+        "label": "decide",
+        "label_text": "Decidi",
+        "decision": null,
+        "plan_start": null,
+        "asks": null,
+        "where": null,
+        "tests": null,
+        "build": null,
+        "card": null,
+        "files": null,
+        "description": null,
+        "advice": null,
+        "card_id": "w3fb836e1c5",
+        "state": "open",
+        "answered": null,
+        "title": "delta: turno fallito (529 Overloaded)",
+        "actions": [
+          {
+            "label": "Continua",
+            "style": "primary",
+            "cmd": {
+              "session": "delta",
+              "op": "prompt",
+              "arg": "riprendi da dove eri"
+            }
+          },
+          {
+            "label": "Fatto",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "attention_done",
+              "arg": "delta",
+              "kind": "turn_failed"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "state": {
+    "attese": {
+      "rev": "e4eaf1f0b9",
+      "n": 6,
+      "closed": []
+    },
+    "tocca": {
+      "n": 6,
+      "prove": 3,
+      "decidi": 3,
+      "rispondi": 0,
+      "today": {
+        "n": 0,
+        "items": []
+      }
+    },
+    "sessions": [
+      {
+        "name": "win:alfa",
+        "tocca": {
+          "prove": 1,
+          "decidi": 1,
+          "rispondi": 0,
+          "guarda": 0,
+          "segui": 0
+        }
+      },
+      {
+        "name": "delta",
+        "tocca": {
+          "prove": 2,
+          "decidi": 1,
+          "rispondi": 0,
+          "guarda": 0,
+          "segui": 0
+        }
+      }
+    ]
+  }
+}
