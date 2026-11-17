@@ -330,7 +330,7 @@ with T.PrivateTmux() as tm:
     for _lang in ("it", "en"):
         _k = (T.PLUGIN / f"kernel_{_lang}.md").read_text()
         T.check(f"kernel ({_lang}) rule 12 names task ok with --prove, --choice and --ko, under the cap",
-                all(x in _k for x in ("task ok ID --by", "--prove 72-80", "--choice", "--ko")) and len(_k) <= 3715, str(len(_k)))
+                all(x in _k for x in ("task ok ID --by", "--prove 72-80", "--choice", "--ko")) and len(_k) <= 3900, str(len(_k)))
     T.check("task --help names task ok", "supervisor task ok" in cm("--help")[1], "")
 
 T.finish()

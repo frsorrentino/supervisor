@@ -375,6 +375,8 @@ def _events_of(ledger, sid):
 
 NEXT_RE = re.compile(r"^\s*\W*\s*prossimi\s*:\s*(.*)$", re.I)
 NEXT_MAX = 3
+# 1.152 (17/11/2026, supervisor-riall-4-plugin-16-11): un Prossimo che chiude una voce porta il suo id, «! Approva #w0123456789»
+NEXT_WID_RE = re.compile(r"\s*#(w[0-9a-f]{10})\b")
 
 
 def suggestion_of(x):
@@ -402,10 +404,27 @@ def next_steps(text):
                 it = it.strip().strip("`").strip()
                 blocking = it.startswith("!")
                 it = it.lstrip("!").strip()
+                w = NEXT_WID_RE.search(it)
+                if w:
+                    it = (it[:w.start()] + it[w.end():]).strip()
                 if it:
-                    out.append({"text": it, "blocking": blocking})
+                    out.append(dict({"text": it, "blocking": blocking}, **({"wid": w.group(1)} if w else {})))
             return out[:NEXT_MAX]
     return []
+
+
+def link_steps(sessions, open_ids):
+    """1.152: i Prossimi legati a una voce (`wid`) restano solo finche' la voce e' fra le attese aperte: chiusa (o mai
+    esistita) il Prossimo sparisce, e l'app non lo mostra piu' toccabile. Sullo stato intero, dopo il calcolo delle attese."""
+    for s in sessions or []:
+        steps = s.get("next_steps")
+        if not steps:
+            continue
+        kept = [x for x in steps if not x.get("wid") or x["wid"] in open_ids]
+        if kept:
+            s["next_steps"] = kept
+        else:
+            s.pop("next_steps", None)
 
 
 DA_TE_RE = re.compile(r"^\s*[*_#>\s]*da te\b", re.I)
@@ -433,6 +452,28 @@ def _unbang(text):
 PROSSIMI_RE = re.compile(r"(?i)^\s*\W*\s*prossimi\s*:")
 
 
+def turn_fields(text, esito="", watch=""):
+    """1.152: {esito, tipo, watch} di un messaggio di fine turno (regole 9 e 10 del kernel): il testo della riga «Esito:»,
+    la chiave del tipo (shipped, done, waiting, running, answer, problem), il testo della riga «Watch:»; null se manca."""
+    return {"esito": short_of(esito_line(esito) or esito_line(text), SHORT_MAX) or None, "tipo": outcome_type(text),
+            "watch": short_of(watch_line(watch) or watch_line(text), SHORT_MAX) or None}
+
+
+FIELD_LINE_RE = re.compile(r"^\W{0,4}(?:esito|outcome|watch|prossimi)\W{0,4}:", re.I)
+
+
+def chat_fields(text):
+    """1.152: per una voce della chat, ({esito, tipo, watch, prossimi}, body) se il messaggio ha almeno una delle righe di
+    fine turno, altrimenti (None, None). body = il testo senza quelle righe (e senza il Tipo), per un'app che mostra i campi."""
+    text = str(text or "")
+    f = turn_fields(text)
+    f["prossimi"] = next_steps(text) or None
+    if not any(f.values()):
+        return None, None
+    body = "\n".join(l for l in without_type(text).split("\n") if not FIELD_LINE_RE.match(strip_markdown(l))).strip()
+    return f, body
+
+
 def _outcome(events):
     stops = [r for r in events if r.get("event") == "stop"]
     if not stops:
@@ -447,6 +488,9 @@ def _outcome(events):
     body = [ln for ln in full.splitlines() if ln.strip() and not PROSSIMI_RE.match(ln)]
     short = watch_line(str(r.get("watch") or "")) or watch_line(tail) or esito_line(esito) or esito_line(tail) or (body or [""])[-1]
     out = {"short": short_of(short, SHORT_MAX), "full": full, "at": epoch(r.get("ts"))}
+    # 1.152 (17/11/2026, supervisor-riall-4-plugin-16-11): le righe di fine turno come campi, solo quelle che ci sono (lo
+    # stato ha un tetto di 8 KB: un campo assente = nessuna riga)
+    out.update({k: v for k, v in turn_fields(r.get("tail") or r.get("last") or "", esito=esito, watch=str(r.get("watch") or "")).items() if v})
     # 1.60 (14/10, chiesto dall'app per la 1.56): l'esito e' l'ultimo messaggio della sessione e puo' contenere un segreto;
     # la notifica dell'esito usa preview {short, full}, presente solo quando c'era qualcosa da nascondere
     pv = {"short": redact_preview(out["short"]), "full": redact_preview(out["full"])}
@@ -598,7 +642,8 @@ def build_session(row, src):
     # 1.68 (14/10, una sessione aspettava un login e risultava al lavoro): un turno che finisce con una voce
     # bloccante («Prossimi:» con «!», o un elenco «Da te») e' una domanda aperta: {text, at}, finche' la sessione e' ferma
     if st == "idle" and out["outcome"]:
-        block = next((x["text"] for x in steps if x.get("blocking")), "") or da_te(stops[-1].get("tail") or stops[-1].get("last") or "")
+        # 1.152: un «!» legato a una voce (wid) non apre un turn_blocking suo: la voce c'e' gia', con i suoi tasti
+        block = next((x["text"] for x in steps if x.get("blocking") and not x.get("wid")), "") or da_te(stops[-1].get("tail") or stops[-1].get("last") or "")
         # 1.80 (23/10): «Fatto» dall'app (op attention_done) chiude la voce di questo turno; un turno nuovo la riapre
         dismissed = int(((src.get("attention_dismissed") or {}).get(tmux)) or 0)
         if block and not (dismissed and dismissed >= int(out["outcome"]["at"] or 0)):
@@ -1034,6 +1079,13 @@ def fit_state(state, max_kb=8):
     for s in state["sessions"]:
         if (s.get("closed") or {}).get("dirty"):
             s["closed"]["dirty"] = []
+    if fits():
+        return state
+    # 1.152 (17/11, supervisor-riall-4-plugin-16-11): esito e watch dell'esito (il tipo resta, e' una parola), dopo le liste e
+    # prima di progetti, recap ed esiti interi: la chat li porta nei fields di ogni messaggio
+    for s in state.get("sessions") or []:
+        for k in ("esito", "watch"):
+            (s.get("outcome") or {}).pop(k, None)
     if fits():
         return state
     state["projects"] = most_recent(state["projects"], 10)

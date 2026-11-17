@@ -391,7 +391,7 @@ for _lang in ("it", "en"):
     T.check(f"ok_informato OI5 rule 12 ({_lang}) asks for --untested, --undo and --undo-how at wait-ok", all(x in _r12 for x in ("wait-ok", "--consiglio T", "--untested", "--undo", "--undo-how")), _r12)
     T.check(f"ok_informato OI5 rule 12 ({_lang}) is whole: approve --inbox, try again, never send-keys, never an ok written by the session",
             all(x in _r12 for x in ("task ok ID --by <", "--prove 72-80", "--choice", "--ko", "--inbox <id>", "supervisor inbox <", "«try again»", "tmux send-keys", "paste-buffer")), _r12)
-    T.check(f"ok_informato OI5 kernel ({_lang}) under its cap", len(_k) <= 3715, str(len(_k)))   # 16/11: 3715, la regola 12 con --consiglio (la persona: ogni carta col consiglio)
+    T.check(f"ok_informato OI5 kernel ({_lang}) under its cap", len(_k) <= 3900, str(len(_k)))   # 16/11: 3715, la regola 12 con --consiglio (la persona: ogni carta col consiglio)
 
 # ------------------------------------------------------------------ compito_dal_piano
 def has_ok(tid):
@@ -550,7 +550,7 @@ _nd = next(json.loads(_nr[c["id"]]["text"]) for c in _ndc["cmd"] if c["op"] == "
 T.check("decisione_spiegata the contract's sample carries the fields", all({"title", "plan_start", "asks"} <= set(i) for g in _nd["groups"] for i in g["items"]), "")
 for _lang in ("it", "en"):
     _k = (T.ROOT / f"supervisor/kernel_{_lang}.md").read_text()
-    T.check(f"decisione_spiegata kernel ({_lang}) rule 12 asks a pause to say what it asks, under the cap", ("cosa chiedi" in _k or "what you ask" in _k) and len(_k) <= 3715, str(len(_k)))
+    T.check(f"decisione_spiegata kernel ({_lang}) rule 12 asks a pause to say what it asks, under the cap", ("cosa chiedi" in _k or "what you ask" in _k) and len(_k) <= 3900, str(len(_k)))
 T.check("decisione_spiegata task pause's help says so", "mai solo «aspetta l'ok»" in cm("--help")[1], "")
 
 # prova_strutturata (03/11/2026, contratto 1.107, supervisor-prove-strutturate-03-11): la prova che una pausa aspetta,

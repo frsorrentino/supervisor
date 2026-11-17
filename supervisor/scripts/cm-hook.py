@@ -565,10 +565,15 @@ def pop_queue(p):
     return item
 
 
+WAITING_TOLD = "waiting-told.json"
+
+
 def waiting_for_you(now=None):
-    """1.68 (14/10): solo nella master, a ogni prompt, una riga con chi aspetta la persona — «Ti aspettano: <sessione> —
-    <motivo>, da N min» — dalla lista «Serve te» dell'ultimo stato del relay, cosi' la master la riporta anche quando si
-    parla d'altro. Niente se la lista e' vuota o se questa non e' la master."""
+    """1.68 (14/10): solo nella master, una riga con chi aspetta la persona — «<sessione> — <motivo>, da N min, <link>» —
+    dalla lista «Serve te» dell'ultimo stato del relay. Niente se la lista e' vuota o se questa non e' la master.
+    17/11/2026 (supervisor-riall-4-plugin-16-11, contratto 1.152): non piu' a ogni prompt. Ogni voce una volta, quando
+    entra: le voci le mostra l'app, e la master le ripeteva in ogni messaggio. Le voci gia' dette stanno in
+    <state_dir>/waiting-told.json; una voce chiusa ne esce, e se torna e' di nuovo nuova."""
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
     if my_tmux_name() != master:
         return ""
@@ -583,14 +588,33 @@ def waiting_for_you(now=None):
     # alla sua scheda «Ti aspetta» (cm-attese), che la master copia nei promemoria
     items += [{"session": a.get("session") or a.get("task"), "title": a.get("what") or a.get("title"), "since": a.get("requested_at"), "wid": a.get("wid")}
               for a in st.get("approvals") or []]
-    if not items:
-        return ""
-    items.sort(key=lambda x: float(x.get("since") or 0))
     now = now or time.time()
     try:
         AT = attese_mod()
     except Exception:   # noqa: BLE001 — senza modulo la riga resta senza link
         AT = None
+
+    def key(x):
+        return x.get("wid") or (AT.wid_attention(x) if AT and x.get("kind") else None) or f"{x.get('session')}|{x.get('title')}"
+    told_p = STATE / WAITING_TOLD
+    try:
+        told = json.loads(told_p.read_text())
+        told = told if isinstance(told, dict) else {}
+    except (OSError, ValueError):
+        told = {}
+    keys = {key(x): x for x in items}
+    new = [x for k, x in keys.items() if k not in told]
+    fresh = {k: told.get(k) or int(now) for k in keys}   # le voci chiuse escono: se tornano, sono di nuovo nuove
+    if fresh != told:
+        try:
+            STATE.mkdir(parents=True, exist_ok=True)
+            told_p.write_text(json.dumps(fresh))
+        except OSError:
+            pass
+    items = new
+    if not items:
+        return ""
+    items.sort(key=lambda x: float(x.get("since") or 0))
     def item(x):
         i = x.get("wid") or (AT.wid_attention(x) if AT else None)
         ln = AT.link(i) if AT and i else None

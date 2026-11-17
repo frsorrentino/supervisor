@@ -120,8 +120,8 @@ k = r.stdout
 # 23/10: 2800, la regola 12 con il PIN; 23/10 18:53: 2900, la regola 12 «un ok vale sempre, anche d'altra sessione»;
 # 23/10 19:40: 3000, la regola 11 con --until/--expires
 # 01/11: 3700, la regola 9 con «Tipo:» e le sei definizioni (il maintainer: esiti raggruppati per categoria)
-# 16/11: 3715, la regola 12 con --consiglio (il maintainer: ogni carta di decisione col consiglio)
-T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3715 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
+# 17/11: 3900, le regole 10 e 12 del riallineamento (supervisor-riall-4-plugin-16-11, l'id della voce nei Prossimi, niente consiglio ripetuto). 16/11: 3715, la regola 12 con --consiglio (il maintainer: ogni carta di decisione col consiglio)
+T.check("H3 kernel printed at startup, bounded", "SUPERVISOR" in k and len(k) <= 3900 and len(k.strip().splitlines()) <= 15, f"{len(k)} chars, {len(k.splitlines())} lines")
 r = hook("SessionStart", {"session_id": "sid2", "source": "compact"})
 T.check("H3 kernel re-emitted after compact", "SUPERVISOR" in r.stdout, r.stdout[:100])
 # H4: la sessione nasce con le ultime righe del recap del progetto
@@ -186,7 +186,7 @@ n_led = len(ledger.read_text().splitlines())
 r = hook("PostToolUse", {"session_id": "sid-none", "tool_name": "Read"})
 T.check("H5c PostToolUse without a flag: exit 0, no output, nothing written (it runs at every tool call)", r.returncode == 0 and not r.stdout and len(ledger.read_text().splitlines()) == n_led, r.stdout + r.stderr)
 
-# H6 (1.68, 14/10): il prompt dopo chiude «ferma per te»; nella master ogni prompt porta la riga «Ti aspettano»
+# H6 (1.68, 14/10): il prompt dopo chiude «ferma per te»; nella master la riga delle voci nuove (1.152: una volta)
 (state / "needs-you").mkdir(exist_ok=True)
 (state / "needs-you" / "sid-ny.json").write_text(json.dumps({"reason": "login su win", "at": int(time.time()) - 300}))
 hook("UserPromptSubmit", {"session_id": "sid-ny", "cwd": str(home), "prompt": "fatto"})
@@ -197,9 +197,12 @@ rl6.mkdir(parents=True, exist_ok=True)
     {"kind": "needs_you", "session": "pix-docs", "ref": "pix-docs", "title": "login su win", "since": int(time.time()) - 720},
     {"kind": "question", "session": "master", "ref": "q-1-1", "title": "la sua", "since": int(time.time()) - 60}]}}))
 m6 = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master")
+m6b = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "ancora"}, CM_HOOK_TMUX_NAME="master")
 o6 = hook("UserPromptSubmit", {"session_id": "sid-o", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="alfa")
-T.check("H6 in the master every prompt carries «Ti aspettano: pix-docs — login su win, da 12 min», without its own items; in another session nothing",
-        "Ti aspettano: pix-docs — login su win, da 12 min" in m6.stdout and "la sua" not in m6.stdout and "Ti aspettano" not in o6.stdout, m6.stdout + m6.stderr + o6.stdout)
+# 17/11/2026 (supervisor-riall-4-plugin-16-11, contratto 1.152): una voce una volta, quando entra, non a ogni prompt
+T.check("H6 in the master the prompt after an item comes in carries «Nuove voci per te: pix-docs — login su win, da 12 min», without its own items; the next prompt nothing; in another session nothing",
+        "Nuove voci per te: pix-docs — login su win, da 12 min" in m6.stdout and "la sua" not in m6.stdout and "Nuove voci" not in m6b.stdout
+        and "Nuove voci" not in o6.stdout, m6.stdout + m6.stderr + m6b.stdout + o6.stdout)
 
 # H7 (22/10/2026, P2): nella master ogni prompt e ogni avvio portano gli impegni dal registro; altrove niente; senza registro niente
 db7 = tmp / "tasks7.db"

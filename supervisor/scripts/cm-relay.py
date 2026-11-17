@@ -2253,6 +2253,7 @@ def attese_view(full, now, rows=None, write=True):
     if write and (prev.get("rev") != rev or prev.get("closed") != closed or prev.get("ids") != ids or not (rdir() / "attese.json").exists()):
         write_json(p, {"rev": rev, "ids": ids, "closed": closed, "at": int(now)})
         write_json(rdir() / "attese.json", {"at": int(now), "rev": rev, "items": items})
+    S.link_steps(full.get("sessions"), cur)   # 1.152: via i Prossimi delle voci chiuse
     tot, by = S.tocca_of(items)
     full["attese"] = {"rev": rev, "n": len(items), "closed": closed}
     full["tocca"] = dict(tot, today=(full.get("tocca") or {}).get("today") or {"n": 0, "items": []})

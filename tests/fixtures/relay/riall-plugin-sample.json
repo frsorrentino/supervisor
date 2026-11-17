@@ -1,0 +1,66 @@
+{
+ "_comment": "Contract 1.152 (supervisor-riall-4-plugin-16-11): sessions[].outcome {esito, tipo, watch}; next_steps[].wid, dropped once the item is closed; transcript entries with fields {esito, tipo, watch, prossimi} and body. Generated from the code.",
+ "state": {
+  "sessions": [
+   {
+    "id": "11111111-2222-4333-8444-555555555555",
+    "name": "alfa",
+    "state": "idle",
+    "outcome": {
+     "short": "carta della release aperta",
+     "full": "Ho preparato la carta della release.\nEsito: la carta della release è aperta\nProssimi:  Approva #wd2f87e85e2 · rilancia i test",
+     "at": 1794930000,
+     "esito": "la carta della release è aperta",
+     "tipo": "waiting",
+     "watch": "carta della release aperta"
+    },
+    "next_steps": [
+     {
+      "text": "Approva",
+      "blocking": true,
+      "wid": "wd2f87e85e2"
+     },
+     {
+      "text": "rilancia i test",
+      "blocking": false
+     }
+    ]
+   }
+  ]
+ },
+ "transcript": [
+  {
+   "id": "a7.0",
+   "role": "assistant",
+   "text": "Ho preparato la carta della release.\nEsito: la carta della release è aperta\nProssimi: ! Approva #wd2f87e85e2 · rilancia i test\nWatch: carta della release aperta",
+   "at": 1794930000,
+   "tool": null,
+   "note": null,
+   "error": null,
+   "cut": false,
+   "turn": null,
+   "files": null,
+   "origin": null,
+   "queued": false,
+   "diff": null,
+   "outcome_type": "waiting",
+   "fields": {
+    "esito": "la carta della release è aperta",
+    "tipo": "waiting",
+    "watch": "carta della release aperta",
+    "prossimi": [
+     {
+      "text": "Approva",
+      "blocking": true,
+      "wid": "wd2f87e85e2"
+     },
+     {
+      "text": "rilancia i test",
+      "blocking": false
+     }
+    ]
+   },
+   "body": "Ho preparato la carta della release."
+  }
+ ]
+}

@@ -1209,6 +1209,10 @@ def transcript_entries(path, offset=0, limit=None, text_max=ENTRY_TEXT_MAX, chat
                     ty = _rs().outcome_type(b["text"])   # 1.99 (chat_esito): il valore resta, la riga no
                     if ty:
                         out[-1]["outcome_type"] = ty
+                    # 1.152 (17/11/2026, supervisor-riall-4-plugin-16-11): Esito, Tipo, Watch e Prossimi come campi, e il testo senza
+                    fl, body = _rs().chat_fields(b["text"].strip())
+                    if fl:
+                        out[-1]["fields"], out[-1]["body"] = fl, body
                 elif b.get("type") == "tool_use":
                     name = str(b.get("name") or "?")
                     detail = tool_line(name, b.get("input"), width=200)[len(name):].strip()   # il nome e' gia' in `tool`
