@@ -154,8 +154,8 @@ def ledger_rows():
             c["end"] += cut + 1
             c["tail"] = data[max(0, cut + 1 - 64):cut + 1]
         # 12/11 (supervisor-ambito-sessioni-12-11): le righe delle sessioni fuori dall'ambito non arrivano al relay
-        cfg = _cfg()
-        return [r for r in c["rows"] if cm.cwd_in_scope(cfg, r.get("cwd") or "", r.get("host"))]
+        ok = cm.scope_filter(_cfg())   # 17/11: le cartelle ammesse una volta, non per riga (118 s a push)
+        return [r for r in c["rows"] if ok(r.get("cwd") or "", r.get("host"))]
 
 
 def transcript_of(row):

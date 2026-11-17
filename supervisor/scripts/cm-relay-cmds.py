@@ -1482,6 +1482,7 @@ def _ledger_rows():
             raw = fh.read().decode("utf-8", "replace").splitlines()
     except OSError:
         raw = []
+    in_scope = cm.scope_filter(CFG)   # 17/11: le cartelle ammesse una volta per il ciclo
     for ln in raw:
         if '"event": "start"' not in ln and '"event": "end"' not in ln:
             continue
@@ -1490,7 +1491,7 @@ def _ledger_rows():
             r["_at"] = __import__("datetime").datetime.fromisoformat(r.get("ts") or "").timestamp()
         except (ValueError, TypeError):
             continue
-        if not cm.cwd_in_scope(CFG, r.get("cwd") or "", r.get("host")):   # 12/11: fuori dall'ambito
+        if not in_scope(r.get("cwd") or "", r.get("host")):   # 12/11: fuori dall'ambito
             continue
         rows.append(r)
     _CHAIN_CACHE.update(key=key, rows=rows)
@@ -2190,7 +2191,7 @@ def attesa_op(arg, archive=False):
     i = str(arg or "").strip()
     if not ATTESA_ID_RE.fullmatch(i):
         return False, M("relay.cmd_attesa_bad_id", id=S.one_line(i)[:40])
-    AT = _load("cm-attese")
+    AT = attese_mod()   # 17/11: quello della push, non un caricamento nuovo (cm-attese, cm-config e la config) a ogni voce
     a = AT.find(i)
     if a is not None:
         a["rounds"] = AT.card_rounds(a)   # 1.137: i giri di prima della stessa scheda

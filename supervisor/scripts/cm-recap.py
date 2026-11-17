@@ -127,6 +127,7 @@ def read_events(since=None, day=None):
         return []
     out = []
     homes = {}
+    in_scope = cm.scope_filter(CFG)   # 17/11: le cartelle ammesse una volta per il ciclo
     for line in p.read_text().splitlines():
         try:
             e = json.loads(line)
@@ -138,7 +139,7 @@ def read_events(since=None, day=None):
         if e.get("event") == "start" and e.get("session_id") and e.get("cwd"):
             homes[e["session_id"]] = e["cwd"]
         # 12/11 (supervisor-ambito-sessioni-12-11): una sessione fuori dall'ambito non entra nel recap
-        if not cm.cwd_in_scope(CFG, homes.get(e.get("session_id") or "") or e.get("cwd") or "", e.get("host")):
+        if not in_scope(homes.get(e.get("session_id") or "") or e.get("cwd") or "", e.get("host")):
             continue
         if day is not None and ts.date() != day:
             continue

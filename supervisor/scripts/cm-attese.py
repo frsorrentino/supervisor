@@ -608,10 +608,19 @@ def _rows():
         return []
 
 
+_CORE = []
+
+
+def _core():
+    if not _CORE:
+        _CORE.append(_load("cm-core"))
+    return _CORE[0]
+
+
 def origin(a, rows=None):
     """{session_id, id, text, at} della voce che spiega l'attesa: prima nella trascrizione della sua sessione, poi in
     quella della master (le carte chieste dalla master per un'altra sessione). None se non si trova."""
-    core = _load("cm-core")
+    core = _core()   # 17/11: caricato una volta, non a ogni voce aperta
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
     rows = rows if rows is not None else _rows()
     want = [a.get("session"), master] if a.get("session") != master else [master]

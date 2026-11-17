@@ -538,8 +538,11 @@ def cwd_in_scope(cfg, cwd, host=None):
     Ricordato per (cwd, host, cartelle ammesse): il registro comune ha decine di migliaia di righe."""
     if sessions_scope(cfg) == "all" or not cwd:
         return True
-    dirs = scope_dirs(cfg, host)
-    if dirs is None:
+    return _in_dirs(cwd, host, scope_dirs(cfg, host))
+
+
+def _in_dirs(cwd, host, dirs):
+    if not cwd or dirs is None:
         return True
     key = (str(cwd), host or "", tuple(dirs))
     v = _CWD_MEMO.get(key)
@@ -556,11 +559,30 @@ def cwd_in_scope(cfg, cwd, host=None):
     return v
 
 
+def scope_filter(cfg):
+    """cwd_in_scope per molte righe: f(cwd, host) con le cartelle ammesse calcolate una volta per host. 17/11/2026
+    (supervisor-relay-fila-comandi-17-11): scope_dirs (expand, realpath, il file delle automazioni) per ognuna delle
+    54.095 righe del ledger costava 118 s di CPU a ogni push sul Chromebook, e il relay restava minuti senza push."""
+    if sessions_scope(cfg) == "all":
+        return lambda cwd, host=None: True
+    dirs = {}
+
+    def f(cwd, host=None):
+        if not cwd:
+            return True
+        h = host if host and host != "local" else None
+        if h not in dirs:
+            dirs[h] = scope_dirs(cfg, h)
+        return _in_dirs(cwd, host, dirs[h])
+    return f
+
+
 def scope_rows(cfg, rows):
     """Le righe (di `sessions --json`, del registro) che si possono leggere, per cwd e host."""
     if sessions_scope(cfg) == "all":
         return list(rows or [])
-    return [r for r in rows or [] if not isinstance(r, dict) or cwd_in_scope(cfg, r.get("cwd") or "", r.get("host"))]
+    ok = scope_filter(cfg)
+    return [r for r in rows or [] if not isinstance(r, dict) or ok(r.get("cwd") or "", r.get("host"))]
 
 
 def _dirs_with_slug(slug, budget=400):

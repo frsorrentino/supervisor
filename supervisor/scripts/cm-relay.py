@@ -3466,7 +3466,9 @@ PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "ti
 # 03/11/2026, misura del relay dal 02/11 (p95 dell'esecuzione): done 39 s, timeline 34 s, file 13 s, plugins 9 s, kpi
 # 7 s; decisioni, agenda, transcript e results sotto i 2 s. Con una corsia sola per le letture, dopo la 0.8.103 una
 # timeline da 37 s ha tenuto «decisioni» 33 s in fila: le lente vanno in una corsia loro
-SLOW_READ_OPS = ("timeline", "done", "plugins", "kpi", "search", "diff", "studio", "nights", "night", "changes", "conti", "prima_raccolta", "projects", "attesa", "thumb")
+# 17/11/2026 (supervisor-relay-fila-comandi-17-11): «attesa», la pagina di una voce, esce dalle lente: dietro kpi e
+# timeline aspettava fino a 78 s (relay stats 11:15-11:35); con i moduli gia' caricati costa una lettura
+SLOW_READ_OPS = ("timeline", "done", "plugins", "kpi", "search", "diff", "studio", "nights", "night", "changes", "conti", "prima_raccolta", "projects", "thumb")
 
 # 12/11/2026 (supervisor-relay-file-corsia-12-11): `file` stava fra le lente; dal relay.log del 12/11, 12:30-13:00, 15
 # anteprime della PWA con esecuzione 2,5-16,3 s ma fino a 103,4 s in fila dietro timeline, search e le altre. Fra le
@@ -4862,6 +4864,20 @@ def needs_check(cmd, cwd=None):
         return 1
 
 
+def task_oks():
+    """{compito: istante dell'ultimo ok di una persona} dal registro, in sola lettura; {} senza registro."""
+    try:
+        import sqlite3
+        con = sqlite3.connect(f"file:{_tasks_db_files()[0]}?mode=ro", uri=True, timeout=2)
+        try:
+            return {t: at for t, at in con.execute(
+                "SELECT task, MAX(at) FROM approvals WHERE by_ IS NOT NULL AND (what IS NULL OR what != 'confirmed') GROUP BY task")}
+        finally:
+            con.close()
+    except Exception:   # noqa: BLE001 — senza registro nessun ok: la richiesta resta
+        return {}
+
+
 def needs_you_of(rows, now=None):
     """1.68: {tmux: {reason, at, …}} dai file <state_dir>/needs-you/<session_id>.json che scrive `supervisor needs-you`
     (l'hook del prompt dopo li toglie). 1.80 (23/10/2026, «le richieste in attesa … scompaiano quando non ci sono
@@ -4875,6 +4891,7 @@ def needs_you_of(rows, now=None):
     by_sid = {r.get("session_id"): (r.get("tmux") or r.get("name")) for r in rows if r.get("session_id") and r.get("status") != "dead"}
     row_by_sid = {r.get("session_id"): r for r in rows if r.get("session_id") and r.get("status") != "dead"}
     out = {}
+    oks = None
     for f in d.glob("*.json"):
         tm = by_sid.get(f.stem)
         if not tm:
@@ -4902,6 +4919,17 @@ def needs_you_of(rows, now=None):
             if st is not None and not st.get("block") and float(st.get("last_at") or 0) > float(rec.get("at") or 0):
                 f.unlink(missing_ok=True)
                 ledger_write("needs-you-done", session=tm, reason=reason, how="unblocked")
+                continue
+        # 17/11/2026 (supervisor-ok-propagazione-17-11): legata a un compito (needs-you --task), la richiesta si chiude
+        # con l'ok a quel compito, da dove arrivi (app, inbox, CLI). Prima la spegneva solo «Approva» nell'app, e solo
+        # se il nome della sessione nel registro era quello tmux: il 17/11 «ok push del link PDF» e' rimasta aperta
+        task = str(rec.get("task") or "")
+        if task:
+            if oks is None:
+                oks = task_oks()
+            if float(oks.get(task) or 0) >= float(rec.get("at") or 0) > 0:
+                f.unlink(missing_ok=True)
+                ledger_write("needs-you-done", session=tm, reason=reason, how="ok", task=task)
                 continue
         until = str(rec.get("until") or "")
         if until and now - float(rec.get("checked_at") or 0) >= NEEDS_CHECK_EVERY_S:

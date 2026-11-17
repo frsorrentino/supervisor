@@ -255,6 +255,7 @@ def failed_since(since_epoch):
         rows = p.read_text().splitlines()
     except OSError:
         return out
+    in_scope = cm.scope_filter(CFG)   # 17/11: le cartelle ammesse una volta per il ciclo
     for line in rows:
         try:
             e = json.loads(line)
@@ -263,7 +264,7 @@ def failed_since(since_epoch):
             ts = dt.datetime.fromisoformat(e["ts"]).timestamp()
         except (ValueError, KeyError, TypeError):
             continue
-        if ts >= since_epoch and e.get("session_id") and cm.cwd_in_scope(CFG, e.get("cwd") or "", e.get("host")):   # 12/11: ambito
+        if ts >= since_epoch and e.get("session_id") and in_scope(e.get("cwd") or "", e.get("host")):   # 12/11: ambito
             out.add(e["session_id"])
     return out
 
