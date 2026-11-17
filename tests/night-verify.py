@@ -132,7 +132,8 @@ T.check("NI3 queue emptied, done has both with rc", queue.read_text().strip() ==
 T.check("NI3 end of the run: the night report rebuilt once, after the items, and the log says so",
         report_marker.is_file() and len(report_marker.read_text().splitlines()) == 1
         and "night report: rc=0 /x/report.json" in (state / "night.log").read_text(), (state / "night.log").read_text()[-400:])
-T.check("NI3 --send: one Telegram message with both items", len(CALLS["sendMessage"]) == 1 and "alfa" in CALLS["sendMessage"][0]["text"] and "sito.com" in CALLS["sendMessage"][0]["text"] and "ok alfa" in CALLS["sendMessage"][0]["text"] and "✓" not in CALLS["sendMessage"][0]["text"], str(CALLS["sendMessage"])[:400])
+# 17/11 (supervisor-avvisi-telegram-17-11): la notte sta nel recap delle 20, su Telegram non va piu' a parte
+T.check("NI3 --send: no Telegram message of its own (the night is in the 20:00 recap, from night-done.jsonl)", len(CALLS["sendMessage"]) == 0, str(CALLS["sendMessage"])[:400])
 
 # NI4
 argslog.unlink()

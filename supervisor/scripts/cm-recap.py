@@ -680,6 +680,13 @@ def cron_line():
     return f"{int(mm or 0)} {int(hh or 20)} * * * {shim} recap --send >/dev/null 2>&1"
 
 
+def morning_cron_line():
+    """17/11: il mattino (recap morning --send) alle recap.morning_time, 08:00."""
+    hh, _, mm = str(D.get("morning_time") or "08:00").partition(":")
+    shim = cm.home() / ".local" / "bin" / "supervisor"
+    return f"{int(mm or 0)} {int(hh or 8)} * * * {shim} recap morning --send >/dev/null 2>&1"
+
+
 def crontab_read():
     return subprocess.run([os.environ.get("CM_CRONTAB_CMD", "crontab"), "-l"], capture_output=True, text=True).stdout
 
@@ -690,11 +697,17 @@ def crontab_write(text):
 
 def install():
     cur = crontab_read()
-    if re.search(r"supervisor (recap|diary) --send", cur):
+    add = []
+    if not re.search(r"supervisor (recap|diary) --send", cur):
+        add.append("# supervisor recap: il recap delle 20 su Telegram\n" + cron_line())
+    if "supervisor recap morning" not in cur:
+        add.append("# supervisor recap morning: quote, Firebase, server e monitoraggi alle 8\n" + morning_cron_line())
+    if not add:
         print(M("recap.cron_present"))
         return 0
-    crontab_write(cur.rstrip("\n") + ("\n" if cur.strip() else "") + "# supervisor recap: il diario della giornata su Telegram\n" + cron_line() + "\n")
-    print(M("recap.cron_installed", line=cron_line()))
+    crontab_write(cur.rstrip("\n") + ("\n" if cur.strip() else "") + "\n".join(add) + "\n")
+    for line in add:
+        print(M("recap.cron_installed", line=line.split("\n")[-1]))
     return 0
 
 
@@ -711,6 +724,7 @@ def uninstall():
 
 def status():
     print(M("recap.status_cron", state="yes" if re.search(r"supervisor (recap|diary) --send", crontab_read()) else "no", line=cron_line()))
+    print(M("recap.status_cron", state="yes" if "supervisor recap morning" in crontab_read() else "no", line=morning_cron_line()))
     p = ledger_path()
     n = sum(1 for _ in p.open()) if p.is_file() else 0
     print(M("recap.status_ledger", path=p, n=n))
@@ -745,6 +759,8 @@ def main(argv):
     """Il comando, dentro il suo tempo massimo: allo scadere una riga chiara e uscita 124, mai un recap appeso."""
     if argv and argv[0] in ("install", "uninstall", "status"):
         return {"install": install, "uninstall": uninstall, "status": status}[argv[0]]()
+    if argv and argv[0] in ("add", "morning", "mattino", "evening", "sera"):   # 17/11: cm-avvisi
+        return _load("cm-avvisi").main(argv)
     RUN["send"] = "--send" in argv or "--invia" in argv
     n = max_s()
 
@@ -800,7 +816,9 @@ def run(argv):
         if day:
             phase("send")
             to_app(plain, day)
-        return send(render_short(groups, label, as_html=True, between=between, deadlines=deadlines), True)
+        # 17/11/2026 (supervisor-avvisi-telegram-17-11): su Telegram il recap delle 20 (uscito, ti aspetta, stanotte, la
+        # notte, le voci di recap add), non il diario per progetto, che resta all'app
+        return send(_load("cm-avvisi").evening_text(day or dt.date.today()), False)
     return 0
 
 

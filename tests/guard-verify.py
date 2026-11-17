@@ -114,7 +114,7 @@ T.check("GU1 below the threshold: no message, no state", r.returncode == 0 and n
 # GU2
 write_quota(97.0)
 r = guard("run")
-T.check("GU2 above the threshold: one Telegram warning with account, % and reset time", r.returncode == 0 and len(CALLS["sendMessage"]) == 1 and "personale" in CALLS["sendMessage"][0]["text"] and "97%" in CALLS["sendMessage"][0]["text"] and "reset" in CALLS["sendMessage"][0]["text"].lower(), r.stdout + r.stderr + str(CALLS))
+T.check("GU2 above the threshold: one Telegram warning with account, % and reset time", r.returncode == 0 and len(CALLS["sendMessage"]) == 1 and "personale" in CALLS["sendMessage"][0]["text"] and "97%" in CALLS["sendMessage"][0]["text"] and "si azzera" in CALLS["sendMessage"][0]["text"].lower(), r.stdout + r.stderr + str(CALLS))
 r = guard("run", now=NOW + 600)
 T.check("GU2 a second pass in the same window does not repeat it", len(CALLS["sendMessage"]) == 1, str(CALLS))
 # GU2b (16/09, Telegram a senso unico): con l'orologio che riceve, la quota gliela dicono gli eventi del relay
@@ -143,10 +143,11 @@ r = guard("run", now=RESET + 60)
 args = argslog.read_text().splitlines() if argslog.exists() else []
 T.check("GU3 at the reset: talk «riprendi» only to the personal session that failed (alfa), not beta, not pix-gamma", r.returncode == 0 and any(a.startswith("talk alfa ") and "--no-wait" in a for a in args) and not any(a.startswith("talk beta") or a.startswith("talk pix-gamma") for a in args), r.stdout + r.stderr + str(args))
 T.check("GU3 night queue not empty → night run --send", any(a.startswith("night run --send") for a in args), str(args))
-T.check("GU3 a Telegram line reports the resume", len(CALLS["sendMessage"]) == 2 and "alfa" in CALLS["sendMessage"][1]["text"], str(CALLS["sendMessage"][-1:]))
+# 17/11 (supervisor-avvisi-telegram-17-11): la ripresa va all'app (evento quota), non piu' su Telegram
+T.check("GU3 the resume goes to the app only (its quota event), no Telegram line", len(CALLS["sendMessage"]) == 1 and "solo app: " in (state / "guard.log").read_text(), str(CALLS["sendMessage"][-1:]))
 n_args = len(args)
 r = guard("run", now=RESET + 400)
-T.check("GU3 a later pass repeats nothing", len(argslog.read_text().splitlines()) == n_args and len(CALLS["sendMessage"]) == 2, r.stdout + r.stderr)
+T.check("GU3 a later pass repeats nothing", len(argslog.read_text().splitlines()) == n_args and len(CALLS["sendMessage"]) == 1, r.stdout + r.stderr)
 
 # GU5 (1.67, 14/10): il reset settimanale — personale al 20% a 6 ore dal reset (quota da usare); professionale all'80%
 # dopo 2 giorni su 7 (a questo ritmo finisce prima del reset). Un avviso ciascuno, una volta per finestra
@@ -155,12 +156,16 @@ T.check("GU3 a later pass repeats nothing", len(argslog.read_text().splitlines()
 qfile(home / ".claude").write_text(json.dumps({"weekly_used_pct": 20.0, "weekly_resets_at": NOW + 6 * 3600}))
 qfile(home / ".claude-pixel").write_text(json.dumps({"weekly_used_pct": 80.0, "weekly_resets_at": NOW + 5 * 86400}))
 n5 = len(CALLS["sendMessage"])
+glog = state / "guard.log"
+g0 = len(glog.read_text().splitlines()) if glog.exists() else 0
 r = guard("run")
-msgs5 = [c["text"] for c in CALLS["sendMessage"][n5:]]
+msgs5 = [x for x in glog.read_text().splitlines()[g0:] if x.split(" ", 1)[-1].startswith("solo app: ")]
 r2 = guard("run", now=NOW + 600)
-T.check("GU5 weekly reset: «80 % still unused» for personale, «at this pace the week runs out» for professionale; a second pass repeats neither",
+msgs5b = [x for x in glog.read_text().splitlines()[g0:] if x.split(" ", 1)[-1].startswith("solo app: ")]
+# 17/11 (supervisor-avvisi-telegram-17-11): le settimane vanno all'app (evento week_unused / week_pace), non su Telegram
+T.check("GU5 weekly reset: «80 % still unused» for personale, «at this pace the week runs out» for professionale, to the app only; a second pass repeats neither",
         r.returncode == 0 and len(msgs5) == 2 and any("personale" in m and "80 %" in m for m in msgs5) and any("professionale" in m and "ritmo" in m for m in msgs5)
-        and len(CALLS["sendMessage"]) == n5 + 2, r.stdout + r.stderr + str(msgs5))
+        and len(msgs5b) == 2 and len(CALLS["sendMessage"]) == n5, r.stdout + r.stderr + str(msgs5))
 
 # GU6 (14/10): cambio automatico di account al limite, solo per gli account elencati, con isteresi e attesa
 _cfg6 = json.loads(cfg.read_text())
@@ -239,13 +244,14 @@ n_tg = len(CALLS.get("sendMessage", []))
 r = guard("run", now=NOW + 7200 + 3700)   # 09:00 locali: giorno
 args = argslog.read_text() if argslog.exists() else ""
 tk = re.findall(r"^talk master .*?--no-wait$", args, re.M | re.S)   # il riepilogo ha piu' righe: un argomento solo
-T.check("GU-ST two stalled commitments → ONE talk to the master «2 impegni fermi …» (no emoji, 22/10) with a line per task (tocca a notte-app / aspetta l'utente, next step), and the same once on Telegram",
+# 17/11 (supervisor-avvisi-telegram-17-11): alla persona l'evento task_stalled dell'app, non piu' Telegram
+T.check("GU-ST two stalled commitments → ONE talk to the master «2 impegni fermi …» (no emoji, 22/10) with a line per task (tocca a notte-app / aspetta l'utente, next step), not on Telegram",
         r.returncode == 0 and len(tk) == 1 and "2 impegni fermi da più di 2 h senza passi" in tk[0] and not E_EMOJI.search(tk[0]) and "- gantt-apk (9 h): tocca a notte-app; prossimo: APK sul telefono" in tk[0]
         and "- ledger-release (3 h): aspetta l'utente; prossimo: l'ok a: tag v1.4" in tk[0] and tk[0].endswith("--no-wait")
-        and len(CALLS.get("sendMessage", [])) == n_tg + 1 and "gantt-apk" in CALLS["sendMessage"][-1]["text"] and "ledger-release" in CALLS["sendMessage"][-1]["text"], r.stdout + r.stderr + str(tk))
+        and len(CALLS.get("sendMessage", [])) == n_tg, r.stdout + r.stderr + str(tk))
 r = guard("run", now=NOW + 17 * 3600)   # 02:00: ore quiete, solo la master
 tk2 = re.findall(r"^talk master .*?--no-wait$", argslog.read_text() if argslog.exists() else "", re.M | re.S)
-T.check("GU-ST in the quiet hours (23-07) the summary goes to the master only, not to the person", len(tk2) == 2 and len(CALLS.get("sendMessage", [])) == n_tg + 1, r.stderr)
+T.check("GU-ST in the quiet hours (23-07) the summary goes to the master only, not to the person", len(tk2) == 2 and len(CALLS.get("sendMessage", [])) == n_tg, r.stderr)
 stall_file.unlink()
 guard("run", now=NOW + 7200 + 3800)
 T.check("GU-ST nothing new from stall-check → no talk", len(re.findall(r"^talk master ", argslog.read_text() if argslog.exists() else "", re.M)) == 2, "")

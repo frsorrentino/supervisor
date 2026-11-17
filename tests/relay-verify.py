@@ -2781,8 +2781,11 @@ try:
     RL.write_json(RL.rdir() / "last-state.json", {"state": {"published_at": _now38 - 400}, "pushed_at": _now38 - 412})
     RL.guard(_now38)
     RL.guard(_now38 + 60)
-    T.check("R38 guard: the state older than 180 s → a direct push (origin «guardia»), Telegram told once, not every minute",
-            _calls38["push"] == ["guardia", "guardia"] and len(_calls38["tg"]) == 1 and "fermo" in _calls38["tg"][0], str(_calls38))
+    _tg38 = len(_calls38["tg"])
+    RL.guard(_now38 + 600)   # 17/11 (supervisor-avvisi-telegram-17-11): su Telegram solo dopo relay.alarm_after_s (15 minuti)
+    RL.guard(_now38 + 660)
+    T.check("R38 guard: the state older than 180 s → a direct push (origin «guardia») every pass; Telegram only once it is 15 minutes old, once",
+            _calls38["push"] == ["guardia"] * 4 and _tg38 == 0 and len(_calls38["tg"]) == 1 and "fermo" in _calls38["tg"][0], str(_calls38))
     RL.write_json(RL.rdir() / "last-state.json", {"state": {"published_at": _now38 + 100}})
     RL.guard(_now38 + 120)
     T.check("R38 guard: when the state moves again → one event relay_stale (1.45) with since when and why; the episode closed",
@@ -2793,7 +2796,7 @@ try:
     RL.write_json(RL.guard_path(), {"since": _now38 - 400, "cause": "push", "lock_since": _now38 - 300})
     with open(str(RL.rdir() / "push.lock"), "w") as _l38:
         _f38.flock(_l38, _f38.LOCK_EX)
-        RL.guard(_now38)
+        RL.guard(_now38 + 600)
         _f38.flock(_l38, _f38.LOCK_UN)
     _g38 = RL.read_json(RL.guard_path(), {})
     T.check("R38 guard: the push lock held for more than 180 s → no waiting and no push, cause «lock», said once",

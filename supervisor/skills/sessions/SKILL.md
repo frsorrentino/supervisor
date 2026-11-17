@@ -115,9 +115,13 @@ RTDB + FCM, `/state` cifrato nella forma del contratto, comandi eseguiti via CLI
 mostra lo stato in chiaro senza toccare la rete.
 
 Telegram riceve soltanto: il PC manda, nessuno risponde da lì (si risponde dall'orologio, o alla
-master). Vi arrivano i testi lunghi che sul polso non si leggono (il diario delle 20:00, il rapporto
-della notte con `night run --send`), gli avvisi della guardia quota e la scorta per il polso quando il
-relay non risponde. `supervisor bot status` dice token, chat autorizzate e log.
+master). Tre tipi di messaggio e nient'altro (17/11/2026): l'allarme, solo quando serve un'azione (relay
+fermo o push fallite da oltre 15 minuti, quota sopra il 92%), due righe col link all'app; il mattino
+alle 8 (`recap morning --send`: quote con l'ora di azzeramento, Firebase del mese, spazio dei server,
+monitoraggi); il recap delle 20 (`recap --send`: uscito, ti aspetta col link, stanotte, la notte appena
+passata e le voci del giorno di `supervisor recap add --kind K "testo"`, per gli altri script). Il resto
+(cambio d'account, settimane, ripresa al reset, impegni fermi) va solo all'app. `supervisor bot status`
+dice token, chat autorizzate e log.
 Il «cosa aspetta te» del mattino si guarda dall'orologio, che mostra senza sosta chi è ferma su una
 domanda.
 

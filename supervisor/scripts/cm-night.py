@@ -500,11 +500,8 @@ def run(argv):
         # contratto 1.18: il resoconto anche all'app, evento `night_report` del relay, prima di Telegram
         _load("cm-core").relay_event("night_report", M("night.event_title", n=len(lines), ok=sum(1 for l in lines if l.startswith("ok "))),
                                      text, ref=dt.date.today().isoformat())
-        bot = _load("cm-bot")
-        if bot.token():
-            print(M("recap.sent", n=bot.send(text)))
-        else:
-            print(M("bot.no_token", path=CFG["bot"]["token_file"]), file=sys.stderr)
+        # 17/11/2026 (supervisor-avvisi-telegram-17-11): su Telegram non va piu' a parte, la notte sta nel recap delle 20
+        # (night-done.jsonl, letto da cm-avvisi)
     return 0
 
 

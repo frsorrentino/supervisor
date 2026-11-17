@@ -235,7 +235,10 @@
     "send_max_s": 420,
     "project_log": "docs/recap.md",
     "startup_lines": 5,
-    "min_turns": 3
+    "min_turns": 3,
+    "morning_time": "08:00",
+    "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json",
+    "server_pct": 80
   },
   "calendar": {
     "url_file": "~/.config/cc-supervisor/calendar.env",
@@ -247,7 +250,7 @@
     "studio_rule": ""
   },
   "guard": {
-    "warn_pct": 95,
+    "warn_pct": 92,
     "cron_minutes": 5,
     "night_after_reset": true,
     "night_timeout_s": 3600,
@@ -323,6 +326,7 @@
     "agenda_owner": "owner",
     "duplicate_prompt_s": 60,
     "telegram_fallback_after_s": 600,
+    "alarm_after_s": 900,
     "window_hint_dir": "~/.claude/fable-director/sessions",
     "window_unmarked": [
       "claude-fable-5-1",

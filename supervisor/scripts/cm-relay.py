@@ -2349,30 +2349,36 @@ def push_fails():
 
 
 def push_fails_tell(d):
-    """Dice alla persona, una volta, che le push falliscono di fila. True se almeno un canale l'ha preso."""
+    """Dice all'app, una volta, che le push falliscono di fila (evento relay_stale). True se l'evento e' partito."""
     title = M("relay.push_fails_title", n=d["n"], since=_hm(d["since"]))
     body = M("relay.push_fails_body", error=d.get("error") or "?")
     if d.get("root_error") and tcc_folder():
         body += " " + M("relay.push_fails_tcc", folder=tcc_folder())
     body += " " + M("relay.push_fails_see")
-    told = False
     try:
         emit("relay_stale", title, body)
-        told = True
+        return True
     except Exception as e:   # noqa: BLE001 — senza rete o senza chiave resta Telegram, e il prossimo tentativo
         log(f"push fallite: evento non mandato ({str(e)[:120]})")
+        return False
+
+
+def push_fails_alarm(d):
+    """17/11 (supervisor-avvisi-telegram-17-11): l'allarme su Telegram, due righe col link all'app, solo per un guasto
+    che dura da alarm_after_s. True se almeno una chat l'ha preso."""
     try:
-        told = bool(_load("cm-bot").send(title + "\n" + body, watch_quiet=False)) or told
+        alarm = M("relay.alarm_push", n=d["n"], since=_hm(d["since"]), error=d.get("error") or "?") + "\n" + M("relay.alarm_push_do", link=app_link())
+        return bool(_load("cm-bot").send(alarm, watch_quiet=False))
     except Exception as e:   # noqa: BLE001
         log(f"push fallite: avviso Telegram non mandato ({str(e)[:120]})")
-    return told
+        return False
 
 
 def push_failed_note(e, origin, now=None):
     now = now or time.time()
     d = push_fails()
     if not d.get("n"):
-        d.update(since=now, told=False, n=0)
+        d.update(since=now, told=False, alarmed=False, n=0)
     d["n"] = int(d["n"]) + 1
     d.update(last_at=now, error=S.one_line(str(e))[:300], origin=str(origin or "?"), root_error=root_unreadable(), pid=os.getpid())
     d["recent"] = [t for t in (d.get("recent") or []) if isinstance(t, (int, float)) and now - t < 3600][-500:] + [now]
@@ -2380,6 +2386,10 @@ def push_failed_note(e, origin, now=None):
     write_json(push_fails_path(), d)
     if d["n"] >= PUSH_FAILS_TELL and not d.get("told"):
         d["told"] = push_fails_tell(d)
+        write_json(push_fails_path(), d)
+    # 17/11 (supervisor-avvisi-telegram-17-11): su Telegram solo se dura da alarm_after_s; prima si recupera da sola
+    if d["n"] >= PUSH_FAILS_TELL and not d.get("alarmed") and now - float(d.get("since") or now) >= alarm_after_s():
+        d["alarmed"] = push_fails_alarm(d)
         write_json(push_fails_path(), d)
 
 
@@ -2389,7 +2399,7 @@ def push_ok_note(now=None):
     d = push_fails()
     if d.get("n"):
         log(f"push: ripartite dopo {d['n']} fallite di fila dalle {_hm(d.get('since') or 0)}")
-        d.update(n=0, told=False, ok_at=now or time.time())
+        d.update(n=0, told=False, alarmed=False, ok_at=now or time.time())
         write_json(push_fails_path(), d)
 
 
@@ -4360,6 +4370,20 @@ def serve():
 # 28/10: anche cm-system.py, che il demone tiene caricato (1.90) — senza, la 0.8.76 restava fuori fino al riavvio
 CODE_FILES = ("cm-relay.py", "cm-relay-cmds.py", "cm-relay-state.py", "cm-relay-crypto.py", "cm-relay-web.py", "cm-core.py", "cm-diff.py", "cm-system.py", "cm-plugins.py", "cm-kpi.py")
 STALE_S = 180
+# 17/11/2026 (supervisor-avvisi-telegram-17-11): la guardia spinge a STALE_S, ma su Telegram va solo un guasto che dura da
+# relay.alarm_after_s (15 minuti): il 17/11 fino alle 12:14 nove «stato fermo da 3 min» che la guardia risolveva da sola
+ALARM_AFTER_S = 900
+
+
+def alarm_after_s():
+    try:
+        return float(R.get("alarm_after_s", ALARM_AFTER_S))
+    except (TypeError, ValueError):
+        return ALARM_AFTER_S
+
+
+def app_link():
+    return str(R.get("web_app_url") or "").rstrip("/") or "-"
 
 
 def code_print():
@@ -4431,10 +4455,10 @@ def guard(now=None):
             g["fixed_at"] = time.time()
         except Exception as e:   # noqa: BLE001
             log(f"push (guardia) FAILED: {str(e)[:200]}")
-    if not g.get("told") and (g["cause"] != "lock" or now - float(g.get("lock_since") or now) > STALE_S):
-        text = M("relay.stale_title", min=max(1, int((now - g["since"]) // 60))) + "\n" + M(
-            f"relay.stale_{g['cause']}", since=_hm(g["since"]), at=_hm(g.get("fixed_at") or now),
-            lock=int((now - float(g.get("lock_since") or now)) // 60))
+    if not g.get("told") and now - float(g["since"]) >= alarm_after_s():
+        # due righe: cosa e dove, poi cosa fare col link all'app (17/11)
+        text = M("relay.alarm_stale", min=int((now - g["since"]) // 60), since=_hm(g["since"])) + "\n" + M(
+            f"relay.alarm_stale_do_{g['cause']}", lock=int((now - float(g.get("lock_since") or now)) // 60), link=app_link())
         try:
             _load("cm-bot").send(text, watch_quiet=False)
         except Exception as e:   # noqa: BLE001 — senza bot resta il log e, alla ripresa, l'evento

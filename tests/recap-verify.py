@@ -165,7 +165,12 @@ r = recap("--since", "1")
 T.check("DI3 --since 1h: nothing from 2026-09-09 (fixture is in the past) → empty diary, exit 0", r.returncode == 0 and "0 progetti" in r.stdout, r.stdout + r.stderr)
 
 r = recap("--date", "2026-09-09", "--send")
-T.check("DI4 --send: one sendMessage per allowed chat, HTML with a link", r.returncode == 0 and sorted(c["chat_id"] for c in CALLS["sendMessage"]) == ["1001", "1002"] and "alfa" in CALLS["sendMessage"][0]["text"] and CALLS["sendMessage"][0].get("parse_mode") == "HTML" and '<a href="https://claude.ai/code/session_01LINK"><b>master</b></a>' in CALLS["sendMessage"][0]["text"], r.stdout + r.stderr + str(CALLS)[:500])
+# 17/11 (supervisor-avvisi-telegram-17-11): su Telegram il recap delle 20 (Oggi, Uscito, Ti aspetta, Stanotte), testo semplice;
+# il diario per progetto resta all'app e a schermo
+T.check("DI4 --send: one sendMessage per allowed chat with the 20:00 recap («Oggi, …», Uscito, Ti aspetta, Stanotte), plain text; the diary still printed",
+        r.returncode == 0 and sorted(c["chat_id"] for c in CALLS["sendMessage"]) == ["1001", "1002"] and CALLS["sendMessage"][0]["text"].startswith("Oggi, ")
+        and "Uscito:" in CALLS["sendMessage"][0]["text"] and "Ti aspetta" in CALLS["sendMessage"][0]["text"] and "Stanotte:" in CALLS["sendMessage"][0]["text"]
+        and not CALLS["sendMessage"][0].get("parse_mode") and "alfa" in r.stdout, r.stdout + r.stderr + str(CALLS)[:500])
 
 r = recap("install")
 T.check("DI5 install: cron line at 20:00 with --send", r.returncode == 0 and "0 20 * * *" in cron.read_text() and "recap --send" in cron.read_text(), r.stdout + cron.read_text())

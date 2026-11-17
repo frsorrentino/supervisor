@@ -154,10 +154,10 @@ def auto_switch_run(t):
         pct, s = max(vals), st.setdefault(acc, {})
         if not s.get("switched") and pct >= float(A.get("at_pct", 90)) and other_of(acc):
             s.update(switched=True, since=t)
-            notify(M("guard.switch_on", account=acc, pct=round(pct), other=other_of(acc)))
+            app_only(M("guard.switch_on", account=acc, pct=round(pct), other=other_of(acc)), account=acc, event=True)
         elif s.get("switched") and pct < float(A.get("back_pct", 75)) and t - float(s.get("since") or 0) >= float(A.get("min_s", 1800)):
             s.update(switched=False, since=t)
-            notify(M("guard.switch_off", account=acc, pct=round(pct)))
+            app_only(M("guard.switch_off", account=acc, pct=round(pct)), account=acc, event=True)
     if json.dumps(st, sort_keys=True) != before:
         p.write_text(json.dumps(st))
 
@@ -190,7 +190,7 @@ def week_check(acc, s, t):
     if left_h <= float(G.get("week_unused_hours", 12)) and pct < float(G.get("week_unused_pct", 60)) and s.get("week_unused_sent") != reset:
         s["week_unused_sent"] = reset
         title = M("relay.event_week_unused", account=acc, pct=round(100 - pct), t=when)
-        notify(title)
+        app_only(title)
         _load("cm-core").relay_event("week_unused", title, M("guard.week_unused_body", h=round(left_h)), account=acc)
         log(f"{acc}: settimana al {round(pct)}%, reset {when} → avviso quota non usata")
         return True
@@ -201,7 +201,7 @@ def week_check(acc, s, t):
         if out_at < reset - float(G.get("week_pace_margin_h", 12)) * 3600:
             s["week_pace_sent"] = reset
             title = M("relay.event_week_pace", account=acc, out=dt.datetime.fromtimestamp(out_at).strftime("%a %H:%M"), t=when)
-            notify(title)
+            app_only(title)
             _load("cm-core").relay_event("week_pace", title, M("guard.week_pace_body", pct=round(pct)), account=acc)
             log(f"{acc}: al ritmo di adesso la settimana finisce {title}")
             return True
@@ -269,6 +269,19 @@ def failed_since(since_epoch):
     return out
 
 
+def app_only(text, account=None, event=False):
+    """17/11/2026 (supervisor-avvisi-telegram-17-11): su Telegram tre tipi di messaggio e nient'altro (l'allarme, il
+    mattino delle 8, il recap delle 20). Il cambio d'account, le settimane, la ripresa al reset, il plugin indietro e gli
+    impegni fermi restano all'app, con il loro evento del relay (`event`: quello del cambio d'account, che non l'aveva)."""
+    if event:
+        try:
+            _load("cm-core").relay_event("quota", text.split("\n")[0], text, account=account)
+        except Exception as e:   # noqa: BLE001 — l'evento in piu' non ferma la guardia
+            log(f"evento non mandato: {str(e)[:120]}")
+    log("solo app: " + text.split("\n")[0])
+    return False
+
+
 def notify(text):
     """Telegram come SCORTA (16/09, passo 3 del ritiro del bot): se l'orologio e' accoppiato e sta ricevendo,
     la quota gliela dicono gli eventi del relay e qui si tace; altrimenti il telefono resta l'unico canale."""
@@ -306,7 +319,9 @@ def run():
             s["warned_window"] = reset
             s["resume_at"] = reset
             s["warned_at"] = t
-            notify(M("guard.warn", account=acc, pct=round(pct), window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=hm(reset)))
+            # 17/11: l'allarme in due righe, cosa e dove poi cosa fare col link all'app
+            notify(M("guard.warn", account=acc, pct=round(pct), window=M("guard.window_5h") if window == "5h" else M("guard.window_week"), t=hm(reset))
+                   + "\n" + M("guard.warn_do", other=other_of(acc) or "-", link=str((CFG.get("relay") or {}).get("web_app_url") or "-").rstrip("/")))
             log(f"{acc}: {round(pct)}% ({window}), reset {hm(reset)} → warned")
             changed = True
         # 2. reset arrivato: riprese
@@ -335,7 +350,7 @@ def run():
             back = M("guard.resumed", account=acc, n=len(resumed), names=", ".join(resumed) or "-", night=M("guard.night_yes") if night else M("guard.night_no"))
             # contratto 1.18: la ripresa anche all'app (l'avviso di soglia ce l'ha gia', dal diff dello stato del relay)
             _load("cm-core").relay_event("quota", M("guard.event_back_title", account=acc), f"reset {hm(ra)}\n{back}", account=acc)
-            notify(back)
+            app_only(back)
             log(f"{acc}: reset reached → resumed {resumed}, night={night}")
             s["resume_at"] = None
             s["resume_names"] = []
@@ -509,7 +524,7 @@ def plugin_alerts(t):
         except (OSError, subprocess.TimeoutExpired):
             pass
         _load("cm-core").relay_event("plugin_stale", title, text, ref=name, account=name)
-        notify(title + "\n" + text)
+        app_only(title + "\n" + text)
         row["sent"] = True
         log(f"plugin_stale: {k} ({mins} min) → {master} + phone")
     try:
@@ -554,7 +569,7 @@ def stalled_alerts(t):
         pass
     if not quiet_now(t):
         _load("cm-core").relay_event("task_stalled", title, body, ref=items[0].get("task"))
-        notify(title + "\n" + body)
+        app_only(title + "\n" + body)
     log(f"stalled: {', '.join(str(x.get('task')) for x in items)}" + (" (quiet hours: master only)" if quiet_now(t) else ""))
 
 

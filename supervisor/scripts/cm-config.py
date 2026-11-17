@@ -170,7 +170,9 @@ DEFAULTS = {
     # senza turni non compaiono
     "recap": {"cron_time": "20:00", "max_last_chars": 160, "last": "short", "hide_zero_turns": True, "closed_chars": 90,
               "summary": "model", "summary_model": "haiku", "summary_timeout_s": 60, "max_s": 150, "send_max_s": 420, "project_log": "docs/recap.md", "startup_lines": 5,
-              "min_turns": 3},
+              "min_turns": 3,
+              # 17/11/2026 (supervisor-avvisi-telegram-17-11): il mattino su Telegram e lo spazio dei server che legge
+              "morning_time": "08:00", "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json", "server_pct": 80},
     # scadenze da un calendario .ics (16/10/2026): l'indirizzo col token sta in url_file (0600), mai qui; senza quel
     # file e' tutto spento. remind_days vale per gli eventi senza VALARM; cases: id della pratica (case_property) →
     # cartella, per aprire la sessione giusta; il valore puo' essere anche {"dir": …, "name": …} (18/10, la pagina Studio
@@ -180,7 +182,7 @@ DEFAULTS = {
                  "case_property": "X-STUDIO-CASE", "cases": {}, "studio_rule": ""},
     # guardia della quota: avviso sopra warn_pct (una volta per finestra), ripresa delle sessioni
     # fallite e della coda notturna quando la finestra si resetta
-    "guard": {"warn_pct": 95, "cron_minutes": 5, "night_after_reset": True, "night_timeout_s": 3600,
+    "guard": {"warn_pct": 92, "cron_minutes": 5, "night_after_reset": True, "night_timeout_s": 3600,
               "resume_prompt": "La quota è tornata disponibile: riprendi da dove eri rimasto.",
               # 1.67 (14/10): il reset settimanale — avviso se mancano week_unused_hours al reset e la settimana e' sotto
               # week_unused_pct (c'e' quota da usare, per esempio di notte); avviso se al ritmo di adesso finirebbe piu' di
@@ -220,7 +222,7 @@ DEFAULTS = {
               "web_app_url": "https://supervisor.francescosorrentino.com", "stream_silence_s": 45,
               "colors": {}, "awaiting_max_s": 1800, "agenda_file": "", "agenda_owner": "owner", "duplicate_prompt_s": 60,
               # scorta su Telegram quando il polso non riceve da tanto (0 = mai): 10 minuti
-              "telegram_fallback_after_s": 600,
+              "telegram_fallback_after_s": 600, "alarm_after_s": 900,
               # contesto di una sessione (1.13.1): dove una statusline salva la finestra dichiarata da Claude Code, e i
               # modelli il cui id non dice se la finestra e' da 1M o standard (sotto i 200k token il contesto resta null;
               # 27/10/2026, Claude Code 2.1.311: anche Sonnet 5.5, l'id non porta mai [1m]; 12/11/2026, Claude Code 2.1.321:
