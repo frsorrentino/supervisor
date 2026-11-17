@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.178 — 2026-11-17: `launch --host H --account A` starts the session there with account A (supervisor-host-account-forzato-17-11).**
+  - `cm-launch.sh` did not pass the account to `cm-rsession.py`, and the host's admission took it again from the folder (`folder_map`). So `launch --host win --account professionale` on a folder of the personal account started there with the personal config. Now the account decided by `launch` (`--account`, `folder_map` or the automatic switch) is used for the admission, the trust and the start, with the same warning as a local launch. `--host auto` picks the host for that account too. Without `--account` nothing changes. The admission's refusal now speaks of the session's account.
+  - Without Remote Control, the «link» line no longer shows the conversation's old link after a `--continue`: it says there is no Remote Control (supervisor-rc-per-account-17-11).
+  - The timing checks of RA2 and RS20 have a wider margin: 15 s against a 30 s wait, instead of 4 s against 4 (one run on a loaded machine took 4.3 s).
+  - New test: `tests/host-account-verify.py`.
 - **0.8.177 — 2026-11-17: an account with `remote_control` false never starts a session with Remote Control (supervisor-rc-per-account-17-11).**
   - `accounts.<account>.remote_control` chose Remote Control only for `launch` in tmux. Two other ways ignored it: the account's shell command (for example `claude-pixel`) read only `session.remote_control`, and a launch on another host always added `--remote-control`. So the sessions of an account shared with colleagues started with Remote Control on. Now the account's key wins on both, and without it `session.remote_control` applies, as before. The same holds for a remote `restart`.
   - Without Remote Control, a launch on another host no longer waits for a link that never comes, and its link line says so.

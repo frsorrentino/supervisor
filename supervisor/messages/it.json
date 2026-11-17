@@ -1206,7 +1206,7 @@
   "rsession.not_confirmed": "{host} non è confermato: supervisor host doctor {host}, poi host confirm {host}",
   "rsession.no_role": "{host} non ha il ruolo sessions (host confirm {host} --roles …,sessions)",
   "rsession.kind": "{host} è {kind}: per ora le sessioni remote vanno solo su host windows-native",
-  "rsession.rule_account": "regola a: l'account della cartella è «{account}», {host} ammette solo {accounts}",
+  "rsession.rule_account": "regola a: l'account della sessione è «{account}», {host} ammette solo {accounts}",
   "rsession.rule_clients": "regola b: la cartella è nel perimetro clienti ({path}) e {host} ha trust.clients false",
   "rsession.rule_root": "regola b: la cartella non sta sotto la radice dei workspace ({root})",
   "rsession.rule_allow": "regola c: «{rel}» non è in hosts.{host}.sessions.allow ({allow})",

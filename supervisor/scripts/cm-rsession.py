@@ -137,8 +137,9 @@ def remote_control(account):
     return v is True or str(v).lower() == "true"
 
 
-def admit(name, h, folder):
-    """Solleva Refused con la condizione mancata; restituisce (account, percorso relativo alla radice)."""
+def admit(name, h, folder, account=None):
+    """Solleva Refused con la condizione mancata; restituisce (account, percorso relativo alla radice). 17/11/2026
+    (supervisor-host-account-forzato-17-11): l'account scelto con launch --account vale su quello della cartella."""
     if not h:
         raise Refused(M("rsession.unknown_host", host=name, known=", ".join(sorted(hosts())) or "-"))
     if not h.get("confirmed_at"):
@@ -148,7 +149,8 @@ def admit(name, h, folder):
     if h.get("kind") != "windows-native":
         raise Refused(M("rsession.kind", host=name, kind=h.get("kind") or "?"))
     trust = h.get("trust") or {}
-    account, _ = cm.account_for(CFG, folder)
+    if not account:
+        account, _ = cm.account_for(CFG, folder)
     if account not in (trust.get("accounts") or []):
         raise Refused(M("rsession.rule_account", host=name, account=account or "?", accounts=", ".join(trust.get("accounts") or []) or "-"))
     if not trust.get("clients"):
@@ -210,13 +212,13 @@ def pressure():
     return load, cores, round(free, 1), loaded
 
 
-def candidates(folder):
+def candidates(folder, account=None):
     out = []
     for name, h in sorted(hosts().items()):
         if name == "local":
             continue
         try:
-            admit(name, h, folder)
+            admit(name, h, folder, account)
             out.append(name)
         except Refused:
             pass
@@ -224,9 +226,11 @@ def candidates(folder):
 
 
 def cmd_pick(argv):
+    """pick CARTELLA [--account A]"""
     folder = argv[0]
+    account = argv[argv.index("--account") + 1] if "--account" in argv[1:-1] else None
     load, cores, free, loaded = pressure()
-    c = candidates(folder) if loaded else []
+    c = candidates(folder, account) if loaded else []
     print(c[0] if c else "")
     return 0
 
@@ -272,14 +276,18 @@ def cmd_launch(argv):
         return 2
     hname, folder, base = argv[0], os.path.realpath(argv[1]), argv[2]
     args = argv[3:]
-    first = None
-    if args[:1] == ["--prompt"] and len(args) > 1:   # 12/11 (supervisor-host-prompt-perso-12-11): il primo prompt
-        first, args = args[1], args[2:]
+    first = chosen = None
+    while args[:1] in (["--prompt"], ["--account"]) and len(args) > 1:
+        if args[0] == "--prompt":   # 12/11 (supervisor-host-prompt-perso-12-11): il primo prompt
+            first = args[1]
+        else:   # 17/11 (supervisor-host-account-forzato-17-11): l'account deciso da cm-launch.sh
+            chosen = args[1]
+        args = args[2:]
     if args and args[0] == "--":
         args = args[1:]
     h = hosts().get(hname)
     try:
-        account, rel = admit(hname, h, folder)
+        account, rel = admit(hname, h, folder, chosen)
         sha, dirty = snapshot_check(folder)
     except Refused as e:
         print(f"supervisor launch: {e}", file=sys.stderr)
@@ -367,7 +375,9 @@ def cmd_launch(argv):
     rec = {"name": name, "host": hname, "dir": folder, "rel": rel, "remote_dir": rdir, "base": base_sha,
            "account": account, "started": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
            "session_id": (entry or {}).get("sessionId"), "link": None}
-    if entry and entry.get("bridgeSessionId"):
+    # 17/11: senza Remote Control niente link, anche se il registro la' ne ha uno: con --continue Claude Code lascia
+    # quello vecchio della conversazione, e la riga «link» lo dava per buono
+    if rc and entry and entry.get("bridgeSessionId"):
         rec["link"] = "https://claude.ai/code/" + entry["bridgeSessionId"]
     p = rec_path(name)
     p.parent.mkdir(parents=True, exist_ok=True)

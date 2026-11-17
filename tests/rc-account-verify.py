@@ -33,7 +33,7 @@ winroot.mkdir()
 WIN = {"kind": "windows-native", "transport": {"ssh": "win"}, "confirmed_at": "2026-10-01T23:50:00+02:00",
        "roles": ["compute", "render", "sessions"],
        "trust": {"level": "work", "accounts": ["personale", "professionale"], "secrets": False, "clients": False},
-       "sessions": {"root": "W:/cm", "allow": ["personali/*", "pro/*"], "deny": [], "start_timeout_s": 4}}
+       "sessions": {"root": "W:/cm", "allow": ["personali/*", "pro/*"], "deny": [], "start_timeout_s": 30}}
 cfg = tmp / "config.json"
 base_cfg = {
     "language": "it", "state_dir": str(tmp / "state"),
@@ -138,8 +138,15 @@ r = launch(str(beta), "--host", "win", "--no-window")
 dt = time.time() - t0
 s = [c for c in calls() if c["verb"] == "start"]
 T.check("RA2 cm-rsession.py: launch --host win of the account with remote_control false starts there without --remote-control, with -n, without waiting for a link that never comes",
-        r.returncode == 0 and s and "--remote-control" not in s[0]["args"] and "-n" in s[0]["args"] and dt < 4 and "senza Remote Control" in r.stdout,
+        r.returncode == 0 and s and "--remote-control" not in s[0]["args"] and "-n" in s[0]["args"] and dt < 15 and "senza Remote Control" in r.stdout,
         f"rc={r.returncode} {dt:.1f}s {json.dumps(s)} {r.stdout[-300:]} {r.stderr[-300:]}")
+rs_close = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-rsession.py"), "close", "win:pix-beta", "--force"], capture_output=True, text=True, env=env(), timeout=120)
+n = len(calls())
+r = launch(str(beta), "--host", "win", "--no-window", "--continue", FAKE_WIN_OLD_BRIDGE="1")
+s = [c for c in calls()[n:] if c["verb"] == "start"]
+T.check("RA2 cm-rsession.py: --continue without Remote Control, the registry there still carrying the conversation's old bridge: the «link» line says there is no Remote Control, never the old link",
+        r.returncode == 0 and s and "--remote-control" not in s[0]["args"] and "senza Remote Control" in r.stdout and "claude.ai/code/" not in r.stdout,
+        f"rc={r.returncode} close={rs_close.returncode} {r.stdout[-300:]} {r.stderr[-300:]}")
 n = len(calls())
 r = launch(str(alfa), "--host", "win", "--no-window")
 s = [c for c in calls()[n:] if c["verb"] == "start"]

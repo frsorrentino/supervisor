@@ -1206,7 +1206,7 @@
   "rsession.not_confirmed": "{host} is not confirmed: supervisor host doctor {host}, then host confirm {host}",
   "rsession.no_role": "{host} has no sessions role (host confirm {host} --roles …,sessions)",
   "rsession.kind": "{host} is {kind}: remote sessions go only to windows-native hosts for now",
-  "rsession.rule_account": "rule a: the folder's account is “{account}”, {host} admits only {accounts}",
+  "rsession.rule_account": "rule a: the session's account is “{account}”, {host} admits only {accounts}",
   "rsession.rule_clients": "rule b: the folder is in the client perimeter ({path}) and {host} has trust.clients false",
   "rsession.rule_root": "rule b: the folder is not under the workspace root ({root})",
   "rsession.rule_allow": "rule c: “{rel}” is not in hosts.{host}.sessions.allow ({allow})",

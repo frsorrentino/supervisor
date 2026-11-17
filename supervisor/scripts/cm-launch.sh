@@ -80,7 +80,7 @@ if [ -n "$HOST" ] && [ "$HOST" != local ]; then
   [ "$AGENT" = claude ] || { cm_msg launch.host_conflict "opt=--agent $AGENT" >&2; exit 2; }
 fi
 HOST_DATO="$HOST"
-if [ "$HOST" = auto ]; then HOST="$(python3 "$CM_SCRIPTS/cm-rsession.py" pick "${CARTELLA:-/}" 2>/dev/null || true)"; fi
+if [ "$HOST" = auto ]; then HOST="$(python3 "$CM_SCRIPTS/cm-rsession.py" pick "${CARTELLA:-/}" ${ACCOUNT:+--account "$ACCOUNT"} 2>/dev/null || true)"; fi
 [ "$HOST" = local ] && HOST=""
 [ -n "$CARTELLA" ] || { cm_msg launch.usage >&2; exit 2; }
 case "$CARTELLA" in /*) ;; *) cm_msg launch.not_absolute "path=$CARTELLA" >&2; exit 2 ;; esac
@@ -255,7 +255,8 @@ LABEL="$(cm_get "$ACCOUNT" LABEL)"
 if [ -n "$HOST" ]; then
   # 12/11 (supervisor-host-prompt-perso-12-11): il primo prompt va anche ai lanci remoti (cm-rsession lo manda con talk)
   PROMPT_ARGS=(); [ -n "$PRIMO" ] && PROMPT_ARGS=(--prompt "$PRIMO")
-  exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" ${PROMPT_ARGS[@]+"${PROMPT_ARGS[@]}"} -- ${ARGS[@]+"${ARGS[@]}"}
+  # 17/11 (supervisor-host-account-forzato-17-11): l'account deciso qui (--account, folder_map o il cambio automatico)
+  exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" --account "$ACCOUNT" ${PROMPT_ARGS[@]+"${PROMPT_ARGS[@]}"} -- ${ARGS[@]+"${ARGS[@]}"}
 fi
 
 # --- --bg: nel gestore di background di Claude Code, non in tmux (T47) --------------

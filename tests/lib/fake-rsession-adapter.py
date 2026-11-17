@@ -136,7 +136,9 @@ class FakeWin:
         if not os.environ.get("FAKE_WIN_NOREG"):
             reg = registry()
             e = {"name": name, "sessionId": f"sid-{name}", "cwd": str(rdir)}
-            if "--remote-control" in args:   # 17/11: come Claude Code, il ponte (e il link) solo con Remote Control
+            # 17/11: come Claude Code, il ponte (e il link) solo con Remote Control; FAKE_WIN_OLD_BRIDGE=1 lascia quello
+            # vecchio della conversazione anche senza, come --continue sulla 2.1.325
+            if "--remote-control" in args or os.environ.get("FAKE_WIN_OLD_BRIDGE"):
                 e["bridgeSessionId"] = f"session_FAKE{len(reg)}"
             reg.append(e)
             (ROOT / "registry.json").write_text(json.dumps(reg))
