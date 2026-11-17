@@ -135,7 +135,10 @@ class FakeWin:
         note("start", name=name, rdir=rdir, args=list(args), config=config_dir)
         if not os.environ.get("FAKE_WIN_NOREG"):
             reg = registry()
-            reg.append({"name": name, "sessionId": f"sid-{name}", "cwd": str(rdir), "bridgeSessionId": f"session_FAKE{len(reg)}"})
+            e = {"name": name, "sessionId": f"sid-{name}", "cwd": str(rdir)}
+            if "--remote-control" in args:   # 17/11: come Claude Code, il ponte (e il link) solo con Remote Control
+                e["bridgeSessionId"] = f"session_FAKE{len(reg)}"
+            reg.append(e)
             (ROOT / "registry.json").write_text(json.dumps(reg))
         return {"ok": True}
 

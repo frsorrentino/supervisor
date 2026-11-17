@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.177 — 2026-11-17: an account with `remote_control` false never starts a session with Remote Control (supervisor-rc-per-account-17-11).**
+  - `accounts.<account>.remote_control` chose Remote Control only for `launch` in tmux. Two other ways ignored it: the account's shell command (for example `claude-pixel`) read only `session.remote_control`, and a launch on another host always added `--remote-control`. So the sessions of an account shared with colleagues started with Remote Control on. Now the account's key wins on both, and without it `session.remote_control` applies, as before. The same holds for a remote `restart`.
+  - Without Remote Control, a launch on another host no longer waits for a link that never comes, and its link line says so.
+  - New test: `tests/rc-account-verify.py` (both ways); also RS20 in `tests/rsession-verify.py`.
 - **0.8.176 — 2026-11-16: everything that waits for you is in one list, and the app's counts come from it (supervisor-riall-1-dati-16-11).**
   - The maintainer chose direction A of the app's analysis: what waits for you shows in two places, the session and «Dalla master», with the same data from one source. Until now the same items came from six sources and were counted three ways. That gave «Verifica 5» over an empty list, and a choice still open an hour after its ok.
   - The list of waiting items (`attese`) now has everything: also the tests reported «Non va» (with «Ora va»), the tasks whose check is red, a failed turn (with «Continua»), and the Prima raccolta. Each registry item carries its decision group with «Non ora» and «Lascia perdere», and each test its build, so the app can say «installa prima». Every item has the session's name as the app shows it («win:x» for a task registered for «x»).

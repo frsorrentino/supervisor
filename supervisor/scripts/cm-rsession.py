@@ -129,6 +129,14 @@ def account_config_name(account):
     return os.path.basename(cm.expand(a.get("config_dir") or "~/.claude").rstrip("/")) or ".claude"
 
 
+def remote_control(account):
+    """Remote Control per i lanci su un host: la chiave dell'account, se c'e', altrimenti session.remote_control."""
+    v = ((CFG.get("accounts") or {}).get(account or "") or {}).get("remote_control")
+    if v is None:
+        v = (CFG.get("session") or {}).get("remote_control", True)
+    return v is True or str(v).lower() == "true"
+
+
 def admit(name, h, folder):
     """Solleva Refused con la condizione mancata; restituisce (account, percorso relativo alla radice)."""
     if not h:
@@ -340,7 +348,10 @@ def cmd_launch(argv):
     # 06/11/2026 (supervisor-win-altro-account-06-11): l'account della cartella con la sua config anche la' (stesso nome base)
     cdir = account_config_name(account)
     a.session_trust(rdir, cdir)
-    a.session_start(name, rdir, list(args) + ["--remote-control", name, "-n", name], cdir)
+    # 17/11/2026 (supervisor-rc-per-account-17-11): accounts.<account>.remote_control prevale su session.remote_control,
+    # come in cm-launch.sh per tmux. Prima qui --remote-control c'era sempre: l'account condiviso coi colleghi lo accendeva
+    rc = remote_control(account)
+    a.session_start(name, rdir, list(args) + (["--remote-control", name] if rc else []) + ["-n", name], cdir)
     deadline = time.time() + float(sess.get("start_timeout_s") or 90)
     entry = None
     while time.time() < deadline:
@@ -350,7 +361,7 @@ def cmd_launch(argv):
                 entry = e
                 if e.get("bridgeSessionId"):
                     break
-        if entry and entry.get("bridgeSessionId"):
+        if entry and (entry.get("bridgeSessionId") or not rc):   # senza Remote Control il link non arriva mai
             break
         time.sleep(3)
     rec = {"name": name, "host": hname, "dir": folder, "rel": rel, "remote_dir": rdir, "base": base_sha,
@@ -396,7 +407,7 @@ def cmd_launch(argv):
     print(f"  account:   {account}")
     print(f"  cartella:  {folder}")
     print(f"  su {hname}:    {rdir} (base {base_sha[:10]})")
-    print(f"  link:      {rec['link'] or M('rsession.link_later')}")
+    print(f"  link:      {rec['link'] or M('rsession.link_later' if rc else 'rsession.no_rc')}")
     if sent_first:
         print("  " + M("rsession.prompt_sent"))
     if note:

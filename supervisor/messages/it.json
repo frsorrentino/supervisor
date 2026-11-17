@@ -1240,6 +1240,7 @@
   "rsession.no_registry": "{host}: la sessione {name} non si è registrata in {s} s. Il desktop di {host} può mostrare un dialogo; l'attività è \\claude-master\\cm-session-{name}",
   "rsession.started": "sessione avviata su {host}",
   "rsession.link_later": "(non ancora: Remote Control si collega fra poco, supervisor host sessions)",
+  "rsession.no_rc": "(senza Remote Control: accounts.<account>.remote_control è false; la si segue con supervisor talk)",
   "rsession.howto": "  il lavoro torna con:  supervisor host fetch {host} {name}   (commit fatti là → ramo locale, il merge si fa qui)",
   "rsession.propose": "regia carica (carico {load} su {cores} core, {free} GB liberi): questa cartella può andare su {host} (--host {host})",
   "rsession.no_record": "nessuna sessione remota «{name}» registrata qui ({dir})",

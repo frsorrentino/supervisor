@@ -1240,6 +1240,7 @@
   "rsession.no_registry": "{host}: session {name} did not register within {s} s. {host}'s desktop may show a dialog; the task is \\claude-master\\cm-session-{name}",
   "rsession.started": "session started on {host}",
   "rsession.link_later": "(not yet: Remote Control connects shortly, supervisor host sessions)",
+  "rsession.no_rc": "(no Remote Control: accounts.<account>.remote_control is false; follow it with supervisor talk)",
   "rsession.howto": "  the work comes back with:  supervisor host fetch {host} {name}   (commits made there → a local branch, merge here)",
   "rsession.propose": "control machine loaded (load {load} on {cores} cores, {free} GB free): this folder can go to {host} (--host {host})",
   "rsession.no_record": "no remote session “{name}” recorded here ({dir})",

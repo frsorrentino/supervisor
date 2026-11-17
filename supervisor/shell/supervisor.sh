@@ -90,7 +90,10 @@ _cm_wrap() {
   # parole, che una sostituzione di comando non quotata spezza in tutte e due le shell
   local _cm_w
   if [ -n "${CM_SESSION_CLAUDE_ARGS:-}" ]; then for _cm_w in $(printf '%s' "$CM_SESSION_CLAUDE_ARGS"); do args+=("$_cm_w"); done; fi
-  [ "${CM_SESSION_REMOTE_CONTROL:-true}" = true ] && args+=(--remote-control "$nome")
+  # 17/11/2026 (supervisor-rc-per-account-17-11): accounts.<account>.remote_control prevale su session.remote_control,
+  # come in cm-launch.sh. Prima qui valeva solo il secondo, e claude-pixel accendeva RC sull'account condiviso
+  local _cm_rc; _cm_rc="$(_cm_get "$acc" REMOTE_CONTROL)"
+  [ "${_cm_rc:-${CM_SESSION_REMOTE_CONTROL:-true}}" = true ] && args+=(--remote-control "$nome")
   args+=(-n "$nome")
   [ "${#envargs[@]}" -eq 0 ] && envargs=(CM_LAUNCHED=1)
   _cm_tmux new-session -d -s "$nome" -c "$PWD" env ${envargs[@]+"${envargs[@]}"} "$claude" ${args[@]+"${args[@]}"} "$@"

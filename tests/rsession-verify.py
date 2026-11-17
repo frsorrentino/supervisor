@@ -712,5 +712,25 @@ T.check("RS19 restart remote: close, then launch on the same folder continuing i
         and st19 and "-c" in st19[0]["args"]
         and any(c.get("text") == "ripresa dopo i plugin" for c in new19 if c["verb"] == "post"), f"{r19r.returncode} {[c['verb'] for c in new19]} {r19r.stderr[-400:]}")
 
+# RS20 (17/11/2026, supervisor-rc-per-account-17-11): accounts.<account>.remote_control vale anche per launch --host. Prima
+# cm-rsession aggiungeva sempre --remote-control, e le sessioni dell'account condiviso coi colleghi partivano con RC acceso
+base_cfg["accounts"]["professionale"]["remote_control"] = False
+cfg.write_text(json.dumps(base_cfg))
+n20 = len(calls())
+t20 = time.time()
+r20 = launch(str(beta), "--host", "win", "--no-window")
+dt20 = time.time() - t20
+s20 = [c for c in calls()[n20:] if c["verb"] == "start"]
+T.check("RS20 remote_control false on the professional account: launch --host starts the session there without --remote-control, does not wait for a link that never comes, and says the session has no Remote Control",
+        r20.returncode == 0 and s20 and "--remote-control" not in s20[0]["args"] and "-n" in s20[0]["args"] and dt20 < 4
+        and "senza Remote Control" in r20.stdout, f"rc={r20.returncode} {dt20:.1f}s {json.dumps(s20)} {r20.stdout[-300:]} {r20.stderr[-300:]}")
+n20b = len(calls())
+r20b = launch(str(zeta), "--host", "win", "--no-window")
+s20b = [c for c in calls()[n20b:] if c["verb"] == "start"]
+T.check("RS20 the personal account, without the key, keeps session.remote_control (true): --remote-control and its link",
+        r20b.returncode == 0 and s20b and "--remote-control" in s20b[0]["args"] and "claude.ai/code/" in r20b.stdout, f"{json.dumps(s20b)} {r20b.stdout[-300:]}")
+del base_cfg["accounts"]["professionale"]["remote_control"]
+cfg.write_text(json.dumps(base_cfg))
+
 T.rm(tmp)
 T.finish()
