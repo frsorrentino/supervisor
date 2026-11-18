@@ -85,7 +85,7 @@ R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
 STREAM_SILENCE_S = 45   # keep-alive di Firebase ogni 30 s, piu' 15 di margine
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "favicon", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1425,6 +1425,7 @@ def collect_sources(now=None):
         "follow": followed(), "awaiting": aw, "next": nexts, "next_at": nexts_at, "tools": tools,
         "devices": read_json(devices_path(), {}), "seen": seen_cached(now), "activity": read_json(device_activity_path(), {}), "recurring": _load("cm-recurring").for_state(),
         "icons": icons, "colors": R.get("colors") or None, "tool_notes": notes, "runtime": runtime,
+        "favicons": favicons_of(rows),   # 1.153
         "advice": advice_of(rows, now), "duplicates": duplicates_of(rows), "approvals": approvals_list(),
         "attention": attention_open(rows, ledger), "needs_you": needs_you_of(rows),
         "attention_dismissed": read_json(rdir() / "attention-dismissed.json", {}),   # 1.80: i turn_blocking chiusi dall'app
@@ -3471,7 +3472,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results", "attese", "attesa", "monitors", "thumb")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results", "attese", "attesa", "monitors", "thumb", "favicon")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 # 03/11/2026, misura del relay dal 02/11 (p95 dell'esecuzione): done 39 s, timeline 34 s, file 13 s, plugins 9 s, kpi
@@ -3491,7 +3492,7 @@ FILE_OPS = ("file",)
 # consegna, un passaggio, una domanda, un monitoraggio, una prova): due con argomenti diversi non sono la stessa lettura.
 # Prima la chiave era (op, sessione) e di 20 anteprime della stessa chat ne usciva una sola, le altre «superseded».
 # transcript, screen, search, timeline restano senza argomento: la chat le ripete e vale l'ultima
-ARG_KEYED_OPS = ("file", "thumb", "diff", "changes", "attesa", "monitors", "prove")
+ARG_KEYED_OPS = ("file", "thumb", "favicon", "diff", "changes", "attesa", "monitors", "prove")
 
 
 def in_order(cmds):
@@ -3962,6 +3963,49 @@ def raccolta_after_pair():
                          stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError as e:
         log(f"prima-raccolta dopo il pairing FAILED: {e}")
+
+
+_FAV = [None]
+FAVICON_SPAWN_EVERY_S = 600
+
+
+def _favicon_spawn(domains):
+    """I siti da rinfrescare in un processo a parte, a bassa priorita': la rete non rallenta mai la push."""
+    subprocess.Popen(["nice", "-n", "19", sys.executable, str(HERE / "cm-favicon.py"), "refresh", *domains],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def favicons_of(rows):
+    """1.153 (18/11/2026, supervisor-favicon-siti-18-11): {tmux: impronta} delle sessioni la cui cartella e' un dominio e
+    che hanno una favicon salvata. Solo letture di file; quelle mancanti o vecchie di una settimana partono in un
+    processo a parte (cm-favicon refresh), al piu' una volta ogni FAVICON_SPAWN_EVERY_S. Mai bloccare la push."""
+    out = {}
+    try:
+        if _FAV[0] is None:
+            _FAV[0] = _load("cm-favicon")
+        fv = _FAV[0]
+        due = []
+        for r in rows:
+            d = fv.domain_of(r.get("cwd"))
+            if not d:
+                continue
+            h = fv.hash_for(d)
+            if h:
+                out[r.get("tmux") or r.get("name") or ""] = h
+            if fv.stale(d):
+                due.append(d)
+        if due:
+            stamp = fv.cache_dir() / ".spawned"
+            try:
+                recent = time.time() - stamp.stat().st_mtime < FAVICON_SPAWN_EVERY_S
+            except OSError:
+                recent = False
+            if not recent:
+                stamp.touch()
+                _favicon_spawn(sorted(set(due)))
+    except Exception:   # noqa: BLE001 — un extra: senza favicon l'app tiene l'icona di oggi
+        pass
+    return out
 
 
 def offered_ops():

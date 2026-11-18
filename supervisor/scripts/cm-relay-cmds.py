@@ -576,6 +576,15 @@ def result_seen(arg):
 _THUMB = [None]
 
 
+def favicon_get(arg):
+    """1.153 (18/11/2026, supervisor-favicon-siti-18-11): op favicon, una lettura. arg = l'impronta di `sessions[].favicon`;
+    {hash, domain, mime, data (base64), width, height, at}. L'app la chiede una volta per impronta e la tiene."""
+    x = _load("cm-favicon").by_hash(arg)
+    if not x or not x.get("data"):
+        return False, M("relay.favicon_unknown", hash=str(arg or "?")[:40])
+    return True, json.dumps({k: x.get(k) for k in ("hash", "domain", "mime", "data", "width", "height", "at")}, ensure_ascii=False)
+
+
 def result_thumb(arg):
     """1.136 (11/11, supervisor-anteprime-documenti-11-11): op thumb, una lettura. arg = l'id di una consegna di Verifica;
     l'anteprima creata una volta dal relay (cm-thumb): {id, path, at, kind: image|text|none, …}. Con l'etag della risposta
@@ -2918,6 +2927,8 @@ def execute(cmd):
             return feedback_app(cmd)
         if op == "results":   # 1.106
             return True, json.dumps(results_mod().view(TRANSCRIPT_MAX_BYTES), ensure_ascii=False)
+        if op == "favicon":   # 1.153
+            return favicon_get(arg)
         if op == "thumb":   # 1.136
             return result_thumb(arg)
         if op == "result_seen":   # 1.106

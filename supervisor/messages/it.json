@@ -1266,6 +1266,7 @@
   "relay.cmd_file_not_declared": "nessuna richiesta, aperta o in archivio, dichiara questo file",
   "relay.cmd_file_no_session": "no session {name}",
   "relay.cmd_file_not_listed": "not in the transcript",
+  "relay.favicon_unknown": "favicon {hash} non trovata",
   "relay.result_unknown": "risultato {id} non trovato",
   "relay.result_seen": "visto",
   "relay.result_note_long": "nota troppo lunga (al massimo {max} caratteri)",

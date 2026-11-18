@@ -21,7 +21,7 @@
       "question": {
         "id": "q-1789210500-1",
         "kind": "ask",
-        "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
+        "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, client ok pending. Deploy now?",
         "options": [
           {
             "n": 1,
@@ -37,7 +37,7 @@
         ],
         "tier": "medium",
         "asked_at": 1789210500,
-        "preview": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?"
+        "preview": "Deploy ready with DEPLOY_TOKEN=•••, client ok pending. Deploy now?"
       },
       "outcome": null,
       "next": "Wait for the go",
@@ -357,6 +357,7 @@
     "monitors",
     "monitor_refresh",
     "thumb",
+    "favicon",
     "attention_done",
     "decision",
     "unpair",
@@ -483,7 +484,7 @@
       "kind": "question",
       "session": "ledger-api",
       "ref": "q-1789210500-1",
-      "title": "Deploy ready with DEPLOY_TOKEN=•••, waiting for the client's ok. Deploy now?",
+      "title": "Deploy ready with DEPLOY_TOKEN=•••, client ok pending. Deploy now?",
       "since": 1789210500,
       "closes": "answer",
       "wid": "w3d202727cc"

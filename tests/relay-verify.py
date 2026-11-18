@@ -233,7 +233,7 @@ SRC1 = {
         {"event": "stop", "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "ts": iso(1789121000), "last": "x", "esito": "Esito: README rewritten.", "tail": "Esito: README rewritten.\nThe preview build uses PREVIEW_TOKEN=pvw_4f3e2d1c0b9a.\nWatch: README rewritten", "watch": "Watch: README rewritten"},
     ],
     # 1.53: la consigliata e le spiegazioni dal payload dell'hook; 1.56: un token nel testo → question.preview
-    "questions": {"work-ledger-api": {"tool": "AskUserQuestion", "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, waiting for the client's ok. Deploy now?",
+    "questions": {"work-ledger-api": {"tool": "AskUserQuestion", "text": "Deploy ready with DEPLOY_TOKEN=dpl_9f8e7d6c5b4a, client ok pending. Deploy now?",
                                       "options": ["yes (Recommended)", "no"], "asked_at": 1789210500,
                                       "descriptions": {"yes (Recommended)": "Deploy 2.4 to production now", "no": "Wait for the client's ok"}}},
     "quota": {"personal": {"cinque_ore_pct": 11, "settimana_pct": 36, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False},
@@ -357,7 +357,7 @@ T.check("R12 (1.16) goal_of: open → {condition, since = the set sentinel's tim
 T.check("R2 rules: order waiting/busy/idle/gone then alphabetical, short ≤ 200 (1.6), full ≤ 600, n from 1, ≤ 8 KB", [x["state"] for x in st1["sessions"]] == ["waiting", "busy", "idle", "gone"] and all(len(x["outcome"]["short"]) <= 200 and len(x["outcome"]["full"]) <= 600 for x in st1["sessions"] if x["outcome"]) and [o["n"] for o in st1["sessions"][0]["question"]["options"]] == [1, 2] and S.size_of(st1) <= 8192, str(S.size_of(st1)))
 SRC2 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"],
         "rows": [{"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "off", "goal_status": None, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "idle", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_02atlas", "attached": False, "started_at": 1789214000000}],
-        "ledger": [{"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789213900), "last": "x", "esito": "Esito: seeds and admin page reviewed, 42 tests green.", "tail": "Esito: seeds and admin page reviewed, 42 tests green.\nWatch: Seeds and admin page reviewed", "watch": "Watch: Seeds and admin page reviewed"}],
+        "ledger": [{"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789213900), "last": "x", "esito": "Esito: seeds reviewed, 42 tests green.", "tail": "Esito: seeds reviewed, 42 tests green.\nWatch: Seeds and admin page reviewed", "watch": "Watch: Seeds and admin page reviewed"}],
         "questions": {}, "quota": {"personal": {"cinque_ore_pct": 24, "settimana_pct": 38, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False,
                                                  # 1.86: campioni orari dal rinnovo (start = 1789005600) e origini a lettura finita
                                                  "settimana_punti": [[1789007400, 1.6], [1789012860, 4.0], [1789016700, 5.4], [1789094400, 30.2], [1789097000, 38.0]],
@@ -431,7 +431,7 @@ SRC3["suggestions"] = [
     {"id": "s-4f7d6e8a58", "kind": "waiting", "key": "waiting:task:ledger-vendor-ticket", "text": "Check again: vendor's answer on 4411",
      "prompt": "Time to check again the external wait of task ledger-vendor-ticket", "at": 1789199200, "expires_at": 1789292800, "rank": 5, "source": "script"},
     # 1.94 (28/10): lo smistamento delle note di claude-observe di un plugin
-    {"id": "s-7c4a9b1d85", "kind": "observe", "key": "observe:chrome-bridge:2026-W38", "text": "chrome-bridge: 12 new error notes, top «No tab with id»: sort them?",
+    {"id": "s-7c4a9b1d85", "kind": "observe", "key": "observe:chrome-bridge:2026-W38", "text": "chrome-bridge: 12 new error notes: sort them?",
      "prompt": "Sorting of the claude-observe notes of chrome-bridge", "at": 1789199150, "expires_at": 1789292750, "rank": 5, "source": "script"},
     {"id": "s-5a6e7f9b67", "kind": "idea", "key": "idea:field-notes-on-phone", "text": "Try field-notes on the phone",
      "prompt": "Set up field-notes on the phone", "at": 1789199100, "expires_at": 1789242300, "rank": 6, "source": "master"},

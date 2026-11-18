@@ -690,6 +690,12 @@ def build_session(row, src):
     act = row.get("pc_activity")
     if row.get("attached") and act and src.get("_now") and 0 <= float(src["_now"]) - float(act) <= AT_PC_S:
         out["at_pc"] = True
+    # 1.153 (18/11/2026, supervisor-favicon-siti-18-11): l'impronta della favicon del sito (cartella col nome di un
+    # dominio), mai l'immagine: l'app la chiede una volta con l'op favicon. Assente senza favicon (l'icona di oggi),
+    # cosi' le sessioni che non sono siti non pesano sulla push
+    fav = (src.get("favicons") or {}).get(tmux)
+    if fav:
+        out["favicon"] = str(fav)
     return out
 
 

@@ -21,7 +21,7 @@
       "question": null,
       "outcome": {
         "short": "Seeds and admin page reviewed",
-        "full": "Esito: seeds and admin page reviewed, 42 tests green.",
+        "full": "Esito: seeds reviewed, 42 tests green.",
         "at": 1789213900
       },
       "next": "Test deploy on staging",
@@ -228,6 +228,7 @@
     "monitors",
     "monitor_refresh",
     "thumb",
+    "favicon",
     "attention_done",
     "decision",
     "unpair",

@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.183 — 2026-11-18: the favicon of the projects that are sites, fetched by the PC from the site itself, for the app's session avatar (supervisor-favicon-siti-18-11).**
+  - The maintainer from the web app on 18/11 at 11:47: «se il progetto riguarda un sito, al posto dell'icona accanto al nome potremmo mettere la favicon del sito»; at 12:01 «ok, per favicon, prosegui» on the master's proposal (favicon as the session's avatar with the state on it, taken by the PC and not by an external service, today's icon as fallback, nothing on the watch).
+  - New `cm-favicon.py`: a folder named like a domain is a site; its favicon from the `<link rel="icon">` of the home page, then `/favicon.ico`, never from a third-party service; WordPress's own icon does not count; a 64 px PNG kept in `<relay.dir>/favicons/`, fetched again every week, in a separate low-priority process started by the push.
+  - Contract 1.153: `sessions[].favicon` carries only the hash; the image comes once with the new op `favicon` (a read keyed by its argument). Absent: the app keeps today's icon.
+  - The three state fixtures: `favicon` in `ops`, three sample texts shortened to stay under the 8 KB cap.
+  - New test: `tests/favicon-verify.py`.
 - **0.8.182 — 2026-11-18: the first prompt of `launch --prompt` belongs to whoever launched the session, never to the person (supervisor-prompt-launch-origine-16-11).**
   - On 16/11, at 18:17 and 18:42, two sessions launched by the master with `launch --prompt` recorded the master's text as the maintainer's ok. Claude Code receives the positional prompt as typed at the terminal, the transcript marks it «human», and the hook saved it with origin «terminal». The real oks were already there, so no harm, but without one it would have been an invented ok.
   - `cm-launch.sh` now starts the session with `CM_FIRST_PROMPT_BY` (the launching tmux session, or `CM_PROMPT_BY`, else «launch») and `CM_FIRST_PROMPT_SHA` (the text's fingerprint), in tmux and with `--bg`. When the hook sees that very prompt it records it with origin «launch» and that sender, and adds a line to the context: who wrote it, not the user's ok. Any other prompt in the session stays the person's as before.
