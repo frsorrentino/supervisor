@@ -877,6 +877,7 @@ def inbox_approval_text(by, rec_id, note=None, task_session=None):
     origin = str(rec.get("origin") or "?")
     if origin not in ("relay", "terminal"):
         why = {"cron": "a prompt of the session's own cron is not the person",
+               "launch": "the first prompt of `supervisor launch --prompt` was written by whoever launched the session (the master, restart), not by the person",
                "unverified": f"the transcript does not show the prompt yet (waited {INBOX_WAIT_S:g} s): try again in a few seconds; if it keeps failing the record has no transcript (an older hook wrote it): ask the person to write the ok again"}.get(
             origin, "an ok comes from the person (the terminal or their device), never from another session's text")
         sys.exit(f"task approve --inbox: message {rec_id} did not come from the person (origin {origin}): {why}")

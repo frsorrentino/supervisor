@@ -628,7 +628,7 @@ def waiting_for_you(now=None):
 PROMPT_SKIP = ("<cross-session-message", "<task-notification", "[Cross-session", "<system-reminder", "[supervisor queue]", "<local-command", "/")
 PROMPT_RECENT_S = 600
 PROMPT_KEEP_S = 86400
-PROMPT_OWN_ORIGINS = ("terminal", "cron", "unverified")   # i record che scrive questo hook
+PROMPT_OWN_ORIGINS = ("terminal", "cron", "unverified", "launch")   # i record che scrive questo hook
 PRUNE_EVERY_S = 3600
 
 
@@ -649,6 +649,8 @@ def record_person_prompt(p):
         return
     try:
         ib = inbox()
+        if launch_prompt(ib, name, text, p):
+            return None
         now = time.time()
         mine = " ".join(ib.mask_pin(text).split())   # i record sono mascherati («ok ••••»)
         d = ib.box(name)
@@ -686,6 +688,23 @@ def record_person_prompt(p):
         return rec_id
     except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
         return None
+
+
+def launch_prompt(ib, name, text, p):
+    """18/11/2026 (supervisor-prompt-launch-origine-16-11): il primo prompt di `launch --prompt` lo scrive chi lancia (la
+    master, restart), non la persona; claude lo riceve come un messaggio del terminale e la trascrizione lo segna «human».
+    cm-launch.sh mette nell'ambiente chi l'ha scritto e l'impronta del testo: se il prompt e' quello, il record ha origine
+    «launch» (task approve --inbox lo rifiuta) e a contesto va una riga che lo dice. Torna True se era quello."""
+    by, sha = os.environ.get("CM_FIRST_PROMPT_BY") or "", os.environ.get("CM_FIRST_PROMPT_SHA") or ""
+    if not by or not sha:
+        return False
+    import hashlib
+    if hashlib.sha256(text.strip().encode()).hexdigest()[:16] != sha:
+        return False
+    rec = ib.put(name, text[:4000], by, p.get("cwd") or "", origin="launch", quiet=True)
+    ib.mark(rec["id"], "delivered", "launch")
+    sys.stdout.write(M("hook.launch_prompt", by=by) + "\n")
+    return True
 
 
 ANSWERS_MAX = 6

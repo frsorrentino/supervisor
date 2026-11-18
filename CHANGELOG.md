@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.182 — 2026-11-18: the first prompt of `launch --prompt` belongs to whoever launched the session, never to the person (supervisor-prompt-launch-origine-16-11).**
+  - On 16/11, at 18:17 and 18:42, two sessions launched by the master with `launch --prompt` recorded the master's text as the maintainer's ok. Claude Code receives the positional prompt as typed at the terminal, the transcript marks it «human», and the hook saved it with origin «terminal». The real oks were already there, so no harm, but without one it would have been an invented ok.
+  - `cm-launch.sh` now starts the session with `CM_FIRST_PROMPT_BY` (the launching tmux session, or `CM_PROMPT_BY`, else «launch») and `CM_FIRST_PROMPT_SHA` (the text's fingerprint), in tmux and with `--bg`. When the hook sees that very prompt it records it with origin «launch» and that sender, and adds a line to the context: who wrote it, not the user's ok. Any other prompt in the session stays the person's as before.
+  - `task approve --inbox` / `task ok --inbox` refuse a «launch» record with its own reason. Rule 12 of the kernel (it, en) names the launch prompt among the texts that are not the user's.
+  - Not touched: `launch --host`, where the first prompt goes through `talk` signed by the sender.
+  - New test: `tests/launch-prompt-origine-verify.py`.
 - **0.8.181 — 2026-11-17: Telegram gets three kinds of message and nothing else: an alarm when you need to act, the morning at 8, the recap at 20 (supervisor-avvisi-telegram-17-11).**
   - The maintainer asked on 13/11 to review all the Telegram messages, and chose the proposal on 17/11. Until 12:14 on 17/11 nine «stato fermo da 3 min» and «il telefono non si aggiorna» had arrived, all fixed by the guard on its own; the night report came apart at 02:00; the recap at 20 was the diary per project, with emoji.
   - The alarm: the relay's guard still pushes after 3 minutes of stale state, but tells Telegram only when the state has been stuck, or the pushes have been failing, for 15 minutes (`relay.alarm_after_s`, 900). The app's `relay_stale` event for failing pushes still goes at the third failure. The quota alarm goes at 92% (`guard.warn_pct`, was 95). Each alarm is two lines: what and where, then what to do with the app's link.

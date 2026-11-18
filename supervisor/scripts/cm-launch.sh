@@ -249,6 +249,15 @@ if [ "$(readlink -f "$CONF_DIR")" != "$(readlink -f "$(eval echo ~)/.claude")" ]
   ENVARGS=(CLAUDE_CONFIG_DIR="$CONF_DIR" ${PROF_ENV[@]+"${PROF_ENV[@]}"})
 fi
 [ "${#ENVARGS[@]}" -eq 0 ] && ENVARGS=(CM_LAUNCHED=1)   # `env` vuole almeno un argomento prima del comando
+# 18/11/2026 (supervisor-prompt-launch-origine-16-11): il primo prompt arriva a claude come scritto nel terminale, e il
+# 16/11 due sessioni hanno registrato il testo della master come ok dell'utente. La sessione sa chi l'ha scritto (la
+# sessione tmux che lancia, o CM_PROMPT_BY; senza, «launch») e la sua impronta: l'hook lo riconosce e non lo da' alla persona
+if [ -n "$PRIMO" ]; then
+  PRIMO_BY="${CM_PROMPT_BY:-}"
+  [ -z "$PRIMO_BY" ] && [ -n "${TMUX_PANE:-}" ] && PRIMO_BY="$(cm_tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null || true)"
+  PRIMO_SHA="$(printf '%s' "$PRIMO" | python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read().decode("utf-8", "replace").strip().encode()).hexdigest()[:16])')"
+  ENVARGS+=(CM_FIRST_PROMPT_BY="${PRIMO_BY:-launch}" CM_FIRST_PROMPT_SHA="$PRIMO_SHA")
+fi
 LABEL="$(cm_get "$ACCOUNT" LABEL)"
 
 # --- --host: la sessione parte su un altro host (cm-rsession.py: ammissione, fotografia, avvio, link) ---------
