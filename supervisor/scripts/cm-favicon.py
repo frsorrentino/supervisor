@@ -13,9 +13,15 @@ height}; senza favicon {domain, at, why} (why: none, wordpress, fetch_failed, no
 (WEEK_S); dopo un errore di rete si riprova dopo un giorno. La push porta solo `hash`; l'immagine la chiede l'app una
 volta con l'op `favicon` (by_hash) e la tiene.
 
-Uso: cm-favicon.py refresh DOMINIO…   (il relay lo lancia in un processo a parte)
+19/11/2026 (supervisor-favicon-scaricate-19-11): non ne arrivava nessuna, tutte fetch_failed. SiteGround chiudeva la
+connessione allo UA «Mozilla/5.0 (compatible; supervisor-favicon)» (e rifiuta anche lo UA completo di Chrome, per
+l'impronta TLS); a «Mozilla/5.0» risponde. Quindi: UA semplice; se urllib fallisce, un secondo tentativo con curl (altra
+impronta TLS); poche richieste e lente (PACE_S fra una e l'altra, al piu' MAX_LINKS icone per sito), perche' il blocco
+per IP di SiteGround colpisce tutti i siti del PC; `refresh --force` rifa' subito anche quelli recenti.
+
+Uso: cm-favicon.py refresh [--force] DOMINIO…   (il relay lo lancia in un processo a parte, senza --force)
      cm-favicon.py get DOMINIO | list
-CM_FAVICON_URL (per i test): la radice del sito al posto di https://{domain}.
+CM_FAVICON_URL (per i test): la radice del sito al posto di https://{domain}. CM_FAVICON_PACE_S: la pausa (test).
 """
 import base64
 import hashlib
@@ -24,7 +30,10 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -40,7 +49,10 @@ MAX_OUT = 16 * 1024
 TIMEOUT_S = 10
 WEEK_S = 7 * 86400
 RETRY_S = 86400
-UA = "Mozilla/5.0 (compatible; supervisor-favicon)"
+UA = "Mozilla/5.0"   # 19/11: con «(compatible; …)» SiteGround chiude la connessione
+PACE_S = 2.0         # fra una richiesta e l'altra: il blocco per IP di SiteGround colpisce tutti i siti del PC
+MAX_LINKS = 3        # icone dalla pagina provate al piu', poi /favicon.ico
+_LAST = [0.0]
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$")
 NOT_TLD = {"md", "py", "js", "ts", "json", "txt", "sh", "html", "htm", "css", "log", "bak", "old", "tmp", "git", "lock",
            "yml", "yaml", "zip", "tar", "gz", "pdf", "png", "jpg", "jpeg", "svg", "csv", "xml", "local", "test",
@@ -128,11 +140,52 @@ def _join(root, href):
     return urllib.parse.urljoin(root + "/", href)
 
 
-def _get(url, cap):
+def _pace():
+    wait = float(os.environ.get("CM_FAVICON_PACE_S") or PACE_S) - (time.monotonic() - _LAST[0])
+    if wait > 0:
+        time.sleep(wait)
+    _LAST[0] = time.monotonic()
+
+
+def _get_urllib(url, cap):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
     with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
         data = r.read(cap + 1)
         return r.geturl(), (r.headers.get("Content-Type") or "").split(";")[0].strip().lower(), data[:cap] if len(data) <= cap else None
+
+
+def _get_curl(url, cap):
+    """Il secondo tentativo: curl ha un'altra impronta TLS, e alcuni hosting lasciano passare lui e non Python."""
+    curl = shutil.which("curl")
+    if not curl:
+        raise OSError("no curl")
+    with tempfile.NamedTemporaryFile(prefix="cm-fav-", delete=False) as f:
+        out = f.name
+    try:
+        p = subprocess.run([curl, "-sS", "-L", "--max-redirs", "5", "-A", UA, "-H", "Accept: */*", "--max-time", str(TIMEOUT_S),
+                            "--max-filesize", str(cap + 1), "-o", out, "-w", "%{http_code}\n%{url_effective}\n%{content_type}", url],
+                           capture_output=True, text=True, timeout=TIMEOUT_S + 5)
+        code, final, ctype = (p.stdout.split("\n") + ["", "", ""])[:3]
+        if p.returncode != 0 or not code.startswith("2"):
+            raise OSError(f"curl {p.returncode} http {code}")
+        data = Path(out).read_bytes()
+        return final or url, ctype.split(";")[0].strip().lower(), data[:cap] if len(data) <= cap else None
+    finally:
+        Path(out).unlink(missing_ok=True)
+
+
+def _get(url, cap):
+    """urllib, poi curl; una richiesta per volta, a PACE_S di distanza."""
+    _pace()
+    try:
+        return _get_urllib(url, cap)
+    except urllib.error.HTTPError as e:
+        if e.code < 500:
+            raise   # un 404 e' una risposta: rifarla con curl e' solo una richiesta in piu'
+    except (OSError, urllib.error.URLError, ValueError):
+        pass   # connessione chiusa, TLS rifiutato: il secondo tentativo con curl
+    _pace()
+    return _get_curl(url, cap)
 
 
 class _Links(HTMLParser):
@@ -173,7 +226,7 @@ def candidates(domain):
         except Exception:   # noqa: BLE001 — HTML rotto: si va a /favicon.ico
             pass
         icons = [x for x in p.icons if "svg" not in x[1] and not x[0].lower().split("?")[0].endswith(".svg")]
-        for href, _t, _s in sorted(icons, key=lambda x: _size_key(x[2])):
+        for href, _t, _s in sorted(icons, key=lambda x: _size_key(x[2]))[:MAX_LINKS]:
             out.append(_join(root, href))
     out.append(root + "/favicon.ico")
     seen = set()
@@ -244,8 +297,9 @@ def refresh(domain):
     return rec
 
 
-def refresh_due(domains):
-    """Rinfresca quelli vecchi (piu' di una settimana, o un giorno dopo un errore). Un solo processo alla volta."""
+def refresh_due(domains, force=False):
+    """Rinfresca quelli vecchi (piu' di una settimana, o un giorno dopo un errore); con force tutti. Un solo processo alla
+    volta."""
     import fcntl
     lk = open(cache_dir() / ".lock", "w")
     try:
@@ -255,7 +309,7 @@ def refresh_due(domains):
             return []
         done = []
         for d in dict.fromkeys(x for x in domains if x and DOMAIN_RE.match(x)):
-            if stale(d):
+            if force or stale(d):
                 refresh(d)
                 done.append(d)
         return done
@@ -264,8 +318,8 @@ def refresh_due(domains):
 
 
 def main(argv):
-    if argv[:1] == ["refresh"] and argv[1:]:
-        print(json.dumps(refresh_due(argv[1:])))
+    if argv[:1] == ["refresh"] and [a for a in argv[1:] if a != "--force"]:
+        print(json.dumps(refresh_due([a for a in argv[1:] if a != "--force"], force="--force" in argv[1:])))
         return 0
     if argv[:1] == ["get"] and len(argv) == 2:
         x = read(argv[1]) or {}

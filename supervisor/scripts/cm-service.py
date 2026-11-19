@@ -43,7 +43,7 @@ CFG = cm.load(warn=False)
 M = lambda k, **kw: cm.msg(CFG, k, **kw)  # noqa: E731
 UNIT = "supervisor-boot.service"
 LABEL = "supervisor.boot"
-TASK = "boot"
+TASK = "boot"   # 0.8.185: un nome solo; dalla 0.8.186 boot-<distribuzione>, il vecchio lo toglie off
 TASK_PATH = "\\supervisor\\"
 CRON_MARK = "# supervisor service"
 
@@ -143,30 +143,42 @@ def powershell():
     return shutil.which("powershell.exe") or next((p for p in PS_PATHS if os.path.exists(p)), "powershell.exe")
 
 
+def distro():
+    return os.environ.get("WSL_DISTRO_NAME") or "Ubuntu"
+
+
+def task_name():
+    """19/11/2026 (supervisor-master-prova-vera-19-11, la prova in sup-prova): un'attivita' per distribuzione. Con un nome
+    solo («boot») la seconda distribuzione che accende il servizio prendeva il posto della prima."""
+    return "boot-" + "".join(c if c.isalnum() or c in "-_." else "-" for c in distro())
+
+
 def wsl_command():
     user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
-    distro = os.environ.get("WSL_DISTRO_NAME") or "Ubuntu"
-    return f"wsl.exe -d {distro}" + (f" -u {user}" if user else "") + f" -- {shim()} service boot --hold"
+    return f"wsl.exe -d {distro()}" + (f" -u {user}" if user else "") + f" -- {shim()} service boot --hold"
 
 
 def ps_on():
     vbs = f'CreateObject("WScript.Shell").Run "{wsl_command()}", 0, False'
     return ("$ErrorActionPreference='Stop'; $d = Join-Path $env:LOCALAPPDATA 'supervisor'; "
-            "New-Item -ItemType Directory -Force $d | Out-Null; $v = Join-Path $d 'boot.vbs'; "
+            "New-Item -ItemType Directory -Force $d | Out-Null; $v = Join-Path $d '" + task_name() + ".vbs'; "
             f"Set-Content -Encoding ASCII -Path $v -Value '{vbs.replace(chr(39), chr(39) * 2)}'; "
             "$a = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $v + '\"'); "
             "$t = New-ScheduledTaskTrigger -AtLogOn -User \"$env:USERDOMAIN\\$env:USERNAME\"; "
             "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero); "
-            f"Register-ScheduledTask -TaskName '{TASK}' -TaskPath '{TASK_PATH}' -Action $a -Trigger $t -Settings $s -Force | Out-Null; 'ok'")
+            f"Register-ScheduledTask -TaskName '{task_name()}' -TaskPath '{TASK_PATH}' -Action $a -Trigger $t -Settings $s -Force | Out-Null; 'ok'")
 
 
 def ps_off():
-    return (f"Unregister-ScheduledTask -TaskName '{TASK}' -TaskPath '{TASK_PATH}' -Confirm:$false -ErrorAction SilentlyContinue; "
-            "Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:LOCALAPPDATA 'supervisor\\boot.vbs'); 'ok'")
+    return (f"Unregister-ScheduledTask -TaskName '{task_name()}' -TaskPath '{TASK_PATH}' -Confirm:$false -ErrorAction SilentlyContinue; "
+            f"Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:LOCALAPPDATA 'supervisor\\{task_name()}.vbs'); "
+            # quella della 0.8.185, col nome solo, se lancia questa distribuzione
+            f"$v = Join-Path $env:LOCALAPPDATA 'supervisor\\boot.vbs'; if ((Test-Path $v) -and ((Get-Content $v -Raw) -match ' -d {distro()} ')) "
+            f"{{ Unregister-ScheduledTask -TaskName '{TASK}' -TaskPath '{TASK_PATH}' -Confirm:$false -ErrorAction SilentlyContinue; Remove-Item -Force $v }}; 'ok'")
 
 
 def ps_status():
-    return f"if (Get-ScheduledTask -TaskName '{TASK}' -TaskPath '{TASK_PATH}' -ErrorAction SilentlyContinue) {{ 'on' }} else {{ 'off' }}"
+    return f"if (Get-ScheduledTask -TaskName '{task_name()}' -TaskPath '{TASK_PATH}' -ErrorAction SilentlyContinue) {{ 'on' }} else {{ 'off' }}"
 
 
 def ps(script):
@@ -181,7 +193,7 @@ def on():
         if rc != 0 or "ok" not in out.splitlines()[-1:]:
             print(M("service.failed", line=(out.splitlines() or ["?"])[-1]), file=sys.stderr)
             return 1
-        print(M("service.on_windows", task=TASK_PATH + TASK))
+        print(M("service.on_windows", task=TASK_PATH + task_name()))
         return 0
     if s == "darwin":
         p = plist_path()

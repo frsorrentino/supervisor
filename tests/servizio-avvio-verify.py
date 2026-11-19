@@ -102,10 +102,17 @@ T.check("SV3 service off: unloaded and removed", not plist.exists() and any(x.st
 r, c = svc("on", CM_SERVICE_OS="wsl", WSL_DISTRO_NAME="Ubuntu-24.04")
 script = c[0] if c else ""
 T.check("SV4 Windows (WSL): a scheduled task at logon through powershell.exe: wscript with a hidden .vbs running `wsl.exe -d Ubuntu-24.04 -u collega -- <shim> service boot --hold`",
-        r.returncode == 0 and "Register-ScheduledTask -TaskName 'boot' -TaskPath '\\supervisor\\'" in script and "-AtLogOn" in script
+        r.returncode == 0 and "Register-ScheduledTask -TaskName 'boot-Ubuntu-24.04' -TaskPath '\\supervisor\\'" in script and "-AtLogOn" in script
         and "wscript.exe" in script and f"wsl.exe -d Ubuntu-24.04 -u collega -- {SHIM} service boot --hold" in script and ", 0, False" in script, script[:900])
+r2, c2 = svc("on", CM_SERVICE_OS="wsl", WSL_DISTRO_NAME="sup-prova")
+T.check("SV4 (19/11, the test in sup-prova) one task per distribution: a second distribution does not take the first one's place",
+        "-TaskName 'boot-sup-prova'" in (c2[0] if c2 else "") and "'boot-sup-prova.vbs'" in (c2[0] if c2 else "") and "boot-Ubuntu-24.04" not in (c2[0] if c2 else ""), str(c2)[:400])
 r, c = svc("off", CM_SERVICE_OS="wsl", WSL_DISTRO_NAME="Ubuntu-24.04")
-T.check("SV4 service off: the task and the .vbs go", r.returncode == 0 and "Unregister-ScheduledTask -TaskName 'boot'" in (c[0] if c else "") and "boot.vbs" in (c[0] if c else ""), str(c)[:400])
+T.check("SV4 service off: this distribution's task and .vbs go, and the single-name one of 0.8.185 when it launches this distribution",
+        r.returncode == 0 and "Unregister-ScheduledTask -TaskName 'boot-Ubuntu-24.04'" in (c[0] if c else "") and "boot-Ubuntu-24.04.vbs" in (c[0] if c else "")
+        and "-match ' -d Ubuntu-24.04 '" in (c[0] if c else ""), str(c)[:600])
+T.check("SV6 (19/11, the test in sup-prova) the setup summary names the step («startup service»), not the raw key",
+        EN.get("install.step_service") == "startup service", str(EN.get("install.step_service")))
 
 # ------------------------------------------------------------------ SV5
 proj = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(str(ws)))

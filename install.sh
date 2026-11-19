@@ -175,10 +175,16 @@ if [ -n "$FAILED" ]; then
 fi
 
 # --- 2. the plugin ------------------------------------------------------------------------------------------------------
+# 19/11/2026 (supervisor-master-prova-vera-19-11): `plugin update` esce 0 anche quando non cambia niente, e diceva «plugin
+# updated» con la versione vecchia ancora al suo posto: la versione si legge prima e dopo
+plugin_version() { "$CLAUDE" plugin list 2>/dev/null | awk '/supervisor@/ {f=1; next} f && /Version:/ {print $2; exit}'; }
 if "$CLAUDE" plugin list 2>/dev/null | grep -q "supervisor@"; then
+  v0="$(plugin_version)"
   "$CLAUDE" plugin marketplace update supervisor-dev </dev/null >/dev/null 2>&1 || true
-  if "$CLAUDE" plugin update "$PLUGIN" </dev/null >/dev/null 2>&1; then ok "$(say "plugin aggiornato" "plugin updated")"
-  else ok "$(say "plugin già installato" "plugin already installed")"; fi
+  "$CLAUDE" plugin update "$PLUGIN" </dev/null >/dev/null 2>&1
+  v1="$(plugin_version)"
+  if [ -n "$v1" ] && [ "$v1" != "$v0" ]; then ok "$(say "plugin aggiornato: $v0 → $v1" "plugin updated: $v0 → $v1")"
+  else ok "$(say "plugin già all'ultima versione che il marketplace offre (${v1:-?})" "plugin already at the latest version the marketplace offers (${v1:-?})")"; fi
 else
   "$CLAUDE" plugin marketplace add "$MARKET" </dev/null >/dev/null 2>&1 || true
   if out="$("$CLAUDE" plugin install "$PLUGIN" --scope user </dev/null 2>&1)"; then ok "$(say "plugin installato" "plugin installed")"

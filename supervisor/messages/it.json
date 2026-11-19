@@ -18,6 +18,7 @@
   "install.step_relay": "web app sul PC",
   "install.step_master": "master",
   "install.step_state": "stato della web app",
+  "install.step_service": "servizio d'avvio",
   "install.step_raccolta": "prima raccolta",
   "install.step_phone": "telefono",
   "install.step_doctor": "controllo finale",
