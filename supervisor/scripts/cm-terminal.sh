@@ -23,7 +23,9 @@ cm_terminal_detect() {
     auto) ;;
     *) printf '%s' "$CM_TERMINAL_BACKEND"; return ;;
   esac
-  if [ -x "$CM_TERMINAL_GARCON" ]; then printf chromeos
+  # 19/11/2026 (supervisor-master-riconosciuta-19-11): dentro WSL la finestra e' Windows Terminal, prima di ogni altro
+  if [ -n "${WSL_DISTRO_NAME:-}" ] && { [ -n "${WT_SESSION:-}" ] || command -v wt.exe >/dev/null 2>&1; }; then printf wt
+  elif [ -x "$CM_TERMINAL_GARCON" ]; then printf chromeos
   elif [ "${TERM_PROGRAM:-}" = "iTerm.app" ]; then printf iterm2
   elif [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ]; then printf macos-terminal
   elif [ -n "${KITTY_WINDOW_ID:-}" ] || command -v kitty >/dev/null 2>&1; then printf kitty

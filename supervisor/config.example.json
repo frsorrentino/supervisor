@@ -311,6 +311,7 @@
     "dir": "~/.cc-supervisor/relay",
     "heartbeat_s": 60,
     "debounce_s": 2,
+    "start_push_later_s": 4,
     "token_url": "https://oauth2.googleapis.com/token",
     "fcm_url": "https://fcm.googleapis.com",
     "host": "",

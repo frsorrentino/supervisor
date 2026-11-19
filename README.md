@@ -139,7 +139,7 @@ In full: [details/trust.md](details/trust.md) and [PRIVACY.md](PRIVACY.md).
 | `tmux` | everything | on the PATH |
 | `python3` | everything | 3.8+ |
 | `bash` | everything | on the PATH |
-| A system | everything | Linux, macOS (its own bash 3.2 is enough; tmux from Homebrew), ChromeOS or WSL2; not native Windows ([details/windows.md](details/windows.md)) |
+| A system | everything | Linux, macOS (its own bash 3.2 is enough; tmux from Homebrew), ChromeOS or WSL2 on Windows, which `install.ps1` sets up ([details/windows.md](details/windows.md)) |
 | Firebase project, `firebase-tools` | phone and watch away from this computer | your own, set up by `relay setup` |
 | A browser | web app | any phone or tablet; on iPhone and iPad, add it to the Home Screen and open it from there |
 | Android, Wear OS | native apps | Android 13+ phone, Wear OS 4+ watch |
@@ -155,6 +155,18 @@ The script checks bash, python3, tmux, git, cron and Claude Code, and installs w
 `supervisor setup`. Already inside Claude Code: `/supervisor:setup` does the same and reads the errors for you.
 `supervisor setup --dry-run` shows every step without doing it; `--root DIR --phone no --yes` asks nothing.
 If something fails, the last lines are a block to send to whoever helps you.
+Setup also offers the startup service, on by default: at every login the relay and the master start by
+themselves (a systemd user unit on Linux, a LaunchAgent on macOS, a scheduled task on Windows that starts Ubuntu),
+so the app finds them after a restart. `supervisor service off` removes it, `supervisor service status` tells.
+
+On Windows, supervisor runs inside Ubuntu (WSL). In PowerShell, this line installs WSL with Ubuntu if it is
+missing (after asking) and then runs the installer inside it:
+
+```powershell
+irm https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.ps1 | iex
+```
+
+The steps by hand are in [details/windows.md](details/windows.md).
 
 **The master** receives the phone's messages, the sessions' questions, the night's
 work and the recap, so leave it open. `supervisor prima-raccolta` gathers once what

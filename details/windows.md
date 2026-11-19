@@ -2,6 +2,29 @@
 
 Back to the [README](../README.md).
 
+## Installing on Windows
+
+supervisor runs inside Ubuntu (WSL2), which Windows installs by itself. The quickest way is one line in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.ps1 | iex
+```
+
+If Ubuntu is already there, it runs the installer inside it. If not, it installs WSL with Ubuntu after asking
+(Windows asks for the administrator's permission) and then says the three steps left.
+
+By hand, four steps:
+
+1. Open PowerShell as administrator (right click on the Start menu) and type `wsl --install -d Ubuntu`.
+2. Restart the computer.
+3. Open «Ubuntu» from the Start menu and choose a user name and a password.
+4. In Ubuntu, paste `curl -fsSL https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh | bash`.
+
+Running `install.sh` from Git Bash gives the same steps; when Ubuntu is already there, it offers to go on inside it.
+The installer runs with a clean PATH inside Ubuntu, so it never finds or touches the Windows Claude Code.
+
+## On native Windows
+
 supervisor runs sessions in tmux and reads processes from `/proc`, so it
 does not run on native Windows: use it inside WSL2, where it is Linux. On
 native Windows, installed by mistake or through a shared settings file, disable

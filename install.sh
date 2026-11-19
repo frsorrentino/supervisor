@@ -38,15 +38,46 @@ version_ge() {   # $1 >= $2, numeri a punti; senza sort -V, che il sort di macOS
     if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 } exit 0 }'
 }
 
+# --- 0. Windows: supervisor lives inside WSL (19/11/2026, supervisor-installazione-windows-16-11) ----------------------
+# Two colleagues stopped here: from Git Bash the installer printed one line and gave up. Now: the exact steps, and when
+# Ubuntu is already there, the offer to run the installer inside it. From PowerShell: install.ps1 does the same.
+URL_SH="https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh"
+URL_PS="https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.ps1"
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    WSL="${SUPERVISOR_WSL_BIN:-wsl.exe}"
+    # the names come out in UTF-16: the NUL bytes and the CRs go
+    DISTRO="$("$WSL" -l -q 2>/dev/null | tr -d '\000\r' | grep -i '^ubuntu' | head -1)"
+    say "supervisor non gira direttamente su Windows: gira dentro Ubuntu (WSL), che Windows installa da sé." \
+        "supervisor does not run on Windows itself: it runs inside Ubuntu (WSL), which Windows installs by itself."
+    if [ -n "$DISTRO" ]; then
+      say "Ubuntu c'è già ($DISTRO): l'installatore può continuare lì dentro." \
+          "Ubuntu is already here ($DISTRO): the installer can go on in there."
+      if ask_yes "$(say "Continuo dentro $DISTRO?" "Go on inside $DISTRO?")"; then
+        # a clean PATH: with the Windows one, the Linux installer would find Windows' claude and npm (and remove them)
+        "$WSL" -d "$DISTRO" -- bash -c "export PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin; curl -fsSL $URL_SH | bash"
+        exit $?
+      fi
+      say "Per farlo a mano: apri «$DISTRO» dal menu Start e incolla:" "To do it by hand: open «$DISTRO» from the Start menu and paste:"
+      printf '    curl -fsSL %s | bash\n' "$URL_SH"
+      exit 3
+    fi
+    say "Quattro passi:" "Four steps:"
+    say "  1. Apri PowerShell come amministratore (tasto destro sul menu Start) e scrivi:  wsl --install -d Ubuntu" \
+        "  1. Open PowerShell as administrator (right click on the Start menu) and type:  wsl --install -d Ubuntu"
+    say "  2. Riavvia il computer." "  2. Restart the computer."
+    say "  3. Apri «Ubuntu» dal menu Start e scegli un nome utente e una password." \
+        "  3. Open «Ubuntu» from the Start menu and choose a user name and a password."
+    say "  4. In Ubuntu incolla:  curl -fsSL $URL_SH | bash" "  4. In Ubuntu paste:  curl -fsSL $URL_SH | bash"
+    say "Oppure fa tutto da sé, in PowerShell:  irm $URL_PS | iex" "Or let it do everything, in PowerShell:  irm $URL_PS | iex"
+    exit 3 ;;
+esac
+
 say "supervisor: installazione completa. Si può rilanciare: quello che è già a posto resta com'è." \
     "supervisor: complete install. You can run it again: what is already in place stays as it is."
 
 # --- 0. the system ----------------------------------------------------------------------------------------------------
 case "$(uname -s 2>/dev/null)" in
-  MINGW*|MSYS*|CYGWIN*)
-    say "supervisor gira su Linux, macOS o dentro WSL2 su Windows: apri il terminale di Ubuntu (WSL) e rilancia lì." \
-        "supervisor runs on Linux, macOS or inside WSL2 on Windows: open the Ubuntu (WSL) terminal and run it there."
-    exit 3 ;;
   Darwin) OS=macos ;;   # 0.8.148: processes through cm-proc, no bash 4 syntax (supervisor-macos-11-11)
   *) OS=linux; { [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSL_INTEROP:-}" ]; } && OS=wsl ;;
 esac

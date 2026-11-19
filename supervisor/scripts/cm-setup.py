@@ -18,6 +18,8 @@ se vuoi la web app sul telefono. Le sessioni passate la prima raccolta le legge 
   7 prima raccolta   le sezioni piene subito, senza modello; le sessioni passate solo con --sessions yes
   8 telefono         con il si': relay setup (il tuo progetto Firebase), relay install, relay pair (il QR)
   9 doctor           cosa resta da sistemare, con il comando su ogni riga
+  e, dopo la master, il servizio d'avvio (--service yes|no, proposto acceso): relay e master ripartono da soli
+  all'accesso (supervisor service, off lo toglie)
 Alla fine il riepilogo: cosa e' fatto, l'indirizzo della web app, i passi dopo. Esce 0 se nessun passo e' fallito.
 Nessuna installazione di pacchetti: quello che manca lo dice doctor col suo comando.
 """
@@ -397,6 +399,18 @@ def published_master():
     return None
 
 
+def step_service(st, on):
+    """19/11/2026 (supervisor-servizio-avvio-ovunque-19-11, S3): il servizio d'avvio, proposto acceso su ogni sistema:
+    all'accesso relay e master ripartono da soli (systemd --user, LaunchAgent, attivita' pianificata di Windows)."""
+    if not on:
+        st.add("skip", "service", M("install.service_no")); return
+    if st.dry:
+        st.add("skip", "service", M("install.dry_service")); return
+    p = subprocess.run([sys.executable, str(HERE / "cm-service.py"), "on"], capture_output=True, text=True, timeout=180)
+    out = (p.stdout + p.stderr).strip().splitlines()
+    st.add("ok" if p.returncode == 0 else "warn", "service", out[-1] if out else "service on rc " + str(p.returncode))
+
+
 def step_state(st, wait_s=STATE_WAIT_S):
     if st.dry:
         st.add("skip", "state", M("install.dry_state")); return
@@ -515,12 +529,12 @@ def main(argv):
             del args[i:i + 2]
             return v
         return None
-    root, phone_a, sess_a = opt("--root"), opt("--phone"), opt("--sessions")
+    root, phone_a, sess_a, serv_a = opt("--root"), opt("--phone"), opt("--sessions"), opt("--service")
     yes, dry, window = "--yes" in args, "--dry-run" in args, "--no-window" not in args
     args = [a for a in args if a not in ("--yes", "--dry-run", "--no-window")]
     if args:
         print(M("install.usage"), file=sys.stderr); return 2
-    for v in (phone_a, sess_a):
+    for v in (phone_a, sess_a, serv_a):
         if v is not None and v.lower() not in YES + ("n", "no"):
             print(M("install.usage"), file=sys.stderr); return 2
     interactive = sys.stdin.isatty() and not yes
@@ -543,6 +557,10 @@ def main(argv):
         phone = ask(M("install.ask_phone") + " [y/N]", "n", interactive).lower() in YES
     else:
         phone = phone_a.lower() in YES
+    if serv_a is None:   # 19/11 (S3): proposto acceso; un Invio vale si'
+        service = ask(M("install.ask_service") + " [Y/n]", "y", interactive).lower() in YES
+    else:
+        service = serv_a.lower() in YES
     sessions = (sess_a or "no").lower() in YES   # 11/11 (il maintainer: «semplificare al massimo»): due domande sole; questa e' un'opzione
     pre = preflight(phone, interactive, dry)
     st = Steps(dry)
@@ -554,6 +572,7 @@ def main(argv):
     link = step_relay(st)
     if step_master(st, window, pre["claude"], chosen=root):
         step_state(st)
+    step_service(st, service)
     step_raccolta(st, sessions)
     step_phone(st, phone, interactive, pre["phone"])
     step_doctor(st)

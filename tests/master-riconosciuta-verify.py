@@ -38,8 +38,11 @@ cfg.write_text(json.dumps({
     "workspace": {"root": str(ws), "root_session_name": "master", "project_dirs": ["personali"]},
     "accounts": {"personale": {"config_dir": str(home / ".claude")}},
     "relay": {"enabled": True, "dir": str(rdir), "host": "test", "start_push_later_s": 2},
-    "onboarding": {"enabled": False},
+    # MR8: un garcon finto c'e' sempre, come sul Chromebook; wt.exe solo dove il test lo mette
+    "terminal": {"backend": "auto", "garcon": str(tmp / "garcon")},
 }))
+(tmp / "garcon").write_text("#!/bin/sh\nexit 0\n")
+(tmp / "garcon").chmod(0o755)
 alive = tmp / "alive.json"
 fake_cm = tmp / "supervisor"
 fake_cm.write_text(f"""#!/bin/sh
@@ -129,9 +132,23 @@ T.check("MR7 macOS with bash → .bash_profile (login shells do not read .bashrc
         got == {("darwin", "/bin/bash"): ".bash_profile", ("linux", "/bin/bash"): ".bashrc", ("darwin", "/bin/zsh"): ".zshrc"}, str(got))
 
 # ------------------------------------------------------------------ MR8
-d = subprocess.run([str(T.SCRIPTS / "cm-terminal.sh"), "open", "master"], capture_output=True, text=True, timeout=30,
-                   env=dict(BASE, CM_TERMINAL_BACKEND="wt", CM_TERMINAL_DRY_RUN="1", WSL_DISTRO_NAME="sup-prova"))
-T.check("MR8 the Windows Terminal window opens `wsl.exe -d <this distribution>`, not Windows' default one",
-        "wsl.exe -d sup-prova -e" in d.stdout, d.stdout + d.stderr)
+# isolato dalla piattaforma (sul Chromebook c'e' garcon, su win wt.exe nel PATH): un wt.exe finto e un garcon finto
+wtd = tmp / "wtbin"
+wtd.mkdir()
+(wtd / "wt.exe").write_text("#!/bin/sh\nexit 0\n")
+(wtd / "wt.exe").chmod(0o755)
+nowt = ":".join(p for p in os.environ["PATH"].split(":") if not (Path(p) / "wt.exe").exists())
+
+
+def term(**env):
+    return subprocess.run([str(T.SCRIPTS / "cm-terminal.sh"), "open", "master"], capture_output=True, text=True, timeout=30,
+                          env=dict(BASE, CM_TERMINAL_DRY_RUN="1", WAYLAND_DISPLAY="fake-0", **env))
+
+
+d = term(WSL_DISTRO_NAME="sup-prova", PATH=f"{wtd}:{nowt}")
+T.check("MR8 inside WSL the window is Windows Terminal (before garcon) and opens `wsl.exe -d <this distribution>`, not Windows' default one",
+        "wt.exe" in d.stdout and "wsl.exe -d sup-prova -e" in d.stdout and "garcon" not in d.stdout, d.stdout + d.stderr)
+d2 = term(PATH=nowt)
+T.check("MR8 outside WSL (ChromeOS) garcon stays the choice", "garcon" in d2.stdout and "wt.exe" not in d2.stdout, d2.stdout + d2.stderr)
 
 T.finish()
