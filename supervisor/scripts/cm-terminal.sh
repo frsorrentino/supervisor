@@ -69,7 +69,9 @@ cm_terminal_open() {
     macos-terminal)
       run_detached osascript -e "tell application \"Terminal\" to do script \"$DISPATCH attach $nome ${mode}\"" ;;
     wt)
-      run_detached wt.exe -w new nt --title "$nome" wsl.exe -e "$DISPATCH" attach "$nome" ${mode:+"$mode"} ;;
+      # 19/11/2026 (supervisor-master-riconosciuta-19-11, D8): -d con la distribuzione di qui, non la predefinita di
+      # Windows (con due distribuzioni la finestra si apriva nell'altra, dove la sessione non c'e')
+      run_detached wt.exe -w new nt --title "$nome" wsl.exe ${WSL_DISTRO_NAME:+-d "$WSL_DISTRO_NAME"} -e "$DISPATCH" attach "$nome" ${mode:+"$mode"} ;;
     none)
       [ "${CM_TERMINAL_DRY_RUN:-}" = 1 ] && echo "skip: backend none"
       return 0 ;;

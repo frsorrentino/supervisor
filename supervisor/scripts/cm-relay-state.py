@@ -27,6 +27,7 @@ Tempi di una sessione in `/state` (chiesto dall'app il 13/09/2026, qui perche' n
 import datetime as _dt
 import hashlib
 import json
+import os
 import re
 
 V = 1
@@ -304,6 +305,42 @@ def short_name(name, prefixes=()):
         if name.startswith(p):
             return name[len(p):]
     return name
+
+
+def in_root(row, root):
+    """La sessione gira nella radice (la cartella della master)? Solo le sessioni di questo PC."""
+    cwd = row.get("cwd") or ""
+    if not cwd or not root or (row.get("host") and row.get("host") != "local"):
+        return False
+    return cwd.rstrip("/") == str(root).rstrip("/") or os.path.realpath(cwd) == os.path.realpath(root)
+
+
+def unnamed_master(row, root):
+    """19/11/2026 (supervisor-master-riconosciuta-19-11, D1): una sessione di Claude Code nella radice senza nome tmux ne'
+    nome (`claude` puro, da un IDE o da un terminale senza l'integrazione) e' la master, non un processo da scartare: la
+    tiene il session_id del registro di Claude Code, che un `claude -p` fuori registro non ha."""
+    return not (row.get("tmux") or row.get("name")) and bool(row.get("session_id")) and in_root(row, root)
+
+
+def mark_master(rows, root, name):
+    """19/11/2026 (supervisor-master-riconosciuta-19-11, contratto 1.154): segna con `_master` la riga della master, una
+    sola. Prima quella viva col nome della master (tmux o nome); poi una viva nella radice, con qualunque nome, in tmux
+    o no (prima quella in tmux, poi la piu' vecchia); infine quella chiusa col nome della master (per «Riapri»). Una
+    master senza nome prende il nome della master, se nessun'altra riga lo ha. Torna la riga, o None."""
+    def key(r):
+        return r.get("tmux") or r.get("name") or ""
+    named = [r for r in rows if key(r) == name or r.get("name") == name]
+    pick = next((r for r in named if r.get("status") != "dead"), None)
+    if pick is None:
+        here = [r for r in rows if r.get("status") != "dead" and in_root(r, root)]
+        here.sort(key=lambda r: (not r.get("tmux"), int(r.get("started_at") or 0) or 1 << 62))
+        pick = here[0] if here else (named[0] if named else None)
+    if pick is None:
+        return None
+    pick["_master"] = True
+    if not key(pick) and not named:
+        pick["name"] = name
+    return pick
 
 
 def unique_names(rows, prefixes=()):
@@ -696,6 +733,10 @@ def build_session(row, src):
     fav = (src.get("favicons") or {}).get(tmux)
     if fav:
         out["favicon"] = str(fav)
+    # 1.154 (19/11/2026, supervisor-master-riconosciuta-19-11): la master, una sola, comunque sia partita (in tmux o no,
+    # con qualunque nome, nella radice); assente sulle altre. L'app la riconosce da qui, non dal nome «master»
+    if row.get("_master"):
+        out["master"] = True
     return out
 
 

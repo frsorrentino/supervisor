@@ -121,8 +121,13 @@ def step_config(st, root, root_given):
 
 
 def rc_file():
+    """19/11/2026 (supervisor-master-riconosciuta-19-11, D4): su macOS ogni finestra di Terminale apre una shell di
+    login, che con bash legge .bash_profile e non .bashrc: l'integrazione scritta in .bashrc non si caricava, e `claude`
+    partiva fuori da tmux. Su macOS con bash, quindi, .bash_profile."""
     sh = os.path.basename(os.environ.get("SHELL") or "")
-    return cm.home() / (".zshrc" if sh == "zsh" else ".bashrc")
+    if sh == "zsh":
+        return cm.home() / ".zshrc"
+    return cm.home() / (".bash_profile" if (os.environ.get("CM_SETUP_OS") or sys.platform) == "darwin" else ".bashrc")
 
 
 def step_shell(st):

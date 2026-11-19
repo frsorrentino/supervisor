@@ -210,6 +210,19 @@ def spawn_late(p, full):
         pass
 
 
+def recover_queued(name, p):
+    """19/11/2026 (supervisor-prompt-in-coda-19-11, D10): i prompt della persona rimasti senza record perche' Claude Code ha
+    annullato il loro UserPromptSubmit (un prompt in coda, partito a fine turno) entrano ora in casella, dalla
+    trascrizione (cm-inbox.recover_prompts). Allo Stop (nel processo staccato) e al prompt seguente."""
+    if not name or PRIVATE or not p.get("transcript_path"):
+        return []
+    try:
+        return inbox().recover_prompts(name, p["transcript_path"], p.get("cwd") or "", skip=PROMPT_SKIP,
+                                       skip_sha=os.environ.get("CM_FIRST_PROMPT_SHA") or "")
+    except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'hook
+        return []
+
+
 def stop_late(p):
     """Cio' che lo Stop faceva in linea e che legge la trascrizione o carica moduli pesanti: i prompt «unverified» del
     turno da risolvere, e (solo quando lo Stop non ha consegnato niente) il /clear dopo un passaggio di consegne e un
@@ -224,6 +237,7 @@ def stop_late(p):
             inbox().resolve_box(tn)
     except Exception:   # noqa: BLE001
         pass
+    recover_queued(tn, p)
     mark("resolve")
     if os.environ.get("CM_HOOK_LATE_FULL") != "1":
         return
@@ -452,6 +466,38 @@ def open_block_needs_you(sid, kind):
         pass
 
 
+_CWD = [""]   # il cwd del payload, per is_master
+
+
+def master_name():
+    return str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+
+
+def master_tmux_alive(name):
+    try:
+        return subprocess.run(["tmux"] + os.environ.get("CM_TMUX_ARGS", "").split() + ["has-session", "-t", f"={name}"],
+                              capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def in_root():
+    cwd, root = _CWD[0], cm.expand(CFG["workspace"]["root"])
+    return bool(cwd) and (cwd.rstrip("/") == root.rstrip("/") or os.path.realpath(cwd) == os.path.realpath(root))
+
+
+def is_master():
+    """19/11/2026 (supervisor-master-riconosciuta-19-11, D1): questa sessione e' la master? Quella tmux col nome della
+    master; oppure una nella radice, in tmux con un altro nome o fuori da tmux, se non c'e' una tmux viva col nome della
+    master (allora la master e' quella, e questa e' un'altra sessione nella stessa cartella)."""
+    m, name = master_name(), my_tmux_name()
+    if name == m:
+        return True
+    if name and not os.environ.get("TMUX_PANE"):
+        return False   # un nome passato da fuori (detach.sh, i test) senza il pannello: non si verifica, resta quello
+    return in_root() and not master_tmux_alive(m)
+
+
 def my_tmux_name():
     if os.environ.get("CM_HOOK_TMUX_NAME"):   # detach.sh read it before letting go: after /exit the pane may be gone
         return os.environ["CM_HOOK_TMUX_NAME"]
@@ -512,7 +558,7 @@ def recent_recap(p):
 
 
 def onboarding_block(p):
-    if p.get("source", "startup") not in ("startup", "clear", "") or my_tmux_name() != str((CFG.get("workspace") or {}).get("root_session_name") or "master"):
+    if p.get("source", "startup") not in ("startup", "clear", "") or not is_master():
         return ""
     try:
         spec = importlib.util.spec_from_file_location("cm_onboarding", HERE / "cm-onboarding.py")
@@ -574,8 +620,8 @@ def waiting_for_you(now=None):
     17/11/2026 (supervisor-riall-4-plugin-16-11, contratto 1.152): non piu' a ogni prompt. Ogni voce una volta, quando
     entra: le voci le mostra l'app, e la master le ripeteva in ogni messaggio. Le voci gia' dette stanno in
     <state_dir>/waiting-told.json; una voce chiusa ne esce, e se torna e' di nuovo nuova."""
-    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
-    if my_tmux_name() != master:
+    master = master_name()
+    if not is_master():
         return ""
     R = CFG.get("relay") or {}
     try:
@@ -726,7 +772,7 @@ def answers_pending_block(rec_id):
         if con is None:
             return ""
         try:
-            items = mod.awaiting_person(con, None if name == master else name)
+            items = mod.awaiting_person(con, None if name == master or is_master() else name)
         finally:
             con.close()
     except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il prompt
@@ -744,8 +790,8 @@ def commitments_block():
     T_ = CFG.get("tasks") or {}
     if not T_.get("commitments_prompt", True):
         return ""
-    master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
-    if my_tmux_name() != master:
+    master = master_name()
+    if not is_master():
         return ""
     try:
         spec = importlib.util.spec_from_file_location("cm_tasks", HERE / "cm-tasks.py")
@@ -807,6 +853,25 @@ def task_check_on_stop():
     if hit:
         subprocess.Popen([sys.executable, str(HERE / "cm-relay.py"), "task-check", name], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def push_later_s():
+    return float(os.environ.get("CM_HOOK_PUSH_LATER_S") or ((CFG.get("relay") or {}).get("start_push_later_s")) or 4)
+
+
+def relay_push_later():
+    """19/11/2026 (supervisor-master-riconosciuta-19-11, D5): la push di SessionStart parte prima che Claude Code scriva la
+    sessione nel suo registro, quindi non la contiene; prima la vedeva solo la push dopo (un prompt, o il battito di 60 s).
+    Una seconda richiesta dopo start_push_later_s (4 s), da un processo staccato: l'avvio non aspetta."""
+    R = CFG.get("relay") or {}
+    if PRIVATE or not R.get("enabled"):
+        return
+    try:
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "PushLater"], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                         env=dict(os.environ, CM_HOOK_TMUX_NAME=my_tmux_name() or ""))
+    except OSError:
+        pass
 
 
 def relay_push():
@@ -887,8 +952,13 @@ def run_event(argv):
     p = payload()
     sid = p.get("session_id", "")
     PRIVATE = not cm.cwd_in_scope(CFG, p.get("cwd") or "")
+    _CWD[0] = p.get("cwd") or ""
     fast_cache()
     mark("input")
+    if ev == "PushLater":
+        time.sleep(push_later_s())
+        relay_push()
+        return 0
     if ev == "StopLate":
         stop_late(p)
         return 0
@@ -948,7 +1018,10 @@ def run_event(argv):
         except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere l'avvio
             pass
         mark("inbox")
+        if not my_tmux_name() and is_master():   # 19/11 (D1): la master fuori da tmux lo sa, e sa come rimediare
+            sys.stdout.write(M("hook.master_no_tmux", root=CFG["workspace"]["root"]) + "\n")
         relay_push()
+        relay_push_later()
     elif ev == "SessionEnd":
         explicit = p.get("reason", "") in ("prompt_input_exit", "logout")
         registry_update(closed=my_tmux_name() if explicit else "")
@@ -964,6 +1037,7 @@ def run_event(argv):
                 ny.unlink(missing_ok=True)
         ledger("prompt", p)   # l'inizio del turno (turn_started per il polso)
         rec_id = record_person_prompt(p)   # 22/10: l'ok scritto qui vale (casella della sessione, origine terminal)
+        recover_queued(my_tmux_name(), p)   # 19/11 (D10): un prompt di prima il cui hook era stato annullato
         mark("record")
         relay_push()   # 08/10 (fase 1): un prompt dalla tastiera arrivava alle app solo al giro del cron
         if CFG["hooks"]["local_time"]["enabled"]:

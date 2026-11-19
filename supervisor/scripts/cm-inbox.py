@@ -259,6 +259,82 @@ def resolve(rec):
     return rec
 
 
+RECOVER_TAIL = 1048576   # i prompt in coda da recuperare stanno nella coda della trascrizione
+RECOVER_SINCE_S = 1800
+
+
+def _line_text(r):
+    """Il testo di una riga `user` della trascrizione, o None se non e' un prompt (tool_result, sidechain, meta)."""
+    if not isinstance(r, dict) or r.get("type") != "user" or r.get("isSidechain") or r.get("isMeta"):
+        return None
+    c = (r.get("message") or {}).get("content")
+    if isinstance(c, list):
+        parts = [x for x in c if isinstance(x, dict)]
+        if not parts or all(x.get("type") == "tool_result" for x in parts):
+            return None
+        return " ".join(str(x.get("text") or "") for x in parts if x.get("type") == "text")
+    return str(c or "")
+
+
+def recover_prompts(to, transcript, cwd="", skip=(), since_s=RECOVER_SINCE_S, now=None, skip_sha=""):
+    """19/11/2026 (supervisor-prompt-in-coda-19-11, D10): un prompt scritto mentre la sessione lavora va in coda, e quando
+    parte Claude Code puo' annullare l'hook UserPromptSubmit (`hook_cancelled`): il caso vero e' l'ok di una scelta alla
+    master il 19/11 alle 09:38, mai arrivato in casella, e `task ok --inbox` lo rifiutava. Le righe `user` umane della
+    trascrizione degli ultimi `since_s` secondi senza un record con lo stesso testo nella casella (di qualunque origine:
+    un prompt del relay o di talk ha gia' il suo) entrano ora, con l'origine della trascrizione: solo «human», quindi
+    «terminal»; mai session ne' cron. `skip`: prefissi che non sono prompt della persona. Torna i record nuovi."""
+    now = now or time.time()
+    try:
+        with open(transcript, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - RECOVER_TAIL))
+            tail = f.read()
+    except (OSError, TypeError):
+        return []
+    lines = []
+    for raw in tail.split(b"\n"):
+        if b'"user"' not in raw:
+            continue
+        try:
+            r = json.loads(raw)
+        except ValueError:
+            continue
+        text = _line_text(r)
+        at = _iso_epoch(r.get("timestamp")) if text else None
+        if not text or not text.strip() or at is None or now - at > since_s:
+            continue
+        if str(r.get("turnOrigin") or "human") != "human" or text.lstrip().startswith(tuple(skip)):
+            continue
+        if skip_sha and hashlib.sha256(text.strip().encode()).hexdigest()[:16] == skip_sha:
+            continue   # il primo prompt di `launch --prompt`: lo ha scritto chi ha lanciato, non la persona
+        lines.append((at, text.strip()))
+    if not lines:
+        return []
+    d = box(to)
+    known = set()
+    for p in d.glob("*.json") if d.is_dir() else []:
+        try:
+            if now - p.stat().st_mtime > since_s + RESOLVE_WINDOW_S:
+                continue
+            known.add(" ".join(str(json.loads(p.read_text()).get("text") or "").split()))
+        except (OSError, ValueError, AttributeError):
+            continue
+    out = []
+    for at, text in lines:
+        key = " ".join(mask_pin(text).split())
+        if key in known:
+            continue
+        known.add(key)
+        rec = put(to, text[:4000], "terminal", cwd, origin="terminal", quiet=True, transcript=transcript)
+        rec.update(created=at, status="delivered", delivered_at=at, via="terminal", recovered=True)
+        try:
+            (d / f"{rec['id']}.json").write_text(json.dumps(rec, ensure_ascii=False))
+        except OSError:
+            pass
+        out.append(rec)
+    return out
+
+
 def resolve_box(to, max_age_s=RESOLVE_RECENT_S):
     """Risolve i record «unverified» recenti della casella (stat prima: si leggono solo i file giovani). Torna quanti
     hanno cambiato origine o sono andati via."""

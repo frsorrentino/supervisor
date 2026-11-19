@@ -2745,22 +2745,39 @@ def execute(cmd):
             return True, M("relay.cmd_delivered")
         if op == "launch":
             path = str(arg or "")
-            proj = next((p for p in inventory() if os.path.realpath(p["path"]) == os.path.realpath(path)), None) if path else None
-            if not proj:
-                return False, M("relay.cmd_no_project", path=path or "?")
             # 1.13 (16/09, dall'utente): «Nuova sessione» dal polso con il primo messaggio, nel campo `text` del comando. Un relay
             # che non conosce `text` lo ignora e lancia senza messaggio: mai un prompt a meta'
             prompt = " ".join(str(cmd.get("text") or "").split())
+            if path and os.path.realpath(path) == os.path.realpath(cm.expand(CFG["workspace"]["root"])):
+                # 19/11/2026 (supervisor-master-tocco-19-11, D3): la radice e' la cartella della master, che non sta
+                # nell'inventario (sono le sue sottocartelle). Lanciarla e' riaprire la master: viva → ok senza lanciare;
+                # chiusa → la sua ultima conversazione, o una nuova (core.reopen), poi il primo messaggio con talk
+                master = core.master_name()
+                saved = closed_saved().get(master)
+                ok, code, f = core.reopen(master, run_cm, saved=saved)
+                if ok and saved:
+                    closed_file(master).unlink(missing_ok=True)
+                if code == "alive":
+                    push_async()
+                    return True, M("relay.cmd_reopen_alive", name=master), {"session": S.short_name(master, prefixes())}
+                if not ok:
+                    return False, M(f"relay.cmd_reopen_{code}", name=master, **f)
+                extra = {"session": S.short_name(master, prefixes())}
+                if not prompt:
+                    return True, M(f"relay.cmd_reopen_{code}", name=master, **f), extra
+                rc, out = relay_talk(master, prefix_for(cmd, master) + " " + prompt, "--no-wait")
+                if rc != 0:
+                    return False, M("relay.cmd_launch_no_prompt", name=master, account=f.get("account") or "?", line=fail_line(out, "talk failed")), extra
+                aw = read_json(rdir() / "awaiting.json", {}); aw[master] = int(time.time()); write_json(rdir() / "awaiting.json", aw)
+                return True, M("relay.cmd_launched_prompt", name=master, account=f.get("account") or "?"), extra
+            proj = next((p for p in inventory() if os.path.realpath(p["path"]) == os.path.realpath(path)), None) if path else None
+            if not proj:
+                return False, M("relay.cmd_no_project", path=path or "?")
             here = os.path.realpath(proj["path"])
             rows = _json_cmd("sessions", "--json", "--no-screen") or []
             before = {r.get("tmux") or r.get("name") for r in rows}
-            # 11/11 (supervisor-installazione-semplice-11-11): la cartella della master con la master gia' viva e' la
-            # master, non una «master-2» accanto: l'app la chiedeva da uno stato vecchio. Ok senza lanciare, con la push
-            master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
-            if not prompt and here == os.path.realpath(cm.expand(CFG["workspace"]["root"])) and any(
-                    (r.get("tmux") or r.get("name")) == master and r.get("status") != "dead" for r in rows):
-                push_async()
-                return True, M("relay.cmd_reopen_alive", name=master), {"session": S.short_name(master, prefixes())}
+            # 11/11 (supervisor-installazione-semplice-11-11): la master gia' viva non si raddoppia; dal 19/11 lo fa il ramo
+            # della radice qui sopra (questo controllo stava dopo l'inventario, che la radice non la contiene mai)
             # 1.9.2 (15/09, decisione dell'utente): la scheda sul desktop come reopen; senza desktop, senza finestra
             rc, out = run_cm("launch", proj["path"], "--window")
             if rc != 0:

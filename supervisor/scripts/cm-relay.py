@@ -1294,7 +1294,9 @@ def published_refresh():
 def collect_sources(now=None):
     now = now or time.time()
     # senza nome ne' tmux e' un processo claude fuori registro (un `claude -p`, il recap): non e' una sessione da polso
-    live = [r for r in (sessions_rows() or []) if (r.get("tmux") or r.get("name"))]
+    # 19/11/2026 (supervisor-master-riconosciuta-19-11): tranne la master aperta con `claude` puro nella radice
+    root_ = cm.expand(CFG["workspace"]["root"])
+    live = [r for r in (sessions_rows() or []) if (r.get("tmux") or r.get("name")) or S.unnamed_master(r, root_)]
     with _LIVE_LOCK:   # 29/10: le letture della web app (transcript ogni ~10 s) usano le righe di questa push
         live_set(copy.deepcopy(live))
     reg = CFG.get("registry") or {}
@@ -1319,6 +1321,8 @@ def collect_sources(now=None):
             rows.append({"tmux": tm_, "name": tm_, "status": "dead", "cwd": rec.get("cwd", ""), "account": rec.get("account", ""),
                          "waiting": False, "session_id": rec.get("session_id") or "", "link": "", "attached": False,
                          "visto_ts": int(rec.get("closed_at") or 0)})
+    # 1.154 (19/11/2026, supervisor-master-riconosciuta-19-11): la master, comunque sia partita (sessions[].master)
+    S.mark_master(rows, root_, core.master_name())
     # 16/10: mai due sessioni con lo stesso nome nello stato (l'app le indicizza per nome), prima delle chiavi qui sotto
     S.unique_names(rows, prefixes())
     ledger = core.ledger_rows()

@@ -321,7 +321,11 @@ prompt8("Dall'utente via telefono. vai pure")
 prompt8("vai pure")
 stop8()
 T.check("H8 a prompt that matches a fresh record of the box (the relay's or a talk's, written before delivery) is not recorded twice; a short prompt that only ends a record is a new message",
-        len(recs8("terminal")) == 5 and recs8("terminal")[-1]["text"] == "vai pure", str([r["text"] for r in recs8()]))
+        len(recs8("terminal")) == 6 and recs8("terminal")[-1]["text"] == "vai pure", str([r["text"] for r in recs8()]))
+# 19/11/2026 (supervisor-prompt-in-coda-19-11): «un altro prompt, non questo», la riga umana della trascrizione senza un
+# record dell'hook, entra dalla trascrizione allo Stop (recovered): e' il prompt in coda il cui UserPromptSubmit e' annullato
+T.check("H8 (19/11) a human line of the transcript with no hook record is recovered at the Stop: origin terminal, recovered",
+        [r["text"] for r in recs8("terminal") if r.get("recovered")] == ["un altro prompt, non questo"], str([(r["text"], r.get("recovered")) for r in recs8()]))
 old8 = IB8.put("alfa", "vecchio", "terminal", origin="terminal", quiet=True)
 oldc8 = IB8.put("alfa", "Regia vecchia", "cron", origin="cron", quiet=True)
 olds8 = IB8.put("alfa", "talk di otto giorni fa", "beta", origin="session", quiet=True)
@@ -338,7 +342,7 @@ age8(old8, 2); age8(oldc8, 2); age8(olds8, 8); age8(oldn8, 8, drop_origin=True);
 (box8 / ".pruned").touch(); os.utime(box8 / ".pruned", (time.time() - 7200, time.time() - 7200))
 prompt8("ancora uno")
 T.check("H8 terminal and cron records older than a day are pruned at the next prompt (once an hour, not at every prompt: the master's box has thousands of files)",
-        not IB8._path_of(old8["id"]) and not IB8._path_of(oldc8["id"]) and len(recs8("terminal")) == 5 and len(recs8("cron")) == 1, str([r["text"] for r in recs8()]))
+        not IB8._path_of(old8["id"]) and not IB8._path_of(oldc8["id"]) and len(recs8("terminal")) == 6 and len(recs8("cron")) == 1, str([r["text"] for r in recs8()]))
 T.check("H8f (23/10, «ok 7 giorno per supervisor») the same prune keeps the box to seven days: a talk and a record without origin of eight days ago go, a talk and a relay message of six days ago stay",
         not IB8._path_of(olds8["id"]) and not IB8._path_of(oldn8["id"]) and IB8._path_of(keeps8["id"]) and IB8._path_of(keepr8["id"]), str([r["text"] for r in recs8()]))
 prompt8("ok 4321 alla 0.8.49")

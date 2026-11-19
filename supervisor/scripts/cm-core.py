@@ -273,6 +273,43 @@ def remote_events(row, window=1024 * 1024):
     return sorted(out, key=lambda e: e["ts"])
 
 
+def master_name():
+    return str((_cfg().get("workspace") or {}).get("root_session_name") or "master")
+
+
+def last_conversation(cwd, account, exclude=()):
+    """L'id dell'ultima conversazione di Claude Code nella cartella (la trascrizione piu' recente in
+    <config_dir>/projects/<slug>/, senza quelle dei sottoagenti), saltando gli id in `exclude`; "" se non ce n'e'."""
+    acc = _cfg()["accounts"].get(account or "") or {}
+    d = Path(cm.expand(acc.get("config_dir", "~/.claude"))) / "projects" / re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(cwd))
+    try:
+        got = sorted(((f.stat().st_mtime, f.stem) for f in d.glob("*.jsonl") if f.stem not in exclude), reverse=True)
+    except OSError:
+        return ""
+    return got[0][1] if got else ""
+
+
+def _launch_master(run, live):
+    """19/11/2026 (supervisor-master-tocco-19-11, D2/D3 di docs/analisi/avvio-master-2026-11-19.md): la master che non e'
+    nella fotografia (dopo /exit, o su un'installazione nuova) si lancia comunque, perche' la sua cartella e' nota:
+    workspace.root, con l'account della radice. Riprende la sua ultima conversazione, saltando quelle delle sessioni vive
+    nella radice; senza, ne apre una nuova. Mai --continue: con un'altra sessione nella radice prenderebbe la sua."""
+    root = cm.expand(_cfg()["workspace"]["root"])
+    if not os.path.isdir(root):
+        return False, "no_dir", {"path": root}
+    acct = cm.account_for(_cfg(), root)[0]
+    busy = {r.get("session_id") for r in live if r.get("session_id") and r.get("cwd") and os.path.realpath(r["cwd"]) == os.path.realpath(root)}
+    sid = last_conversation(root, acct, busy)
+    args = ["launch", root, "--window", "--account", acct] + (["--resume", sid] if sid else [])
+    try:
+        rc, out = run(*args)
+    except subprocess.TimeoutExpired:
+        return False, "failed", {"line": "timeout"}
+    if rc != 0:
+        return False, "failed", {"line": (out.splitlines() or ["launch failed"])[0]}
+    return True, "done" if sid else "done_new", {"account": acct, "new": master_name()}
+
+
 def reopen(name, run=None, saved=None):
     """Rilancia una sessione sparita (✗) nella sua cartella, con il suo account e senza finestra (dal telefono o dal
     polso non serve; 15/09, dall'orologio: una sessione chiusa non si poteva riprendere). La conversazione: `--resume
@@ -298,9 +335,17 @@ def reopen(name, run=None, saved=None):
     live = [r for r in (_j("sessions", "--json", expect="[") or []) if r.get("tmux") or r.get("name")]
     if any((r.get("tmux") or r.get("name")) == name for r in live):
         return False, "alive", {}
+    if name == "master" and master_name() != "master":
+        # 19/11/2026 (supervisor-master-tocco-19-11, card ad8844d2 di win:supervisor-app): senza master nello stato l'app
+        # manda «reopen master»; «master» vale come la radice anche quando root_session_name ha un altro nome
+        name = master_name()
+        if any((r.get("tmux") or r.get("name")) == name for r in live):
+            return False, "alive", {}
     s = next((x for x in (_j("registry", "--good", expect="{") or {}).get("sessioni", []) if x.get("nome") == name), None)
     if not s and saved:
         s = {"cartella": saved.get("cwd") or "", "account": saved.get("account") or ""}
+    if not s and name == master_name():
+        return _launch_master(run, live)
     if not s:
         return False, "unknown", {}
     cwd, acct, sid = s.get("cartella") or "", s.get("account") or "", (saved or {}).get("session_id") or s.get("session_id") or ""
