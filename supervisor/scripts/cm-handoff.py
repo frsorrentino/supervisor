@@ -127,7 +127,7 @@ def written(path, cwd):
     if not p.is_file():
         print(f"supervisor handoff: {p} not found", file=sys.stderr)
         return 1
-    text = with_section(p.read_text(encoding="utf-8", errors="replace"))
+    text = with_section(cm.private_strip(p.read_text(encoding="utf-8", errors="replace")))   # 19/11: mai il testo <private>
     p.write_text(text, encoding="utf-8")
     ptr = pointer(cwd)
     ptr.parent.mkdir(parents=True, exist_ok=True)

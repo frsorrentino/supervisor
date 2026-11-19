@@ -2512,6 +2512,25 @@ def render_commitments(items, brief=False, max_lines=None, person=None):
     return "\n".join([head] + lines)
 
 
+def render_commitments_index(items, person=None, max_ids=3, ids=True, mine_ids=True):
+    """19/11/2026 (supervisor-contesto-compatto-19-11; idea 2 da claude-mem): l'indice corto degli impegni per il contesto
+    della master — il conto, gli id di quelli che aspettano la persona (sempre tutti), i primi id degli altri e il comando
+    per i dettagli. ids=False: solo i conti e il comando (quando il contesto del prompt e' gia' pieno)."""
+    if not items:
+        return ""
+    k = sum(1 for x in items if x["stalled"])
+    mine = [x["task"] for x in items if x["waits"]["on"] == "person"]
+    rest = [x["task"] for x in items if x["waits"]["on"] != "person"]
+    stalled = M("tasks.stalled_one" if k == 1 else "tasks.stalled_many", count=k)
+    if not ids:
+        return M("tasks.index_counts", n=len(items), stalled=stalled, mine=len(mine))
+    # mine_ids False: gli id di chi aspetta la persona sono gia' nella riga delle risposte dello stesso prompt
+    part_mine = (M("tasks.index_mine", ids=", ".join(mine)) if mine_ids else M("tasks.index_mine_n", n=len(mine))) if mine else ""
+    shown = ", ".join(rest[:max_ids]) + (f" +{len(rest) - max_ids}" if len(rest) > max_ids else "")
+    part_rest = M("tasks.index_rest", n=len(rest), ids=shown) if rest else ""
+    return M("tasks.index", n=len(items), stalled=stalled, mine=part_mine, rest=part_rest)
+
+
 def signature(items):
     """Cio' che conta come «cambiato» per l'hook della master (22/10 00:35: il blocco intero entrava a ogni messaggio in
     arrivo, sei volte in un turno): id, stato, fermo, pausa, prossimo passo e l'ora dell'ultimo passo; mai le durate."""

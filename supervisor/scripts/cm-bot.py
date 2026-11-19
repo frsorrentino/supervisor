@@ -127,6 +127,7 @@ def send(text, parse_mode=None, silent=False, watch_quiet=True):
     mandare su Telegram dal 16/09: diario, rapporto della notte, avvisi della guardia, scorta del polso."""
     if not token():
         return 0
+    text = cm.private_strip(text)   # 19/11 (supervisor-privato-19-11): mai il testo <private> su Telegram
     n = 0
     for c in sorted(allowed_chats()):
         if reply(c, text, parse_mode=parse_mode, silent=silent, watch_quiet=watch_quiet) is not None:

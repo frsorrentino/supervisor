@@ -1064,7 +1064,7 @@ def cut_text(t, n):
 
 
 def _entry(eid, role, text, at, tool=None, note=None, error=None, text_max=ENTRY_TEXT_MAX):
-    t, cut = cut_text(str(text or ""), text_max)
+    t, cut = cut_text(cm.private_strip(str(text or "")), text_max)   # 19/11: mai il testo <private> nella chat dell'app
     return {"id": eid, "role": role, "text": t, "at": at, "tool": tool, "note": note or None,
             "error": error, "cut": cut, "turn": None, "files": None, "origin": None, "queued": False, "diff": None}
 

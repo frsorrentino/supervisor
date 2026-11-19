@@ -414,7 +414,7 @@ def ledger(event, p, **extra):
         row = {"ts": datetime.datetime.now().isoformat(timespec="seconds"), "event": event,
                "session_id": p.get("session_id", ""), "cwd": p.get("cwd", ""),
                "account": account_name(), "pid": os.getppid()}
-        row.update(extra)
+        row.update(cm.private_deep(extra))   # 19/11 (supervisor-privato-19-11): mai il testo <private> nel registro
         with open(STATE / "ledger.jsonl", "a") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     except OSError:
@@ -756,7 +756,7 @@ def launch_prompt(ib, name, text, p):
 ANSWERS_MAX = 6
 
 
-def answers_pending_block(rec_id):
+def answers_pending_block(rec_id, reasons=True):
     """04/11/2026 (supervisor-ok-ovunque-04-11): a un messaggio della persona, se ci sono voci che aspettano una sua risposta
     (della sessione; alla master tutte), una riga con le voci e il comando unico che la registra una volta per tutti i
     punti (app, orologio, master): `task ok … --inbox <questo messaggio>`. Niente se non ce ne sono o senza registro."""
@@ -779,11 +779,11 @@ def answers_pending_block(rec_id):
         return ""
     if not items:
         return ""
-    shown = "; ".join(f"{t} ({w})" for t, w in items[:ANSWERS_MAX]) + (f"; +{len(items) - ANSWERS_MAX}" if len(items) > ANSWERS_MAX else "")
+    shown = "; ".join((f"{t} ({w})" if reasons else t) for t, w in items[:ANSWERS_MAX]) + (f"; +{len(items) - ANSWERS_MAX}" if len(items) > ANSWERS_MAX else "")
     return M("hook.answers_pending", items=shown, id=rec_id)
 
 
-def commitments_block():
+def commitments_block(ids=True, mine_ids=True):
     """P2 (22/10/2026): solo nella master, a ogni prompt e a ogni avvio, gli impegni dal registro — gli approvati non
     compiuti con eta', fermo da, prossimo passo, chi aspetta chi, pausa — letti da sqlite (niente git, niente figli:
     l'hook ha 5 s). Niente se la lista e' vuota, se il registro non c'e' o se tasks.commitments_prompt e' falso."""
@@ -806,6 +806,8 @@ def commitments_block():
             con.close()
         if not items:
             return ""
+        if not T_.get("commitments_full"):   # 19/11 (supervisor-contesto-compatto-19-11): l'indice corto, i dettagli a un comando
+            return mod.render_commitments_index(items, person=M("tasks.person"), ids=ids, mine_ids=mine_ids)
         # 22/10 00:35 (la master): il blocco intero solo quando cambia (firma senza le durate), altrimenti una riga
         sig = json.dumps(mod.signature(items), ensure_ascii=False)
         f = STATE / f"commitments-{master}.json"
@@ -1043,22 +1045,29 @@ def run_event(argv):
         if CFG["hooks"]["local_time"]["enabled"]:
             sys.stdout.write(local_time() + "\n")
         line = waiting_for_you()
-        if line:
-            sys.stdout.write(line + "\n")
         mark("waiting")
-        c = commitments_block()   # P2 (22/10): gli impegni dal registro, non dai messaggi delle sessioni
-        if c:
-            sys.stdout.write(c + "\n")
-        mark("commitments")
         a = answers_pending_block(rec_id)   # 04/11: le voci che aspettano la persona, col comando unico
-        if a:
-            sys.stdout.write(a + "\n")
+        c = commitments_block(mine_ids=not a)   # P2 (22/10): gli impegni dal registro, non dai messaggi delle sessioni
+        mark("commitments")
+        # 19/11 (supervisor-contesto-compatto-19-11): tutto quello che supervisor aggiunge a un prompt sta sotto un tetto;
+        # oltre, l'indice degli impegni scende ai soli conti (gli id di chi aspetta la persona sono nel blocco delle risposte)
+        cap = int((CFG.get("hooks") or {}).get("prompt_context_max_chars") or 600)
+        def size():
+            return len("\n".join(x for x in (line, c, a) if x))
+        if not (CFG.get("tasks") or {}).get("commitments_full") and size() > cap:
+            if a:   # prima i motivi delle voci (restano gli id e il comando), poi l'indice ai soli conti
+                a = answers_pending_block(rec_id, reasons=False)
+            if c and size() > cap:
+                c = commitments_block(ids=False)
+        for x in (line, c, a):
+            if x:
+                sys.stdout.write(x + "\n")
         mark("answers")
     elif ev == "PermissionRequest":
         if sid:
             (STATE / "waiting").mkdir(parents=True, exist_ok=True)
             # JSON {tool, input} dal 0.4.0 (il relay ne ricava il tier); chi legge solo l'esistenza non cambia
-            (STATE / "waiting" / sid).write_text(json.dumps(waiting_summary(p), ensure_ascii=False))
+            (STATE / "waiting" / sid).write_text(json.dumps(cm.private_deep(waiting_summary(p)), ensure_ascii=False))
         ledger("waiting", p, tool=p.get("tool_name", ""))
         ask_notify(p)
         relay_push()

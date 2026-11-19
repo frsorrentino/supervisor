@@ -272,7 +272,7 @@ DEFAULTS = {
     "inbox": {"expires_h": 48},
     # 03/10: registro dei compiti. guard = la guardia della corsia chiusa (push, release, publish) nega quei comandi
     # fuori da un compito approvato: spenta di default, perche' vale per ogni sessione della macchina
-    "tasks": {"guard": False, "notify": "master", "stall_hours": 2, "commitments_prompt": True, "commitments_max_lines": 8, "quiet_hours": [23, 7],
+    "tasks": {"guard": False, "notify": "master", "stall_hours": 2, "commitments_prompt": True, "commitments_full": False, "commitments_max_lines": 8, "quiet_hours": [23, 7],
               "high_stakes_dirs": ["personali/rino", "clienti", "enti"]},   # 05/11/2026: un compito li' ha importanza alta
     # 27/10 (1.88): `suggest fill`, lo script orario della coda dei suggerimenti — una sessione e' ferma da stall_h ore
     # (e non oltre followup_max_h), al massimo script_max voci sue
@@ -283,6 +283,7 @@ DEFAULTS = {
                 "observe_skip": ["claude-master", "team-supervisor"]},
     "hooks": {
         "local_time": {"enabled": True, "format": "%A %Y-%m-%d %H:%M", "prefix": "[local time]"},
+        "prompt_context_max_chars": 600,   # 19/11 (supervisor-contesto-compatto-19-11): il contesto che supervisor aggiunge a un prompt
         "restart_stop": {"enabled": True},
         "session_kernel": {"enabled": True},
         "ask_notify": {"enabled": True, "delay_s": 1.5, "synth_model": "haiku", "synth_max_chars": 88, "synth_timeout_s": 20},
@@ -414,6 +415,31 @@ def claude_bin():
         return b
     p = home() / ".local" / "bin" / "claude"
     return str(p) if os.access(p, os.X_OK) else "claude"
+
+
+PRIVATE_RE = re.compile(r"<private>.*?(?:</private>|\Z)", re.S | re.I)
+PRIVATE_MARK = "[privato]"
+
+
+def private_strip(text):
+    """19/11/2026 (supervisor-privato-19-11; idea 4 da claude-mem): quello che la persona scrive fra <private> e
+    </private> non esce mai dalla sessione. Ogni blocco diventa «[privato]»; un <private> senza chiusura toglie fino alla
+    fine. Lo chiama ogni punto da cui un testo va su disco o fuori: casella, registro, domande in attesa, chat dell'app,
+    Telegram, passaggi di consegne. La trascrizione di Claude Code non si tocca: la sessione vede tutto."""
+    if not isinstance(text, str) or "<" not in text:
+        return text
+    return PRIVATE_RE.sub(PRIVATE_MARK, text)
+
+
+def private_deep(o):
+    """private_strip su ogni stringa di un valore JSON (dict, liste)."""
+    if isinstance(o, str):
+        return private_strip(o)
+    if isinstance(o, dict):
+        return {k: private_deep(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [private_deep(v) for v in o]
+    return o
 
 
 def expand(s):

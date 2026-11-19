@@ -212,6 +212,9 @@ c7 = {"schema_version": 1, "task": {"id": "gantt-apk", "title": "APK del Gantt s
       "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal", "requested_by": "test",
       "outcome": {"expected": "l'utente vede il Gantt sul telefono", "kind": "install"}}}
 E7 = env(CM_TASKS_DB=str(db7))
+# 19/11 (supervisor-contesto-compatto-19-11): il default e' l'indice corto (contesto-compatto-verify); qui il blocco intero,
+# che resta per chi lo chiede con tasks.commitments_full
+_c7 = json.loads(cfg.read_text()); _c7.setdefault("tasks", {})["commitments_full"] = True; cfg.write_text(json.dumps(_c7))
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "add", "-"], input=json.dumps(c7), capture_output=True, text=True, env=E7, timeout=30)
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "wait-ok", "gantt-apk", "--consiglio", "va bene: prova", "--what", "push e release", "--where", "GitHub"], capture_output=True, text=True, env=E7, timeout=30)
 T.device_ok("approve", "gantt-apk", "maintainer", "ok", E7)
@@ -226,6 +229,7 @@ T.check("H7 in the master the prompt carries «Impegni (1, 0 fermi):» with the 
 subprocess.run([sys.executable, str(T.SCRIPTS / "cm-tasks.py"), "step", "gantt-apk", "APK in CI", "--next", "installazione"], capture_output=True, text=True, env=E7, timeout=30)
 m7b = hook("UserPromptSubmit", {"session_id": "sid-m", "cwd": str(home), "prompt": "altro"}, CM_HOOK_TMUX_NAME="master", CM_TASKS_DB=str(db7))
 T.check("H7 a new step changes the signature → the full block again, with the new next step", "Impegni (1, 0 fermi):" in m7b.stdout and "prossimo: installazione" in m7b.stdout, m7b.stdout)
+_c7 = json.loads(cfg.read_text()); _c7["tasks"].pop("commitments_full", None); cfg.write_text(json.dumps(_c7))   # il default, per il resto
 
 # H8 (22/10/2026, ok-in-sessione; 23/10/2026, casella-ok-origine; 23/10 16:22, origine-differita): ogni messaggio scritto
 # dalla persona finisce nella casella della sessione, gia' consegnato. Chi l'ha scritto lo dice la riga `user` della

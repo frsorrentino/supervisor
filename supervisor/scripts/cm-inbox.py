@@ -171,7 +171,8 @@ PIN_MASK_RE = re.compile(r"\b(ok|pin)(\s+)\d{4,8}\b", re.IGNORECASE)
 def mask_pin(text):
     """23/10/2026 17:14 (ok con PIN fisso): «ok 1234» diventa «ok ••••» in ogni record della casella; la trascrizione di
     Claude Code resta com'e' (limite dichiarato del PIN fisso)."""
-    return PIN_MASK_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}••••", str(text or ""))
+    # 19/11 (supervisor-privato-19-11): anche il testo fra <private> e </private>, prima di ogni scrittura della casella
+    return PIN_MASK_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}••••", cm.private_strip(str(text or "")))
 
 
 TRANSCRIPT_TAILS = (262144, 4194304, 67108864)   # la coda della trascrizione: prima poca, poi di piu' (la master supera i 30 MB)
