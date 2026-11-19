@@ -429,6 +429,18 @@ def account_name():
     return CFG["default_account"]
 
 
+def riassunto_later(sid):
+    """19/11/2026 (supervisor-riassunto-fine-19-11): il riassunto della sessione appena finita, se ha lavoro vero e nessun
+    passaggio di consegne; staccato e a bassa priorita' (cm-riassunto decide, l'hook non aspetta mai claude -p)."""
+    if not sid or not (CFG.get("riassunto") or {}).get("enabled", True):
+        return
+    try:
+        subprocess.Popen(["nice", "-n", "10", sys.executable, str(HERE / "cm-riassunto.py"), "session", sid],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
 def registry_update(closed=""):
     """`closed` = nome tmux di una sessione chiusa APPOSTA (/exit): esce dalla fotografia «ultimo
     insieme buono»; una finestra chiusa a mano o un crash non la toccano (11/09/2026)."""
@@ -1027,8 +1039,10 @@ def run_event(argv):
     elif ev == "SessionEnd":
         explicit = p.get("reason", "") in ("prompt_input_exit", "logout")
         registry_update(closed=my_tmux_name() if explicit else "")
-        ledger("end", p, reason=p.get("reason", ""), **({"tmux": my_tmux_name()} if my_tmux_name() else {}))   # 05/11: la catena della chat
+        ledger("end", p, reason=p.get("reason", ""), transcript=p.get("transcript_path") or "",   # 19/11: per il riassunto
+               **({"tmux": my_tmux_name()} if my_tmux_name() else {}))   # 05/11: la catena della chat
         relay_push()
+        riassunto_later(sid)
     elif ev == "UserPromptSubmit":
         if sid:
             (STATE / "waiting" / sid).unlink(missing_ok=True)

@@ -227,6 +227,12 @@ def registry_entries():
             # della versione, es. «2.1.322»)
             if P.comparable_start() and d.get("procStart") and str(d["procStart"]) != ps:
                 continue
+            # 19/11/2026 (prova vera, supervisor-master-prova-vera-19-11): Claude Code 2.1.328 da' un nome da se' alle
+            # sessioni senza nome («prova-39», nameSource «derived»). Non e' un nome scelto: valgono il nome tmux e, nella
+            # radice, quello della master (tmux new -s lavoro compariva come «prova-39»; la master fuori da tmux non
+            # prendeva il nome «master»)
+            if d.get("nameSource") == "derived":
+                d["name"] = ""
             d["_registry"] = rp
             d["_hint"] = hint
             out.append(d)

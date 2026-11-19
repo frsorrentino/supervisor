@@ -240,6 +240,16 @@
     "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json",
     "server_pct": 80
   },
+  "riassunto": {
+    "enabled": true,
+    "model": "sonnet",
+    "min_prompts": 4,
+    "max_per_day": 6,
+    "idle_min": 60,
+    "window_h": 2,
+    "timeout_s": 240,
+    "scan_every_s": 1800
+  },
   "calendar": {
     "url_file": "~/.config/cc-supervisor/calendar.env",
     "remind_days": 3,

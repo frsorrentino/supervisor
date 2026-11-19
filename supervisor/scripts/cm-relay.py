@@ -2977,6 +2977,7 @@ class PushWorker(threading.Thread):
             if time.monotonic() - trimmed >= TRIM_EVERY_S:   # 30/10: la memoria liberata da push e letture torna al sistema
                 _trim()
                 trimmed = time.monotonic()
+                riassunti_tick(time.time())   # 19/11: solo il demone, non ogni push (i test ne fanno migliaia)
             # 11/11 (supervisor-installazione-semplice-11-11, il collega con la master «chiusa» ma aperta): senza il cron
             # il demone pubblicava solo quando un hook o un comando chiedeva; la push dell'avvio della master partiva prima
             # che la sessione fosse registrata e nessuno la rifaceva. Il demone batte da se' ogni heartbeat_s, come il cron:
@@ -4003,6 +4004,25 @@ def raccolta_after_pair():
                          stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError as e:
         log(f"prima-raccolta dopo il pairing FAILED: {e}")
+
+
+def riassunti_tick(now):
+    """19/11/2026 (supervisor-riassunto-fine-19-11): il giro dei riassunti (le sessioni chiuse di colpo non mandano il
+    SessionEnd), al piu' ogni riassunto.scan_every_s, in un processo a parte con nice. Mai bloccare la push."""
+    R = CFG.get("riassunto") or {}
+    if not R.get("enabled", True):
+        return
+    stamp = Path(cm.expand(CFG["state_dir"])) / "riassunti" / ".scan"
+    try:
+        every = float(R.get("scan_every_s", 1800))
+        if stamp.is_file() and now - stamp.stat().st_mtime < every:
+            return
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+        subprocess.Popen(["nice", "-n", "19", sys.executable, str(HERE / "cm-riassunto.py"), "scan"], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except (OSError, TypeError, ValueError) as ex:
+        log(f"riassunti FAILED: {ex}")
 
 
 _FAV = [None]

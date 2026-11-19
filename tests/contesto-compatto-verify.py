@@ -103,7 +103,8 @@ write_cfg()
 out = hook("UserPromptSubmit", {"prompt": "che si fa adesso?"}).stdout
 print(f"  (misura: lo stesso prompt con l'indice: {len(out)} caratteri)\n" + "\n".join("    | " + l for l in out.splitlines()))
 T.check("CC2 at each prompt of the master the added context stays under hooks.prompt_context_max_chars (600), with the count, the ids and the command for the details",
-        0 < len(out) <= 600 and "8" in out and "supervisor task impegni" in out and "app-bozze-link-19-11" in out, out)
+        0 < len(out) <= 600 and "8" in out and "supervisor task impegni" in out
+        and sum(t[0] in out for t in TASKS if not t[0].startswith(("pix-sito", "supervisor-master-prova"))) >= 3, out)   # 19/11: gli id mostrati dipendono dall'ordine (stesso secondo di approvazione): basta che ce ne siano tre
 mine = [l for l in out.splitlines() if "supervisor-master-prova-vera-19-11" in l and "pix-sito-preventivi-19-11" in l]
 T.check("CC3 the items waiting for the person stay visible with their ids, in one line", len(mine) == 1, out)
 

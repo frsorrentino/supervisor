@@ -173,6 +173,11 @@ DEFAULTS = {
               "min_turns": 3,
               # 17/11/2026 (supervisor-avvisi-telegram-17-11): il mattino su Telegram e lo spazio dei server che legge
               "morning_time": "08:00", "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json", "server_pct": 80},
+    # 19/11/2026 (supervisor-riassunto-fine-19-11): il riassunto di una sessione finita senza passaggio di consegne, in
+    # <cartella>/docs/riassunto-<data>-<sid8>.md. min_prompts = lavoro vero; idle_min = una sessione senza SessionEnd (chiusa di
+    # colpo) conta come finita dopo tanti minuti fermi e senza processo; window_h = quanto indietro guarda la prima volta
+    "riassunto": {"enabled": True, "model": "sonnet", "min_prompts": 4, "max_per_day": 6, "idle_min": 60, "window_h": 2,
+                  "timeout_s": 240, "scan_every_s": 1800},
     # scadenze da un calendario .ics (16/10/2026): l'indirizzo col token sta in url_file (0600), mai qui; senza quel
     # file e' tutto spento. remind_days vale per gli eventi senza VALARM; cases: id della pratica (case_property) →
     # cartella, per aprire la sessione giusta; il valore puo' essere anche {"dir": …, "name": …} (18/10, la pagina Studio

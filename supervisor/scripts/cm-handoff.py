@@ -187,6 +187,8 @@ def announce(cwd, sid=None):
         tmp.write_text(json.dumps(d))
         os.replace(tmp, ptr)
     hm = time.strftime("%H:%M", time.localtime(int(d["at"])))
+    if d.get("by") == "riassunto":   # 19/11 (supervisor-riassunto-fine-19-11): non un passaggio di consegne, un riassunto
+        return cm.msg(CFG, "riassunto.announce", hm=hm, path=d["path"])
     if lang() == "it":
         return f"HANDOFF: prima di tutto leggi {d['path']} (scritto alle {hm} da questa sessione prima di /clear) e riprendi da lì."
     return f"HANDOFF: first read {d['path']} (written at {hm} by this session before /clear) and continue from there."
