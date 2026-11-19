@@ -53,6 +53,11 @@
         "decidi": 1,
         "guarda": 3,
         "segui": 1
+      },
+      "closing": {
+        "mode": "save",
+        "at": 1789214300,
+        "deadline": 1789214480
       }
     }
   ],
@@ -120,7 +125,7 @@
         "id": "c41d9e07",
         "dir": "/home/demo/workspaces",
         "name": "master",
-        "prompt": "Do this agenda item: Move the docs site to the new host (orbit-docs)",
+        "prompt": "Move the docs site to the new host",
         "added": 1789213000,
         "started": null
       }
@@ -529,7 +534,7 @@
       "mode": "url",
       "asked_at": 1789214350,
       "expires_at": 1789214470,
-      "url": "https://www.figma.com/oauth?client_id=demo"
+      "url": "https://figma.com/oauth"
     }
   ],
   "attention": [
@@ -559,7 +564,7 @@
       "id": "s-5d0e2f9c13",
       "kind": "cleanup",
       "key": "cleanup:paused:orbit-docs-*",
-      "text": "Close the paused tasks?",
+      "text": "Close paused tasks?",
       "at": 1789207190,
       "expires_at": 1789250390,
       "rank": 5,

@@ -2009,10 +2009,13 @@ def close_armed():
     return d if isinstance(d, dict) else {}
 
 
-def close_one(n, row, chk, by, armed=None):
-    """Chiude una sessione chiudibile: salva lo stato, `supervisor close`, una riga nel ledger. → None, o il motivo."""
+def close_one(n, row, chk, by, armed=None, handoff=None):
+    """Chiude una sessione chiudibile: salva lo stato, `supervisor close`, una riga nel ledger. → None, o il motivo.
+    19/11 (1.155): `handoff` = {file, reason} del salvataggio prima della chiusura; senza, closed.handoff false."""
     rec = save_closed(chk, row, by)
-    rc, out = run_cm("close", row.get("tmux") or row.get("name"))
+    rec.update(handoff=bool((handoff or {}).get("file")), handoff_file=(handoff or {}).get("file") or None, reason=(handoff or {}).get("reason") or None)
+    write_json(closed_file(rec["tmux"]), rec)
+    rc, out = run_cm("close", row.get("tmux") or row.get("name"), "--subito")   # 19/11: il salvataggio lo fa il relay prima
     if rc != 0:
         closed_file(rec["tmux"]).unlink(missing_ok=True)
         return (out.strip().splitlines() or ["close failed"])[0].strip()
@@ -2036,12 +2039,18 @@ def close_force_start(n, row, chk, by):
     return rc == 0
 
 
+def close_save_start(n, row):
+    """1.155: «Salva e chiudi» su una sessione ferma: la richiesta del passaggio di consegne (cm-closesave.prompt)."""
+    rc, _ = relay_talk(row.get("tmux") or row.get("name"), _load("cm-closesave").prompt(), "--no-wait")
+    return rc == 0
+
+
 def close_arm(n, row, mode, by, now):
     tm = row.get("tmux") or row.get("name")
     with _CLOSE_LOCK:
         d = close_armed()
         d[tm] = {"name": n, "mode": mode, "at": int(now), "by": by or None, "session_id": row.get("session_id") or "",
-                 "deadline": int(now) + CLOSE_FORCE_S if mode == "force" else None}
+                 "deadline": int(now) + CLOSE_FORCE_S if mode in ("force", "save") else None}
         write_json(close_armed_path(), d)
 
 
@@ -2057,6 +2066,10 @@ def close_sessions(cmd, arg, session=""):
     when = str(cmd.get("when") or "now")
     if when not in CLOSE_WHEN:
         return False, M("relay.cmd_close_bad_when", when=S.one_line(when)[:20])
+    # 1.155 (19/11, supervisor-chiudi-salva-19-11; l'utente alle 15:16: «Salva e chiudi» e «Chiudi senza salvare»): save
+    # true = prima il passaggio di consegne (la sessione lo scrive se serve), poi la chiusura a fine di quel turno o alla
+    # scadenza; una sessione occupata lo riceve appena si ferma. false o assente: come prima, closed.handoff false
+    save = cmd.get("save") is True
     names = close_names(arg, session)
     if not names:
         return False, M("relay.cmd_close_none")
@@ -2064,6 +2077,13 @@ def close_sessions(cmd, arg, session=""):
     done, armed, kept, now = [], [], [], time.time()
     for n in names:
         chk, row = close_check(n, rows)
+        if save and chk["blocked_by"] not in ("gone", "attached") and row is not None and row.get("session_id"):
+            if chk["closable"] and not close_save_start(n, row):
+                kept.append(M("relay.cmd_close_kept", name=n, why=M("relay.close_why_force_failed")))
+                continue
+            close_arm(n, row, "save" if chk["closable"] else "save_wait", cmd.get("by"), now)
+            armed.append(M("relay.cmd_close_saving", name=n, s=CLOSE_FORCE_S))
+            continue
         if chk["closable"]:
             why = close_one(n, row, chk, cmd.get("by"))
             (kept.append(M("relay.cmd_close_kept", name=n, why=why)) if why else done.append(n))
@@ -2103,7 +2123,11 @@ def close_tick(now=None):
                 armed.pop(tm); changed = True
                 continue
             go = chk["closable"]
-            if a.get("mode") == "force":
+            if a.get("mode") == "save_wait":   # 1.155: occupata quando si e' chiesto di salvare; adesso e' ferma
+                if go and close_save_start(n, row):
+                    armed[tm] = dict(a, mode="save", at=int(now), deadline=int(now) + CLOSE_FORCE_S); changed = True
+                continue
+            if a.get("mode") in ("force", "save"):
                 if ledger is None:
                     ledger = core.ledger_rows()
                 ended = any(x.get("event") == "stop" and x.get("session_id") == a.get("session_id")
@@ -2122,7 +2146,12 @@ def close_tick(now=None):
                 go = go and (ended or late)
             if not go:
                 continue
-            why = close_one(n, row, chk, a.get("by"), armed=a.get("mode"))
+            hand = None
+            if a.get("mode") == "save":   # 1.155: il passaggio di consegne scritto dopo la richiesta; scaduto: lo si dice
+                f = _load("cm-closesave").handoff_since(row.get("cwd"), float(a.get("at") or 0))
+                hand = {"file": f, "reason": None if ended else M("close.reason_expired")}
+                armed[tm] = dict(a, mode="exit"); write_json(close_armed_path(), armed); push_async()   # «Chiudo»
+            why = close_one(n, row, chk, a.get("by"), armed=a.get("mode"), handoff=hand)
             if why:
                 log(f"chiusura armata di {n} non riuscita: {why[:160]}")
             armed.pop(tm); changed = True
@@ -2137,8 +2166,15 @@ def closing_of(rows):
     """1.120: {nome dello stato: {mode, at, deadline}} delle chiusure armate, per state.sessions[].closing."""
     name = lambda r: S.short_name(r.get("name") or r.get("tmux") or "", prefixes())  # noqa: E731 — come build_session
     by_tm = {(r.get("tmux") or r.get("name")): name(r) for r in rows or []}
-    return {by_tm.get(tm, a.get("name") or tm): {"mode": a.get("mode"), "at": a.get("at"), "deadline": a.get("deadline")}
-            for tm, a in close_armed().items()}
+    out = {by_tm.get(tm, a.get("name") or tm): {"mode": "save" if a.get("mode") == "save_wait" else a.get("mode"), "at": a.get("at"),
+                                                 "deadline": a.get("deadline")}
+           for tm, a in close_armed().items()}
+    try:   # 1.155: `supervisor close` dal PC, mentre salva e mentre chiude
+        for tm, c in _load("cm-closesave").closing_all().items():
+            out.setdefault(by_tm.get(tm, tm), c)
+    except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere la push
+        pass
+    return out
 
 
 def sys_kill(cmd, arg):

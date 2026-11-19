@@ -80,7 +80,7 @@ with T.PrivateTmux() as tm:
     start("epsilon"); time.sleep(2)
     run("cm-registry.sh")
     T.check("G3 a new session grows the snapshot (6)", names(good) == sorted(NAMES + ("epsilon",)), str(names(good)))
-    r = run("cm-close.sh", "epsilon"); time.sleep(0.5)
+    r = run("cm-close.sh", "epsilon", "--subito"); time.sleep(0.5)
     T.check("G3 explicit close removes it from the snapshot (5)", r.returncode == 0 and names(good) == sorted(NAMES), r.stdout + r.stderr + str(names(good)))
     # G4: /exit (SessionEnd prompt_input_exit) toglie; reason other (finestra chiusa, crash) no
     start("zeta"); start("eta"); time.sleep(2)

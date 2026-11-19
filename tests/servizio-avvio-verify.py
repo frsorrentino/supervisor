@@ -107,6 +107,8 @@ T.check("SV4 Windows (WSL): a scheduled task at logon through powershell.exe: ws
 r2, c2 = svc("on", CM_SERVICE_OS="wsl", WSL_DISTRO_NAME="sup-prova")
 T.check("SV4 (19/11, the test in sup-prova) one task per distribution: a second distribution does not take the first one's place",
         "-TaskName 'boot-sup-prova'" in (c2[0] if c2 else "") and "'boot-sup-prova.vbs'" in (c2[0] if c2 else "") and "boot-Ubuntu-24.04" not in (c2[0] if c2 else ""), str(c2)[:400])
+T.check("SV4 (19/11, the update in sup-prova) `on` also removes 0.8.185's single-name task when it launches this distribution (else both start at login)",
+        "-match ' -d Ubuntu-24.04 '" in script and script.index("-match ' -d Ubuntu-24.04 '") < script.index("Register-ScheduledTask"), script[:500])
 r, c = svc("off", CM_SERVICE_OS="wsl", WSL_DISTRO_NAME="Ubuntu-24.04")
 T.check("SV4 service off: this distribution's task and .vbs go, and the single-name one of 0.8.185 when it launches this distribution",
         r.returncode == 0 and "Unregister-ScheduledTask -TaskName 'boot-Ubuntu-24.04'" in (c[0] if c else "") and "boot-Ubuntu-24.04.vbs" in (c[0] if c else "")

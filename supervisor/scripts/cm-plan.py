@@ -250,7 +250,7 @@ def run_node(node, turn_timeout, log):
             red = {"reason": res["reason"], "perimeter": said}
     finally:
         if opened is True and name:
-            run_cm("close", name, timeout=120)
+            run_cm("close", name, "--subito", timeout=120)
 
 
 def run_plan(plan, parallel=2, turn_timeout=3600, dry_run=False, log=print):

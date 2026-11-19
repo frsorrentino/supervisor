@@ -117,7 +117,7 @@ with T.PrivateTmux() as tm:
             f"{G.account_of_name('master')} {G.account_of_name('alfa')} {G.account_of_name('pix-delta')}")
 
     # MC5: la master aperta prima dell'aggiornamento
-    run("cm-close.sh", "master") if (T.SCRIPTS / "cm-close.sh").exists() else None
+    run("cm-close.sh", "master", "--subito") if (T.SCRIPTS / "cm-close.sh").exists() else None
     tm("kill-session", "-t", "=master")
     tm("kill-session", "-t", "=pix-delta")
     time.sleep(1)

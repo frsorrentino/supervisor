@@ -111,7 +111,7 @@ def park_one(row, dry, force):
     items = [i for i in load_parked() if i["name"] != rec["name"]]
     items.append(rec)
     save_parked(items)
-    r = subprocess.run([str(HERE / "cm-close.sh"), row["tmux"]], capture_output=True, text=True)
+    r = subprocess.run([str(HERE / "cm-close.sh"), row["tmux"], "--subito"], capture_output=True, text=True)
     if r.returncode != 0:
         print(r.stderr, file=sys.stderr)
         return False

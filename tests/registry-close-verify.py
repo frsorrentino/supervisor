@@ -63,7 +63,7 @@ with T.PrivateTmux() as tm:
     master, slave = pty.openpty()
     client = subprocess.Popen(["tmux", "-L", tm.socket, "attach", "-t", "=alfa"], stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     time.sleep(1)
-    r = run("cm-close.sh", "alfa")
+    r = run("cm-close.sh", "alfa", "--subito")   # 19/11: qui conta la fotografia, non il passaggio di consegne
     T.check("C2 attached idle session without chrome-bridge → refused (exit 4), still alive: no destructive fallback", r.returncode == 4 and tm("has-session", "-t", "=alfa").returncode == 0, r.stderr)
     # C5 (07/10, ok del maintainer): un'attaccata IDLE si chiude chiudendo la sua scheda (chrome-bridge finto), mai con
     # detach o kill; busy o ferma su una domanda → rifiutata; senza una scheda certa → rifiutata; mai se stessa
@@ -80,7 +80,7 @@ with T.PrivateTmux() as tm:
     cfg5.write_text(json.dumps(c5))
 
     def run5(*args, **extra):
-        return subprocess.run([str(T.SCRIPTS / "cm-close.sh")] + list(args), capture_output=True, text=True, timeout=90,
+        return subprocess.run([str(T.SCRIPTS / "cm-close.sh")] + list(args) + ["--subito"], capture_output=True, text=True, timeout=90,
                               env=env(CC_SUPERVISOR_CONFIG=str(cfg5), FAKE_BRIDGE_STATE=str(bstate), WAYLAND_DISPLAY="wl-0", **extra))
     tm("set-option", "-t", "alfa", "destroy-unattached", "on")   # nome nudo: set-option non accetta «=» (T1)
     m2, s2 = pty.openpty()
@@ -127,11 +127,11 @@ with T.PrivateTmux() as tm:
     # C1: chiudere "alfa" non deve toccare "alfa-2" (prefisso!)
     tm("kill-session", "-t", "=alfa")   # alfa via, resta alfa-2: senza `=` un kill di "alfa" prenderebbe alfa-2
     tm("new-session", "-d", "-s", "alfa", "bash", "--norc")
-    r = run("cm-close.sh", "alfa")
+    r = run("cm-close.sh", "alfa", "--subito")
     T.check("C1 close alfa closes alfa only", r.returncode == 0 and tm("has-session", "-t", "=alfa").returncode != 0 and tm("has-session", "-t", "=alfa-2").returncode == 0,
             r.stdout + tm("list-sessions").stdout)
     tm("kill-session", "-t", "=alfa")   # se per errore fosse rimasta
-    r = run("cm-close.sh", "alfa")      # ora "alfa" non esiste: NON deve agganciare alfa-2 per prefisso
+    r = run("cm-close.sh", "alfa", "--subito")      # ora "alfa" non esiste: NON deve agganciare alfa-2 per prefisso
     T.check("C1 close of a missing exact name never hits the -2 sibling (T50)", r.returncode == 3 and tm("has-session", "-t", "=alfa-2").returncode == 0, r.stderr + tm("list-sessions").stdout)
 
     # R2: guardia sul vuoto

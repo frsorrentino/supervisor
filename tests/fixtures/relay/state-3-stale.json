@@ -36,13 +36,14 @@
       "closed": {
         "at": 1789199000,
         "session_id": "3d1b2c4e-0000-4000-8000-000000000004",
-        "outcome": "Pricing page draft ready for review",
+        "outcome": "Pricing draft ready",
         "next": "Pick up the pricing page",
         "dirty_n": 2,
         "dirty": [
           "src/pages/pricing.md",
           "docs/notes.md"
-        ]
+        ],
+        "reason": "salvataggio scaduto"
       }
     }
   ],

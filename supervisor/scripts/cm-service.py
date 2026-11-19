@@ -160,7 +160,7 @@ def wsl_command():
 
 def ps_on():
     vbs = f'CreateObject("WScript.Shell").Run "{wsl_command()}", 0, False'
-    return ("$ErrorActionPreference='Stop'; $d = Join-Path $env:LOCALAPPDATA 'supervisor'; "
+    return (ps_legacy_off() + "$ErrorActionPreference='Stop'; $d = Join-Path $env:LOCALAPPDATA 'supervisor'; "
             "New-Item -ItemType Directory -Force $d | Out-Null; $v = Join-Path $d '" + task_name() + ".vbs'; "
             f"Set-Content -Encoding ASCII -Path $v -Value '{vbs.replace(chr(39), chr(39) * 2)}'; "
             "$a = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $v + '\"'); "
@@ -169,12 +169,17 @@ def ps_on():
             f"Register-ScheduledTask -TaskName '{task_name()}' -TaskPath '{TASK_PATH}' -Action $a -Trigger $t -Settings $s -Force | Out-Null; 'ok'")
 
 
+def ps_legacy_off():
+    """L'attivita' della 0.8.185, col nome solo («boot»), se lancia questa distribuzione. 19/11 (la prova in sup-prova):
+    l'aggiornamento accendeva boot-<distro> e lasciava anche quella, e all'accesso partivano tutte e due."""
+    return (f"$v = Join-Path $env:LOCALAPPDATA 'supervisor\\boot.vbs'; if ((Test-Path $v) -and ((Get-Content $v -Raw) -match ' -d {distro()} ')) "
+            f"{{ Unregister-ScheduledTask -TaskName '{TASK}' -TaskPath '{TASK_PATH}' -Confirm:$false -ErrorAction SilentlyContinue; Remove-Item -Force $v }}; ")
+
+
 def ps_off():
     return (f"Unregister-ScheduledTask -TaskName '{task_name()}' -TaskPath '{TASK_PATH}' -Confirm:$false -ErrorAction SilentlyContinue; "
             f"Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:LOCALAPPDATA 'supervisor\\{task_name()}.vbs'); "
-            # quella della 0.8.185, col nome solo, se lancia questa distribuzione
-            f"$v = Join-Path $env:LOCALAPPDATA 'supervisor\\boot.vbs'; if ((Test-Path $v) -and ((Get-Content $v -Raw) -match ' -d {distro()} ')) "
-            f"{{ Unregister-ScheduledTask -TaskName '{TASK}' -TaskPath '{TASK_PATH}' -Confirm:$false -ErrorAction SilentlyContinue; Remove-Item -Force $v }}; 'ok'")
+            + ps_legacy_off() + "'ok'")
 
 
 def ps_status():

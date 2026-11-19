@@ -711,6 +711,13 @@ def build_session(row, src):
             out["closed"].update(outcome=one_line(sv.get("outcome") or "")[:200] or None, next=one_line(sv.get("next") or "")[:200] or None,
                                  dirty_n=int(sv["dirty_n"]) if isinstance(sv.get("dirty_n"), int) else None,
                                  dirty=[str(x) for x in dirty[:DIRTY_MAX]] if dirty is not None else None)
+        # 1.155 (19/11, supervisor-chiudi-salva-19-11): chiusa col passaggio di consegne → handoff true e il file; `reason`
+        # solo quando il salvataggio e' scaduto e la sessione e' stata chiusa lo stesso. Assenti = senza (come favicon: dieci
+        # sessioni finite con due campi in piu' a testa costringevano il taglio degli 8 KB ad accorciare gli esiti)
+        if sv.get("handoff") and sv.get("handoff_file"):
+            out["closed"].update(handoff=True, file=str(sv["handoff_file"]))
+        if sv.get("reason"):
+            out["closed"]["reason"] = one_line(str(sv["reason"]))[:80]
     # 1.54 (14/10): la modalita' dei permessi (default, acceptEdits, plan, bypassPermissions...), dall'ultima riga della
     # trascrizione che la dice. 1.55: la domanda risolta al PC negli ultimi minuti, {id, text, at, by: "terminal"}.
     # Assenti = non si sa / nessuna

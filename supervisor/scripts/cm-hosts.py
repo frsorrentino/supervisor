@@ -884,6 +884,113 @@ MASTER_MARK = re.compile(r"^\W{0,4}(Per la master|For the master)\W{0,4}:", re.I
 TAIL_LINE = re.compile(r"^\W{0,4}((Esito|Prossimi|Watch|Outcome|Next)\W{0,4}:|(Tipo|Type)\W{0,4}:\W{0,4}"   # 1.98
                        r"(pubblicato|fatto|aspetta|in corso|risposta|problema|shipped|done|waiting|running|answer|problem)\W{0,4}$)", re.I)
 FORWARD_KEEP = 500
+# 19/11/2026 (supervisor-ok-sessioni-win-19-11): l'ok della persona scritto a una sessione su un altro host
+OK_MARK = re.compile(r"^\W{0,4}(?:Ok della persona|Person's ok)\W{0,4}:\s*(?P<task>[A-Za-z0-9._-]+)"
+                     r"(?:\s+(?:scelta|choice)\s+«(?P<choice>[^»]+)»)?\s+«(?P<quote>.+)»\s*$", re.I)
+OK_MAX_AGE_S = 3600   # come INBOX_MAX_AGE_S di cm-tasks: un ok vale per un'ora
+
+
+def _talk(to, text):
+    """`talk <to> --no-wait`; CM_HOSTS_TALK_BIN per i test. Torna il codice d'uscita."""
+    tb = os.environ.get("CM_HOSTS_TALK_BIN")
+    cmd = [tb, "talk", to, text, "--no-wait"] if tb else [sys.executable, str(HERE / "cm-talk.py"), "talk", to, text, "--no-wait"]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=120).returncode
+
+
+def ok_requests(path, offset, since=0.0):
+    """Le righe «Ok della persona: <compito> [scelta «X»] «<parole>»» nei testi dell'assistente della copia del transcript,
+    dal byte `offset`, scritte non prima di `since` → [(chiave, compito, scelta, citazione)]."""
+    with open(path, "rb") as f:
+        f.seek(offset)
+        buf = f.read()
+    out = []
+    for raw in buf[:buf.rfind(b"\n") + 1].splitlines():
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            continue
+        if d.get("type") != "assistant" or d.get("isSidechain") or _epoch(d.get("timestamp")) < since:
+            continue
+        content = (d.get("message") or {}).get("content")
+        for i, b in enumerate(content if isinstance(content, list) else []):
+            if isinstance(b, dict) and b.get("type") == "text":
+                for j, l in enumerate(str(b.get("text") or "").splitlines()):
+                    m = OK_MARK.match(l.strip())
+                    if m:
+                        out.append((f"ok:{d.get('uuid') or ''}:{i}:{j}", m["task"], m["choice"], m["quote"].strip()))
+    return out
+
+
+def _same_words(text, quote):
+    a, q = " ".join(str(text or "").split()).lower(), " ".join(str(quote or "").split()).lower()
+    return bool(q) and (a == q or (len(q) >= 12 and q in a))
+
+
+def register_ok(host, names, mirror, task, choice, quote, now=None):
+    """L'ok che la sessione `names` di `host` dice di aver ricevuto, con le regole di `task ok --inbox`: il messaggio c'e'
+    davvero ed e' della persona, destinato a quella sessione, dell'ultima ora. Vale un record del relay della sua casella
+    (la persona ha scritto dall'app); altrimenti una riga user umana della copia della sua trascrizione (ha scritto nella
+    chat la'), che diventa un record «terminal» della casella. Poi `task ok` a nome di quella sessione. → (ok, testo)."""
+    now = now or time.time()
+    ib = _load("cm-inbox")
+    rec = None
+    for nm in names:
+        for r in ib.messages(nm, include_all=True):
+            if r.get("origin") == "relay" and now - float(r.get("created") or 0) <= OK_MAX_AGE_S and _same_words(r.get("text"), quote):
+                rec = r
+        if rec:
+            break
+    if rec is None and mirror and Path(mirror).is_file():
+        hit = None
+        with open(mirror, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4 * 1024 * 1024))
+            tail = f.read()
+        for raw in tail.split(b"\n"):
+            if b'"user"' not in raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except ValueError:
+                continue
+            text = ib._line_text(d)
+            at = _epoch(d.get("timestamp"))
+            if text and str(d.get("turnOrigin") or "human") == "human" and 0 <= now - at <= OK_MAX_AGE_S and _same_words(text, quote):
+                hit = (at, text.strip())
+        if hit:
+            rec = ib.put(names[0], hit[1][:4000], "terminal", "", origin="terminal", quiet=True, transcript=str(mirror))
+            rec.update(created=hit[0], status="delivered", delivered_at=hit[0], via=f"host:{host}")
+            try:
+                (ib.box(names[0]) / f"{rec['id']}.json").write_text(json.dumps(rec, ensure_ascii=False))
+            except OSError:
+                pass
+    if rec is None:
+        return False, M("host.ok_not_found", quote=quote[:120])
+    import contextlib
+    import io
+    TK = _load("cm-tasks")
+    TK._caller_session = lambda: rec["to"]   # solo qui, dentro questo processo: la sessione la' non chiama la CLI
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            rc = TK.main(["ok", task, "--by", "utente", "--inbox", rec["id"]] + (["--choice", choice] if choice else []))
+    except SystemExit as e:
+        return False, str(e.code if e.code is not None else "")[-300:]
+    return rc in (0, None), (out.getvalue().strip().splitlines() or [""])[-1][:300]
+
+
+def ok_from_host(host, ename, shown, mirror, offset, since, sent):
+    """Le richieste d'ok della copia, ognuna una volta: registrate o rifiutate, la master lo sa in una riga."""
+    names = list(dict.fromkeys(n for n in (ename, shown) if n))
+    for key, task, choice, quote in ok_requests(mirror, offset, since):
+        if key in sent:
+            continue
+        ok, why = register_ok(host, names, mirror, task, choice, quote)
+        msg = M("host.ok_done" if ok else "host.ok_refused", host=host, name=shown, task=task, why=why)
+        if _talk(str((CFG.get("workspace") or {}).get("root_session_name") or "master"), msg) not in (0, 5):
+            return False
+        sent.append(key)
+    return True
 
 
 def _epoch(ts):
@@ -949,15 +1056,16 @@ def forward_to_master(host, sessions):
         if first:
             offs[sid] = p.stat().st_size
             continue
-        blocks, new_off = master_blocks(p, int(offs.get(sid) or 0) if int(offs.get(sid) or 0) <= p.stat().st_size else 0, since)
+        off0 = int(offs.get(sid) or 0) if int(offs.get(sid) or 0) <= p.stat().st_size else 0
+        blocks, new_off = master_blocks(p, off0, since)
         shown = ename[len(host) + 1:] if ename.startswith(host + "-") and (state_dir() / "rsessions" / f"{ename}.json").is_file() else ename
+        if not ok_from_host(host, ename, shown, p, off0, since, sent):   # 19/11: gli ok della persona, prima dei blocchi
+            continue
         for key, text in blocks:
             if key in sent:
                 continue
             msg = M("host.forward_head", host=host, name=shown, time=time.strftime("%H:%M")) + "\n" + text
-            r = subprocess.run([sys.executable, str(HERE / "cm-talk.py"), "talk", master, msg, "--no-wait"],
-                               capture_output=True, text=True, timeout=120)
-            if r.returncode not in (0, 5):   # 5 = la master e' chiusa: il messaggio resta nella sua casella
+            if _talk(master, msg) not in (0, 5):   # 5 = la master e' chiusa: il messaggio resta nella sua casella
                 new_off = None
                 break
             sent.append(key)

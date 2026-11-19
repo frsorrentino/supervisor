@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # supervisor close — chiude una sessione Claude per davvero.
 #
-#   supervisor close <nome-tmux>              chiude quella sessione
+#   supervisor close <nome-tmux> [--subito]   chiude quella sessione; prima le chiede il passaggio di consegne se serve
 #   supervisor close --abandoned [--dry-run]  quelle staccate E ferme su una domanda   (it: --abbandonate --prova)
+#
+# 19/11/2026 (supervisor-chiudi-salva-19-11, l'utente: «se chiudo da supervisor la sessione prima di exit dovrebbe
+# controllare se occorre salvare stato, eseguire e poi chiudere»): senza --subito (it: --now) una sessione Claude riceve
+# la richiesta del passaggio di consegne (lo scrive se ha decisioni o lavoro in corso, altrimenti risponde «niente da
+# salvare»), si aspetta la fine di quel turno al piu' close.save_timeout_s (180 s) e poi si chiude, anche se il tempo e'
+# scaduto (lo dice). Anche le sessioni su win. Chi chiama da un programma (il relay, park, plan) passa --subito.
 #
 # Esiste perche' le sessioni sopravvivono alla chiusura della finestra: una
 # finestra e' una vista, la sessione vive finche' non la chiudi tu. Una sessione ATTACCATA
@@ -14,10 +20,11 @@
 set -u
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/cm-lib.sh"
 
-PROVA=no; BERSAGLIO=""; ABBANDONATE=no; FORZA=""
+PROVA=no; BERSAGLIO=""; ABBANDONATE=no; FORZA=""; SUBITO=no
 for arg in "$@"; do
   case "$arg" in
     --dry-run|--prova) PROVA=si ;;
+    --subito|--now) SUBITO=si ;;
     --force|--forza) FORZA=--force ;;   # solo per le sessioni su un altro host: chiude anche una busy o waiting
     --abandoned|--abbandonate) ABBANDONATE=si ;;
     -*) cm_msg close.unknown_option "opt=$arg" >&2; exit 2 ;;
@@ -32,6 +39,18 @@ chiudi() {
   if [ "$PROVA" = si ]; then echo "  $(cm_msg close.would_close "name=$1")"; return; fi
   cm_tmux kill-session -t "=$1" 2>/dev/null && echo "  $(cm_msg close.closed "name=$1")"
   "$CM_SCRIPTS/cm-registry.sh" --closed "$1" >/dev/null 2>&1   # chiusura esplicita: esce dalla fotografia
+}
+# 19/11 (supervisor-chiudi-salva-19-11): il passaggio di consegne prima di chiudere, e una riga che dice com'e' andata
+salva() {   # $1 nome, $2 --remote o niente
+  [ "$SUBITO" = si ] || [ "$PROVA" = si ] && return 0
+  python3 "$CM_SCRIPTS/cm-closesave.py" save "$1" ${2:+"$2"} --line 2>/dev/null || true
+}
+dopo() {   # $1 nome, $2 codice della chiusura
+  if [ "$2" -eq 0 ]; then python3 "$CM_SCRIPTS/cm-closesave.py" clear "$1"; else python3 "$CM_SCRIPTS/cm-closesave.py" drop "$1"; fi
+}
+detto() {   # la riga del salvataggio
+  [ -n "$1" ] && echo "  $1"
+  return 0
 }
 
 if [ "$ABBANDONATE" = si ]; then
@@ -57,13 +76,21 @@ fi
 # fase 2.2 del piano multi-PC: `HOST:nome` o una sessione lanciata con launch --host si chiude sull'host
 if python3 "$CM_SCRIPTS/cm-rsession.py" resolve "$BERSAGLIO" >/dev/null 2>&1; then
   [ "$PROVA" = si ] && { echo "  $(cm_msg close.would_close "name=$BERSAGLIO")"; exit 0; }
-  exec python3 "$CM_SCRIPTS/cm-rsession.py" close "$BERSAGLIO" $FORZA
+  trap 'dopo "$BERSAGLIO" $?' EXIT
+  detto "$(salva "$BERSAGLIO" --remote)"
+  python3 "$CM_SCRIPTS/cm-rsession.py" close "$BERSAGLIO" $FORZA
+  exit $?
 fi
 cm_tmux has-session -t "=$BERSAGLIO" 2>/dev/null || {
   cm_msg close.missing "name=$BERSAGLIO" >&2
   echo "  $(cm_msg close.running): $(cm_tmux list-sessions -F '#{session_name}' 2>/dev/null | tr '\n' ' ')" >&2
   exit 3
 }
+# il salvataggio, mai per la sessione da cui si chiama (si rifiuta sotto: non puo' chiudere se stessa)
+if ! { [ -n "${TMUX:-}" ] && [ "$(cm_tmux display-message -p '#S' 2>/dev/null)" = "$BERSAGLIO" ]; }; then
+  trap 'dopo "$BERSAGLIO" $?' EXIT
+  detto "$(salva "$BERSAGLIO")"
+fi
 if attaccata "$BERSAGLIO"; then
   # 07/10/2026 (ok del maintainer): con destroy-unattached ogni sessione con finestra risulta attaccata, e la vecchia
   # regola T14 le rifiutava tutte. Ora un'attaccata IDLE si chiude chiudendo la sua scheda (chrome-bridge): la sessione

@@ -364,7 +364,7 @@ SRC2 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"],
                                                  "settimana_origini": {"sessioni": 20.1, "automazioni": 6.5, "richieste": 11.4, "completo": True}},
                                     "work": {"cinque_ore_pct": 3, "settimana_pct": 75, "reset_settimanale": 1789444800, "reset_cinque_ore": 1789225200, "vecchia": False,
                                              "settimana_punti": [], "settimana_origini": {"sessioni": 50.0, "automazioni": 5.0, "richieste": 20.0, "completo": False}}},
-        "projects": [{"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789213900}], "night": {"queued": 1, "running": None, "master": True, "items": [{"id": "c41d9e07", "dir": ROOT_WS, "name": "master", "prompt": "Do this agenda item: Move the docs site to the new host (orbit-docs)", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789213000)}]}, "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": []},
+        "projects": [{"path": ROOT_WS + "/personal/atlas-shop", "name": "atlas-shop", "account": "personal", "last_used": 1789213900}], "night": {"queued": 1, "running": None, "master": True, "items": [{"id": "c41d9e07", "dir": ROOT_WS, "name": "master", "prompt": "Move the docs site to the new host", "account": "personal", "model": "", "effort": "", "max_turns": 40, "added": iso(1789213000)}]}, "ops": list(R_OPS), "slash": ["compact", "clear", "exit", "context", "cost"], "recap": {"date": "2026-09-12", "items": []},
         "follow": set(), "awaiting": set(), "next": {"atlas-shop": "Test deploy on staging"}, "tools": {}, "icons": {"atlas-shop": "🟢"}, "next_at": {"atlas-shop": 1789171200}, "choices": {"models": [{"id": "claude-opus-5[1m]", "label": "Opus 5"}, {"id": "claude-fable-5-1", "label": "Fable 5.1"}, {"id": "claude-sonnet-5", "label": "Sonnet 5"}, {"id": "claude-haiku-4-5", "label": "Haiku 4.5"}], "efforts": ["low", "medium", "high", "xhigh", "max"]},
         "runtime": {"atlas-shop": {"model": {"id": "claude-sonnet-5", "label": "Sonnet 5"}, "effort": "medium", "context": 18}}}
 SRC2["account_kinds"] = KINDS
@@ -388,12 +388,13 @@ SRC2["suggestions"] = [
      "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
     {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Night report ready",
      "prompt": "Read me last night's report", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
-    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Close the paused tasks?",
+    {"id": "s-5d0e2f9c13", "kind": "cleanup", "key": "cleanup:paused:orbit-docs-*", "text": "Close paused tasks?",
      "prompt": "Close the two paused orbit-docs tasks", "at": 1789207190, "expires_at": 1789250390}]   # 1.88: senza rank ne' source → 5, master
 SRC2["usage_today"] = [{"session": "ledger-api", "account": "work", "tokens": 960000, "share": 0.97},
                        {"session": "atlas-shop", "account": "personal", "tokens": 1840000, "share": 0.62},
                        {"session": "master", "account": "personal", "tokens": 1130000, "share": 0.38},
                        {"session": "orbit-docs", "account": "work", "tokens": 30000, "share": 0.03}]
+SRC2["closing"] = {"atlas-shop": {"mode": "save", "at": 1789214300, "deadline": 1789214480}}   # 1.155: «Salva e chiudi», sta salvando
 SRC2["needs_you"] = {"atlas-shop": {"reason": "Type the TV code", "at": 1789214200, "expires_at": 1789221400,
                                     "name": "atlas-shop", "task": "atlas-tv-pairing", "from": "master"}}
 st2 = S.build_state(SRC2, 1789214400)
@@ -417,9 +418,10 @@ SRC3["rows"] = [{"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_prio
                  "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789199000}]
 SRC3["prefixes"] = ["work-"]
 SRC3["closed"] = {"work-orbit-docs": {"name": "orbit-docs", "tmux": "work-orbit-docs", "cwd": ROOT_WS + "/work/own/orbit-docs", "account": "work",
-                                      "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
+                                      "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing draft ready",
                                       "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"],
-                                      "closed_at": 1789199000, "by": "phone-pixel8"}}
+                                      "closed_at": 1789199000, "by": "phone-pixel8", "handoff": False, "handoff_file": None,
+                                      "reason": "salvataggio scaduto"}}   # 1.155: «Salva e chiudi» scaduto
 # 1.88 (27/10): la coda dei suggerimenti — una voce per ciascuno dei sei tipi nuovi (state-2 e' gia' vicino agli 8 KB)
 SRC3["suggestions"] = [
     {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing page copy: the short one or the full one?",
@@ -1802,7 +1804,7 @@ r72c = send_cmd(CM184[3])
 _sv72 = json.loads((state_dir / "closed" / "field-notes.json").read_text()) if (state_dir / "closed" / "field-notes.json").exists() else {}
 T.check("R72 (1.84) close: only the closable one is closed (`close field-notes`), its state saved first (session_id, dirty, outcome, next, closed_at, by); the busy one stays with its reason; the text as in the fixture",
         r72c and r72c["ok"] is True and r72c["text"] == RS184[CM184[3]["id"]]["text"] == "closed: field-notes\natlas-shop not closed: it is working"
-        and "close field-notes" in cm_calls()[_n72:] and "close atlas-shop" not in cm_calls()[_n72:]
+        and "close field-notes --subito" in cm_calls()[_n72:] and not [c for c in cm_calls()[_n72:] if c.startswith("close atlas-shop")]
         and _sv72.get("session_id") == "S-F" and _sv72.get("dirty_n") == len(_dirty72) and _sv72.get("tmux") == "field-notes" and isinstance(_sv72.get("closed_at"), int)
         and _sv72.get("by") == "phone-pixel8" and {"outcome", "next", "cwd", "account"} <= set(_sv72), str((r72c, _sv72)))
 _n72 = len(cm_calls())
@@ -2028,7 +2030,7 @@ r23e = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000203", sessio
 r23f = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000204", arg="/exit", text=None))
 T.check("R23 (1.25, 1.120) a busy session and one on a dialog → «<name> is busy», a missing one → «no session <name>», nothing typed; /exit (with its slash) for a session without a window goes the way of close (`supervisor close`), nothing typed",
         r23c and r23c["text"] == "atlas-shop is busy" and r23d and r23d["text"] == "ledger-api is busy" and r23e and r23e["text"] == "no session nessuna"
-        and r23f and r23f["ok"] is True and r23f["text"] == "closed: field-notes" and "close field-notes" in cm_calls()[n_calls:]
+        and r23f and r23f["ok"] is True and r23f["text"] == "closed: field-notes" and "close field-notes --subito" in cm_calls()[n_calls:]
         and [c for c in cm_calls()[n_calls:] if c.startswith("talk ")] == [], str([r23c, r23d, r23e, r23f]) + str(cm_calls()[n_calls:]))
 n_calls = len(cm_calls())
 r23g = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000205", arg="cost", text=None))
@@ -3961,8 +3963,9 @@ T.check("R73 (1.84, 1.88) fixtures: state-2 three suggestions of different kinds
         and all(0 <= x["share"] <= 1 for x in F2["usage_today"]) and F2["sessions"][0]["needs_you"]["task"] == "atlas-tv-pairing" and F2["sessions"][0]["needs_you"]["from"] == "master"
         and [x["kind"] for x in F2["attention"]] == ["needs_you"], "")
 T.check("R73 (1.84) fixtures: state-3 orbit-docs closed from the app with two uncommitted files and its session_id; state-1 orbit-docs closed at the PC with {at, session_id}; no closed on live sessions",
-        F3["sessions"][0]["closed"] == {"at": 1789199000, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing page draft ready for review",
-                                        "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"]}
+        F3["sessions"][0]["closed"] == {"at": 1789199000, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "outcome": "Pricing draft ready",
+                                        "next": "Pick up the pricing page", "dirty_n": 2, "dirty": ["src/pages/pricing.md", "docs/notes.md"],
+                                        "reason": "salvataggio scaduto"}
         and _by73["orbit-docs"]["state"] == "gone" and F1["sessions"][3]["closed"] == {"at": F1["sessions"][3]["since"], "session_id": F1["sessions"][3]["id"]}
         and all("closed" not in x for s in (F1, F2) for x in s["sessions"] if x["state"] != "gone"), str(F3["sessions"][0].get("closed")))
 _big73 = S.build_state(dict(SRC2, suggestions=[dict(SRC2["suggestions"][0], id=f"s-{i:010d}", at=1789207200 - i) for i in range(15)],
