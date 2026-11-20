@@ -238,7 +238,8 @@
     "min_turns": 3,
     "morning_time": "08:00",
     "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json",
-    "server_pct": 80
+    "server_pct": 80,
+    "github_owner": ""
   },
   "riassunto": {
     "enabled": true,

@@ -684,6 +684,10 @@ def waiting_for_you(now=None):
     items.sort(key=lambda x: float(x.get("since") or 0))
     def item(x):
         i = x.get("wid") or (AT.wid_attention(x) if AT else None)
+        try:   # 20/11 (app-bozze-link-19-11): una carta del registro si apre col suo card_id, lo stesso fra i giri
+            i = (AT.card_id_of(i) if AT and i and x.get("wid") else None) or i
+        except Exception:   # noqa: BLE001
+            pass
         ln = AT.link(i) if AT and i else None
         return M("hook.waiting_item_link" if ln else "hook.waiting_item", name=x.get("session") or "?", what=str(x.get("title") or x.get("kind") or "")[:90],
                  min=max(0, int((now - float(x.get("since") or now)) // 60)), link=ln or "")

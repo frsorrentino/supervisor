@@ -178,7 +178,7 @@ T.check("AT4 op attesa: the wait with msg from the session's transcript; a bad o
         and (rx.get("msg") or {}).get("session_id") == "sid-alfa" and "1.0" in (rx.get("msg") or {}).get("text", "") and rx["msg"].get("uuid") == "a3"
         and rx["msg"].get("key") == "Serve il tuo ok per pubblicare la 1.0: la release esce sul sito."
         and not bad[0] and not gone[0] and "non aspetta" in gone[1] and okl and len(json.loads(tl)["items"]) == 8
-        and cli.returncode == 0 and f"{WEB}/#/attesa/{cur['id']}" in cli.stdout,
+        and cli.returncode == 0 and f"{WEB}/#/attesa/{cur.get('card_id') or cur['id']}" in cli.stdout,   # 20/11: il link col card_id (1.157)
         f"{okx} {tx[:400]} {bad} {gone} {cli.stdout[:300]} {cli.stderr[:300]}")
 
 # AT5

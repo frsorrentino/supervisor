@@ -1741,6 +1741,7 @@
   "avvisi.gh_link_pr": "link alla PR",
   "avvisi.gh_link_issue": "link all'issue",
   "avvisi.gh_link_comment": "link al commento",
+  "avvisi.gh_someone": "qualcuno",
   "avvisi.months": "gennaio,febbraio,marzo,aprile,maggio,giugno,luglio,agosto,settembre,ottobre,novembre,dicembre",
   "avvisi.decimal": ",",
   "avvisi.when": "{day} alle {t}",

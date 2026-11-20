@@ -2204,10 +2204,20 @@ def attesa_op(arg, archive=False):
     a = AT.find(i)
     if a is not None:
         a["rounds"] = AT.card_rounds(a)   # 1.137: i giri di prima della stessa scheda
-    elif archive:
-        a = AT.archived(i)   # 1.137: con archive true, la scheda di qualsiasi giro anche dopo la risposta
+    else:
+        # 20/11 (app-bozze-link-19-11): l'id di un giro vecchio della stessa carta (sostituito da un wait-ok nuovo, o chiuso
+        # senza ok e riaperto) porta alla carta aperta, anche senza archive, con replaced_from; una carta con risposta
+        # resta d'archivio (solo con archive true, come prima)
+        old = AT.archived(i)
+        if old is not None and old.get("actions"):   # archived torna la voce aperta quando l'ultimo giro della carta aspetta
+            a = old
+            a["replaced_from"] = i
+        elif archive:
+            a = old
     if a is None:
-        return False, M("relay.cmd_attesa_gone", id=i)
+        # 20/11: il compito del giro, accanto a ok e text (text resta la frase), per aprire il compito o la sessione
+        tid = AT.task_of_round(i)
+        return (False, M("relay.cmd_attesa_gone", id=i), {"task": tid}) if tid else (False, M("relay.cmd_attesa_gone", id=i))
     a["msg"] = AT.origin(a, live_rows())
     AT.with_files(a, a["msg"])   # 1.137: i file da guardare, dichiarati o del messaggio d'origine
     return True, json.dumps(a, ensure_ascii=False)

@@ -23,6 +23,7 @@ import datetime
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -76,7 +77,7 @@ def iso(min_ago):
 
 
 def transcript(sid, cwd, prompts):
-    slug = str(cwd).replace("/", "-")
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(cwd))   # come Claude Code
     p = home / ".claude" / "projects" / slug / f"{sid}.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     rows = []

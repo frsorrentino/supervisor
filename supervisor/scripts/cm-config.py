@@ -172,7 +172,9 @@ DEFAULTS = {
               "summary": "model", "summary_model": "haiku", "summary_timeout_s": 60, "max_s": 150, "send_max_s": 420, "project_log": "docs/recap.md", "startup_lines": 5,
               "min_turns": 3,
               # 17/11/2026 (supervisor-avvisi-telegram-17-11): il mattino su Telegram e lo spazio dei server che legge
-              "morning_time": "08:00", "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json", "server_pct": 80},
+              "morning_time": "08:00", "servers_file": "~/Desktop/workspaces/.claude/spazio-server.json", "server_pct": 80,
+              # 20/11 (supervisor-recap-github-campi-20-11): il login GitHub della persona per `recap github` (vuoto: gh api user)
+              "github_owner": ""},
     # 19/11/2026 (supervisor-riassunto-fine-19-11): il riassunto di una sessione finita senza passaggio di consegne, in
     # <cartella>/docs/riassunto-<data>-<sid8>.md. min_prompts = lavoro vero; idle_min = una sessione senza SessionEnd (chiusa di
     # colpo) conta come finita dopo tanti minuti fermi e senza processo; window_h = quanto indietro guarda la prima volta

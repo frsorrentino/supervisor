@@ -386,6 +386,38 @@ def round_view(g):
             "answered_at": g.get("answered_at"), "choice": g.get("choice")}
 
 
+def task_of_round(i):
+    """20/11 (app-bozze-link-19-11): il compito del giro con questo id (archivio del registro), o None."""
+    try:
+        tk = _load("cm-tasks")
+        con = tk.connect(create=False)
+    except Exception:   # noqa: BLE001
+        return None
+    if con is None:
+        return None
+    try:
+        return tk.find_round(con, i)
+    finally:
+        con.close()
+
+
+def card_id_of(i):
+    """20/11 (app-bozze-link-19-11): il card_id (1.137) della carta che contiene il giro `i`, o None (non e' un giro)."""
+    try:
+        tk = _load("cm-tasks")
+        con = tk.connect(create=False)
+    except Exception:   # noqa: BLE001
+        return None
+    if con is None:
+        return None
+    try:
+        tid = tk.find_round(con, i)
+        card = tk.card_of(con, tid, i) if tid else None
+        return card["card_id"] if card else None
+    finally:
+        con.close()
+
+
 def card_rounds(a):
     """I giri della scheda prima di quello della voce, dal piu' vecchio ([] al primo giro, e per le voci che non sono carte)."""
     if a.get("type") != "carta" or a.get("kind") not in ("ok", "choice") or not a.get("task"):
@@ -506,6 +538,7 @@ def collect(now_=None, state=None, alias=None, registry=None):
         a["session"] = _canon(a["session"], alias, names) if a.get("session") else None
         a["link"] = link(a["id"])
         _finish(a)
+        a["link"] = link(a.get("card_id") or a["id"])   # 20/11 (app-bozze-link-19-11): lo stesso link fra i giri della carta
         seen[a["id"]] = a
         if a["kind"] == "rosso" and a.get("task"):
             red[a["task"]] = a

@@ -1,0 +1,18 @@
+[STATO] frsorrentino/chrome-bridge Issue «HOL Guard profile for chrome-bridge?» 11-19T12:35
+  wondermuse https://github.com/frsorrentino/chrome-bridge/issues/5#issuecomment-7009262128 You offered to review a Guard profile for accuracy if a Guard user wrote one — I took you up on it: https://github.com/hashgraph-online/hol-guard/pull/8079 It covers the 46 tools in the live inventory from ch
+
+[CITAZIONE] anthropics/claude-code#91870 rbartoli 10-09T23:28
+  https://github.com/anthropics/claude-code/issues/91870#issuecomment-6091000049
+  Three gaps from building a mod that limits agents across sessions (agent-usage-guard, linked below as the use case), as of 2.1.295: 1. **`agent.spawn` doesn't fire when `SendMessage` resumes a finished subagent.** Only `
+
+[ISSUE DA UTENTE] frsorrentino/claude-master-watch #2 claude-observe-reports[bot] «[team-supervisor-app] field observations: 1 note(s), most frequent `Go-live test» 10-07T02:34
+  https://github.com/frsorrentino/team-supervisor-app/issues/2
+  Collected on 2026-10-07 by claude-observe (https://github.com/frsorrentino/claude-observe): errors recorded by a hook and notes added by hand; parameter values are never stored. - `Go-live test of the anonymous sending s
+
+[ISSUE DA UTENTE] frsorrentino/chrome-bridge #5 wondermuse «HOL Guard profile for chrome-bridge?» 11-16T13:39
+  https://github.com/frsorrentino/chrome-bridge/issues/5
+  Hey, we maintain HOL Guard. Would you be interested in contributing a profile for chrome-bridge? It could help Guard users review how your MCP tools, including `navigate`, are handled. The extension is optional, runs loc
+
+[COMMENTO DA UTENTE] frsorrentino/chrome-bridge wondermuse 11-19T12:34
+  https://github.com/frsorrentino/chrome-bridge/issues/5#issuecomment-7009262128
+  You offered to review a Guard profile for accuracy if a Guard user wrote one — I took you up on it: https://github.com/hashgraph-online/hol-guard/pull/8079 It covers the 46 tools in the live inventory from chrome-bridge-

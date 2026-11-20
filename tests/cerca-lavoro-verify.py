@@ -42,7 +42,7 @@ ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "T
 ENV.update({"HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg), "CM_PROC_SCAN_PIDS": "",
             "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
 CLI = str(T.SCRIPTS / "supervisor")
-proj_dir = home / ".claude" / "projects" / str(alfa).replace("/", "-")
+proj_dir = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(alfa))   # come Claude Code: anche «_» e «.» diventano «-»
 proj_dir.mkdir(parents=True)
 tr = proj_dir / "S-ALFA-1.jsonl"
 T0 = dt.datetime(2026, 11, 18, 10, 0, tzinfo=dt.timezone.utc)

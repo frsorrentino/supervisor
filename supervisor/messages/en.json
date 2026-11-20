@@ -1741,6 +1741,7 @@
   "avvisi.gh_link_pr": "link to the PR",
   "avvisi.gh_link_issue": "link to the issue",
   "avvisi.gh_link_comment": "link to the comment",
+  "avvisi.gh_someone": "someone",
   "avvisi.months": "January,February,March,April,May,June,July,August,September,October,November,December",
   "avvisi.decimal": ".",
   "avvisi.when": "{day} at {t}",

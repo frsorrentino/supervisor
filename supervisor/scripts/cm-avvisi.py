@@ -293,8 +293,19 @@ def evening_text(day=None):
 # (gh-notify-watch.py, issue-watch.py, segnalazioni.py) erano il corpo inglese della PR tagliato. `supervisor recap github`
 # legge quel blocco sullo stdin e scrive una riga italiana: «progetto: chi ha fatto cosa su dove (di cosa si tratta) — link».
 GH_HEAD = re.compile(r"^\[(?P<tag>[A-Z][A-Z -]+)\]\s+(?P<rest>.*)$")
-GH_URL = re.compile(r"https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/(?P<kind>pull|issues)/(?P<num>\d+)(?P<frag>#\S*)?")
+GH_URL = re.compile(r"https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/(?P<kind>pull|issues|discussions)/(?P<num>\d+)(?P<frag>#\S*)?")
 GH_REPO_IN_BODY = re.compile(r"github\.com/([\w.-]+)/([\w.-]+)")
+GH_REPO_TOK = re.compile(r"^(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+?)(?:#(?P<num>\d+))?$")
+GH_DATE_TOK = re.compile(r"^\d\d-\d\dT\d\d:\d\d")
+GH_TYPES = {"Issue", "PullRequest", "Discussion", "Release", "Commit", "CheckSuite"}
+# 20/11 (supervisor-recap-github-campi-20-11): i tipi che conosciamo; un blocco d'altro tipo passa com'e'
+GH_KNOWN = {"MENZIONE", "RIFERIMENTO", "RISPOSTA-TUO-THREAD", "STATO", "CITAZIONE", "ISSUE DA UTENTE", "PR DA UTENTE", "COMMENTO DA UTENTE"}
+# 20/11: il riassunto in pochi secondi. Senza le impostazioni dell'utente (--setting-sources project, nella cartella di stato
+# che non ne ha) niente plugin ne' hook; niente MCP, strumenti, comandi, sessione salvata. Sul Chromebook claude -p senza
+# queste opzioni impiegava 38-61 s a riga e a 60 s scadeva. --bare no: non legge l'accesso OAuth.
+GH_LEAN = ["--setting-sources", "project", "--strict-mcp-config", "--tools", "", "--disable-slash-commands", "--no-session-persistence"]
+GH_SUMMARY_TIMEOUT_S = 25
+GH_ABOUT_MAX = 70
 
 
 def repo_label(repo):
@@ -302,60 +313,142 @@ def repo_label(repo):
     return " ".join(w.upper() if len(w) <= 3 else w.capitalize() for w in re.split(r"[-_]", repo) if w)
 
 
-def gh_summary(title, body):
-    """Di cosa si tratta, in italiano, in poche parole (claude -p, modello piccolo); None se non risponde."""
-    prompt = M("avvisi.gh_prompt", title=title, body=body[:600])
+def github_owner():
+    """Il login GitHub della persona: recap.github_owner, altrimenti `gh api user` una volta (in <state_dir>/github-owner)."""
+    own = str((CFG.get("recap") or {}).get("github_owner") or "").strip()
+    if own:
+        return own
+    p = state_dir() / "github-owner"
     try:
-        p = subprocess.run([cm.claude_bin(), "-p", prompt, "--model", str((CFG.get("recap") or {}).get("summary_model") or "haiku"), "--max-turns", "1"],
-                           capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL, cwd=str(state_dir()))
+        return p.read_text().strip() or None
+    except OSError:
+        pass
+    try:
+        r = subprocess.run(["gh", "api", "user", "-q", ".login"], capture_output=True, text=True, timeout=10)
+        login = r.stdout.strip() if r.returncode == 0 else ""
     except (OSError, subprocess.TimeoutExpired):
-        return None
-    out = " ".join((p.stdout or "").split()).strip(" .«»\"'")
-    return out if p.returncode == 0 and out and len(out) <= 80 else None
+        login = ""
+    if login:
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(login)
+        except OSError:
+            pass
+    return login or None
 
 
-def github_line(block, as_html=False):
-    """La riga italiana di un blocco [MENZIONE] / [RIFERIMENTO] / [COMMENTO DA UTENTE]; None se non lo riconosce."""
+def gh_summary(title, body):
+    """Di cosa si tratta, in italiano, in poche parole (claude -p leggero, modello piccolo); None se non risponde in tempo."""
+    prompt = M("avvisi.gh_prompt", title=title or "-", body=body[:600])
+    base = [cm.claude_bin(), "-p", prompt, "--model", str((CFG.get("recap") or {}).get("summary_model") or "haiku"), "--max-turns", "1"]
+    t0 = time.time()
+    for extra in (GH_LEAN, []):
+        left = GH_SUMMARY_TIMEOUT_S - (time.time() - t0)
+        if left < 2:
+            return None
+        try:   # un gruppo di processi a se': allo scadere va via tutto (un figlio rimasto terrebbe aperta la pipe)
+            p = subprocess.Popen(base + extra, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
+                                 cwd=str(state_dir()), start_new_session=True)
+        except OSError:
+            return None
+        try:
+            stdout, stderr = p.communicate(timeout=left)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, 9)
+            except OSError:
+                pass
+            p.communicate()
+            return None
+        out = " ".join((stdout or "").split()).strip(" .«»\"'")
+        if p.returncode == 0 and out:
+            return out if len(out) <= GH_ABOUT_MAX + 10 else None
+        if "unknown option" not in (stderr or "").lower():   # una CLI che non conosce le opzioni leggere: si riprova senza
+            return None
+    return None
+
+
+def parse_github(block):
+    """{tag, repo, owner, num, author, title, url, kind, frag, body} di un blocco, o None se non e' un blocco GitHub che conosciamo."""
     rows = [l.strip() for l in str(block or "").strip().splitlines() if l.strip()]
     if not rows:
         return None
     m = GH_HEAD.match(rows[0])
-    if not m:
+    if not m or m.group("tag").strip() not in GH_KNOWN:
         return None
     tag, rest = m.group("tag").strip(), m.group("rest")
+    title = ""
+    if "«" in rest and "»" in rest[rest.index("«"):]:
+        a, b = rest.index("«"), rest.rindex("»")
+        title, rest = rest[a + 1:b].strip(), rest[:a] + " " + rest[b + 1:]
+    owner = repo = num = author = None
+    for t in rest.split():
+        rm = GH_REPO_TOK.match(t)
+        if repo is None and rm and "://" not in t:
+            owner, repo, num = rm.group("owner"), rm.group("repo"), rm.group("num") or num
+        elif re.fullmatch(r"#\d+", t):
+            num = t[1:]
+        elif GH_DATE_TOK.match(t) or t in GH_TYPES:
+            continue
+        elif author is None and repo is not None:
+            author = t
     text = " ".join(rows[1:])
-    u = GH_URL.search(text) or GH_URL.search(rest)
+    ut = GH_URL.search(text)
+    u = ut or GH_URL.search(rows[0])
     if not u:
         return None
-    url = u.group(0)
-    head = rest.split()
-    thread_repo = head[0].split("/")[-1] if "/" in head[0] else u.group("repo")
-    after = text[u.end():] if GH_URL.search(text) else text
-    who = (text[:GH_URL.search(text).start()].split() or [""])[-1] if GH_URL.search(text) else (head[1] if len(head) > 1 else "")
-    if tag.startswith("COMMENTO"):
-        who = head[1] if len(head) > 1 else who
-        mine = thread_repo
-        num = u.group("num")
-        what = M("avvisi.gh_commented_pr" if u.group("kind") == "pull" else "avvisi.gh_commented_issue", n=num)
-        line = f"{mine}: {who} {what}"
+    if author is None and ut:   # [MENZIONE]: «  autore https://… testo»
+        before = text[:ut.start()].split()
+        author = before[-1] if before else None
+    body = text[ut.end():].strip() if ut else text
+    return {"tag": tag, "owner": owner or u.group("owner"), "repo": repo or u.group("repo"), "num": num or u.group("num"), "author": author,
+            "title": title, "url": u.group(0), "kind": u.group("kind"), "frag": u.group("frag"), "url_repo": u.group("repo"), "body": body}
+
+
+def github_prefix(g, me):
+    """Il progetto della riga: il repo del blocco se e' della persona; altrimenti un suo progetto linkato nel titolo o nel
+    testo; altrimenti il repo del blocco. Senza sapere chi e' la persona: il primo repo linkato diverso da quello del link."""
+    if me and g["owner"] == me:
+        return g["repo"]
+    links = GH_REPO_IN_BODY.findall(f"{g['title']} {g['body']}")
+    if me:
+        mine = next((r for o, r in links if o == me), None)
+    else:
+        mine = next((r for o, r in links if r != g["url_repo"]), None)
+    return mine or g["repo"]
+
+
+def github_line(block, as_html=False):
+    """La riga italiana di un blocco GitHub che conosciamo; None se non lo riconosce (chi chiama lo passa com'e')."""
+    g = parse_github(block)
+    if not g:
+        return None
+    prefix = github_prefix(g, github_owner())
+    who = g["author"] or M("avvisi.gh_someone")
+    commented = bool(g["frag"]) or g["tag"].startswith("COMMENTO")
+    is_pr = g["kind"] == "pull"
+    label = repo_label(g["url_repo"])
+    if g["tag"].startswith("COMMENTO"):
+        what = M("avvisi.gh_commented_pr" if is_pr else "avvisi.gh_commented_issue", n=g["num"])
+        line = f"{prefix}: {who} {what}"
         link_word = M("avvisi.gh_link_comment")
     else:
-        tm = re.search(r"«([^»]*)»", rest)
-        title = tm.group(1) if tm else ""
-        mine = next((r for o, r in GH_REPO_IN_BODY.findall(after) if r != u.group("repo")), thread_repo)
-        is_pr = u.group("kind") == "pull"
-        opened = not u.group("frag")
-        key = ("avvisi.gh_opened_pr" if opened else "avvisi.gh_commented_pr_on") if is_pr else ("avvisi.gh_opened_issue" if opened else "avvisi.gh_commented_issue_on")
-        about = gh_summary(title, after) or (f"«{title}»" if title else "")
-        line = f"{mine}: {who} {M(key, repo=repo_label(u.group('repo')))}" + (f" ({about})" if about else "")
+        key = ("avvisi.gh_commented_pr_on" if commented else "avvisi.gh_opened_pr") if is_pr else \
+              ("avvisi.gh_commented_issue_on" if commented else "avvisi.gh_opened_issue")
+        about = gh_summary(g["title"], g["body"])
+        if not about:
+            about = f"«{g['title']}»" if g["title"] else cut_words(g["body"], GH_ABOUT_MAX)
+        line = f"{prefix}: {who} {M(key, repo=label)}" + (f" ({about})" if about else "")
         link_word = M("avvisi.gh_link_pr" if is_pr else "avvisi.gh_link_issue")
+    line = " ".join(line.split())
     if as_html:
-        return f'{esc(line)} — <a href="{html.escape(url)}">{esc(link_word)}</a>'
-    return f"{line} — {url}"
+        return f'{esc(line)} — <a href="{html.escape(g["url"])}">{esc(link_word)}</a>'
+    return f"{line} — {g['url']}"
 
 
 def cmd_github(argv):
-    """supervisor recap github [--html] < blocchi: una riga per blocco (separati da una riga vuota o da un nuovo «[TAG]»)."""
+    """supervisor recap github [--html] < blocchi: una riga per blocco (separati da una riga vuota o da un nuovo «[TAG]»);
+    un blocco che non riconosce esce com'e' (20/11: prima spariva, e il ripiego di watch-all.sh non scattava)."""
     raw = sys.stdin.read()
     blocks, cur = [], []
     for l in raw.splitlines():
@@ -369,9 +462,8 @@ def cmd_github(argv):
     n = 0
     for b in blocks:
         line = github_line(b, "--html" in argv)
-        if line:
-            print(line)
-            n += 1
+        print(line if line else (esc(b) if "--html" in argv else b))
+        n += 1
     return 0 if n else 1
 
 
