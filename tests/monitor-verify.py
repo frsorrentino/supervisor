@@ -304,6 +304,19 @@ def wait_refresh(mid, t=20):
     return show(mid).get("refresh") or {}
 
 
+def wait_rows(mid, n, t=20):
+    """20/11 (supervisor-monitor-verify-fragile-16-11): le righe monitor-refresh del registro, aspettando che siano n. Il giro
+    scrive lo stato «ok» e poi la sua riga: a macchina carica (release del 15 e 16/11) MO11 e MO14 le leggevano in mezzo.
+    CM_TEST_REGISTRY_DELAY_S=2 ritarda la riga in cm-monitor e rende il caso riproducibile."""
+    end = time.time() + t
+    while time.time() < end:
+        rows = refresh_rows(mid)
+        if len(rows) >= n:
+            return rows
+        time.sleep(0.2)
+    return refresh_rows(mid)
+
+
 def lines_of(path):
     try:
         return path.read_text().splitlines()
@@ -381,7 +394,7 @@ T.check("MO11 a background refresh returns at once with state running (ended and
         and v11.get("retry_at") is None and isinstance(v11.get("started"), int), f"{r_bg.returncode} {took11:.1f} {v11} {r_bg.stderr}")
 T.check("MO11 the lock: a second and a third request while it runs answer «già in corso» (exit 3); the command ran ONCE; at the end state ok",
         r_bg2.returncode == 3 and "già in corso" in r_bg2.stdout and r_bg3.returncode == 3 and end11.get("state") == "ok"
-        and end11.get("message") == "finito" and lines_of(mark11) == ["giro"] and len(refresh_rows("lento")) == 1,
+        and end11.get("message") == "finito" and lines_of(mark11) == ["giro"] and len(wait_rows("lento", 1)) == 1,
         f"{r_bg2.returncode} {r_bg2.stdout} {r_bg3.returncode} {end11} {lines_of(mark11)}")
 r_again = mo("refresh", "lento", "--wait")
 T.check("MO11 with --refresh-min-interval 0 the next request runs (the lock was released)",
@@ -453,7 +466,7 @@ T.check("MO14 from the app: starts in the background and answers the card with r
 T.check("MO14 a command text sent by the app (text, cmd, refresh.cmd, timeout_s) is never run and never written: only def.json's command ran, once",
         end14.get("state") == "ok" and end14.get("message") == "fatto" and lines_of(mark14) == ["giro"] and not evil14.exists()
         and d14 == {"cmd": f"echo giro >> {mark14}; sleep 2; echo fatto", "timeout_s": 180, "min_interval_s": 30}
-        and end14.get("timeout_s") == 180 and len(refresh_rows("da-app")) == 1, f"{end14} {lines_of(mark14)} {evil14.exists()} {d14}")
+        and end14.get("timeout_s") == 180 and len(wait_rows("da-app", 1)) == 1, f"{end14} {lines_of(mark14)} {evil14.exists()} {d14}")
 ok_s, t_s = RL.execute({"op": "monitor_refresh", "arg": "da-app", "device": "phone", "by": "maintainer"})
 T.check("MO14 right after the end: too soon is an error with the seconds to wait, nothing starts",
         not ok_s and t_s.startswith("da-app: aggiornato da poco, riprova fra ") and lines_of(mark14) == ["giro"], t_s)

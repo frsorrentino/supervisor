@@ -2,6 +2,9 @@
 
 ## 0.3.x
 
+- **0.8.194 — 2026-11-20: two fragile tests that stopped release runs no longer depend on load or on the time of day (supervisor-monitor-verify-fragile-16-11, supervisor-relay-verify-mezzanotte-17-11).**
+  - monitor-verify: two release runs (15/11 17:42, 16/11 21:03) fell on MO11 and MO14 on a loaded machine. A refresh writes its state «ok», releases the lock and only then writes its `monitor-refresh` row in the registry; the test read the rows in between. A test-only delay before that row, `CM_TEST_REGISTRY_DELAY_S`, makes it reproducible (the old test fails with it, with the same messages as the real runs); MO11 and MO14 now wait for the row.
+  - relay-verify: the first run of the 0.8.176 release fell at 23:58 on R73, which asked `usage_today` for «now + 181 s» from the real clock: in the last 3 minutes of the day that is already tomorrow and the count came out empty. The test's time now comes from `CM_TEST_NOW` when set (else the clock), and R73 works at noon of that day. Green at 23:58:30 and at the real time.
 - **0.8.193 — 2026-11-20: GitHub notifications in Italian with the right project, author and title; links to cards survive a new round (supervisor-recap-github-campi-20-11, app-bozze-link-19-11).**
   - The real outputs of 0.8.191 had the project taken from the title or from a link in the text instead of the block's repo, «#N» in the prefix, the author lost on [CITAZIONE] and [ISSUE DA UTENTE], double spaces, the title lost when the model did not answer within 60 s (it took 38-61 s a line), and an unknown block vanished with exit 0, so the fallback to the raw text never ran.
   - Now `supervisor recap github` reads each block field by field. The prefix is the block's repo when it belongs to the person (`recap.github_owner`, else `gh api user` once), else one of their projects linked in the title or the text, else the block's repo. The author is never lost, a block of an unknown kind comes out as it is.

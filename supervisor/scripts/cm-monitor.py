@@ -516,6 +516,10 @@ def _run_refresh(mid, r, lock, started):
     finally:
         lock.close()
     try:
+        # 20/11 (supervisor-monitor-verify-fragile-16-11): solo per i test, la riga arriva in ritardo come a macchina carica
+        # (lo stato «ok» e' gia' scritto: chi legge il registro deve aspettarla)
+        if os.environ.get("CM_TEST_REGISTRY_DELAY_S"):
+            time.sleep(float(os.environ["CM_TEST_REGISTRY_DELAY_S"]))
         _load("cm-suggest").ledger_write([{"event": "monitor-refresh", "monitor": mid, "ok": rc == 0, "rc": rc,
                                            "seconds": st["ended"] - started, "text": message or ""}])
     except Exception:   # noqa: BLE001 — il registro e' un'informazione in piu'

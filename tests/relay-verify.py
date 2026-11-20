@@ -43,6 +43,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import cm_test as T  # noqa: E402
 
+# 20/11 (supervisor-relay-verify-mezzanotte-17-11): l'ora dei casi che dipendono dal giorno. CM_TEST_NOW (epoch) la fissa, per
+# provare anche gli ultimi minuti del giorno; senza, l'orologio
+TEST_NOW = int(os.environ.get("CM_TEST_NOW") or time.time())
+
 WATCH = next((p for p in (Path.home() / "Desktop" / "workspaces" / "personali" / n for n in ("supervisor-app", "team-supervisor-app", "claude-master-watch")) if p.is_dir()), Path.home() / "Desktop" / "workspaces" / "personali" / "supervisor-app")   # percorso vero della macchina, non un nome del set demo
 FIX = T.ROOT / "tests" / "fixtures" / "relay"
 # 1.21: le op che il relay esegue, lette dal sorgente (l'allow-list OPS), non ricopiate a mano
@@ -3976,7 +3980,9 @@ T.check("R73 (1.84, 1.88) /state carries at most 12 suggestions, never the promp
         and [x["id"] for x in _fit73["suggestions"]] == [f"s-{i:010d}" for i in range(6)] and [x["name"] for x in _fit73["sessions"]] == ["atlas-shop"], str(S.size_of(_fit73)))
 # la quota di oggi dalle trascrizioni: dalla mezzanotte, un messaggio una volta, i subagenti con la loro sessione, la quota per account
 _u73 = tmp / "usage73"
-_now73 = int(time.time())
+# 20/11 (supervisor-relay-verify-mezzanotte-17-11): mezzogiorno del giorno di prova, non l'ora: «+ USAGE_CACHE_S + 1» negli ultimi
+# 3 minuti del giorno era gia' domani (release 0.8.176, 16/11 alle 23:58) e il conto usciva vuoto
+_now73 = RL._midnight(TEST_NOW) + 12 * 3600
 _mid73 = RL._midnight(_now73)
 _iso73 = lambda t: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(t))  # noqa: E731
 _ln73 = lambda t, mid, n, cwd="/w/alpha": json.dumps({"type": "assistant", "cwd": cwd, "timestamp": _iso73(t), "message": {"id": mid, "usage": {"input_tokens": n, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})  # noqa: E731
