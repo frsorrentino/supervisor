@@ -23,6 +23,7 @@ Uso: cm-kpi.py [--json]
 import importlib.util
 import json
 import math
+import re
 import os
 import shutil
 import statistics
@@ -225,10 +226,84 @@ def _ts(x):
         return None
 
 
-def turns_of(path, since, status=None):
-    """I turni di una trascrizione da `since`: [{start, end, outcome, tokens, cache_read}]. outcome ok, fail (un errore
-    dell'API nel turno), question (l'ultimo turno di una sessione che aspetta) o running (l'ultimo, sessione al lavoro)."""
+TEXT_MAX = 120     # 19/11 (supervisor-relay-k-19-11): la riga dell'esito nella K, a parola intera e senza «…»
+RESULTS_MAX = 20
+MD_LINK = re.compile(r"\[([^\]\n]{1,120})\]\((https?://[^\s)]+)\)")
+BARE_URL = re.compile(r"https?://[^\s<>()\"'`\]\[]+")
+RELEASE_URL = re.compile(r"/releases/tag/")
+IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"}
+
+
+def cut_words(text, n=TEXT_MAX):
+    """Il testo su una riga, entro n caratteri a parola intera, senza «…» (l'app sfuma la fine) e senza punteggiatura appesa."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= n:
+        return t
+    c = t[:n + 1]
+    c = c[:c.rfind(" ")] if " " in c else t[:n]
+    return c.rstrip(" ,;:·-(")
+
+
+def _plain(line):
+    """Una riga di markdown leggibile: i link coi loro testi, senza **, __, ` e i segni di inizio riga."""
+    line = MD_LINK.sub(lambda m: m.group(1), line)
+    line = re.sub(r"[*_`]{1,3}", "", line)
+    return line.strip().lstrip("#>-• ").strip()
+
+
+def outcome_text(text):
+    """La riga «Esito:» del messaggio (senza «Esito:»), altrimenti la prima riga di testo; a parola intera entro TEXT_MAX."""
+    rows = [l.strip() for l in str(text or "").splitlines() if l.strip() and not l.strip().startswith("```")]
+    for l in reversed(rows):
+        p = _plain(l)
+        m = re.match(r"(?i)^(esito|outcome)\s*:\s*(.+)$", p)
+        if m:
+            return cut_words(m.group(2))
+    return cut_words(_plain(rows[0])) if rows else ""
+
+
+def _app_hosts():
+    hosts = set()
+    for k in ("web_app_url", "public_url"):
+        u = str((CFG.get("relay") or {}).get(k) or "")
+        m = re.match(r"https?://([^/]+)", u)
+        if m:
+            hosts.add(m.group(1).lower())
+    return hosts
+
+
+def links_of(text, at, entry, app_hosts):
+    """I link del testo finale di un turno: kind release (/releases/tag/) o link; mai quelli all'app stessa."""
+    out, seen = [], set()
+    labels = {m.group(2): m.group(1) for m in MD_LINK.finditer(text or "")}
+    for u in BARE_URL.findall(text or ""):
+        u = u.rstrip(".,;:!?»")
+        host = (re.match(r"https?://([^/]+)", u) or [None, ""])[1].lower()
+        if u in seen or host in app_hosts:
+            continue
+        seen.add(u)
+        rel = bool(RELEASE_URL.search(u))
+        label = labels.get(u) or (u.rstrip("/").rsplit("/", 1)[-1] if rel else host)
+        out.append({"kind": "release" if rel else "link", "label": cut_words(label, 80), "url": u, "at": at, "entry": entry})
+    return out
+
+
+def turns_of(path, since, status=None, results=None):
+    """I turni di una trascrizione da `since`: [{start, end, outcome, tokens, cache_read, text, entry}]. outcome ok, fail (un
+    errore dell'API nel turno), question (l'ultimo turno di una sessione che aspetta) o running (l'ultimo, sessione al
+    lavoro). 19/11 (supervisor-relay-k-19-11): text e entry dal messaggio finale del turno (la voce della chat dell'app,
+    «<uuid>.<blocco>»); con `results` (una lista) ci aggiunge i risultati: i file di SendUserFile e i link del testo finale."""
     turns, cur, seen_ids = [], None, set()
+    hosts = _app_hosts() if results is not None else set()
+    last = {}
+
+    def close_turn():
+        if cur is not None and last.get("text") is not None:
+            cur["text"] = outcome_text(last["text"])
+            cur["entry"] = last["entry"]
+            if results is not None:
+                results.extend(links_of(last["text"], last["at"], last["entry"], hosts))
+        last.clear()
     try:
         fh = open(path, errors="replace")
     except OSError:
@@ -245,6 +320,7 @@ def turns_of(path, since, status=None):
             if at is None or at < since:
                 continue
             if _is_prompt(x):
+                close_turn()
                 cur = {"start": at, "end": at, "outcome": "ok", "tokens": 0, "cache_read": 0}
                 turns.append(cur)
                 continue
@@ -254,25 +330,47 @@ def turns_of(path, since, status=None):
             m = x.get("message") or {}
             if x.get("isApiErrorMessage") or m.get("model") == "<synthetic>":
                 cur["outcome"] = "fail"
+            uid = str(x.get("uuid") or "")
+            content = m.get("content")
+            for i, b in enumerate(content if isinstance(content, list) else []):
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") == "text" and str(b.get("text") or "").strip():
+                    last.update(text=b["text"], entry=f"{uid}.{i}", at=at)
+                elif results is not None and b.get("type") == "tool_use" and b.get("name") == "SendUserFile":
+                    inp = b.get("input") if isinstance(b.get("input"), dict) else {}
+                    ps = inp.get("files") or inp.get("file_paths") or [inp.get("file_path") or inp.get("path") or ""]
+                    for p in ps if isinstance(ps, list) else []:
+                        if not isinstance(p, str) or not p.strip():
+                            continue
+                        full = os.path.normpath(p if os.path.isabs(p) or not x.get("cwd") else os.path.join(x["cwd"], p))
+                        ext = full.rsplit(".", 1)[-1].lower() if "." in os.path.basename(full) else ""
+                        results.append({"kind": "image" if ext in IMAGE_EXT else "file", "label": os.path.basename(full), "path": full,
+                                        "at": at, "entry": f"{uid}.{i}"})
             mid = m.get("id")
             u = m.get("usage") or {}
             if u and mid not in seen_ids:
                 seen_ids.add(mid)
                 cur["tokens"] += int(u.get("input_tokens") or 0) + int(u.get("cache_creation_input_tokens") or 0) + int(u.get("output_tokens") or 0)
                 cur["cache_read"] += int(u.get("cache_read_input_tokens") or 0)
+    close_turn()
     if turns and status in ("busy", "waiting"):
         turns[-1]["outcome"] = "running" if status == "busy" else "question"
     return turns[-TURNS_MAX:]
 
 
 def kpi_turns_today(sessions, now):
-    """[{session, turns}] per le sessioni [(nome, trascrizione, stato)] con almeno un turno oggi."""
+    """[{session, turns, results}] per le sessioni [(nome, trascrizione, stato)] con almeno un turno oggi. 19/11
+    (supervisor-relay-k-19-11): results, dal piu' recente e al massimo RESULTS_MAX: i file mandati con SendUserFile (image,
+    file) e i link del testo finale di ogni turno (link, release), mai quelli all'app stessa."""
     since = day_start(now)
     out = []
     for name, path, status in sessions:
-        t = turns_of(path, since, status) if path else []
+        res = []
+        t = turns_of(path, since, status, res) if path else []
         if t:
-            out.append({"session": name, "turns": t})
+            res.sort(key=lambda r: (r.get("at") or 0, r.get("entry") or ""), reverse=True)
+            out.append({"session": name, "turns": t, "results": res[:RESULTS_MAX]})
     return out
 
 

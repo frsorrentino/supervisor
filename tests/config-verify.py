@@ -166,7 +166,7 @@ T.check("C10 clean: state_dir default", d2.get("state_dir") == "~/.local/state/c
 T.check("C10 clean: registry under state_dir", d2.get("registry", {}).get("file") == "~/.local/state/cc-supervisor/sessions.json", str(d2.get("registry")))
 T.check("C10 clean: backend gnome (gnome-terminal in PATH)", d2.get("terminal", {}).get("backend") == "gnome", str(d2.get("terminal")))
 T.check("C10 clean: one account named personal (lang en)", list(d2.get("accounts", {})) == ["personal"], str(d2.get("accounts")))
-T.check("C10 clean: root = ~", d2.get("workspace", {}).get("root") == "~", str(d2.get("workspace")))
+T.check("C10 clean: root = ~/workspaces, never the home (supervisor-radice-home-19-11)", d2.get("workspace", {}).get("root") == "~/workspaces", str(d2.get("workspace")))
 
 # C11
 T.check("C11 chrome-bridge cli from .claude.json", detected.get("tile", {}).get("chrome_bridge_cli") == "~/cb/server/cli.js", str(detected.get("tile", {}).get("chrome_bridge_cli")))

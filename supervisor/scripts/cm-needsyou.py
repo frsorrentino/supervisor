@@ -149,7 +149,42 @@ def for_session(name, reason, until=None, expires_s=None, from_=None):
     return 0
 
 
+def start_path(name):
+    safe = "".join(c if c.isalnum() or c in "-_." else "-" for c in str(name))
+    return Path(cm.expand(CFG["state_dir"])) / "needs-you" / f"start-{safe}.json"
+
+
+def starting(name, question, cwd=None):
+    """19/11/2026 (supervisor-avvio-domanda-19-11, regola n3): un avvio senza mani (launch, servizio d'avvio, «Riapri»)
+    fermo su una domanda per la persona (la fiducia della cartella, l'accesso). La sessione non ha ancora un session_id:
+    la richiesta va in needs-you/start-<nome>.json, col testo della domanda. La chiude il SessionStart della sessione,
+    il relay quando la vede partita, o «Fatto» dall'app."""
+    f = start_path(name)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    now = int(time.time())
+    q = " ".join(str(question or "").split())[:160]
+    rec = {"reason": M("needs_you.start_reason", name=name, question=q), "question": q, "at": now, "name": name, "session": name,
+           "source": "start", "cwd": str(cwd or ""), "expires_at": now + DEFAULT_EXPIRES_S}
+    f.write_text(json.dumps(rec, ensure_ascii=False))
+    R = CFG.get("relay") or {}
+    if R.get("enabled"):
+        try:
+            rd = Path(cm.expand(R.get("dir") or "~/.cc-supervisor/relay")) / "push-req"
+            rd.mkdir(parents=True, exist_ok=True)
+            (rd / "hook").touch()
+        except OSError:
+            pass
+    print(rec["reason"])
+    return 0
+
+
 def main(argv):
+    if argv[:1] == ["--starting"]:
+        if len(argv) < 3 or not argv[1].strip():
+            print(M("needs_you.usage"), file=sys.stderr)
+            return 2
+        cwd_, rest, _ = pop_option(argv[2:], "--cwd")
+        return starting(argv[1].strip(), " ".join(rest), cwd_)
     session, argv, err = pop_option(list(argv), "--session")
     from_, argv, err2 = pop_option(argv, "--from")
     words, until, expires, task, err3 = parse_args(argv)

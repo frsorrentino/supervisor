@@ -979,6 +979,9 @@ def run_event(argv):
     if ev == "SessionStart":
         registry_update()
         (STATE / "waiting" / sid).unlink(missing_ok=True) if sid else None
+        if my_tmux_name():   # 19/11 (supervisor-avvio-domanda-19-11): partita, la domanda d'avvio non serve piu'
+            safe = "".join(c if c.isalnum() or c in "-_." else "-" for c in my_tmux_name())
+            (STATE / "needs-you" / f"start-{safe}.json").unlink(missing_ok=True)
         handoff_line = ""
         if p.get("source", "startup") in ("clear", "startup", ""):
             try:   # 13/10: l'handoff di /supervisor:handoff scritto prima di /clear (05/11: a ogni /clear fino al primo prompt)

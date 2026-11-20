@@ -548,10 +548,19 @@ def main(argv):
         default_root = cm.load(warn=False)["workspace"]["root"]
     else:
         default_root = cm.contract(cm.expand(cm.detect(cm.Machine())[0]["workspace"]["root"]))
+    # 19/11/2026 (supervisor-radice-home-19-11, scelta A del maintainer): mai la home come radice. Li' Claude Code chiede la
+    # fiducia a ogni avvio, e la master avviata senza mani (servizio d'avvio, «Riapri», launch dall'app) resta ferma
+    if cm.is_home(default_root):
+        default_root = cm.DEFAULT_ROOT
     root_given = root is not None
     if root is None:
         root = ask(M("install.ask_root", default=default_root), default_root, interactive)
-    if not os.path.isdir(cm.expand(root)):
+    if cm.is_home(root):
+        print(M("install.root_home", root=root, default=cm.DEFAULT_ROOT), file=sys.stderr); return 2
+    if not os.path.isdir(cm.expand(root)) and cm.expand(root) == cm.expand(cm.DEFAULT_ROOT) and not dry:
+        os.makedirs(cm.expand(root), exist_ok=True)   # la radice proposta si crea; una scritta dalla persona no
+        print(M("install.root_created", root=root))
+    if not os.path.isdir(cm.expand(root)) and not (dry and cm.expand(root) == cm.expand(cm.DEFAULT_ROOT)):
         print(M("install.root_missing", root=root), file=sys.stderr); return 2
     if phone_a is None:
         phone = ask(M("install.ask_phone") + " [y/N]", "n", interactive).lower() in YES

@@ -444,6 +444,13 @@ else
 fi
 [ "$ILLEGGIBILE" = si ] && echo "  nota:      $(cm_msg launch.slow_screen)"
 [ "$ASPETTA_PERSONA" = si ] && echo "  nota:      $(cm_msg launch.needs_person "name=$NOME")"
+# 19/11/2026 (supervisor-avvio-domanda-19-11, regola n3): ferma su una domanda per la persona, l'app lo deve sapere
+# («Serve te» col testo della domanda): servizio d'avvio, «Riapri» e launch dall'app non hanno nessuno davanti allo schermo.
+# La richiesta si chiude da sola quando la sessione parte (SessionStart o relay).
+if [ "$ASPETTA_PERSONA" = si ]; then
+  DOMANDA=$(grep -m1 -iE "$PER_LA_PERSONA" <<<"$SCHERMO" | sed 's/^[[:space:]│|]*//; s/[[:space:]│|]*$//' | cut -c1-160)
+  python3 "$CM_SCRIPTS/cm-needsyou.py" --starting "$NOME" "${DOMANDA:-?}" --cwd "$CARTELLA" >/dev/null 2>&1 || true
+fi
 [ -n "$NOTA_RIPRESA" ] && echo "  $NOTA_RIPRESA"
 # Il link Remote Control: dal registro (1.2), altrimenti dallo schermo (ripiego T55).
 # Il registro nasce PRIMA che il bridge sia connesso: bridgeSessionId arriva qualche secondo

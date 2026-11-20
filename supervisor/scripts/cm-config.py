@@ -410,6 +410,18 @@ def detect_language(env_get=None):
     return "en", "default"
 
 
+DEFAULT_ROOT = "~/workspaces"   # 19/11/2026 (supervisor-radice-home-19-11): la radice proposta quando non ce n'e' una
+
+
+def is_home(path):
+    """La cartella e' la home? Li' Claude Code chiede la fiducia a ogni avvio («Yes lasts for this session only»): una master
+    con la radice nella home resta ferma a ogni avvio senza mani (prova vera in sup-prova, 19/11)."""
+    try:
+        return os.path.realpath(expand(str(path))) == os.path.realpath(str(home()))
+    except (OSError, ValueError):
+        return False
+
+
 def claude_bin():
     """Il binario di claude per chi lo lancia da python: CM_CLAUDE_BIN (prove), poi il PATH, poi ~/.local/bin/claude.
     Stessa regola di cm-launch.sh (T81): dal cron il PATH e' /usr/bin:/bin e il link di claude sta in ~/.local/bin.
@@ -1154,6 +1166,10 @@ def prereq_rows(m, cfg):
         also = [x for x in (cfg["workspace"].get("sessions_also") or []) if isinstance(x, str) and x.strip()]
         rows.append(("INFO", "doctor.sessions_scope_root", {"root": cfg["workspace"].get("root") or "~", "also": ", ".join(also) or "-",
                                                              "path": contract(str(config_path()))}, None))
+    # 19/11/2026 (supervisor-radice-home-19-11, scelta A del maintainer): la home come radice ferma la master sulla domanda di
+    # fiducia a ogni avvio senza mani (Claude Code non ricorda il si' per la home)
+    if is_home(cfg["workspace"].get("root") or "~"):
+        rows.append(("WARN", "doctor.root_home", {"root": cfg["workspace"].get("root") or "~"}, msg(cfg, "doctor.fix_root_home")))
     # 13/10: col relay acceso ma senza relay.firebase_url c'e' solo la web app locale (`relay web`): niente cifratura,
     # niente crontab, niente Firebase — le dipendenze del bus restano INFO
     on = cfg["relay"]["enabled"] and bool(str(cfg["relay"].get("firebase_url") or "").strip())
@@ -1358,8 +1374,8 @@ def detect(m):
             if os.path.isdir(expand(cand)):
                 root, src["workspace.root"] = expand(cand), f"{cand} exists"
                 break
-    if root is None:
-        root, src["workspace.root"] = str(h), "default (~)"
+    if root is None:   # 19/11 (supervisor-radice-home-19-11): mai la home, dove Claude Code chiede la fiducia a ogni avvio
+        root, src["workspace.root"] = expand(DEFAULT_ROOT), f"default ({DEFAULT_ROOT}, created by setup)"
     cfg["workspace"]["root"] = contract(root)
 
     # mappa cartelle: per account, il primo componente sotto la radice

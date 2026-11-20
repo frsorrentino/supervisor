@@ -4972,6 +4972,7 @@ def quota_limit(tm, text="", transcript="", resets_at=None):
 NEEDS_CHECK_EVERY_S = 60     # 1.80: la condizione di una richiesta si prova al massimo una volta al minuto
 NEEDS_CHECK_TIMEOUT_S = 10
 NEEDS_ORPHAN_S = 86400       # il file di una sessione sparita da piu' di un giorno va via
+NEEDS_START_GONE_S = 300     # 19/11: la richiesta d'avvio di una sessione che non c'e' piu' (chiusa senza partire) va via dopo 5 minuti
 
 
 def _wake(tm, text):
@@ -5021,7 +5022,32 @@ def needs_you_of(rows, now=None):
     row_by_sid = {r.get("session_id"): r for r in rows if r.get("session_id") and r.get("status") != "dead"}
     out = {}
     oks = None
+    by_tmux = {}
+    for r in rows:
+        if r.get("status") != "dead" and r.get("tmux"):
+            by_tmux.setdefault(r["tmux"], r)
     for f in d.glob("*.json"):
+        if f.stem.startswith("start-"):
+            # 19/11/2026 (supervisor-avvio-domanda-19-11): un avvio senza mani fermo su una domanda per la persona. La
+            # sessione non ha ancora un session_id: si lega per nome tmux; partita (session_id), la richiesta si chiude
+            rec = read_json(f, {})
+            if not isinstance(rec, dict):
+                continue
+            tm = str(rec.get("session") or "")
+            r = by_tmux.get(tm)
+            try:
+                old = now - f.stat().st_mtime
+            except OSError:
+                continue
+            if r is not None and r.get("session_id"):
+                f.unlink(missing_ok=True)
+                ledger_write("needs-you-done", session=tm, reason=S.one_line(str(rec.get("reason") or ""))[:200], how="started")
+            elif r is None and old > NEEDS_START_GONE_S:
+                f.unlink(missing_ok=True)
+                ledger_write("needs-you-pruned", file=f.name)
+            elif r is not None and not (float(rec.get("expires_at") or 0) and now >= float(rec["expires_at"])):
+                out[tm] = rec
+            continue
         tm = by_sid.get(f.stem)
         if not tm:
             try:
@@ -5086,6 +5112,12 @@ def attention_done(cmd, arg):
         rows = _json_cmd("sessions", "--json", "--no-screen") or []
         row = next((r for r in rows if (r.get("tmux") or r.get("name")) == ref and r.get("session_id")), None)
         f = Path(cm.expand(CFG["state_dir"])) / "needs-you" / f"{row['session_id']}.json" if row else None
+        start = Path(cm.expand(CFG["state_dir"])) / "needs-you" / f"start-{''.join(c if c.isalnum() or c in '-_.' else '-' for c in ref)}.json"
+        if (not f or not f.exists()) and start.exists():   # 19/11 (supervisor-avvio-domanda-19-11): la domanda d'avvio
+            reason = S.one_line(str((read_json(start, {}) or {}).get("reason") or ""))[:200]
+            start.unlink(missing_ok=True)
+            ledger_write("needs-you-done", session=ref, reason=reason, how="app", by=from_device(cmd))
+            return True, M("relay.cmd_attention_done", kind=kind, ref=ref)
         if not f or not f.exists():
             return False, M("relay.cmd_attention_unknown", kind=kind, ref=ref)
         reason = S.one_line(str((read_json(f, {}) or {}).get("reason") or ""))[:200]
