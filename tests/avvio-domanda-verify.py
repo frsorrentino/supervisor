@@ -3,7 +3,7 @@
 n3; prova vera in sup-prova: con la radice nella home Claude Code chiede la fiducia a ogni avvio, e servizio d'avvio,
 «Riapri» e launch dall'app restavano fermi senza che nessuno lo vedesse).
 
-AD1 launch fermo sulla domanda di fiducia (dialog_patterns vuoto, il default): nessun tasto premuto, e la richiesta
+AD1 launch fermo sulla domanda di fiducia (dialog_patterns vuoto, il default): nessun tasto premuto, e la richiesta (la domanda fino al «?»)
     needs-you della sessione col testo della domanda (<state>/needs-you/start-<nome>.json)
 AD2 relay: la sessione ancora fuori registro (niente session_id) ha needs_you col testo della domanda, e «Serve te» la mostra
 AD3 relay: quando la sessione e' partita (ha il session_id) la richiesta si chiude da sola, con la riga nel registro
@@ -76,7 +76,7 @@ with T.PrivateTmux() as tm:
     scr = tm("capture-pane", "-p", "-t", "master").stdout
     got = rec()
     T.check("AD1 launch stopped on the trust question: no key pressed, a needs-you request with the question's text",
-            r.returncode == 0 and "No, exit" in scr and got is not None and QUESTION in str(got.get("reason")) and got.get("session") == "master",
+            r.returncode == 0 and "No, exit" in scr and got is not None and QUESTION in str(got.get("reason")) and str(got.get("question", "")).endswith("?") and got.get("session") == "master",
             f"rc {r.returncode} rec {got}\n{r.stdout[-400:]}{r.stderr[-300:]}")
 
     def push(sid):

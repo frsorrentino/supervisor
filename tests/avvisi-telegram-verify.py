@@ -15,7 +15,7 @@ AG2 guard delle push: tre push fallite in un minuto non vanno su Telegram; falli
 AG3 guard della quota: al 93% (soglia 92) un allarme di due righe col link; i compiti fermi vanno alla master, non a
     Telegram
 AR1 recap add --kind K "testo": la voce entra nel recap del suo giorno, non in quello di un altro; un kind non valido no
-AR2 recap --send alle 20: un solo messaggio; prima riga «Oggi, …» con quante uscite e quante voci aspettano; Uscito (il
+AR2 recap --send alle 20: un solo messaggio in HTML (dal 19/11, supervisor-recap-telegram-19-11); prima riga col giorno, quante voci aspettano e quanti fatti; FATTI OGGI (il
     compito chiuso oggi), Ti aspetta col link della voce, Stanotte (la coda), Notte (il giro di stanotte), le voci di
     recap add con il nome del tipo; niente emoji
 AR3 recap install: la riga delle 20 e quella del mattino alle 8
@@ -207,16 +207,20 @@ r = recap("--send")
 ev = SENT[n0:]
 txt = ev[0]["text"] if ev else ""
 lines = txt.splitlines()
-T.check("AR2 recap --send at 20: one message; the first line «Oggi, …» says how many came out and how many items wait",
-        r.returncode == 0 and rd.returncode == 0 and len(ev) == 1 and lines[0].startswith("Oggi, ") and "1 uscita" in lines[0]
-        and f"{txt.count(APP + '/#/attesa/w')} voci ti aspettano" in lines[0] and "- pubblica il sito: " + APP in txt,
+# 19/11 (supervisor-recap-telegram-19-11): il formato nuovo, in HTML; il dettaglio in tests/recap-telegram-verify.py
+waits_n = txt.count(APP + '/#/attesa/w')
+T.check("AR2 recap --send at 20: one HTML message; the first line in bold says the day, how many items wait and how many are done",
+        r.returncode == 0 and rd.returncode == 0 and len(ev) == 1 and ev[0].get("parse_mode") == "HTML" and lines[0].startswith("<b>")
+        and " · 1 fatto</b>" in lines[0] and (f" · {waits_n} ti aspettano" in lines[0] or (waits_n == 1 and " · 1 ti aspetta" in lines[0]))
+        and "pubblica il sito, serve il tuo ok <a href=\"" + APP in txt,
         rd.stderr[-200:] + r.stderr[-400:] + txt[:600])
-T.check("AR2 recap: Uscito with the task closed today, Ti aspetta with the item's app link, Stanotte with the queue, Notte with last night's run (not last week's)",
-        "Uscito: supervisor 0.8.181 avvisi" in txt and "Ti aspetta:" in txt and f"{APP}/#/attesa/w" in txt and "Stanotte: 1 lavoro in coda (beta)" in txt
+T.check("AR2 recap: FATTI OGGI with the task closed today, TI ASPETTANO with the item's app link, Stanotte with the queue, Notte with last night's run (not last week's)",
+        "<b>FATTI OGGI</b>" in txt and "supervisor 0.8.181 avvisi" in txt.split("<blockquote expandable>", 1)[-1] and "<b>TI ASPETTANO</b>" in txt
+        and f"{APP}/#/attesa/w" in txt and "Stanotte: 1 lavoro in coda (beta)" in txt
         and "Notte: 1 lavoro, 1 riuscito" in txt and "alfa" in txt and "vecchio" not in txt, txt)
-T.check("AR2 recap: today's recap add entries under their kind's name, not yesterday's; no emoji, no HTML",
+T.check("AR2 recap: today's recap add entries under their kind's name, not yesterday's; no emoji",
         "Rilasci di Claude Code: Claude Code 2.1.330: hook più veloci" in txt and "Adozione dei plugin: fable-director 41 installazioni (+3)" in txt
-        and "2.1.329" not in txt and not EMOJI.search(txt) and "<b>" not in txt, txt)
+        and "2.1.329" not in txt and not EMOJI.search(txt), txt)
 r = recap("install")
 c = cron.read_text()
 T.check("AR3 recap install: the 20:00 line (recap --send) and the 08:00 morning line (recap morning --send)",

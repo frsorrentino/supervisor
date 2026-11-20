@@ -58,4 +58,19 @@ try:
 finally:
     for p in procs:
         p.kill()
+
+# ND3 (prova vera del 20/11, 01:30): la master viva senza nome (`claude` fuori da tmux nella radice) e la riga chiusa
+# «master» della fotografia (la stessa master, chiusa prima): la viva prende il nome, la chiusa esce. Prima la viva
+# restava «?» nell'app
+spec = importlib.util.spec_from_file_location("cm_relay_state_nd", T.SCRIPTS / "cm-relay-state.py")
+RS = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(RS)
+rows = [{"tmux": "", "name": "", "cwd": str(ws), "session_id": "S-LIVE", "status": "idle"},
+        {"tmux": "master", "name": "master", "cwd": str(ws), "session_id": "S-OLD", "status": "dead"},
+        {"tmux": "alfa", "name": "alfa", "cwd": str(ws / "alfa"), "session_id": "S-A", "status": "idle"}]
+pick = RS.mark_master(rows, str(ws), "master")
+names = [(r.get("name"), r.get("status"), bool(r.get("_master"))) for r in rows]
+T.check("ND3 the live master without a name takes the master's name; the closed «master» row (the same master) leaves",
+        pick is not None and pick.get("session_id") == "S-LIVE" and pick.get("name") == "master"
+        and names == [("master", "idle", True), ("alfa", "idle", False)], json.dumps(names))
 T.finish()

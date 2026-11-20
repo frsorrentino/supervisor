@@ -338,8 +338,12 @@ def mark_master(rows, root, name):
     if pick is None:
         return None
     pick["_master"] = True
-    if not key(pick) and not named:
+    if not key(pick) and not any(r.get("status") != "dead" for r in named):
+        # 20/11 (prova vera in sup-prova): con la riga chiusa «master» della fotografia la master viva senza nome restava
+        # «?» nell'app. La chiusa e' la stessa master, chiusa prima: la viva prende il nome e la chiusa esce
         pick["name"] = name
+        gone = {id(r) for r in named if r is not pick and r.get("status") == "dead"}
+        rows[:] = [r for r in rows if id(r) not in gone]
     return pick
 
 

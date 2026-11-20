@@ -759,7 +759,7 @@ def main(argv):
     """Il comando, dentro il suo tempo massimo: allo scadere una riga chiara e uscita 124, mai un recap appeso."""
     if argv and argv[0] in ("install", "uninstall", "status"):
         return {"install": install, "uninstall": uninstall, "status": status}[argv[0]]()
-    if argv and argv[0] in ("add", "morning", "mattino", "evening", "sera"):   # 17/11: cm-avvisi
+    if argv and argv[0] in ("add", "morning", "mattino", "evening", "sera", "github"):   # 17/11: cm-avvisi
         return _load("cm-avvisi").main(argv)
     RUN["send"] = "--send" in argv or "--invia" in argv
     n = max_s()
@@ -818,7 +818,7 @@ def run(argv):
             to_app(plain, day)
         # 17/11/2026 (supervisor-avvisi-telegram-17-11): su Telegram il recap delle 20 (uscito, ti aspetta, stanotte, la
         # notte, le voci di recap add), non il diario per progetto, che resta all'app
-        return send(_load("cm-avvisi").evening_text(day or dt.date.today()), False)
+        return send(_load("cm-avvisi").evening_text(day or dt.date.today()), True)   # 19/11: HTML (supervisor-recap-telegram-19-11)
     return 0
 
 

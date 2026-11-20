@@ -19,10 +19,12 @@ Italiano, niente emoji, la prima riga dice cosa e' successo. Le voci di `recap a
 import calendar
 import datetime as dt
 import hashlib
+import html
 import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from collections import OrderedDict
@@ -144,8 +146,33 @@ def kind_label(kind):
 
 
 # ------------------------------------------------------------------ la sera
+# 19/11/2026 (supervisor-recap-telegram-19-11, formato approvato dal maintainer alle 20:10): il recap del 19/11 era un
+# paragrafo solo, coi titoli tagliati a 90 caratteri a meta' parola («… eventi Conversio,») e «gerardosacco.com:» ripetuto a
+# ogni voce. Ora: una riga col giorno e i conteggi; TI ASPETTANO (al massimo WAIT_SHOW voci «progetto: cosa, cosa serve» col
+# link); FATTI OGGI per progetto, una riga ciascuno coi titoli brevi, in un <blockquote expandable>; HTML di Telegram.
+WAIT_SHOW = 5
+DONE_TITLE_MAX = 60
+WAIT_TITLE_MAX = 50
+PREFIX_RE = re.compile(r"^[\w.:-]+:\s+")
+TG_MAX = 4000
+
+
+def esc(s):
+    return html.escape(str(s or ""), quote=False)
+
+
+def cut_words(text, n):
+    """Parole intere entro n caratteri, mai una virgola, due punti o parentesi aperta in coda; mai «…»."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= n:
+        return t.rstrip(" ,;:(")
+    c = t[:n + 1]
+    c = c[:c.rfind(" ")] if " " in c else t[:n]
+    return c.rstrip(" ,;:·-(")
+
+
 def closed_on(day):
-    """I titoli dei compiti chiusi (done) quel giorno, dal registro; [] senza registro."""
+    """I compiti chiusi (done) quel giorno, dal registro: [{project, title, short}]; [] senza registro."""
     try:
         tk = _load("cm-tasks")
         con = tk.connect(create=False)
@@ -156,13 +183,39 @@ def closed_on(day):
     a = int(time.mktime(day.timetuple()))
     b = a + 86400
     try:
-        rows = con.execute("SELECT t.id, t.title FROM closures c JOIN tasks t ON t.id=c.task WHERE t.state='done' AND c.at>=? AND c.at<? ORDER BY c.at",
-                           (a, b)).fetchall()
+        rows = con.execute("SELECT t.id, t.title, t.project, t.session, t.contract FROM closures c JOIN tasks t ON t.id=c.task "
+                           "WHERE t.state='done' AND c.at>=? AND c.at<? ORDER BY c.at", (a, b)).fetchall()
     except Exception:   # noqa: BLE001
         rows = []
     finally:
         con.close()
-    return [clean(r[1] or r[0])[:90] for r in rows]
+    out = []
+    for r in rows:
+        try:
+            short = (json.loads(r[4] or "{}").get("task") or {}).get("short")
+        except (ValueError, AttributeError):
+            short = None
+        proj = os.path.basename(str(r[2] or "").rstrip("/")) or str(r[3] or "") or "-"
+        out.append({"project": proj, "title": clean(r[1] or r[0]), "short": clean(short) if short else None})
+    return out
+
+
+def done_item(d):
+    """Il titolo breve: task.short, altrimenti il titolo senza il prefisso «progetto: », a parola intera."""
+    if d.get("short"):
+        return d["short"]
+    t = d["title"]
+    m = PREFIX_RE.match(t)
+    if m and len(t) > m.end():
+        t = t[m.end():]
+    return cut_words(t, DONE_TITLE_MAX)
+
+
+def need_of(a):
+    """Cosa serve alla voce, in poche parole."""
+    k = str(a.get("kind") or "")
+    own = cm.messages(CFG.get("language", "en")).get(f"avvisi.need_{k}") or cm.messages("en").get(f"avvisi.need_{k}")
+    return own or M("avvisi.need_other")
 
 
 def waiting():
@@ -181,36 +234,145 @@ def night_done(day):
     return [r for r in read_jsonl(state_dir() / "night-done.jsonl") if str(r.get("finished") or "").startswith(day.isoformat())]
 
 
+def app_url():
+    return str((CFG.get("relay") or {}).get("web_app_url") or "").rstrip("/")
+
+
 def evening_text(day=None):
+    """Il recap delle 20 in HTML di Telegram (parse_mode HTML)."""
     day = day or dt.date.today()
     out, waits, queue, done, ex = closed_on(day), waiting(), night_queue(), night_done(day), extras(day)
-    what = [plural(len(out), "n_out")] if out else []
+    full = M("avvisi.days_full").split(",")[day.weekday()]
+    head = [f"{full} {day.strftime('%d/%m')}"]
     if waits:
-        what.append(plural(len(waits), "n_wait"))
-    lines = [M("avvisi.evening_title", day=day_label(day), what=", ".join(what) or M("avvisi.nothing_new"))]
-    lines.append(M("avvisi.out", items=", ".join(out)) if out else M("avvisi.out_none"))
+        head.append(plural(len(waits), "n_waiting"))
+    head.append(plural(len(out), "n_done") if out else M("avvisi.nothing_done"))
+    lines = [f"<b>{esc(' · '.join(head))}</b>"]
     if waits:
-        lines.append(M("avvisi.wait_head"))
-        for a in waits[:WAIT_MAX]:
-            lines.append(M("avvisi.wait_item", title=clean(a.get("title") or a.get("text") or a.get("kind"))[:80], link=a.get("link") or "-"))
-        if len(waits) > WAIT_MAX:
-            lines.append(M("avvisi.wait_more", n=len(waits) - WAIT_MAX))
-    else:
-        lines.append(M("avvisi.wait_none"))
+        lines += ["", f"<b>{esc(M('avvisi.wait_title'))}</b>"]
+        for a in waits[:WAIT_SHOW]:
+            proj = a.get("session") or ((a.get("decision") or {}).get("where")) or "supervisor"   # la Prima raccolta non ha sessione
+            what = cut_words(a.get("title") or a.get("text") or a.get("kind"), WAIT_TITLE_MAX)
+            link = a.get("link")
+            tail = f' <a href="{html.escape(link)}">{esc(M("avvisi.open"))}</a>' if link else ""
+            lines.append(f"• {esc(proj)}: {esc(what)}, {esc(need_of(a))}{tail}")
+        if len(waits) > WAIT_SHOW:
+            more = esc(M("avvisi.wait_more_app", n=len(waits) - WAIT_SHOW))
+            lines.append(f'{more} <a href="{html.escape(app_url())}">{esc(M("avvisi.open_app"))}</a>' if app_url() else more)
+    if out:
+        groups = OrderedDict()
+        for d in out:
+            groups.setdefault(d["project"], []).append(done_item(d))
+        body = [f"{esc(p)}: {' · '.join(esc(x) for x in xs)}" for p, xs in groups.items()]
+        lines += ["", f"<b>{esc(M('avvisi.done_title'))}</b>", "<blockquote expandable>" + "\n".join(body) + "</blockquote>"]
+    lines.append("")
     if queue:
         dirs = ", ".join(OrderedDict((os.path.basename(str(r.get("dir") or "").rstrip("/")) or "?", 1) for r in queue))
-        lines.append(M("avvisi.tonight", jobs=plural(len(queue), "jobs"), dirs=dirs))
+        lines.append(esc(M("avvisi.tonight", jobs=plural(len(queue), "jobs"), dirs=dirs)))
     else:
-        lines.append(M("avvisi.tonight_none"))
+        lines.append(esc(M("avvisi.tonight_none")))
     if done:
         ok = sum(1 for r in done if r.get("rc") == 0)
-        lines.append(M("avvisi.night", jobs=plural(len(done), "jobs"), ok=plural(ok, "ok")))
+        lines.append(esc(M("avvisi.night", jobs=plural(len(done), "jobs"), ok=plural(ok, "ok"))))
         for r in done:
-            lines.append(M("avvisi.night_item", mark="ok" if r.get("rc") == 0 else "KO", dir=os.path.basename(str(r.get("dir") or "").rstrip("/")) or "?",
-                           prompt=clean(r.get("prompt"))[:70]))
+            lines.append(esc(M("avvisi.night_item", mark="ok" if r.get("rc") == 0 else "KO", dir=os.path.basename(str(r.get("dir") or "").rstrip("/")) or "?",
+                               prompt=cut_words(clean(r.get("prompt")), 70))))
     for kind, texts in ex.items():
-        lines.append(M("avvisi.extra", kind=kind_label(kind), items="; ".join(texts)))
-    return "\n".join(lines)
+        lines.append(esc(M("avvisi.extra", kind=kind_label(kind), items="; ".join(texts))))
+    text = "\n".join(lines)
+    if len(text) > TG_MAX and out:   # Telegram: 4096 al massimo; si accorciano i fatti, mai a meta' di un tag
+        while len(text) > TG_MAX and len(body) > 1:
+            body.pop()
+            q = "<blockquote expandable>" + "\n".join(body + [esc(M("avvisi.done_more"))]) + "</blockquote>"
+            text = re.sub(r"<blockquote expandable>.*?</blockquote>", lambda _m: q, text, count=1, flags=re.S)
+    return text
+
+
+# ------------------------------------------------------------------ le menzioni GitHub
+# 19/11/2026 (supervisor-recap-telegram-19-11): le righe [MENZIONE] e [COMMENTO DA UTENTE] degli script del Chromebook
+# (gh-notify-watch.py, issue-watch.py, segnalazioni.py) erano il corpo inglese della PR tagliato. `supervisor recap github`
+# legge quel blocco sullo stdin e scrive una riga italiana: «progetto: chi ha fatto cosa su dove (di cosa si tratta) — link».
+GH_HEAD = re.compile(r"^\[(?P<tag>[A-Z][A-Z -]+)\]\s+(?P<rest>.*)$")
+GH_URL = re.compile(r"https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/(?P<kind>pull|issues)/(?P<num>\d+)(?P<frag>#\S*)?")
+GH_REPO_IN_BODY = re.compile(r"github\.com/([\w.-]+)/([\w.-]+)")
+
+
+def repo_label(repo):
+    """«hol-guard» → «HOL Guard»: le parole corte in maiuscolo, le altre con l'iniziale."""
+    return " ".join(w.upper() if len(w) <= 3 else w.capitalize() for w in re.split(r"[-_]", repo) if w)
+
+
+def gh_summary(title, body):
+    """Di cosa si tratta, in italiano, in poche parole (claude -p, modello piccolo); None se non risponde."""
+    prompt = M("avvisi.gh_prompt", title=title, body=body[:600])
+    try:
+        p = subprocess.run([cm.claude_bin(), "-p", prompt, "--model", str((CFG.get("recap") or {}).get("summary_model") or "haiku"), "--max-turns", "1"],
+                           capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL, cwd=str(state_dir()))
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    out = " ".join((p.stdout or "").split()).strip(" .«»\"'")
+    return out if p.returncode == 0 and out and len(out) <= 80 else None
+
+
+def github_line(block, as_html=False):
+    """La riga italiana di un blocco [MENZIONE] / [RIFERIMENTO] / [COMMENTO DA UTENTE]; None se non lo riconosce."""
+    rows = [l.strip() for l in str(block or "").strip().splitlines() if l.strip()]
+    if not rows:
+        return None
+    m = GH_HEAD.match(rows[0])
+    if not m:
+        return None
+    tag, rest = m.group("tag").strip(), m.group("rest")
+    text = " ".join(rows[1:])
+    u = GH_URL.search(text) or GH_URL.search(rest)
+    if not u:
+        return None
+    url = u.group(0)
+    head = rest.split()
+    thread_repo = head[0].split("/")[-1] if "/" in head[0] else u.group("repo")
+    after = text[u.end():] if GH_URL.search(text) else text
+    who = (text[:GH_URL.search(text).start()].split() or [""])[-1] if GH_URL.search(text) else (head[1] if len(head) > 1 else "")
+    if tag.startswith("COMMENTO"):
+        who = head[1] if len(head) > 1 else who
+        mine = thread_repo
+        num = u.group("num")
+        what = M("avvisi.gh_commented_pr" if u.group("kind") == "pull" else "avvisi.gh_commented_issue", n=num)
+        line = f"{mine}: {who} {what}"
+        link_word = M("avvisi.gh_link_comment")
+    else:
+        tm = re.search(r"«([^»]*)»", rest)
+        title = tm.group(1) if tm else ""
+        mine = next((r for o, r in GH_REPO_IN_BODY.findall(after) if r != u.group("repo")), thread_repo)
+        is_pr = u.group("kind") == "pull"
+        opened = not u.group("frag")
+        key = ("avvisi.gh_opened_pr" if opened else "avvisi.gh_commented_pr_on") if is_pr else ("avvisi.gh_opened_issue" if opened else "avvisi.gh_commented_issue_on")
+        about = gh_summary(title, after) or (f"«{title}»" if title else "")
+        line = f"{mine}: {who} {M(key, repo=repo_label(u.group('repo')))}" + (f" ({about})" if about else "")
+        link_word = M("avvisi.gh_link_pr" if is_pr else "avvisi.gh_link_issue")
+    if as_html:
+        return f'{esc(line)} — <a href="{html.escape(url)}">{esc(link_word)}</a>'
+    return f"{line} — {url}"
+
+
+def cmd_github(argv):
+    """supervisor recap github [--html] < blocchi: una riga per blocco (separati da una riga vuota o da un nuovo «[TAG]»)."""
+    raw = sys.stdin.read()
+    blocks, cur = [], []
+    for l in raw.splitlines():
+        if GH_HEAD.match(l.strip()) and cur:
+            blocks.append("\n".join(cur))
+            cur = []
+        if l.strip():
+            cur.append(l)
+    if cur:
+        blocks.append("\n".join(cur))
+    n = 0
+    for b in blocks:
+        line = github_line(b, "--html" in argv)
+        if line:
+            print(line)
+            n += 1
+    return 0 if n else 1
 
 
 # ------------------------------------------------------------------ il mattino
@@ -376,6 +538,8 @@ def main(argv):
     if verb in ("evening", "sera"):
         print(evening_text())
         return 0
+    if verb == "github":   # 19/11 (supervisor-recap-telegram-19-11): le menzioni GitHub in una riga italiana
+        return cmd_github(argv[1:])
     print(M("avvisi.add_usage"), file=sys.stderr)
     return 2
 

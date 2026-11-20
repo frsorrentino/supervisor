@@ -5,7 +5,7 @@ DI1 --date: una sessione per riga, progetto, account, inizio→fine o «viva», 
     strumento e ora, ultimo messaggio troncato, totali per account
 DI2 --json: struttura per sessione
 DI3 --since: solo gli eventi recenti
-DI4 --send: sendMessage a ogni chat di allowFrom col testo del diario
+DI4 --send: sendMessage a ogni chat di allowFrom col recap delle 20 in HTML (dal 19/11)
 DI5 install (riga 0 20 * * *), status, uninstall
 DI6 recap.min_turns (soglia di sostanza): le chiuse sotto la soglia finiscono in UNA riga «altro: a, b»
     invece di una riga ciascuna; le ferme e le vive restano intere; il conteggio del titolo non cambia
@@ -165,12 +165,12 @@ r = recap("--since", "1")
 T.check("DI3 --since 1h: nothing from 2026-09-09 (fixture is in the past) → empty diary, exit 0", r.returncode == 0 and "0 progetti" in r.stdout, r.stdout + r.stderr)
 
 r = recap("--date", "2026-09-09", "--send")
-# 17/11 (supervisor-avvisi-telegram-17-11): su Telegram il recap delle 20 (Oggi, Uscito, Ti aspetta, Stanotte), testo semplice;
-# il diario per progetto resta all'app e a schermo
-T.check("DI4 --send: one sendMessage per allowed chat with the 20:00 recap («Oggi, …», Uscito, Ti aspetta, Stanotte), plain text; the diary still printed",
-        r.returncode == 0 and sorted(c["chat_id"] for c in CALLS["sendMessage"]) == ["1001", "1002"] and CALLS["sendMessage"][0]["text"].startswith("Oggi, ")
-        and "Uscito:" in CALLS["sendMessage"][0]["text"] and "Ti aspetta" in CALLS["sendMessage"][0]["text"] and "Stanotte:" in CALLS["sendMessage"][0]["text"]
-        and not CALLS["sendMessage"][0].get("parse_mode") and "alfa" in r.stdout, r.stdout + r.stderr + str(CALLS)[:500])
+# 17/11 (supervisor-avvisi-telegram-17-11): su Telegram il recap delle 20; il diario per progetto resta all'app e a schermo.
+# 19/11 (supervisor-recap-telegram-19-11): in HTML, la prima riga in grassetto col giorno (il dettaglio in recap-telegram-verify)
+T.check("DI4 --send: one sendMessage per allowed chat with the 20:00 recap (bold day line, Stanotte), HTML; the diary still printed",
+        r.returncode == 0 and sorted(c["chat_id"] for c in CALLS["sendMessage"]) == ["1001", "1002"] and CALLS["sendMessage"][0]["text"].startswith("<b>")
+        and "09/09" in CALLS["sendMessage"][0]["text"].splitlines()[0] and "Stanotte:" in CALLS["sendMessage"][0]["text"]
+        and CALLS["sendMessage"][0].get("parse_mode") == "HTML" and "alfa" in r.stdout, r.stdout + r.stderr + str(CALLS)[:500])
 
 r = recap("install")
 T.check("DI5 install: cron line at 20:00 with --send", r.returncode == 0 and "0 20 * * *" in cron.read_text() and "recap --send" in cron.read_text(), r.stdout + cron.read_text())

@@ -448,7 +448,8 @@ fi
 # («Serve te» col testo della domanda): servizio d'avvio, «Riapri» e launch dall'app non hanno nessuno davanti allo schermo.
 # La richiesta si chiude da sola quando la sessione parte (SessionStart o relay).
 if [ "$ASPETTA_PERSONA" = si ]; then
-  DOMANDA=$(grep -m1 -iE "$PER_LA_PERSONA" <<<"$SCHERMO" | sed 's/^[[:space:]│|]*//; s/[[:space:]│|]*$//' | cut -c1-160)
+  # fino al primo «?»: la riga del pannello va a capo a 120 colonne (prova vera, 20/11: «… one you trust? (Like your»)
+  DOMANDA=$(grep -m1 -iE "$PER_LA_PERSONA" <<<"$SCHERMO" | sed 's/^[[:space:]│|]*//; s/[[:space:]│|]*$//; s/^\([^?]*?\).*/\1/' | cut -c1-160)
   python3 "$CM_SCRIPTS/cm-needsyou.py" --starting "$NOME" "${DOMANDA:-?}" --cwd "$CARTELLA" >/dev/null 2>&1 || true
 fi
 [ -n "$NOTA_RIPRESA" ] && echo "  $NOTA_RIPRESA"
