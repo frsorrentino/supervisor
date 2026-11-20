@@ -1938,8 +1938,13 @@ def background_pids(row):
 
 def close_check(name, rows, allow_attached=False):
     """1.84: {name, closable, blocked_by, save} per una sessione (nome dello stato). blocked_by: busy, question,
-    background, attached, gone (non e' viva) o null. save: {outcome, next, session_id, dirty_n, dirty}, solo per una
-    chiudibile. allow_attached: /exit si digita nel riquadro e vale come la persona al terminale, anche se attaccata."""
+    background, gone (non e' viva) o null. save: {outcome, next, session_id, dirty_n, dirty}, solo per una
+    chiudibile.
+    20/11/2026 (supervisor-chiudi-attaccate-20-11; il maintainer alle 16:46: «perché la sessione non si chiude?»): una sessione
+    aperta al PC non blocca piu' la chiusura. Come `supervisor close` dal 07/10, se e' ferma si chiude chiudendo la sua
+    scheda; al lavoro, con una domanda o col sottofondo resta come le altre (after, force). Dalla 1.84 «attached» la
+    bloccava in ogni modo e dal telefono nessuna sessione con la finestra aperta si poteva chiudere. allow_attached resta
+    per chi lo passa (/exit), senza effetto."""
     tm = tmux_of(name)
     row = next((r for r in rows if (r.get("tmux") or r.get("name")) == tm), None)
     if not row:
@@ -1951,8 +1956,6 @@ def close_check(name, rows, allow_attached=False):
         why = "busy"
     elif background_of(row):
         why = "background"
-    elif row.get("attached") and not allow_attached:
-        why = "attached"
     else:
         why = None
     out = {"name": name, "closable": why is None, "blocked_by": why}

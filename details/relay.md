@@ -462,15 +462,16 @@ state saved, today's quota per session). All additive, `v` stays 1.
 - **Closing with the state saved.** The op `close_preview {arg: "a,b"}` (a passive
   read) answers `{sessions: [{name, closable, blocked_by, save}]}`: `blocked_by` is
   `busy`, `question`, `background` (a shell among the claude process's children: a
-  Bash in the background or a job it started), `attached`, `gone` (not running) or
-  null; `save` (only when closable) is `{outcome, next, session_id, dirty_n,
+  Bash in the background or a job it started), `gone` (not running) or null (since
+  20/11/2026 a session open in a window on the PC is no longer `attached`: an idle one
+  closes like with `supervisor close`, which closes its tab first); `save` (only when closable) is `{outcome, next, session_id, dirty_n,
   dirty}`, with `dirty` the first 20 paths of `git status --porcelain` and null
   outside git. The op `close {arg: "a,b"}` checks again, saves each closable
   session to `<state_dir>/closed/<tmux>.json` (outcome, next, dirty, session_id,
   closed_at, by), then runs `supervisor close`; the text says who is closed and who
   is not, with the reason; ok when at least one is closed. `/exit` from the app (op
-  `slash`) takes the same road: the checks (an attached session is fine there: the
-  command is typed in its pane), the save, then the command.
+  `slash`) takes the same road: the checks, the save, then the command. The texts
+  of the closing follow `language` (in Italian with `it`, since 20/11/2026).
 - **Closed sessions and «Resume».** Every `gone` session carries `closed`: always
   `{at, session_id}`; from a save also `outcome`, `next`, `dirty_n`, `dirty`
   (fit_state empties `dirty` before cutting sessions, `dirty_n` stays). A session
@@ -862,7 +863,7 @@ Fixture: `cmd-result-sample.json` (`feedback_app` …1210 the draft with a scree
 
 Contract 1.120 (04/11/2026, the maintainer from the web app: «dobbiamo risolvere l'invio a vuoto di chiudi quando la sessione è senza finestra»; the master's proposal accepted at 13:23). Additive, `v` stays 1.
 
-- **op `close` takes `when`**: `now` (or absent) as before; `after` = a session that is working, on a question or with a job in the background closes as soon as it stops; `force` = «Chiudi comunque», which the app confirms first: the relay sends Esc to the turn (or the question), stops the background shells, asks the session for a short handoff, and closes at the end of that turn or after 180 s anyway. An armed session answers ok with «<name> closes as soon as it finishes» or «<name>: stopped, writing the handoff; it closes at the end of the turn or within 180 s». An attached session or one that is not running is never armed: it stays with its reason. An unknown `when` is refused with the valid values. The text always says the outcome, one line per session.
+- **op `close` takes `when`**: `now` (or absent) as before; `after` = a session that is working, on a question or with a job in the background closes as soon as it stops; `force` = «Chiudi comunque», which the app confirms first: the relay sends Esc to the turn (or the question), stops the background shells, asks the session for a short handoff, and closes at the end of that turn or after 180 s anyway. An armed session answers ok with «<name> closes as soon as it finishes» or «<name>: stopped, writing the handoff; it closes at the end of the turn or within 180 s». A session that is not running is never armed: it stays with its reason; one open on the PC is armed like the others (20/11/2026, supervisor-chiudi-attaccate-20-11). An unknown `when` is refused with the valid values. The text always says the outcome, one line per session.
 - **`state.sessions[].closing`** `{mode: "after"|"force", at, deadline}` (deadline null for after) while a closing is armed; absent otherwise. It goes when the session closes (then it is in `closed`), stops running, or after a day.
 - **`/exit` (op `slash`) for a session without a window** goes the way of `close` (`supervisor close`), with its checks, the save and the outcome; nothing is typed in the pane. With a window it is typed as before.
 

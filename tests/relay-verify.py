@@ -1807,15 +1807,17 @@ T.check("R72 (1.84) close_preview: field-notes closable with what will be saved 
 r72c = send_cmd(CM184[3])
 _sv72 = json.loads((state_dir / "closed" / "field-notes.json").read_text()) if (state_dir / "closed" / "field-notes.json").exists() else {}
 T.check("R72 (1.84) close: only the closable one is closed (`close field-notes`), its state saved first (session_id, dirty, outcome, next, closed_at, by); the busy one stays with its reason; the text as in the fixture",
-        r72c and r72c["ok"] is True and r72c["text"] == RS184[CM184[3]["id"]]["text"] == "closed: field-notes\natlas-shop not closed: it is working"
+        r72c and r72c["ok"] is True and r72c["text"] == "chiusa: field-notes\natlas-shop non chiusa: sta lavorando"
+        and RS184[CM184[3]["id"]]["text"] == "closed: field-notes\natlas-shop not closed: it is working"   # la fixture per l'app: il testo di en.json (20/11)
         and "close field-notes --subito" in cm_calls()[_n72:] and not [c for c in cm_calls()[_n72:] if c.startswith("close atlas-shop")]
         and _sv72.get("session_id") == "S-F" and _sv72.get("dirty_n") == len(_dirty72) and _sv72.get("tmux") == "field-notes" and isinstance(_sv72.get("closed_at"), int)
         and _sv72.get("by") == "phone-pixel8" and {"outcome", "next", "cwd", "account"} <= set(_sv72), str((r72c, _sv72)))
 _n72 = len(cm_calls())
 r72e = send_cmd(CM184[4])
 r72b = send_cmd(CM184[5])
-T.check("R72 (1.84) refused as in the fixture: close_preview with no session; close of a busy session only → ok false with its reason, nothing closed",
-        r72e and r72e["ok"] is False and r72e["text"] == RS184[CM184[4]["id"]]["text"] and r72b and r72b["ok"] is False and r72b["text"] == RS184[CM184[5]["id"]]["text"]
+T.check("R72 (1.84) refused as in the fixture (its English text; the relay answers in Italian since 20/11): close_preview with no session; close of a busy session only → ok false with its reason, nothing closed",
+        r72e and r72e["ok"] is False and r72e["text"] == "chiudi: nessuna sessione indicata" and RS184[CM184[4]["id"]]["text"] == "close: no session given"
+        and r72b and r72b["ok"] is False and r72b["text"] == "atlas-shop non chiusa: sta lavorando" and RS184[CM184[5]["id"]]["text"] == "atlas-shop not closed: it is working"   # 20/11: il relay in italiano, la fixture in inglese
         and not any(c.startswith("close ") for c in cm_calls()[_n72:]), str((r72e, r72b)))
 shutil.rmtree(_fn72 / ".git")
 rows_alive("ledger-api", "atlas-shop")
@@ -2034,7 +2036,7 @@ r23e = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000203", sessio
 r23f = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000204", arg="/exit", text=None))
 T.check("R23 (1.25, 1.120) a busy session and one on a dialog → «<name> is busy», a missing one → «no session <name>», nothing typed; /exit (with its slash) for a session without a window goes the way of close (`supervisor close`), nothing typed",
         r23c and r23c["text"] == "atlas-shop is busy" and r23d and r23d["text"] == "ledger-api is busy" and r23e and r23e["text"] == "no session nessuna"
-        and r23f and r23f["ok"] is True and r23f["text"] == "closed: field-notes" and "close field-notes --subito" in cm_calls()[n_calls:]
+        and r23f and r23f["ok"] is True and r23f["text"] == "chiusa: field-notes" and "close field-notes --subito" in cm_calls()[n_calls:]
         and [c for c in cm_calls()[n_calls:] if c.startswith("talk ")] == [], str([r23c, r23d, r23e, r23f]) + str(cm_calls()[n_calls:]))
 n_calls = len(cm_calls())
 r23g = send_cmd(dict(CMDS[24], id="6f1c2d3e-0150-4000-8000-000000000205", arg="cost", text=None))
@@ -4038,9 +4040,9 @@ finally:
         _sv73["json"], _sv73["talk"], _sv73["allowed"], _sv73["kids"], _sv73["cdir"], _sv73["last"], _sv73["run"])
 _svf73 = json.loads((tmp / "closed73" / "field-notes.json").read_text()) if (tmp / "closed73" / "field-notes.json").exists() else {}
 T.check("R73 (1.84) /exit from the app: a shell among the claude process's children → refused «a job is running in the background», nothing typed; without it the state is saved (attached is fine: it is typed in the pane) and /exit typed",
-        _bg73 == (False, "field-notes not closed: a job is running in the background") and _typed_bg73 == [] and _ok73[0] is True
+        _bg73 == (False, "field-notes non chiusa: c'è un lavoro in sottofondo") and _typed_bg73 == [] and _ok73[0] is True
         and [a[1] for a in _typed73] == ["/exit"] and _svf73.get("outcome") == "README rewritten" and _svf73.get("next") == "Open the PR" and _svf73.get("session_id") == "S-F"
-        and _cl73["blocked_by"] == "attached" and _cl73["closable"] is False, str((_bg73, _ok73, _typed73, _svf73)))
+        and _cl73["blocked_by"] is None and _cl73["closable"] is True, str((_bg73, _ok73, _typed73, _svf73, _cl73)))   # 20/11: aperta al PC non blocca piu'
 T.check("R73 (1.84) the save's next is the first step of the last outcome when there is one, else the recap's next",
         _cs73["save"]["next"] == "open the PR" and _svf73.get("next") == "Open the PR", str(_cs73))
 _oc73 = S._outcome([{"event": "stop", "ts": iso(1789210000), "tail": "Release 0.8.62 published.\nProssimi: deposit · live test", "esito": ""}])
@@ -4988,32 +4990,34 @@ finally:
     RL._children, RL._cmdline, RL.push_async, RL.ledger_write, RL.core.ledger_rows = _sv107["kids"], _sv107["cmdl"], _sv107["pa"], _sv107["lw"], _sv107["lr"]
     RL.os.kill, RL.slash_allowed = _sv107["kill"], _sv107["allowed"]
 _closed107 = [a[1] for a in _run107 if a[:1] == ("close",)]
-T.check("R107 (1.120) close with an unknown `when` → refused with the valid values; when now (or absent): a free session closes, a busy or attached one is kept with the reason, in one answer",
+T.check("R107 (1.120, 20/11) close with an unknown `when` → refused with the valid values; when now (or absent): a free session closes, also one open "
+        "on the PC (supervisor-chiudi-attaccate-20-11: `supervisor close` closes its tab), a busy one is kept with the reason, in one answer, in Italian",
         _bad107[0] is False and "now, after, force" in _bad107[1]
-        and _now107 == (True, "closed: libera107\noccupata107 not closed: it is working\nvista107 not closed: it is attached to the PC"), str((_bad107, _now107)))
-T.check("R107 (1.120) when after: busy, background and question are armed (ok, «closes as soon as it finishes»); attached and gone are kept with the reason; state.sessions[].closing says it",
-        _aft107[0] is True and "occupata107 closes as soon as it finishes" in _aft107[1] and "sotto107 closes as soon as it finishes" in _aft107[1]
-        and "domanda107 closes as soon as it finishes" in _aft107[1] and "vista107 not closed: it is attached to the PC" in _aft107[1] and "mai107 not closed: it is not running" in _aft107[1]
+        and _now107 == (True, "chiusa: libera107, vista107\noccupata107 non chiusa: sta lavorando"), str((_bad107, _now107)))
+T.check("R107 (1.120) when after: busy, background and question are armed (ok, «si chiude appena finisce»); gone is kept with the reason; state.sessions[].closing says it",
+        _aft107[0] is True and "occupata107 si chiude appena finisce" in _aft107[1] and "sotto107 si chiude appena finisce" in _aft107[1]
+        and "domanda107 si chiude appena finisce" in _aft107[1] and "mai107 non chiusa: non è in esecuzione" in _aft107[1]
         and _armed_a107 == ["domanda107", "occupata107", "sotto107"] and _closing107.get("occupata107", {}).get("mode") == "after" and "libera107" not in _closing107, str((_aft107, _armed_a107, _closing107)))
 T.check("R107 (1.120) the armed closings fire when the session stops: nothing while busy; then the stopped one and the one whose background ended close, saved and in the ledger with armed after; the one still on a question waits",
         _tick0_107 == ["domanda107", "occupata107", "sotto107"] and _tick1_107 == ["domanda107"] and {"occupata107", "sotto107"} <= set(_closed107)
         and ("closed-from-app", "occupata107", "after") in _led107 and (_d107 / "closed" / "sotto107.json").is_file(), str((_tick0_107, _tick1_107, _closed107, _led107)))
 T.check("R107 (1.120) when force («Chiudi comunque», confirmed in the app): Esc to the turn, the background shell stopped, the handoff asked to the session, armed with a deadline",
-        _frc107[0] is True and "forza107: stopped, writing the handoff" in _frc107[1] and [a[1] for a in _f_int107] == ["forza107", "lenta107"]
+        _frc107[0] is True and "forza107: fermata, scrive il passaggio di consegne" in _frc107[1] and [a[1] for a in _f_int107] == ["forza107", "lenta107"]
         and 6104 in _killed107 and _f_talk107[-2:] == ["forza107", "lenta107"] and _armed_f107["forza107"]["mode"] == "force"
         and _armed_f107["forza107"]["deadline"] == _armed_f107["forza107"]["at"] + RL.CLOSE_FORCE_S, str((_frc107, _f_int107, _killed107, _talk107[-2:], _armed_f107)))
 T.check("R107 (1.120) a forced closing waits for the end of the handoff turn (a stop in the ledger after it was armed), then closes; at the deadline one still working gets Esc and closes anyway",
         "forza107" in _tick2_107 and "forza107" not in _tick3_107 and "lenta107" in _tick3_107 and _tick4_107 == ["domanda107"] and "lenta107" in _closed107
         and ("closed-from-app", "lenta107", "force") in _led107, str((_tick2_107, _tick3_107, _tick4_107, _closed107)))
 T.check("R107 (1.120) /exit for a session without a window goes the way of close: an answer with the reason (here a question is waiting), nothing typed in the pane",
-        _ex107 == (False, "domanda107 not closed: a question is waiting") and not any(a[1].startswith("/exit") for a in _talk107 if len(a) > 1), str(_ex107))
+        _ex107 == (False, "domanda107 non chiusa: c'è una domanda in attesa") and not any(a[1].startswith("/exit") for a in _talk107 if len(a) > 1), str(_ex107))
 
 _fx107 = {r["id"]: r for r in json.loads((FIX / "cmd-result-sample.json").read_text())["result"]}
+_EN107 = json.loads((T.ROOT / "supervisor" / "messages" / "en.json").read_text(encoding="utf-8"))   # 20/11: le fixture per l'app sono in inglese
 _fc107 = {c["id"]: c for c in json.loads((FIX / "cmd-result-sample.json").read_text())["cmd"]}
-T.check("R107 (1.120) the fixture for the app: close with when after and when force, the texts exactly as the relay writes them",
+T.check("R107 (1.120) the fixture for the app: close with when after and when force, the texts exactly as the relay writes them in English",
         _fc107["6f1c2d3e-1120-4000-8000-000000001120"]["when"] == "after" and _fc107["6f1c2d3e-1121-4000-8000-000000001121"]["when"] == "force"
-        and _fx107["6f1c2d3e-1120-4000-8000-000000001120"]["text"] == RL.M("relay.cmd_close_armed", name="atlas-shop", s=RL.CLOSE_FORCE_S)
-        and _fx107["6f1c2d3e-1121-4000-8000-000000001121"]["text"] == RL.M("relay.cmd_close_forcing", name="atlas-shop", s=RL.CLOSE_FORCE_S), "")
+        and _fx107["6f1c2d3e-1120-4000-8000-000000001120"]["text"] == _EN107["relay.cmd_close_armed"].format(name="atlas-shop", s=RL.CLOSE_FORCE_S)
+        and _fx107["6f1c2d3e-1121-4000-8000-000000001121"]["text"] == _EN107["relay.cmd_close_forcing"].format(name="atlas-shop", s=RL.CLOSE_FORCE_S), "")
 _st107 = S.build_state(dict(SRC2, closing={"atlas-shop": {"mode": "force", "at": 1789214398, "deadline": 1789214578}}), 1789214400)
 _cl107 = {x["name"]: x.get("closing") for x in _st107["sessions"]}
 T.check("R107 (1.120) state.sessions[].closing {mode, at, deadline} only on the session with an armed closing; absent on the others",
