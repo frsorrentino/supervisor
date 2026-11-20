@@ -1788,5 +1788,15 @@
   "avvisi.server_free": " ({gb} GB free)",
   "avvisi.monitors": "Monitors: {items}",
   "avvisi.monitors_none": "Monitors: no threshold crossed",
+  "avvisi.quota_title": "QUOTAS",
+  "avvisi.quota_item": "{account}: {parts}",
+  "avvisi.quota_none_item": "{account}: not read",
+  "avvisi.firebase_title": "FIREBASE",
+  "avvisi.firebase_estimate": "the relay's estimate, only what it sends: {gb} GB downloaded of {limit} in {month} ({pct}%), about {proj} at the end of the month",
+  "avvisi.servers_title": "SERVERS",
+  "avvisi.servers_all_ok": "all below {pct}%",
+  "avvisi.servers_rest_line": "the others below {pct}%",
+  "avvisi.monitors_title": "MONITORS",
+  "avvisi.deadlines_title": "DEADLINES",
   "avvisi.deadlines": "Deadlines: {items}"
 }

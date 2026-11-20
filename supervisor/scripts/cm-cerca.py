@@ -4,7 +4,7 @@
   supervisor cerca TESTO [--limit N] [--json]   1. l'indice: una riga per risultato, con id, data, sessione, tipo, estratto
   supervisor cerca --timeline ID [--n N]        2. le voci intorno, della stessa sessione (o dello stesso progetto, per un commit)
   supervisor cerca --dettagli ID                3. il testo intero, con sessione, cartella e data
-  supervisor cerca --index                      aggiorna l'indice e basta (il relay lo lancia con nice ogni cerca.index_every_s)
+  supervisor cerca --index                      aggiorna l'indice e basta (il relay lo lancia con nice e ionice ogni cerca.index_every_s)
 
 L'indice e' SQLite FTS5 in <state_dir>/cerca/index.db, incrementale: di ogni trascrizione dei progetti (gli account di
 config, nell'ambito delle sessioni) legge solo le righe nuove. Entrano i prompt della persona, la risposta finale di ogni
@@ -188,17 +188,32 @@ def index_file(con, path, names):
     return n
 
 
+def _head(proj):
+    """Lo sha di HEAD con una sola git rev-parse, o None (repository senza commit, git che non risponde)."""
+    try:
+        r = subprocess.run(["git", "-C", proj, "rev-parse", "-q", "--verify", "HEAD"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    sha = r.stdout.strip()
+    return sha if r.returncode == 0 and sha else None
+
+
 def index_commits(con):
-    """I commit nuovi delle cartelle che l'indice conosce (quelle che sono repository git)."""
+    """I commit nuovi delle cartelle che l'indice conosce (quelle che sono repository git). 20/11/2026
+    (supervisor-cerca-indice-leggero-20-11): git log solo dove HEAD e' cambiato dall'ultimo giro; prima rileggeva a ogni giro
+    la storia di tutti i progetti (fino a circa 170) e il Chromebook rallentava a ondate."""
     n = 0
     projects = [r[0] for r in con.execute("SELECT DISTINCT project FROM docs WHERE kind != 'commit' AND project != ''")]
     for proj in projects:
         if not os.path.isdir(os.path.join(proj, ".git")):
             continue
         last = (con.execute("SELECT last FROM commits WHERE project=?", (proj,)).fetchone() or [None])[0]
+        head = _head(proj)
+        if not head or head == last:
+            continue
         try:
-            out = subprocess.run(["git", "-C", proj, "log", "--format=%H%x1f%ct%x1f%s", f"-n{COMMITS_MAX}"], capture_output=True, text=True,
-                                 timeout=30).stdout
+            out = subprocess.run(["git", "-C", proj, "log", "--format=%H%x1f%ct%x1f%s", f"-n{COMMITS_MAX}", head], capture_output=True,
+                                 text=True, timeout=30).stdout
         except (OSError, subprocess.TimeoutExpired):
             continue
         rows = [l.split("\x1f") for l in out.splitlines() if l.count("\x1f") == 2]

@@ -379,8 +379,11 @@ T.check("MO10 again at once: too soon (exit 4, «riprova fra N s»), the command
         and show("giro").get("refresh") == v10, f"{r_soon.returncode} {r_soon.stdout}{r_soon.stderr}")
 
 # MO11
-mark11 = tmp / "mark11"
-mo("add", "lento", "--title", "Lento", "--form", "tile", "--refresh", f"echo giro >> {mark11}; sleep 2; echo finito",
+mark11, gate11 = tmp / "mark11", tmp / "gate11"
+# 20/11 (release 0.8.195): con «sleep 2» il giro finiva prima della terza richiesta a macchina carica (tre CLI in fila oltre 2 s)
+# e la terza lo rilanciava; ora il giro aspetta il via del test, dato solo dopo la terza richiesta
+mo("add", "lento", "--title", "Lento", "--form", "tile", "--refresh",
+   f"echo giro >> {mark11}; i=0; while [ ! -e {gate11} ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; echo finito",
    "--refresh-min-interval", "0")
 t11 = time.time()
 r_bg = mo("refresh", "lento")
@@ -388,7 +391,8 @@ took11 = time.time() - t11
 v11 = show("lento").get("refresh") or {}
 r_bg2 = mo("refresh", "lento")
 r_bg3 = mo("refresh", "lento", "--wait")
-end11 = wait_refresh("lento")
+gate11.write_text("via")
+end11 = wait_refresh("lento", 60)
 T.check("MO11 a background refresh returns at once with state running (ended and rc null)",
         r_bg.returncode == 0 and took11 < 1.9 and v11.get("state") == "running" and v11.get("ended") is None and v11.get("rc") is None
         and v11.get("retry_at") is None and isinstance(v11.get("started"), int), f"{r_bg.returncode} {took11:.1f} {v11} {r_bg.stderr}")

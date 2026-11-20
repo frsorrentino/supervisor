@@ -4028,7 +4028,8 @@ def riassunti_tick(now):
 
 def cerca_tick(now):
     """20/11/2026 (supervisor-cerca-lavoro-19-11): l'indice FTS5 di `supervisor cerca` resta al passo, al piu' ogni
-    cerca.index_every_s, in un processo a parte con nice 19: la ricerca dopo trova gia' tutto."""
+    cerca.index_every_s, in un processo a parte con nice 19: la ricerca dopo trova gia' tutto. 20/11/2026
+    (supervisor-cerca-indice-leggero-20-11): anche ionice -c3 (il disco solo quando e' libero), se c'e'; senza, si va avanti uguale."""
     C = CFG.get("cerca") or {}
     if not C.get("enabled", True):
         return
@@ -4038,7 +4039,8 @@ def cerca_tick(now):
             return
         stamp.parent.mkdir(parents=True, exist_ok=True)
         stamp.touch()
-        subprocess.Popen(["nice", "-n", "19", sys.executable, str(HERE / "cm-cerca.py"), "--index"], stdin=subprocess.DEVNULL,
+        io = ["ionice", "-c3"] if shutil.which("ionice") else []
+        subprocess.Popen(io + ["nice", "-n", "19", sys.executable, str(HERE / "cm-cerca.py"), "--index"], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except (OSError, TypeError, ValueError) as ex:
         log(f"cerca FAILED: {ex}")

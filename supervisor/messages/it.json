@@ -1788,5 +1788,15 @@
   "avvisi.server_free": " ({gb} GB liberi)",
   "avvisi.monitors": "Monitoraggi: {items}",
   "avvisi.monitors_none": "Monitoraggi: nessuna soglia superata",
+  "avvisi.quota_title": "QUOTE",
+  "avvisi.quota_item": "{account}: {parts}",
+  "avvisi.quota_none_item": "{account}: non letta",
+  "avvisi.firebase_title": "FIREBASE",
+  "avvisi.firebase_estimate": "stima del relay, solo cio' che manda: {gb} GB scaricati su {limit} a {month} ({pct}%), a fine mese circa {proj}",
+  "avvisi.servers_title": "SERVER",
+  "avvisi.servers_all_ok": "tutti sotto l'{pct}%",
+  "avvisi.servers_rest_line": "gli altri sotto l'{pct}%",
+  "avvisi.monitors_title": "MONITORAGGI",
+  "avvisi.deadlines_title": "SCADENZE",
   "avvisi.deadlines": "Scadenze: {items}"
 }

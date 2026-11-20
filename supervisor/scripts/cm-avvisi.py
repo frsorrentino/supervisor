@@ -8,7 +8,7 @@
 Su Telegram tre tipi di messaggio e nient'altro, scelti dal maintainer il 17/11:
 1. l'allarme, subito, solo se serve un'azione (relay fermo o push fallite da oltre 15 minuti: cm-relay; quota sopra il
    92%: cm-guard), due righe col link all'app;
-2. il mattino: le quote dei due account con l'ora di azzeramento, Firebase del mese, lo spazio dei server
+2. il mattino (dal 20/11 in HTML, come il recap delle 20): le quote dei due account con l'ora di azzeramento, Firebase del mese, lo spazio dei server
    (recap.servers_file, lo scrive spazio-server.py), i monitoraggi sopra soglia e le scadenze del calendario;
 3. il recap delle 20: uscito (i compiti chiusi oggi), ti aspetta (le voci aperte col link), stanotte (la coda della
    notte), la notte appena passata (night-done.jsonl: `night run --send` non manda piu' a parte) e le voci del giorno
@@ -477,7 +477,7 @@ def quota_file(acc):
         return None
 
 
-def quota_lines(now):
+def quota_lines(now, key="avvisi.quota", none_key="avvisi.quota_none"):
     """Una riga per account: la settimana con il giorno e l'ora dell'azzeramento; le cinque ore solo sopra la soglia
     della guardia. Torna (righe, quante vicino alla soglia)."""
     near_pct = float((CFG.get("quota") or {}).get("warn_pct", 85))
@@ -486,7 +486,7 @@ def quota_lines(now):
     for acc in CFG["accounts"]:
         d = quota_file(acc)
         if not d:
-            lines.append(M("avvisi.quota_none", account=acc))
+            lines.append(M(none_key, account=acc))
             continue
         w, w_at = d.get("weekly_used_pct"), d.get("weekly_resets_at")
         h, h_at = d.get("five_hour_used_pct"), d.get("five_hour_resets_at")
@@ -496,15 +496,15 @@ def quota_lines(now):
         if h is not None and (w is None or float(h) >= warn):
             parts.append(M("avvisi.quota_5h", pct=round(float(h)), t=dt.datetime.fromtimestamp(float(h_at)).strftime("%H:%M") if h_at else "-"))
         if not parts:
-            lines.append(M("avvisi.quota_none", account=acc))
+            lines.append(M(none_key, account=acc))
             continue
         if max(float(x) for x in (w, h) if x is not None) >= near_pct:
             near += 1
-        lines.append(M("avvisi.quota", account=acc, parts="; ".join(parts)))
+        lines.append(M(key, account=acc, parts="; ".join(parts)))
     return lines, near
 
 
-def firebase_line(now):
+def firebase_line(now, key="avvisi.firebase"):
     """Firebase del mese: la stima del relay (usage-firebase.json, come doctor.firebase_usage) sommata sui giorni del mese."""
     rd = Path(cm.expand((CFG.get("relay") or {}).get("dir") or "~/.cc-supervisor/relay"))
     try:
@@ -522,7 +522,7 @@ def firebase_line(now):
     gb = b / 1e9
     proj = gb * calendar.monthrange(today.year, today.month)[1] / max(1, today.day)
     name = M("avvisi.months").split(",")[today.month - 1]
-    return M("avvisi.firebase", gb=num(gb), limit=FIREBASE_MONTH_GB, month=name, pct=round(100 * gb / FIREBASE_MONTH_GB),
+    return M(key, gb=num(gb), limit=FIREBASE_MONTH_GB, month=name, pct=round(100 * gb / FIREBASE_MONTH_GB),
              proj=num(proj, 0)), proj > FIREBASE_MONTH_GB
 
 
@@ -587,31 +587,108 @@ def deadlines_line():
     return M("avvisi.deadlines", items="; ".join(clean(cal.line(e)) for e in items))
 
 
+def server_items():
+    """(voci sopra soglia, frase sugli altri o None, quante) dello spazio dei server, per il mattino in HTML."""
+    p = Path(cm.expand(D.get("servers_file") or SERVERS_FILE))
+    try:
+        data = json.loads(p.read_text())
+    except (OSError, ValueError):
+        return None, None, 0
+    if isinstance(data, dict):
+        data = data.get("servers", data.get("server", data))
+    items = []
+    if isinstance(data, dict):
+        items = [(str(k), v) for k, v in data.items() if isinstance(v, dict)]
+    elif isinstance(data, list):
+        items = [(str(v.get("nome") or v.get("name") or v.get("server") or v.get("host") or "?"), v) for v in data if isinstance(v, dict)]
+    if not items:
+        return None, None, 0
+    lim = float(D.get("server_pct", SERVER_PCT))
+    high = []
+    for name, v in items:
+        uso = _pct(v.get("uso"))
+        if (uso is not None and uso >= lim) or str(v.get("livello") or "").lower() in SERVER_HIGH:
+            free = _pct(v.get("liberi_gb"))
+            high.append(M("avvisi.server_item", name=name, uso="?" if uso is None else round(uso),
+                          free=("" if free is None else M("avvisi.server_free", gb=round(free)))))
+    if not high:
+        return [], M("avvisi.servers_all_ok", pct=round(lim)), 0
+    return high, (M("avvisi.servers_rest_line", pct=round(lim)) if len(high) < len(items) else None), len(high)
+
+
+def is_firebase(c):
+    """Il monitoraggio di Firebase (il consumo misurato da Firebase stesso): l'id o il titolo lo nominano."""
+    return "firebase" in f"{c.get('id') or ''} {c.get('title') or ''}".lower()
+
+
+def monitor_cards():
+    try:
+        return _load("cm-monitor").cards() or []
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def a_open(link):
+    return f' <a href="{html.escape(link)}">{esc(M("avvisi.open"))}</a>' if link else ""
+
+
 def morning_text(now=None):
+    """20/11/2026 (supervisor-mattino-formattato-20-11, la segnalazione del maintainer alle 08:09): il mattino in HTML di
+    Telegram come il recap delle 20 (parse_mode HTML): la prima riga in grassetto col giorno e quante voci sono vicino alla
+    soglia, poi una sezione per blocco (QUOTE, FIREBASE, SERVER, MONITORAGGI, SCADENZE), una voce per riga, i link con un
+    testo breve. Firebase una volta sola: il monitoraggio di Firebase, se c'e', e' la misura (Firebase stesso); senza, la
+    stima del relay (solo cio' che il relay manda), detta come stima. Le scadenze: data, quando, cosa; mai l'id della
+    pratica ne' la cartella, che restano alla master."""
     now = now or time.time()
-    lines, near = quota_lines(now)
-    fb, fb_high = firebase_line(now)
-    if fb:
-        lines.append(fb)
-        near += int(fb_high)
-    for fn in (servers_line, monitors_line):
-        line, n = fn()
-        if line:
-            lines.append(line)
-            near += n
-    dl = deadlines_line()
-    if dl:
-        lines.append(dl)
-    title = M("avvisi.morning_title", day=day_label(dt.date.fromtimestamp(now)), what=plural(near, "n_near") if near else M("avvisi.all_below"))
-    return "\n".join([title] + lines)
+    day = dt.date.fromtimestamp(now)
+    near = 0
+    blocks = []
+
+    def section(title, items, tail=None):
+        if items or tail:
+            blocks.append("\n".join([f"<b>{esc(title)}</b>"] + [f"• {x}" for x in items] + ([tail] if tail else [])))
+
+    q, n = quota_lines(now, "avvisi.quota_item", "avvisi.quota_none_item")
+    near += n
+    section(M("avvisi.quota_title"), [esc(x) for x in q])
+    cards = monitor_cards()
+    fbc = next((c for c in cards if is_firebase(c)), None)
+    if fbc:   # la misura: le parti del suo testo una per riga, il link alla sua scheda
+        text = fbc.get("verdict") or _load("cm-monitor").line_of(dict(fbc, link=None)).split(": ", 1)[-1]
+        parts = [x.strip(" .") for x in re.split(r";\s+", str(text)) if x.strip(" .")]
+        near += int(fbc.get("status") == "watch")
+        section(M("avvisi.firebase_title"), [esc(x) for x in parts[:-1]] + [esc(parts[-1]) + a_open(fbc.get("link"))] if parts else [])
+    else:
+        fb, fb_high = firebase_line(now, "avvisi.firebase_estimate")
+        if fb:
+            near += int(fb_high)
+            section(M("avvisi.firebase_title"), [esc(fb)])
+    high, rest, n = server_items()
+    near += n
+    if high is not None:
+        section(M("avvisi.servers_title"), [esc(x) for x in high], esc(rest) if rest else None)
+    hot = [c for c in cards if c.get("status") == "watch" and c is not fbc]
+    near += len(hot)
+    section(M("avvisi.monitors_title"), [esc(f"{c['title']}: {c.get('verdict') or c.get('value') or ''}".rstrip(": ")) + a_open(c.get("link")) for c in hot])
+    try:
+        cal = _load("cm-calendar")
+        items = cal.deadlines()[0] if cal.url() else []
+    except Exception:   # noqa: BLE001
+        cal, items = None, []
+    section(M("avvisi.deadlines_title"),
+            [esc(f"{dt.date.fromisoformat(e['date']).strftime('%d/%m')} ({cal.when(e)}) {e.get('summary') or '?'}") for e in items])
+    full = M("avvisi.days_full").split(",")[day.weekday()]
+    what = plural(near, "n_near") if near else M("avvisi.all_below")
+    head = f"<b>{esc(full)} {day.strftime('%d/%m')} · {esc(what)}</b>"
+    return "\n\n".join([head] + blocks)
 
 
-def send(text):
+def send(text, as_html=True):
     bot = _load("cm-bot")
     if not bot.token():
         print(M("bot.no_token", path=CFG["bot"]["token_file"]), file=sys.stderr)
         return 1
-    print(M("recap.sent", n=bot.send(text)))
+    print(M("recap.sent", n=bot.send(text, parse_mode="HTML" if as_html else None)))
     return 0
 
 

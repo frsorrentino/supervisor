@@ -19,7 +19,7 @@ AR2 recap --send alle 20: un solo messaggio in HTML (dal 19/11, supervisor-recap
     compito chiuso oggi), Ti aspetta col link della voce, Stanotte (la coda), Notte (il giro di stanotte), le voci di
     recap add con il nome del tipo; niente emoji
 AR3 recap install: la riga delle 20 e quella del mattino alle 8
-AM1 recap morning --send: «Mattino, …»; la quota dei due account con l'ora di azzeramento, Firebase del mese in GB,
+AM1 recap morning --send: in HTML (dal 20/11); la quota dei due account con l'ora di azzeramento, Firebase del mese in GB,
     solo i server sopra soglia, il monitoraggio sopra soglia; niente emoji
 """
 import datetime as dt
@@ -249,11 +249,12 @@ txt = mm[0]["text"] if mm else ""
 when = time.strftime("%d/%m", time.localtime(reset_w))
 gb = round(min(today.day, 3) * 0.5, 1)
 print(txt) if os.environ.get("AVVISI_SHOW") else None
-T.check("AM1 recap morning --send: one message, first line «Mattino, …»; the quota of both accounts with the reset day and hour",
-        r.returncode == 0 and len(mm) == 1 and txt.startswith("Mattino, ") and "Quota personale: settimana 92%" in txt and f"{when} alle 03:00" in txt
-        and "Quota professionale: settimana 40%" in txt, r.stderr[-400:] + txt)
+# 20/11 (supervisor-mattino-formattato-20-11): in HTML, una sezione per blocco; il dettaglio in tests/mattino-formato-verify.py
+T.check("AM1 recap morning --send: one HTML message, the first line in bold; the quota of both accounts with the reset day and hour",
+        r.returncode == 0 and len(mm) == 1 and mm[0].get("parse_mode") == "HTML" and txt.startswith("<b>") and "<b>QUOTE</b>" in txt
+        and "• personale: settimana 92%" in txt and f"{when} alle 03:00" in txt and "• professionale: settimana 40%" in txt, r.stderr[-400:] + txt)
 T.check("AM1 recap morning: Firebase of the month in GB (not last month), only the servers past the threshold, the monitor past its threshold; no emoji",
-        f"Firebase: {str(gb).replace('.', ',')} GB" in txt and "Alpha 91% (49 GB liberi)" in txt and "Beta" not in txt and "Prezzo del portatile" in txt
+        f"{str(gb).replace('.', ',')} GB scaricati" in txt and "Alpha 91% (49 GB liberi)" in txt and "Beta" not in txt and "Prezzo del portatile" in txt
         and not EMOJI.search(txt), txt)
 
 srv.shutdown()
