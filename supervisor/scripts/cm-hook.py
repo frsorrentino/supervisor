@@ -241,6 +241,15 @@ def stop_late(p):
     mark("resolve")
     if os.environ.get("CM_HOOK_LATE_FULL") != "1":
         return
+    try:   # 20/11 (supervisor-turno-sospeso-19-11): un turno chiuso aspettando un via che non serve → una riga alla master
+        if tn and not PRIVATE:
+            spec = importlib.util.spec_from_file_location("cm_sospeso", HERE / "cm-sospeso.py")
+            so = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(so)
+            so.check(tn, p.get("last_assistant_message") or "", sid=p.get("session_id") or "")
+    except Exception:   # noqa: BLE001 — un aiuto in piu': mai far cadere lo Stop
+        pass
+    mark("sospeso")
     try:   # 05/11 (supervisor-clear-dopo-handoff-05-11): un passaggio di consegne scritto nel turno → /clear da supervisor
         spec = importlib.util.spec_from_file_location("cm_handoff", HERE / "cm-handoff.py")
         ho = importlib.util.module_from_spec(spec)

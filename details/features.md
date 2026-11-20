@@ -132,6 +132,12 @@ job at a time, only while free memory and quota allow, leaving a report in the
 project. What waits for you in the morning is on the watch, which never stops
 showing it.
 
+A session that closes its turn waiting for a go it does not need («if not, I
+start from here», «you can send /clear», «shall I continue?») while it has
+tasks queued in the registry tells the master within the minute, sessions on
+another host too: one line with the session, the phrase and the task. Real
+waits (an ok card, a needs-you, a choice between options) never raise it.
+
 ## Doctor, for both accounts
 
 `supervisor doctor` checks both accounts: the plugin in the cache at the

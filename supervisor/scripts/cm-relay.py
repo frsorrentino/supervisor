@@ -2978,6 +2978,7 @@ class PushWorker(threading.Thread):
                 _trim()
                 trimmed = time.monotonic()
                 riassunti_tick(time.time())   # 19/11: solo il demone, non ogni push (i test ne fanno migliaia)
+                cerca_tick(time.time())   # 20/11: l'indice di `supervisor cerca`, al passo con nice
             # 11/11 (supervisor-installazione-semplice-11-11, il collega con la master «chiusa» ma aperta): senza il cron
             # il demone pubblicava solo quando un hook o un comando chiedeva; la push dell'avvio della master partiva prima
             # che la sessione fosse registrata e nessuno la rifaceva. Il demone batte da se' ogni heartbeat_s, come il cron:
@@ -4023,6 +4024,24 @@ def riassunti_tick(now):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except (OSError, TypeError, ValueError) as ex:
         log(f"riassunti FAILED: {ex}")
+
+
+def cerca_tick(now):
+    """20/11/2026 (supervisor-cerca-lavoro-19-11): l'indice FTS5 di `supervisor cerca` resta al passo, al piu' ogni
+    cerca.index_every_s, in un processo a parte con nice 19: la ricerca dopo trova gia' tutto."""
+    C = CFG.get("cerca") or {}
+    if not C.get("enabled", True):
+        return
+    stamp = Path(cm.expand(CFG["state_dir"])) / "cerca" / ".tick"
+    try:
+        if stamp.is_file() and now - stamp.stat().st_mtime < float(C.get("index_every_s", 900)):
+            return
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+        subprocess.Popen(["nice", "-n", "19", sys.executable, str(HERE / "cm-cerca.py"), "--index"], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except (OSError, TypeError, ValueError) as ex:
+        log(f"cerca FAILED: {ex}")
 
 
 _FAV = [None]

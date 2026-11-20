@@ -178,6 +178,8 @@ DEFAULTS = {
     # colpo) conta come finita dopo tanti minuti fermi e senza processo; window_h = quanto indietro guarda la prima volta
     "riassunto": {"enabled": True, "model": "sonnet", "min_prompts": 4, "max_per_day": 6, "idle_min": 60, "window_h": 2,
                   "timeout_s": 240, "scan_every_s": 1800},
+    # 20/11/2026 (supervisor-cerca-lavoro-19-11): l'indice FTS5 di `supervisor cerca`, aggiornato dal relay con nice
+    "cerca": {"enabled": True, "index_every_s": 900},
     # scadenze da un calendario .ics (16/10/2026): l'indirizzo col token sta in url_file (0600), mai qui; senza quel
     # file e' tutto spento. remind_days vale per gli eventi senza VALARM; cases: id della pratica (case_property) →
     # cartella, per aprire la sessione giusta; il valore puo' essere anche {"dir": …, "name": …} (18/10, la pagina Studio

@@ -63,6 +63,7 @@ case "$cmd" in
   setup|installa)         exec python3 "$S/cm-setup.py" "$@" ;;   # 11/11: l'installazione completa in un comando, guidata e ripetibile
   service|servizio)       exec python3 "$S/cm-service.py" "$@" ;;   # 19/11: relay e master accesi all'accesso (S3)
   riassunto|summary)      exec python3 "$S/cm-riassunto.py" "$@" ;;   # 19/11: il riassunto a fine sessione senza passaggio di consegne
+  cerca|search)           exec python3 "$S/cm-cerca.py" "$@" ;;   # 20/11: cerca nel lavoro passato, in tre passi (indice FTS5)
   doctor)   exec python3 "$S/cm-config.py" doctor "$@" ;;
   rendiconto|statement)   exec python3 "$S/cm-conti.py" "$@" ;;   # 02/11 (1.103): cosa si e' fatto per un cliente in un mese
   rimasto|behind)         exec python3 "$S/cm-seguiti.py" rimasto "$@" ;;   # 02/11 (1.102): quello che il codice ha lasciato indietro

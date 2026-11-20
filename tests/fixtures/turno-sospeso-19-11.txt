@@ -1,0 +1,10 @@
+Ho i tre file della master per `recap-telegram`:
+- il recap vero delle 20 di oggi, non inviato, con i tagli «Conversio,», «nel,», «ripiega s» e gerardosacco.com ripetuto;
+- la menzione GitHub di esempio con la riga attesa;
+- lo screenshot di come la persona vede il recap.
+
+Li ho copiati in `C:\Users\Utente\AppData\Local\Temp\claude\4b9ab8751b1543ec\f7239d91-37a4-408f-a633-31729b66ac8e\scratchpad\recap\`, perché la cartella Temp di sistema può essere svuotata. Il passaggio di consegne ora punta a quella copia.
+
+L'ordine resta quello confermato dalla master: prima `riassunto-fine`, poi `recap-telegram`.
+
+Il passaggio di consegne è aggiornato: puoi mandare `/clear` quando vuoi. Se non lo fai, comincio `riassunto-fine` da qui, nel worktree già pronto `D:\workspaces\personali\supervisor-wt-riassunto`.

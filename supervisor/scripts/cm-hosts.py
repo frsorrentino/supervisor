@@ -890,6 +890,16 @@ OK_MARK = re.compile(r"^\W{0,4}(?:Ok della persona|Person's ok)\W{0,4}:\s*(?P<ta
 OK_MAX_AGE_S = 3600   # come INBOX_MAX_AGE_S di cm-tasks: un ok vale per un'ora
 
 
+_SOSPESO = []
+
+
+def _sospeso():
+    """20/11 (supervisor-turno-sospeso-19-11): cm-sospeso, caricato una volta per giro."""
+    if not _SOSPESO:
+        _SOSPESO.append(_load("cm-sospeso"))
+    return _SOSPESO[0]
+
+
 def _talk(to, text):
     """`talk <to> --no-wait`; CM_HOSTS_TALK_BIN per i test. Torna il codice d'uscita."""
     tb = os.environ.get("CM_HOSTS_TALK_BIN")
@@ -1069,6 +1079,13 @@ def forward_to_master(host, sessions):
                 new_off = None
                 break
             sent.append(key)
+        try:   # 20/11 (supervisor-turno-sospeso-19-11): il turno chiuso aspettando un via che non serve, anche su win
+            last, uid = _sospeso().last_text(p, off0)
+            if last and uid:
+                base = ename[len(host) + 1:] if ename.startswith(host + "-") else shown   # «win-supervisor» → «win:supervisor»
+                _sospeso().check(f"{host}:{base}", last, sid=sid, key=f"{host}:{uid}", also=(ename, shown))
+        except Exception:   # noqa: BLE001 — un avviso in piu': mai far cadere il giro
+            pass
         if new_off is not None:
             offs[sid] = new_off
         changed = True
