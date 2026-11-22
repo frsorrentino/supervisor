@@ -48,7 +48,14 @@ like a command, in `/share/<id>` (at most 1.5 MB, JPEG or PNG), then sends
 `report` with the session, the text and that id; the relay runs
 `supervisor report <session folder> <image|-> "<text>" --session <name>` and
 deletes the node, whatever the outcome (unread nodes go after 10 minutes).
-`/state` carries `share: {max_bytes}` so the app knows it can.
+`/state` carries `share: {max_bytes}` so the app knows it can. The text goes up
+to 20000 characters (4000 until 22/11/2026) and reaches the session whole.
+
+A command that fails because of a normal state (no transcript yet, a question
+already answered, a session that is not running, nothing to stop, the same
+message just sent, `master is busy`) answers as before but no longer becomes an
+error note in observe's box; the ones collected before are closed once
+(`done`, `noise`) when the daemon starts with 0.8.197 (22/11/2026).
 
 Contract 1.21 adds the Stop button: `interrupt` with the session runs
 `supervisor interrupt`, and `/state` carries `ops`, the command ops this relay

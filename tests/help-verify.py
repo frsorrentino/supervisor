@@ -11,7 +11,8 @@ HE3  relay --help, wait --help, inbox --help: l'aiuto, uscita 0, niente su stder
 HE4  OGNI sottocomando del dispatcher con --help: uscita 0, un testo su stdout, nessun Traceback, nessuna sessione
      tmux nata, claude mai chiamato; con gli alias italiani lo stesso aiuto
 HE5  help, --help, version restano com'erano; un sottocomando che non esiste con --help resta un errore (uscita 2);
-     --help non in prima posizione arriva al comando (non lo intercetta il dispatcher)
+     --help non in prima posizione e' l'aiuto anche lui (dal 22/11, supervisor-help-ignorato-22-11: prima arrivava al
+     comando, e `task list --help` stampava l'elenco dei compiti)
 """
 import json
 import os
@@ -116,8 +117,8 @@ with T.PrivateTmux() as tm:
     T.check("HE5 help, --help and version are as they were; an unknown subcommand with --help is still an error (exit 2)",
             r_h.returncode == 0 and r_h.stdout.startswith("uso: supervisor <") and r_hh.stdout == r_h.stdout and re.fullmatch(r"\d+\.\d+\.\d+", r_v.stdout.strip() or "")
             and r_no.returncode == 2 and "non-esiste" in r_no.stderr, f"{r_h.stdout[:60]} | {r_v.stdout} | {r_no.returncode} {r_no.stderr[:120]}")
-    T.check("HE5 --help that is not the first argument reaches the command: the dispatcher does not take it",
-            "supervisor sessions" not in r_pos.stdout[:200] or r_pos.stdout.lstrip().startswith("["), f"{r_pos.returncode} {r_pos.stdout[:160]} {r_pos.stderr[:160]}")
+    T.check("HE5 --help that is not the first argument is the help too (since 22/11): sessions --json --help prints the help, not JSON",
+            r_pos.returncode == 0 and "supervisor sessions" in r_pos.stdout and not r_pos.stdout.lstrip().startswith("["), f"{r_pos.returncode} {r_pos.stdout[:160]} {r_pos.stderr[:160]}")
 
 T.rm(str(tmp))
 T.finish()

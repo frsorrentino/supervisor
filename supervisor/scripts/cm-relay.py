@@ -4217,11 +4217,9 @@ def _run_cmd(cmd, arrived=None):
     if str(cmd.get("op") or "") not in PASSIVE_OPS:
         ledger_write("watch-cmd", op=str(cmd.get("op") or ""), name=str(cmd.get("session") or ""), by=by, ok=bool(ok),
                      text=str(text)[:200], session_id=row.get("id") or "", account=row.get("account") or "")
-    if not ok:   # osservazioni (23/09): un comando del polso fallito finisce nella casella di supervisor (claude-observe)
+    if not ok and not normal_state(text):   # osservazioni (23/09): un comando del polso fallito finisce nella casella di supervisor (claude-observe); 22/11: gli stati normali no
         try:
-            spec = importlib.util.spec_from_file_location("cm_observe", HERE.parent / "observe" / "observe.py")
-            obs = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(obs)
+            obs = _observe()
             obs.record_external("relay", f"relay {cmd.get('op') or ''}", str(text), str(cmd.get("session") or ""))
         except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il comando
             pass
@@ -4398,6 +4396,71 @@ def web(rest):
     return 0
 
 
+# 22/11/2026 (supervisor-note-rumore-22-11): un'op che non riesce perche' lo stato e' quello normale non e' un difetto e
+# non va fra le note di errore di observe: il 22/11 erano 656 note in 220 gruppi, quasi tutte cosi' («no transcript yet
+# for X» mentre la sessione parte, «X is not running», una domanda gia' risposta, «master is busy»), e i difetti veri ci
+# sparivano in mezzo. Il testo all'app e il log restano com'erano. Si riconoscono dalle chiavi dei messaggi, in ogni lingua
+# che il relay puo' parlare, e dal prefisso «relay <op> » che aggiunge fail_line. Le note gia' raccolte di questo tipo si
+# chiudono (done, noise) una volta, al primo avvio del demone con questa versione (tidy_noise_notes).
+NORMAL_STATE_KEYS = (
+    "relay.cmd_attesa_gone", "relay.cmd_not_running", "relay.cmd_interrupt_gone", "relay.cmd_transcript_missing",
+    "relay.cmd_transcript_none", "relay.cmd_transcript_no_sid", "relay.cmd_transcript_unknown", "relay.cmd_nothing_to_stop",
+    "interrupt.nothing", "interrupt.not_running", "relay.cmd_prompt_duplicate", "relay.cmd_prova_gone",
+    "relay.cmd_prova_unknown", "relay.cmd_slash_busy", "relay.cmd_reopen_alive", "relay.cmd_attention_unknown",
+    "relay.cmd_night_empty",
+)
+NORMAL_STATE_LITERALS = ("empty prompt",)
+_NORMAL_RE = []
+
+
+def normal_state(text):
+    if not _NORMAL_RE:
+        pats = set()
+        for lang in ("en", "it", str(CFG.get("language") or "en")):
+            try:
+                table = cm.messages(lang)
+            except (OSError, ValueError):
+                continue
+            for k in NORMAL_STATE_KEYS:
+                t = table.get(k)
+                if t:
+                    pats.add(re.sub(r"\\{[a-z_]+\\}", ".+?", re.escape(t)))
+        pats.update(re.escape(x) for x in NORMAL_STATE_LITERALS)
+        _NORMAL_RE.append(re.compile(r"(?:relay [a-z_]+ )?(?:" + "|".join(sorted(pats)) + ")", re.S))
+    return bool(_NORMAL_RE[0].fullmatch(str(text or "").strip()))
+
+
+def _observe():
+    spec = importlib.util.spec_from_file_location("cm_observe", HERE.parent / "observe" / "observe.py")
+    obs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(obs)
+    return obs
+
+
+def tidy_noise_notes():
+    """Una volta per casella: le note del relay ancora aperte che sono stati normali diventano done con noise. Torna
+    quante, o None se era gia' fatto o la casella non si apre (riprova al prossimo avvio)."""
+    flag = rdir() / "notes-noise-tidied"
+    if flag.exists():
+        return None
+    try:
+        obs = _observe()
+        if not obs.tools():
+            return None
+        n = 0
+        with obs.Box(obs.TOOL["name"]) as box:
+            for x in box.recs:
+                if x.get("source") == "relay" and x.get("status") not in ("done", "reported") and normal_state(x.get("error")):
+                    x["status"], x["noise"] = "done", "relay-normal-state"
+                    n += 1
+        flag.write_text(f"{int(time.time())} {n}\n")
+        log(f"note: {n} stati normali del relay chiusi come rumore")
+        return n
+    except Exception as e:   # noqa: BLE001 — una pulizia: mai far cadere il demone
+        log(f"note: pulizia del rumore FAILED: {e}")
+        return None
+
+
 def serve():
     if not R.get("enabled"):
         print(M("relay.disabled")); return 2
@@ -4417,6 +4480,7 @@ def serve():
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, _stop); signal.signal(signal.SIGINT, _stop)
     log(f"serve: avvio pid {os.getpid()}")
+    tidy_noise_notes()   # 22/11: le note di stati normali raccolte prima, chiuse una volta
     search_warm_async()   # 04/10: la prima ricerca dal telefono trova la cache gia' piena
     push_request("serve")   # all'avvio una push, poi quelle chieste da hook, cron e comandi
     worker = PushWorker()

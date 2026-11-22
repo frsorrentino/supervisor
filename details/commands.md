@@ -3,7 +3,11 @@
 Back to the [README](../README.md). The complete reference. Italian aliases (`lancia`, `chiudi`, `sessioni`,
 `affianca`…) come from `init --shell`; every flag accepts both spellings
 (`--crea`/`--create`, `--prova`/`--dry-run`). `supervisor <command> --help` (or `-h`) prints that command's help
-and never runs it.
+and never runs it, wherever `--help` stands before a `--` (`supervisor relay setup --help`, `supervisor task list
+--help`; a subcommand with a script of its own, as `relay setup`, prints that one's help). A long option the command
+does not know (`--something`) exits 2 with one line before the command starts, instead of being ignored: an option
+is known when the command's script, a script it names or the common libraries spell it, and `--<account>` is known
+too. After `--` nothing is checked (22/11/2026).
 
 | command | what it does |
 |---|---|

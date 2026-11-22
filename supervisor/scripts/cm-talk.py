@@ -179,6 +179,11 @@ def typed_text(tm):
     return re.sub(r"[\s ]*$", "", line)
 
 
+# 22/11/2026 (supervisor-segnalazione-lunga-22-11): tmux rifiuta un comando piu' lungo del suo messaggio interno (16 KB,
+# «command too long»): una segnalazione lunga dal telefono non sarebbe arrivata. 2000 caratteri stanno sotto anche in UTF-8.
+TMUX_CHUNK = 2000
+
+
 def talk_tmux(row, text, force, max_wait, quiet, no_wait):
     tm = row["tmux"]
     if not tm:
@@ -193,7 +198,8 @@ def talk_tmux(row, text, force, max_wait, quiet, no_wait):
     if residue:
         tmux("send-keys", "-t", tm, "Escape")
         time.sleep(0.6)   # oltre l'escape-time di tmux (500 ms): ESC + testo non deve diventare Meta+lettera
-    tmux("send-keys", "-t", tm, "-l", text)
+    for i in range(0, len(text), TMUX_CHUNK):   # 22/11: a pezzi, un comando tmux oltre ~16 KB non passa
+        tmux("send-keys", "-t", tm, "-l", text[i:i + TMUX_CHUNK])
     time.sleep(0.4)
     tmux("send-keys", "-t", tm, "Enter")
     # 14/10 (spunti della valutazione di Kaya): un Invio perso lascia il prompt sulla riga e la sessione non parte.

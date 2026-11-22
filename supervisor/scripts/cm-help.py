@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """supervisor <comando> --help — l'aiuto di un sottocomando: l'intestazione del suo script, senza eseguirlo.
 
-  cm-help.py FILE [COMANDO]
+  cm-help.py FILE [COMANDO [SOTTOCOMANDO]]
 
 Lo chiama il dispatcher quando il primo argomento dopo il sottocomando e' -h o --help (16/11/2026,
 supervisor-help-esegue-16-11: `supervisor restore --help` eseguiva il ripristino, `launch -h` prendeva «-h» per una
 cartella, `relay --help` stampava l'uso come errore). L'aiuto e' la documentazione che lo script porta in testa: la
 docstring del modulo per un .py, il blocco di commenti dopo la prima riga per uno script di shell. Il file si legge e
-basta: non viene importato ne' eseguito.
+basta: non viene importato ne' eseguito. Con un SOTTOCOMANDO che ha uno script suo accanto (relay setup ->
+cm-relay-setup.py, 22/11/2026, supervisor-help-ignorato-22-11) l'aiuto e' quello del sottocomando.
 """
 import ast
 import sys
@@ -37,8 +38,15 @@ def main(argv):
     if not argv:
         print("usage: cm-help.py FILE [COMMAND]", file=sys.stderr)
         return 2
+    path = Path(argv[0])
+    if len(argv) > 2 and argv[2].replace("-", "").isalnum():
+        for ext in (".py", ".sh"):
+            sub = path.with_name(f"{path.stem}-{argv[2]}{ext}")
+            if sub.is_file():
+                path = sub
+                break
     try:
-        text = header(argv[0])
+        text = header(path)
     except OSError as e:
         print(f"supervisor help: {e}", file=sys.stderr)
         return 1

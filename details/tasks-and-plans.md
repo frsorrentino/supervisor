@@ -19,7 +19,10 @@ leave behind are attached to the next tasks of the same project.
 
 The closed-lane guard (`tasks.guard`, off by default) is a PreToolUse hook on
 Bash: `git push`, `gh release`, `npm publish` and `release.sh` pass only inside
-a running task of an approved plan, or after a recorded ok. `release.sh` counts
+a running task of an approved plan, or after a recorded ok. A task whose ok is
+recorded but that has not started yet (`task approve` on an assigned task leaves
+it assigned) is still denied, and the reason says to run `supervisor task start
+ID`, not that the ok is missing (22/11/2026). `release.sh` counts
 only as the command (`bash release.sh 1.0`, `./release.sh`), not as an argument
 (`grep … release.sh`). The hooks that block a push when the guard fails wait 30
 seconds, so a loaded machine does not block it by timeout.

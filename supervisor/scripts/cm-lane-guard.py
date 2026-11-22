@@ -59,6 +59,21 @@ def covered(con, cwd):
     return False, ""
 
 
+def waiting_start(con, cwd):
+    """22/11/2026 (supervisor-guardia-ok-start-22-11, nota supervisor-d5ee4048): l'id di un compito di questa cartella
+    che ha gia' l'ok registrato ma non e' ancora partito (assigned, o proposed dopo task approve), o None. Il push resta
+    negato, ma il rifiuto dice di lanciare `supervisor task start ID` invece di «non c'è un ok registrato»: il 22/11 una
+    sessione con l'ok in mano ha letto che l'ok mancava."""
+    real = os.path.realpath(cwd)
+    for r in con.execute("SELECT t.id, t.project FROM tasks t WHERE t.state IN ('assigned', 'proposed') ORDER BY t.id"):
+        proj = os.path.realpath(r["project"])
+        if real != proj and not real.startswith(proj.rstrip("/") + "/"):
+            continue
+        if con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL", (r["id"],)).fetchone():
+            return r["id"]
+    return None
+
+
 SEP = re.compile(r"&&|\|\||[;|\n]")
 QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
 
@@ -127,6 +142,9 @@ def decide(payload):
         return None
     if any(not ok for _, ok in bad):   # l'ok forse c'e': manca la cartella, non l'approvazione
         return cm.msg(cfg, "guard.lane_cd_unreadable", cmd=cmd.strip().splitlines()[0][:120])
+    tid = next((t for t in (waiting_start(con, d) for d, _ in bad) if t), None)
+    if tid:
+        return cm.msg(cfg, "guard.lane_needs_start", cmd=cmd.strip().splitlines()[0][:120], id=tid)
     return cm.msg(cfg, "guard.lane_closed", cmd=cmd.strip().splitlines()[0][:120])
 
 

@@ -272,8 +272,15 @@ effort_picker() {
   local levels=(low medium high xhigh max ultracode) sel=2 k k2
   draw() {
     printf '\033[2J\033[H   Effort\n   low   medium   high   xhigh   max   ultracode\n   now: %s\n' "${levels[$sel]}"
-    if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '   ←/→ to adjust · Enter to\n   confirm · s for this session\n   only · Esc to cancel\n'
-    else printf '   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel\n'; fi
+    # 22/11/2026: effort330 e' il piè della 2.1.330 (dal binario: lo stesso componente del selettore del modello);
+    # effort330-enter la sua variante senza il tasto s, dove Invio cambia solo questa sessione
+    case "$SCEN" in
+      *,effort330-enter,*) printf '   ←/→ to adjust · Enter to use this session only · Esc to cancel\n' ;;
+      *,effort330,*) if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '   ←/→ to adjust · s to use this\n   session only · Enter to save ·\n   Esc to cancel\n'
+                     else printf '   ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel\n'; fi ;;
+      *) if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '   ←/→ to adjust · Enter to\n   confirm · s for this session\n   only · Esc to cancel\n'
+         else printf '   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel\n'; fi ;;
+    esac
   }
   draw
   while IFS= read -rsn1 k; do
@@ -285,9 +292,11 @@ effort_picker() {
                  '[A'|'[B') draw ;;
                  *) printf '\033[2J\033[H  ⎿  Cancelled\n'; return ;;
                esac ;;
-      s) if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '\033[2J\033[H  ⎿  Set effort level to %s (this\n     session only): fake description\n' "${levels[$sel]}"
+      s) case "$SCEN" in *,effort330-enter,*) continue ;; esac
+         if [ "$(tput cols 2>/dev/null || echo 80)" -lt 60 ]; then printf '\033[2J\033[H  ⎿  Set effort level to %s (this\n     session only): fake description\n' "${levels[$sel]}"
          else printf '\033[2J\033[H  ⎿  Set effort level to %s (this session only): fake description\n' "${levels[$sel]}"; fi; return ;;
-      "") [ -n "${FAKE_CLAUDE_DEFAULT_LOG:-}" ] && echo "effort ${levels[$sel]}" >> "$FAKE_CLAUDE_DEFAULT_LOG"
+      "") case "$SCEN" in *,effort330-enter,*) printf '\033[2J\033[H  ⎿  Set effort level to %s (this session only): fake description\n' "${levels[$sel]}"; return ;; esac
+          [ -n "${FAKE_CLAUDE_DEFAULT_LOG:-}" ] && echo "effort ${levels[$sel]}" >> "$FAKE_CLAUDE_DEFAULT_LOG"
           printf '\033[2J\033[H  ⎿  Set effort level to %s (saved as your default for new sessions)\n' "${levels[$sel]}"; return ;;
     esac
   done

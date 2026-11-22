@@ -64,7 +64,10 @@ def last_message(row, cap=LAST_MAX):
 
 
 SHARE_TTL_S = 600    # 1.19: un /share/<id> che nessun comando ha letto sparisce dopo 10 minuti
-REPORT_TEXT_MAX = 4000
+# 22/11/2026 (supervisor-segnalazione-lunga-22-11): era 4000, e il 19/11 alle 16:11 una segnalazione dal telefono e' stata
+# rifiutata («text too long: at most 4000 characters»). Il testo arriva alla sessione intero: cm-talk lo scrive nel
+# pannello a pezzi (TMUX_CHUNK), oltre il tetto di un comando tmux. 20000 resta un argomento comodo per ssh e argv.
+REPORT_TEXT_MAX = 20000
 IMAGE_EXT = {"image/jpeg": "jpg", "image/png": "png"}
 
 

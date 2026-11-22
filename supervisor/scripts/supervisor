@@ -35,22 +35,43 @@ esac
 # esegue MAI. Prima `restore --help` eseguiva il ripristino, `launch -h` prendeva «-h» per una cartella, e `relay
 # --help`, `wait --help`, `inbox --help` uscivano con un errore o facevano altro. L'aiuto e' l'intestazione dello script
 # del comando (cm-help.py), che si trova leggendo la riga del comando nel `case` qui sotto: un punto solo, per tutti.
-help_of() {  # <cmd>: 0 con l'aiuto stampato, 1 se il comando non ha uno script (allora decide il `case`)
-  local c="$1" f
+# 22/11/2026 (supervisor-help-ignorato-22-11): --help o -h in QUALUNQUE posizione prima di «--», non solo subito dopo il
+# comando: `relay setup --help` ripubblicava le regole del database e riscriveva config.json, `task list --help`
+# stampava l'elenco dei compiti. Con un sottocomando che ha uno script suo (relay setup -> cm-relay-setup.py) l'aiuto e'
+# quello. E un'opzione lunga che il comando non conosce esce con 2 prima che il comando parta (cm-args.py), invece di
+# essere ignorata: un controllo solo per tutti i comandi, non una toppa per comando.
+script_of() {  # <cmd>: il file dello script del comando, letto dalla sua riga nel `case` qui sotto
+  local c="$1"
   case "$c" in *[!a-z0-9-]*|"") return 1 ;; esac
-  f="$(awk -v c="$c" '
+  awk -v c="$c" '
         !hit && $0 ~ "^  ([a-z0-9-]+[|])*" c "([|][a-z0-9-]+)*[)]" { hit = 1; n = 0 }
         hit { if (match($0, /\$S\/[A-Za-z0-9_.\/-]+/)) { print substr($0, RSTART + 3, RLENGTH - 3); exit } if (++n > 3) exit }
-      ' "${BASH_SOURCE[0]}")"
-  [ -n "$f" ] && [ -f "$S/$f" ] || return 1
-  python3 "$S/cm-help.py" "$S/$f" "$c"
+      ' "${BASH_SOURCE[0]}"
 }
-case "${1:-}" in
-  -h|--help)
-    case "$cmd" in
-      help|--help|-h|version|--version|-v|root) ;;
-      *) if help_of "$cmd"; then exit 0; fi ;;
-    esac ;;
+help_of() {  # <cmd> [<sub>]: 0 con l'aiuto stampato, 1 se il comando non ha uno script (allora decide il `case`)
+  local f
+  f="$(script_of "$1")"
+  [ -n "$f" ] && [ -f "$S/$f" ] || return 1
+  python3 "$S/cm-help.py" "$S/$f" "$1" ${2:+"$2"}
+}
+want_help=""; long_opt=""
+for a in "$@"; do
+  case "$a" in
+    --) break ;;
+    -h|--help) want_help=1 ;;
+    --?*) long_opt=1 ;;
+  esac
+done
+case "$cmd" in
+  help|--help|-h|version|--version|-v|root) ;;
+  *)
+    if [ -n "$want_help" ]; then
+      sub=""; case "${1:-}" in -*|"") ;; *) sub="$1" ;; esac
+      if help_of "$cmd" "$sub"; then exit 0; fi
+    elif [ -n "$long_opt" ]; then
+      f="$(script_of "$cmd")"
+      if [ -n "$f" ] && [ -f "$S/$f" ]; then python3 "$S/cm-args.py" "$cmd" "$S/$f" "$@" || exit 2; fi
+    fi ;;
 esac
 
 unported() {  # <cmd> <fase> <equivalente legacy>

@@ -556,6 +556,24 @@ def _set_model(name, wanted):
     return 0
 
 
+# 22/11/2026 (supervisor-effort-telefono-22-11): il 19/11 alle 20:04 /effort dal telefono ha risposto
+# «/effort non si è aperto». Causa: il piè del selettore di /effort e' cambiato. Claude Code fino alla 2.1.26x scriveva
+# «s for this session only»; la 2.1.330 (letto nel suo binario) usa per /effort lo stesso piè del selettore del modello,
+# «←/→ to adjust · s to use this session only · Enter to save · Esc to cancel», e cm-tune aspettava solo la frase vecchia:
+# il selettore era aperto, ma dopo l'attesa partiva l'Esc e il rifiuto. Ora vale la parte comune, «this session only»
+# (sotto il prompt, come prima). E quando il piè offre «Enter to use this session only» senza il tasto s (la variante
+# della 2.1.330 in cui Invio non salva il default) si preme Invio: e' l'unico tasto che cambia solo questa sessione.
+# La conferma «Set effort level to …» puo' arrivare con le maiuscole del nome («xHigh»): si confronta senza.
+EFFORT_MARK = "this session only"
+
+
+def effort_session_key(scr):
+    foot = below_prompt(scr).lower()
+    if "enter to use this session only" in foot and "s to use this session only" not in foot and "s for this session only" not in foot:
+        return "Enter"
+    return "s"
+
+
 def _set_effort(name, level):
     if level not in efforts():
         print(M("tune.bad_effort", effort=level, choices=", ".join(efforts())))
@@ -567,21 +585,22 @@ def _set_effort(name, level):
     if not ok:
         print(M(f"tune.not_ready_{why}", name=name))
         return 3
-    if not open_picker(name, "/effort", "for this session only"):
-        cancel(name, "for this session only")
+    scr = open_picker(name, "/effort", EFFORT_MARK)
+    if not scr:
+        cancel(name, EFFORT_MARK)
         print(M("tune.no_picker", name=name, what="/effort"))
         return 4
     # il cursore parte dal livello attuale: prima tutto a sinistra (low), poi avanti fino al livello voluto
     keys(name, *(["Left"] * len(ORDER)), *(["Right"] * ORDER.index(level)))
     pat = r"Set effort level to (\w+) \(this session only\)"
     before = len(re.findall(pat, flat(screen(name))))
-    keys(name, "s", pause=0.3)
+    keys(name, effort_session_key(scr), pause=0.3)
     got = wait_new(name, pat, before)
     if not got:
-        cancel(name, "for this session only")
+        cancel(name, EFFORT_MARK)
         print(M("tune.no_confirm", name=name))
         return 4
-    if got != level:
+    if got.lower() != level:
         print(M("tune.effort_other", name=name, got=got, effort=level))
         return 4
     remember(name, effort=level)
@@ -667,6 +686,24 @@ def bind(name):
 
 
 def main(argv):
+    """22/11/2026 (supervisor-effort-telefono-22-11): un errore della console di un altro host (la sessione su win non
+    gira piu', l'host non risponde) usciva come traceback, e il telefono leggeva la sua ultima riga in inglese
+    («cm_adapters.HostError: remote: not running»). Ora una riga in italiano e uscita 1."""
+    try:
+        return _main(argv)
+    except Exception as e:   # noqa: BLE001 — solo gli errori di un host (HostError ha `code`); gli altri come prima
+        code = getattr(e, "code", None)
+        if not isinstance(code, str) or len(argv) < 2:
+            raise
+        name, detail = argv[1], str(getattr(e, "detail", "") or "")
+        if code == "remote" and "not running" in detail:
+            print(M("tune.remote_gone", name=name))
+        else:
+            print(M(f"host.err_{code}", name=name, detail=detail or code))
+        return 1
+
+
+def _main(argv):
     if argv[:1] == ["apply-pending"] and len(argv) == 2:
         if not bind(argv[1]):
             print(M("tune.no_session", name=argv[1]))
