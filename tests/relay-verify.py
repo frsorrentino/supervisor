@@ -3327,7 +3327,9 @@ n_old52 = len(got52)
 RL.attention_reminders(old52, 1789210000)
 RL.attention_reminders(old52, 1789210060)
 RL.rdir, RL.emit = _rd, _em
-T.check("R52 (1.68) an item first seen already old (after a restart) does not fire its past reminders at once", len(got52) == n_old52, str(got52[n_old52:]))
+T.check("R52 (1.68) an item first seen already old (after a restart) does not fire its past reminders at once",
+        not [g for g in got52[n_old52:] if g[0] == "attention_reminder"], str(got52[n_old52:]))
+got52 = [g for g in got52 if g[0] == "attention_reminder"]   # 1.160: la voce di full52 sparita manda anche attention_closed
 T.check("R52 (1.68) attention_reminder after 10 and after 30 minutes, once each, while the item is open",
         [g[0] for g in got52] == ["attention_reminder", "attention_reminder"] and "(10 min)" in got52[0][1] and "(30 min)" in got52[1][1] and got52[0][2] == "pix-docs", str(got52))
 

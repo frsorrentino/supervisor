@@ -1821,6 +1821,17 @@ def parse_undo(args, verb):
     return (UNDO_VALUES[str(undo).strip().lower()] if undo is not None else None), (" ".join(how.split()) if how else None)
 
 
+def silence_ok(task, approval=None, prove=None):
+    """1.160 (23/11/2026): se il silenzio assenso si puo' mettere su questa carta (approval, la riga aperta) o su queste
+    prove, con le stesse regole di silence_set e di --silenzio: mai per una scelta fra opzioni, mai per cio' che esce o
+    costa. L'app mostra «Dai per risolto se tace» solo quando e' vero, senza una regola sua."""
+    if approval is not None:
+        if approval["options"]:
+            return False
+        return not silence_forbidden(task, approval["what"] or "", approval["where_"] or "")
+    return not silence_forbidden(task, " ".join(str(r["fai"] or "") for r in prove or []), "")
+
+
 def _contract_task(row):
     return json.loads(row["contract"])["task"]
 
@@ -2262,6 +2273,7 @@ def prove_list(con, now_=None):
                 base["files"] = files_of(r["files"])
             if r["silence_until"]:   # 1.159: silenzio assenso, la scadenza
                 base["silence_until"] = int(r["silence_until"])
+            base["silence_ok"] = silence_ok(task, prove=[r])   # 1.160: la stessa regola del registro
             if r["result"] == "ko":
                 ko.append(dict(base, text=r["result_text"], at=r["result_at"], session=sess))
             elif r["result"] is None:
@@ -2412,7 +2424,8 @@ def decisions(con, now_=None, snoozed=False):
                                                  where="here", untested=a["untested"] if a else None, undo=a["undo"] if a else None, undo_how=a["undo_how"] if a else None,
                                                  precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None,
                                                  files=files_of(a["files"]) if a else None, advice=advice_of(a["advice"]) if a else None,
-                                                 silence_until=int(a["silence_until"]) if a and a["silence_until"] else None)))
+                                                 silence_until=int(a["silence_until"]) if a and a["silence_until"] else None,
+                                                 silence_ok=silence_ok(t, approval=a) if a else False)))
             continue
         pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         if pz and pz["waits"] == "person" and not prove_pending(con, tid):
@@ -2953,6 +2966,11 @@ def main(argv):
             for r in rows:
                 a = con.execute("SELECT what, where_, at, options, advice, silence_until FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
                 r["request"] = {"what": a["what"], "where": a["where_"], "at": a["at"]} if a else None
+                if a:   # 1.160: se il silenzio assenso si puo' mettere su questa carta
+                    try:
+                        r["request"]["silence_ok"] = silence_ok(json.loads(con.execute("SELECT contract FROM tasks WHERE id=?", (r["id"],)).fetchone()["contract"])["task"], approval=a)
+                    except (ValueError, KeyError, TypeError):
+                        r["request"]["silence_ok"] = False
                 if a and a["silence_until"]:   # 1.159: silenzio assenso, la scadenza
                     r["request"]["silence_until"] = int(a["silence_until"])
                 if a and advice_of(a["advice"]):   # 1.149: il consiglio di chi chiede

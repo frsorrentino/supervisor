@@ -519,6 +519,7 @@
   "tasks.silence_off": "{task}: silenzio assenso tolto, si aspetta la risposta",
   "relay.cmd_silence_bad_arg": "silence: «{arg}» non è l'id di un compito",
   "relay.cmd_silence_bad_text": "silence: «{text}» non va: 3d, 48h, una data (2026-11-26) oppure off",
+  "relay.event_attention_closed": "Risolto altrove",
   "sessions.bg": "in background (--bg): qui niente /logout",
   "sessions.bg_logout": "AVVISO sessioni --bg: da Claude Code 2.1.323 un /logout dato in una sessione in background scollega TUTTE le sessioni di questo PC e cancella i login MCP e i segreti dei plugin. supervisor non può fermarlo: /logout non passa dagli hook. Per cambiare account esci dalla sessione (claude stop <id>) e fai claude auth logout / claude auth login da un terminale, a sessioni chiuse.",
   "park.usage": "uso: supervisor park <nome> [--force] | --idle-over <durata> | --ram-below <MB> [--auto] | --list   [--dry-run]",

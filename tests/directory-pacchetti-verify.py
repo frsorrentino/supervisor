@@ -25,7 +25,13 @@ DP6 cm-remote.ps1: niente funzione Ver, niente `cmd /c` con l'eseguibile in una 
 DP7 cm-remote.sh: niente `"$@"` che lancia un comando qualsiasi; ogni strumento chiamato per nome
 DP8 cm-remote.sh: tar con le opzioni lunghe unite al valore (--file=, --directory=), la lettura di gh con le opzioni lunghe
 DP9 probe (sh) da' le stesse versioni di prima: quelle che gli strumenti stampano chiamati a mano; unpack e pack vanno
+
+Terza passata (23/11/2026): la convalida del portale sui rami di prova (prova-pacchetti-h e shfix) ha trovato la riga del
+sh: la sonda WebGL, `"$c" ... --dump-dom "file://$page"`, una parola nota solo a esecuzione dove il controllo cerca il verbo.
+DP10 cm-remote.sh: la sonda apre cm-webgl.html col suo nome dalla sua cartella; un Chrome finto che risponde solo se la
+     pagina gli arriva cosi' da' il renderer a probe --webgl
 """
+import os
 import re
 import subprocess
 import sys
@@ -121,6 +127,20 @@ want = {"node": by_hand("node", "--version"), "git": by_hand("git", "--version")
 T.check("DP9 probe (sh): the tools' versions are the ones they print by hand",
         bool(tools) and all(tools.get(k) == v for k, v in want.items()) and set(tools) >= {"node", "ffmpeg", "python", "git", "tmux", "claude", "tar", "chrome"},
         f"{tools} {want} {pr.stderr[-300:]}")
+
+# DP10: la sonda WebGL col nome della pagina in chiaro
+web = [ln for ln in sh_code if "--dump-dom" in ln]
+fakebin = root / "fakebin"
+fakebin.mkdir()
+(fakebin / "google-chrome").write_text('#!/bin/sh\nlast=""; for x in "$@"; do last="$x"; done\n'
+                                       '[ "$last" = cm-webgl.html ] && [ -f cm-webgl.html ] && echo \'<p>CMWEBGL{"renderer":"FakeGL 9","ms":4.5}CMWEBGL</p>\'\n')
+(fakebin / "google-chrome").chmod(0o755)
+pw = subprocess.run(["sh", str(REMOTE / "cm-remote.sh"), str(root / "probe"), "probe", "--webgl"], capture_output=True, text=True, timeout=120,
+                    env=dict(os.environ, PATH=f"{fakebin}:{os.environ.get('PATH', '')}"))
+wj = _json.loads(pw.stdout.split("@@CM-JSON@@")[-1].strip().splitlines()[0]).get("webgl") if "@@CM-JSON@@" in pw.stdout else None
+T.check("DP10 cm-remote.sh: the WebGL probe opens cm-webgl.html by its plain name from its folder, and the renderer comes back",
+        len(web) == 1 and "--dump-dom cm-webgl.html" in web[0] and "file://" not in web[0] and (wj or {}).get("renderer") == "FakeGL 9"
+        and (wj or {}).get("ms") == 4.5, "\n".join(web) + f" {wj} {pw.stderr[-300:]}")
 
 # unpack e pack: tar con le opzioni lunghe fa quello che faceva
 jd = root / "jobs" / "jp"

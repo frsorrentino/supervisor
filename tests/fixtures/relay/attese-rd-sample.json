@@ -96,6 +96,7 @@
           "deploy": false
         },
         "files": null,
+        "silence_ok": false,
         "link": "https://app.example.test/#/attesa/w17f9a258a0",
         "label": "decide",
         "label_text": "Decidi",
@@ -155,7 +156,8 @@
             },
             "text_field": "reason"
           }
-        ]
+        ],
+        "blocking": true
       },
       {
         "id": "wdd48019c59",
@@ -196,6 +198,7 @@
           }
         ],
         "build": "1.4.0-rc2",
+        "silence_ok": true,
         "link": "https://app.example.test/#/attesa/wdd48019c59",
         "label": "verify",
         "label_text": "Verifica",
@@ -232,7 +235,8 @@
             },
             "text_field": "text"
           }
-        ]
+        ],
+        "blocking": true
       },
       {
         "id": "w20a798a5c0",

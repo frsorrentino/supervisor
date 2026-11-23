@@ -221,9 +221,16 @@ def need_of(a):
 def waiting():
     """Le voci aperte che aspettano la persona (Tocca a te), col link dell'app."""
     try:
-        return [a for a in _load("cm-attese").collect() if a.get("state", "open") == "open"]
+        AT = _load("cm-attese")
+        items = [a for a in AT.collect() if a.get("state", "open") == "open"]
     except Exception:   # noqa: BLE001 — senza registro ne' stato il recap esce lo stesso
         return []
+    # 23/11/2026 (supervisor-promemoria-carte-23-11): prima le carte di ok, scelta e prova di un compito non in pausa
+    try:
+        first = {a["id"] for a in AT.blocking_cards(items, AT.held_tasks())}
+    except Exception:   # noqa: BLE001
+        first = set()
+    return [a for a in items if a["id"] in first] + [a for a in items if a["id"] not in first]
 
 
 def night_queue():

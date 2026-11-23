@@ -1132,6 +1132,13 @@ def fit_state(state, max_kb=8):
         a.pop("advice", None)
     if fits():
         return state
+    # 1.160 (23/11/2026): il titolo delle voci «card» di attention cade subito dopo: la voce resta (il promemoria, il
+    # conto, il wid), il titolo l'app lo legge dalla voce di attese con lo stesso wid
+    for x in state.get("attention") or []:
+        if x.get("kind") == "card":
+            x["title"] = ""
+    if fits():
+        return state
     # 1.158: le voci dei sottoagenti (fino a ~600 byte a sessione) cadono subito dopo, prima delle sessioni finite e
     # di quelle delle vive: i conti n, running e at restano, l'elenco c'e' con l'op subagents
     for s in sorted(state.get("sessions") or [], key=lambda s: s.get("state") != "gone"):

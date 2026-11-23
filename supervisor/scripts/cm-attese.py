@@ -111,6 +111,7 @@ def registry_items(now_):
                     a["files"] = it.get("files") or None   # 1.137: i file da guardare (wait-ok --files)
                     if it.get("silence_until") and kind == "ok":   # 1.159: silenzio assenso, la scadenza
                         a["silence_until"] = int(it["silence_until"])
+                    a["silence_ok"] = kind == "ok" and it.get("silence_ok") is True   # 1.160: la regola del registro
                     a["_advice"] = it.get("advice")   # 1.149: il consiglio di chi chiede
                     a["_card"] = tk.card_of(con, it["task"])   # 1.137: la scheda e i suoi giri
                     out.append(a)
@@ -144,6 +145,7 @@ def registry_items(now_):
                         "answer": {"op": "prova", "arg": ",".join(map(str, ids))},
                         # 1.151: ogni prova, con la sua build: l'app dice «installa prima» per quelle di un'altra versione
                         "tests": [_test(x, "todo") for x in xs], "build": max(xs, key=lambda x: (int(x.get("at") or 0), x["id"])).get("build")})
+            out[-1]["silence_ok"] = all(x.get("silence_ok") is True for x in xs)   # 1.160: la regola del registro
             if all(x.get("silence_until") for x in xs):   # 1.159: la scadenza della voce = l'ultima delle sue prove
                 out[-1]["silence_until"] = max(int(x["silence_until"]) for x in xs)
         for x in p.get("ko") or []:   # 1.151: segnalata «Non va»; si chiude con «Ora va» o «Non serve piu'»
@@ -160,6 +162,26 @@ def registry_items(now_):
 
 
 _from_registry = registry_items   # il nome di prima
+
+CARD_KINDS = ("ok", "choice", "prova")   # 1.160: le carte che bloccano un compito in corso
+
+
+def held_tasks():
+    """1.160 (23/11/2026, supervisor-promemoria-carte-23-11): i compiti con una pausa aperta (la persona o un'attesa
+    esterna): le loro carte non sono un compito in corso che aspetta. Un insieme vuoto senza registro."""
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return set()
+    try:
+        return {r[0] for r in con.execute("SELECT DISTINCT task FROM pauses WHERE resumed_at IS NULL")}
+    finally:
+        con.close()
+
+
+def blocking_cards(items, held):
+    """1.160: le voci di attese che sono una carta di ok, di scelta o di prova di un compito non in pausa."""
+    return [a for a in items if a.get("type") == "carta" and a.get("kind") in CARD_KINDS and a.get("task") and a["task"] not in held]
 
 
 def raccolta_items(now_):

@@ -1678,6 +1678,8 @@ def approvals_list():
         a.update({k: S.one_line(str(req[k]))[:300] for k in ("untested", "undo", "undo_how") if req.get(k)})
         if isinstance(req.get("silence_until"), int):   # 1.159: silenzio assenso, la scadenza
             a["silence_until"] = req["silence_until"]
+        if "silence_ok" in req:   # 1.160: la regola del registro, l'app non ne ha una sua
+            a["silence_ok"] = req["silence_ok"] is True
         if isinstance(req.get("also"), list) and req["also"]:   # compito dal piano
             a["also"] = [{"task": str(x.get("task")), "short": str(x.get("short") or "")} for x in req["also"]]
         if isinstance(req.get("precedent"), dict):
@@ -2289,6 +2291,12 @@ def attese_view(full, now, rows=None, write=True):
             return None
         reg = copy.deepcopy(_ATTESE["reg"])
     items = AT.collect(int(now), state=full, alias=state_alias(rows), registry=reg)
+    try:
+        held = _memo("attese_held", AT.held_tasks, ttl=60, deps=[tasks_version])
+    except Exception as e:   # noqa: BLE001 — senza pause lette nessuna carta e' tenuta fuori
+        log(f"attese: pause non lette ({e})")
+        held = set()
+    card_attention(full, items, held, now)
     rev = S.attese_rev(items)
     ids = [a["id"] for a in items]
     cur = set(ids)
@@ -2313,6 +2321,31 @@ def attese_view(full, now, rows=None, write=True):
         else:
             s.pop("tocca", None)
     return items
+
+
+CARD_TITLE_MAX = 80   # 1.160: il titolo di una voce «card» di attention (l'intero sta nella voce di attese)
+
+
+def card_attention(full, items, held, now):
+    """1.160 (23/11/2026, supervisor-promemoria-carte-23-11: una carta di app-silenzio-assenso-23-11 e' rimasta aperta
+    cinque ore senza un promemoria, perche' «Serve te» aveva solo domande, turni falliti, quote e compiti rossi). Le carte
+    di ok, di scelta e di prova di un compito non in pausa entrano in state.attention come kind «card» {session, ref = wid
+    = l'id dell'attesa, task, card_kind ok|choice|prova, title, since, closes answer}, e la loro voce di attese ha
+    blocking: true. Si chiudono quando la carta ha risposta, da qualsiasi via: la voce di attese esce, e con lei questa."""
+    cards = AT_blocking(items, held)
+    att = [x for x in full.get("attention") or [] if x.get("kind") != "card"]
+    for a in cards:
+        a["blocking"] = True
+        att.append({"kind": "card", "session": a.get("session"), "ref": a["id"], "wid": a["id"], "task": a["task"], "card_kind": a["kind"],
+                    "title": (a.get("title") or "")[:CARD_TITLE_MAX], "since": int(a.get("at") or now), "closes": "answer"})
+    if att:
+        full["attention"] = sorted(att, key=lambda x: (int(x.get("since") or 0), x.get("session") or ""))
+    else:
+        full.pop("attention", None)
+
+
+def AT_blocking(items, held):
+    return attese_mod().blocking_cards(items, held)
 
 
 def commitments_list():
@@ -2874,11 +2907,23 @@ def emit(kind, title, body, ref=None, account=None, now=None, session=None, extr
         if not k:
             raise OSError("local only")
         # 1.148: un evento che non nasce dal diff non cambia /state: la sveglia porta l'impronta di quello che c'e' gia'
-        fcm_send({"kind": kind, "session": session, "ts": now, "key": ev["key"], **fcm_pub(last.get("pub"))})
+        fcm_send({"kind": kind, "session": session, "ts": now, "key": ev["key"], **({"quiet": "1"} if ev.get("quiet") else {}),
+                  **fcm_attention(kind, ev), **fcm_pub(last.get("pub"))})
     except (urllib.error.URLError, OSError, ValueError) as ex:
         log(f"fcm FAILED ({kind}): {ex}")
     log(f"evento {kind}: {ev['title']}")
     return ev
+
+
+FCM_ATTENTION_KINDS = ("attention_reminder", "attention_closed")
+
+
+def fcm_attention(kind, ev):
+    """1.160 (23/11/2026): la sveglia di un promemoria e della sua chiusura porta ref e wid, cosi' il service worker della
+    web (che non legge /events) toglie la notifica giusta; per gli altri eventi niente."""
+    if kind not in FCM_ATTENTION_KINDS:
+        return {}
+    return {k: str(ev[k]) for k in ("ref", "wid") if ev.get(k)}
 
 
 def prune_events(now):
@@ -5261,29 +5306,50 @@ def attention_done(cmd, arg):
 
 
 REMIND_AFTER_S = (600, 1800)   # 1.68: promemoria di una voce di «Serve te» ancora aperta dopo 10 e dopo 30 minuti
+# 1.160 (23/11/2026, supervisor-promemoria-carte-23-11): le soglie per tipo; una carta di un compito dopo 1 e dopo 3 ore
+REMIND_AFTER_BY_KIND = {"card": (3600, 10800)}
+
+
+def remind_after(kind):
+    return REMIND_AFTER_BY_KIND.get(kind, REMIND_AFTER_S)
 
 
 def attention_reminders(full, now):
     """1.68 (14/10): per ogni voce di state.attention ancora aperta, un evento attention_reminder dopo 10 e dopo 30
-    minuti, una volta ciascuno (reminders.json); le voci chiuse escono dal file."""
+    minuti, una volta ciascuno (reminders.json); le voci chiuse escono dal file. 1.160: le soglie per tipo
+    (remind_after: una carta dopo 1 e dopo 3 ore) e, per ogni voce che c'era al giro di prima e ora no (chiusa da un
+    dispositivo, dal terminale, dalla master o da sola), un evento attention_closed quieto con ref, wid e
+    attention_kind: telefono e orologio tolgono la notifica gia' mostrata."""
     items = full.get("attention") or []
     p = rdir() / "reminders.json"
     sent = read_json(p, {})
     live = {}
     for x in items:
         key = f"{x.get('kind')}|{x.get('ref')}|{x.get('since')}"
+        steps = remind_after(x.get("kind"))
         if key not in sent:
             # vista ora per la prima volta (dopo un riavvio, o una voce nata gia' vecchia): le soglie gia' passate non
             # suonano tutte insieme, contano solo quelle che si passano da qui in poi
-            live[key] = [a for a in REMIND_AFTER_S if now - float(x.get("since") or now) >= a]
+            live[key] = [a for a in steps if now - float(x.get("since") or now) >= a]
             continue
         done = list(sent.get(key) or [])
-        for after in REMIND_AFTER_S:
+        for after in steps:
             if after not in done and now - float(x.get("since") or now) >= after:
                 done.append(after)
                 emit("attention_reminder", M("relay.event_attention_reminder", min=after // 60, title=S.one_line(x.get("title") or "")[:120]), "",
-                     ref=x.get("ref"), session=x.get("session"), extra={"attention_kind": x.get("kind")})
+                     ref=x.get("ref"), session=x.get("session"), extra={"attention_kind": x.get("kind"), "wid": x.get("wid")})
         live[key] = done
+    open_now = {(str(x.get("kind")), str(x.get("ref"))) for x in items}
+    for key in sent:
+        kind, ref, _since = (key.split("|", 2) + ["", ""])[:3]
+        if key in live or (kind, ref) in open_now:
+            continue
+        try:
+            wid_ = ref if kind == "card" else S.wid_attention({"kind": kind, "ref": ref, "session": ref, "since": int(_since)})
+        except (TypeError, ValueError):
+            wid_ = None
+        emit("attention_closed", M("relay.event_attention_closed"), "", ref=ref,
+             extra={"attention_kind": kind, "wid": wid_, "quiet": True})
     if live != sent:
         write_json(p, live)
 

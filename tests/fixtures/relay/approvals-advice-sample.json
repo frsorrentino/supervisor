@@ -12,7 +12,8 @@
         "text": "Tested on staging; a tag undoes it",
         "approve": true
       },
-      "wid": "wd2f87e85e2"
+      "wid": "wd2f87e85e2",
+      "silence_ok": false
     },
     {
       "task": "atlas-checkout-layout",
@@ -29,7 +30,8 @@
         "text": "Fewer steps to pay",
         "option": "Strada A"
       },
-      "wid": "w4b90c5f596"
+      "wid": "w4b90c5f596",
+      "silence_ok": false
     }
   ]
 }

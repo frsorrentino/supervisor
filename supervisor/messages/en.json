@@ -519,6 +519,7 @@
   "tasks.silence_off": "{task}: silent consent removed, waiting for the answer",
   "relay.cmd_silence_bad_arg": "silence: «{arg}» is not a task id",
   "relay.cmd_silence_bad_text": "silence: «{text}» is not valid: 3d, 48h, a date (2026-11-26) or off",
+  "relay.event_attention_closed": "Settled elsewhere",
   "sessions.bg": "in the background (--bg): no /logout here",
   "sessions.bg_logout": "WARNING, --bg sessions: since Claude Code 2.1.323 a /logout given in a background session signs out EVERY session on this PC and deletes the MCP logins and the plugins' secrets. supervisor cannot stop it: /logout does not go through the hooks. To change account, leave the session (claude stop <id>) and run claude auth logout / claude auth login from a terminal, with the sessions closed.",
   "park.usage": "usage: supervisor park <name> [--force] | --idle-over <duration> | --ram-below <MB> [--auto] | --list   [--dry-run]",

@@ -1573,3 +1573,12 @@ Contract 1.159 (23/11/2026, asked by the maintainer: an ok or a test of personal
 - **History:** a row of op `done` (`supervisor task closed --json`) closed by silent consent has `"silence": {"kind": "ok"|"prova", "until"}`, `outcome` stays `green`; the round of the card (op `attesa`, `rounds[]`) has `state: "silence"`, `reason` «silenzio assenso: nessuna risposta entro le …», `by` «silenzio assenso»; the task's steps have kind `silence` (closed) or `silence-red` (expired with a red check). Never `approved` nor `chosen`: no ok row with a name.
 - The morning recap has the section «SILENZIO ASSENSO» with what closed and what stayed red in the last 24 hours. For 14 days a `task add` of a bug on the same project prints `supervisor task defect-of NEW OLD`.
 - Test: `tests/silenzio-assenso-verify.py` (SI1-SI8).
+
+Contract 1.160 (23/11/2026, task supervisor-promemoria-carte-23-11: a card stayed open five hours without a reminder, because «Serve te» had only questions, failed turns, quotas and red tasks; the maintainer's condition: an answer given in one place holds everywhere at once). Additive, `v` stays 1.
+
+- **`state.attention[]` kind `card`**: the ok, choice and prova cards of a task with no open pause (neither for the person nor `--waits external`): `{kind: "card", session, ref, wid, task, card_kind: ok|choice|prova, title, since, closes: "answer"}`; `ref` = `wid` = the attese id; `title` at most 80 characters, emptied by `fit_state` right after the cards' advice (the item stays). No `attention_done`: it closes when the card is answered.
+- **`attese.items[].blocking`**: `true` on the item of such a card, absent on the others.
+- **`silence_ok`** (boolean, the registry's own rule for silent consent: never for a choice, never for what publishes or pays): on `attese.items[]` of kind ok, choice (always false) and prova (true only if true for each test), on `state.approvals[]`, on `groups[].prove[]` of op `prove`.
+- **Reminders by kind**: `attention_reminder` after 1 and 3 hours for a `card`, still 10 and 30 minutes for the others; the evening recap lists the blocking cards first.
+- **Event `attention_closed`** `{ref, wid, attention_kind, quiet: true}` (quiet also in the FCM wake-up): an attention item that was there at the round before and is gone now, closed from any place; phone and watch drop the notification already shown. The FCM wake-up of `attention_closed` and `attention_reminder` also carries `ref` and `wid` (the web's service worker does not read /events).
+- Test: `tests/promemoria-carte-verify.py` (PC1-PC6).
