@@ -380,7 +380,6 @@ function Cmd-Missing {
 }
 
 function Tar($argList) {
-    $o = cmd /c "tar.exe $argList 2>&1"
     if ($LASTEXITCODE -ne 0) { Fail "tar $argList : $($o -join ' ')" }
 }
 
@@ -417,9 +416,6 @@ function Write-Status($d, $state, $procId, $rc) {
 function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
     [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
-    $a = @('/d', '/s', '/c', "`"`"$bat`" >> `"$log`" 2>&1`"")
-    if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
-    Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
 }
 
 function Kill-Tree($procId) { if ($procId) { cmd /c "taskkill /T /F /PID $procId >nul 2>&1" } }

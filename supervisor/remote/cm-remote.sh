@@ -265,7 +265,6 @@ cmd_run_job() {
     [ -e "src/$ddir" ] || ln -s "$cache/$ddir" "src/$ddir"
   fi
   to=$(cat timeout.txt 2>/dev/null || echo 0)
-  ( cd src && exec sh -c "$(cat ../cmd.txt)" ) >> log.txt 2>&1 &
   child=$!; echo "$child" > child.pid
   write_status running "$child"
   el=0
