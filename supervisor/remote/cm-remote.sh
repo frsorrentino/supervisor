@@ -130,7 +130,7 @@ cmd_probe() {
   grep --quiet --no-messages --fixed-strings --regexp=_authToken "$HOME/.npmrc" && addc "~/.npmrc (token)"
   # nomi, mai valori; fuori le variabili di supervisor e di Claude Code stesso
   for v in $(env | cut -d= -f1 | grep -E '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' | grep -vE '^(CM_|CLAUDE_CODE_)|_KEYS$' || true); do
-    addc "env $v"; done
+    addc "$v (environment variable)"; done
   admin=false; [ "$(id -u)" = 0 ] && admin=true
   id -Gn 2>/dev/null | tr ' ' '\n' | grep -qxE 'sudo|wheel|admin' && admin=sudo
   [ "$admin" = sudo ] && admin='"sudo"'
