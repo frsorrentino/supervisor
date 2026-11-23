@@ -121,7 +121,7 @@ function Cmd-Probe {
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     # the names only, never the values; supervisor's own variables and Claude Code's are left out
     foreach ($n in ($envNames | Sort-Object -Unique)) {
-        if ($n -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $n -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$') { [void]$creds.Add('env ' + $n) }
+        if (($n -like '*TOKEN*' -or $n -like '*SECRET*' -or $n -like '*KEY*' -or $n -like '*PASSWORD*') -and -not ($n -like 'CM_*' -or $n -like 'CLAUDE_CODE_*' -or $n -like '*_KEYS')) { [void]$creds.Add('env ' + $n) }
     }
     $ck = (cmd /c 'cmdkey /list 2>nul') -join "`n"
     foreach ($m in [regex]::Matches($ck, '(?im)^\s*\S+:\s*(\S*git:\S+)')) { [void]$creds.Add("Credential Manager $($m.Groups[1].Value)") }
