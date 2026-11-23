@@ -125,8 +125,6 @@ cmd_probe() {
   # only reads gh's hosts.yml to report that a token is there; nothing is written
   grep --quiet --no-messages --fixed-strings --regexp=oauth_token "$HOME/.config/gh/hosts.yml" && addc "gh auth (~/.config/gh/hosts.yml)"
   for k in "$HOME"/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && addc "~/.ssh/$(basename "$k")" ;; esac; done
-  # only reads ~/.npmrc to report that a token is there; nothing is written
-  grep --quiet --no-messages --fixed-strings --regexp=_authToken "$HOME/.npmrc" && addc "~/.npmrc (token)"
   # nomi, mai valori; fuori le variabili di supervisor e di Claude Code stesso
   for v in $(env | cut -d= -f1 | grep -E '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' | grep -vE '^(CM_|CLAUDE_CODE_)|_KEYS$' || true); do
     addc "env $v"; done
