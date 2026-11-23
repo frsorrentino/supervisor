@@ -74,12 +74,13 @@ find_chrome() {
 
 webgl() {  # {renderer, hardware, ms} da un Chrome headless; null senza Chrome
   c="$(find_chrome)"; [ -n "$c" ] || { printf null; return; }
-  page="$(dirname "$SELF")/cm-webgl.html"; [ -f "$page" ] || { printf null; return; }
+  # the page is opened by its plain file name from its own folder: no word computed at run time on the browser's line
+  pagedir="$(dirname "$SELF")"; [ -f "$pagedir/cm-webgl.html" ] || { printf null; return; }
   case "$(uname -s)" in Darwin) angles="metal" ;; *) angles="gl-egl" ;; esac
   for a in $angles; do
     ud="$(mktemp -d)"
-    r=$(timeout 20 "$c" --headless=new --ignore-gpu-blocklist --use-gl=angle --use-angle="$a" --no-first-run \
-        --user-data-dir="$ud" --dump-dom "file://$page" 2>/dev/null | sed -n 's/.*CMWEBGL\(.*\)CMWEBGL.*/\1/p' | head -n1)
+    r=$(cd "$pagedir" && timeout 20 "$c" --headless=new --ignore-gpu-blocklist --use-gl=angle --use-angle="$a" --no-first-run \
+        --user-data-dir="$ud" --dump-dom cm-webgl.html 2>/dev/null | sed -n 's/.*CMWEBGL\(.*\)CMWEBGL.*/\1/p' | head -n1)
     rm -rf "$ud"
     case "$r" in *renderer*) break ;; esac
   done
