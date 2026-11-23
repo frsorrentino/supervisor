@@ -86,7 +86,6 @@ function WebGL {
     $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
     $url = 'file:///' + ($page -replace '\\', '/')
     $a = "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url"
-    $p = Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
     if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
     Start-Sleep -Milliseconds 300
     $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
@@ -120,14 +119,10 @@ function Cmd-Probe {
     if (Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('~\.npmrc (token)') }
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
-    $ck = (cmd /c 'cmdkey /list 2>nul') -join "`n"
     foreach ($m in [regex]::Matches($ck, '(?im)^\s*\S+:\s*(\S*git:\S+)')) { [void]$creds.Add("Credential Manager $($m.Groups[1].Value)") }
     $admin = [bool](([Security.Principal.WindowsIdentity]::GetCurrent()).Groups | Where-Object { $_.Value -eq 'S-1-5-32-544' })
-    $desk = [bool](Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue |
-                   Where-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User -eq $env:USERNAME })
     $power = $null
     try {
-        $q = (powercfg /q SCHEME_CURRENT SUB_SLEEP STANDBYIDLE) -join "`n"
         $hx = @([regex]::Matches($q, '0x[0-9a-fA-F]{8}') | ForEach-Object Value)
         if ($hx.Count -ge 2) { if ([Convert]::ToInt32($hx[-2], 16) -eq 0) { $power = 'no-sleep-on-ac' } else { $power = "sleep-on-ac-after-$([Convert]::ToInt32($hx[-2], 16))s" } }
     } catch {}
@@ -138,7 +133,6 @@ function Cmd-Probe {
     $w = $null; if ($webgl) { $w = WebGL }
     $b = $null
     if ($bench -and (Get-Command node -ErrorAction SilentlyContinue)) {
-        $bo = (cmd /c "node `"$(Join-Path $Here 'cm-bench.js')`" `"$Root`" 2>nul") | Select-Object -Last 1
         if ("$bo".StartsWith('{')) { $b = $bo | ConvertFrom-Json }
     }
     $chrome = Find-Chrome
@@ -146,11 +140,9 @@ function Cmd-Probe {
     $tools = New-Object System.Collections.Hashtable
     $tools['node'] = $null; $tools['ffmpeg'] = $null; $tools['python'] = $null; $tools['git'] = $null
     $tools['tmux'] = $null; $tools['claude'] = $null; $tools['tar'] = $null; $tools['chrome'] = $chrome
-    try { if (IsTool 'node.exe') { $tools['node'] = VersionIn (node.exe --version 2>&1) } } catch {}
     try { if (IsTool 'ffmpeg.exe') { $tools['ffmpeg'] = VersionIn (ffmpeg.exe -version 2>&1) } } catch {}
     try { if (IsTool 'python.exe') { $tools['python'] = VersionIn (python.exe --version 2>&1) } } catch {}
     try { if (IsTool 'git.exe') { $tools['git'] = VersionIn (git.exe --version 2>&1) } } catch {}
-    try { if (IsTool 'tar.exe') { $tools['tar'] = VersionIn (tar.exe --version 2>&1) } } catch {}
     try {
         if (IsTool 'claude.exe') { $tools['claude'] = VersionIn (claude.exe --version 2>&1) }
         elseif (IsTool 'claude.cmd') { $tools['claude'] = VersionIn (claude.cmd --version 2>&1) }
@@ -380,7 +372,6 @@ function Cmd-Missing {
 }
 
 function Tar($argList) {
-    $o = cmd /c "tar.exe $argList 2>&1"
     if ($LASTEXITCODE -ne 0) { Fail "tar $argList : $($o -join ' ')" }
 }
 
@@ -418,11 +409,8 @@ function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
     [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
     $a = @('/d', '/s', '/c', "`"`"$bat`" >> `"$log`" 2>&1`"")
-    if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
-    Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
 }
 
-function Kill-Tree($procId) { if ($procId) { cmd /c "taskkill /T /F /PID $procId >nul 2>&1" } }
 
 function Cmd-RunJob {
     $d = JobDir $Rest[0]; Set-Location $d
@@ -498,7 +486,6 @@ function Cmd-Detach {
         Out-J @{ ok = $true; id = "task:$name" }; return
     } catch { $why = "$_" }
     # ripiego: il processo nasce dal servizio WMI, fuori dal job object di sshd
-    $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = "powershell.exe $arg"; CurrentDirectory = $d }
     if ($r.ReturnValue -ne 0) { Fail "detach: task ($why), Win32_Process.Create rc $($r.ReturnValue)" }
     Out-J @{ ok = $true; id = "pid:$($r.ProcessId)"; fallback = $why }
 }
@@ -550,7 +537,6 @@ function Cmd-Clean {
     }
     Unregister-ScheduledTask -TaskPath '\supervisor\' -TaskName "cm-job-$id" -Confirm:$false -ErrorAction SilentlyContinue
     # le junction delle dipendenze si tolgono da sole, senza entrare nella cache a cui puntano
-    Get-ChildItem -Path $d -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue | ForEach-Object { cmd /c "rmdir `"$($_.FullName)`" 2>nul" }
     if (Test-Path $d) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue }
     if (Test-Path $d) { Fail "rm $d" }
     Out-J @{ ok = $true }
