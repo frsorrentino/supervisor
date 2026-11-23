@@ -277,7 +277,8 @@
     "results",
     "result_seen",
     "result_note",
-    "max_sessions_set"
+    "max_sessions_set",
+    "subagents"
   ],
   "slash": [
     "compact",
@@ -401,14 +402,14 @@
       "at": 1789207800,
       "kind": "push",
       "project": "personal/atlas-shop",
-      "text": "origin/checkout",
+      "text": "checkout",
       "url": "https://gh.io/a/tree/checkout"
     }
   ],
   "commitments": [
     {
       "task": "ledger-migrations-011",
-      "title": "Migrations on staging",
+      "title": "Staging migration",
       "short": "Migrations",
       "project": "work/clients/ledger-api",
       "session": "ledger-api",

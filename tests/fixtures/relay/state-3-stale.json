@@ -186,7 +186,8 @@
     "results",
     "result_seen",
     "result_note",
-    "max_sessions_set"
+    "max_sessions_set",
+    "subagents"
   ],
   "slash": [
     "compact",
@@ -274,7 +275,7 @@
   "commitments": [
     {
       "task": "orbit-docs-site",
-      "title": "Publish the orbit docs site",
+      "title": "Publish the docs",
       "short": "Orbit docs",
       "project": "work/own/orbit-docs",
       "session": "orbit-docs",

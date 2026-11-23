@@ -1,0 +1,1 @@
+{"agentType": "workflow-subagent", "isBuiltIn": true, "description": "fixture wf 2", "workflowPhase": "Author", "spawnDepth": 1, "requestShape": "foreground", "requestNonInteractive": false, "model": "sonnet", "pickedEffortModel": "claude-opus-5-5"}

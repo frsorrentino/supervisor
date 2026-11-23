@@ -500,6 +500,8 @@
   "timeline.wait_needs_you": "needs-you",
   "sessions.goal": "goal: «{goal}» ({n} controlli)",
   "sessions.idle_long": "idle da {hours} h: se non serve, supervisor close {name}",
+  "sessions.subagents": "sottoagenti: {n}",
+  "sessions.subagents_running": "sottoagenti: {n}, {running} in corso",
   "sessions.bg": "in background (--bg): qui niente /logout",
   "sessions.bg_logout": "AVVISO sessioni --bg: da Claude Code 2.1.323 un /logout dato in una sessione in background scollega TUTTE le sessioni di questo PC e cancella i login MCP e i segreti dei plugin. supervisor non può fermarlo: /logout non passa dagli hook. Per cambiare account esci dalla sessione (claude stop <id>) e fai claude auth logout / claude auth login da un terminale, a sessioni chiuse.",
   "park.usage": "uso: supervisor park <nome> [--force] | --idle-over <durata> | --ram-below <MB> [--auto] | --list   [--dry-run]",

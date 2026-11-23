@@ -47,6 +47,7 @@ USAGE_FIT = 5
 SYSTEM_ADVICE_MAX = 5   # 1.90: i consigli di system; fit_state li scende a SYSTEM_ADVICE_FIT e toglie i consumatori
 SYSTEM_ADVICE_FIT = 2
 DIRTY_MAX = 20   # 1.84: i file non committati in closed.dirty (il totale in dirty_n)
+SUBAGENT_ITEMS = 3   # 1.158: le voci di subagents nello stato (l'elenco lungo con l'op subagents)
 PUBLISHED_AT_BYTES = len(',"published_at":1789210801.123')   # il campo che _push aggiunge dopo fit_state
 RECAP_CUT = 80    # 1.7 fit_state: `done` e `next` del recap accorciati a fine parola invece di sparire per primi
 HIGH_WORDS = ["rm -rf", "git push", "deploy", "DROP", "ssh", "sudo", "--force", "git reset --hard"]
@@ -748,6 +749,35 @@ def build_session(row, src):
     # con qualunque nome, nella radice); assente sulle altre. L'app la riconosce da qui, non dal nome «master»
     if row.get("_master"):
         out["master"] = True
+    # 1.158 (23/11/2026, supervisor-sottoagenti-23-11): i sottoagenti che la sessione ha lanciato (Agent/Task, anche in
+    # background, i fork e gli agenti dei Workflow): {n, running, at, items, workflows?}, items al piu' 3 (in corso prima,
+    # poi i piu' recenti), l'elenco lungo con l'op subagents. Assente = nessuno
+    sub = (src.get("subagents") or {}).get(tmux)
+    if isinstance(sub, dict) and sub.get("n"):
+        out["subagents"] = subagents_field(sub, st != "gone")
+    return out
+
+
+def subagents_field(sub, alive=True, n_items=SUBAGENT_ITEMS):
+    """Il campo `subagents` di una sessione: i conti e le voci come le scrive cm-subagents; una sessione finita non ha
+    sottoagenti in corso."""
+    items = []
+    for it in (sub.get("items") or [])[:n_items]:
+        if not isinstance(it, dict):
+            continue
+        x = {k: it.get(k) for k in ("id", "type", "desc", "model", "bg", "depth", "started", "ended", "finished", "tokens")}
+        x["desc"] = one_line(str(x.get("desc") or ""))[:80]
+        if not alive and not x.get("finished"):
+            x["finished"] = True
+        for k in ("wf", "phase"):
+            if it.get(k):
+                x[k] = str(it[k])[:40]
+        items.append(x)
+    out = {"n": int(sub.get("n") or 0), "running": int(sub.get("running") or 0) if alive else 0, "at": sub.get("at"), "items": items}
+    wfs = [{"id": str(w.get("id") or "")[:40], "n": int(w.get("n") or 0), "running": int(w.get("running") or 0) if alive else 0}
+           for w in (sub.get("workflows") or []) if isinstance(w, dict)]
+    if wfs:
+        out["workflows"] = wfs[:n_items]
     return out
 
 
@@ -1102,6 +1132,15 @@ def fit_state(state, max_kb=8):
         a.pop("advice", None)
     if fits():
         return state
+    # 1.158: le voci dei sottoagenti (fino a ~600 byte a sessione) cadono subito dopo, prima delle sessioni finite e
+    # di quelle delle vive: i conti n, running e at restano, l'elenco c'e' con l'op subagents
+    for s in sorted(state.get("sessions") or [], key=lambda s: s.get("state") != "gone"):
+        sub = s.get("subagents")
+        if sub and (sub.get("items") or sub.get("workflows")):
+            sub["items"] = []
+            sub.pop("workflows", None)
+            if fits():
+                return state
     gone = sorted((s for s in state["sessions"] if s["state"] == "gone"), key=lambda s: s.get("since") or 0)
     for s in gone[:max(0, len(gone) - KEEP_GONE)]:
         state["sessions"].remove(s)

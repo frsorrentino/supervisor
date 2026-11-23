@@ -401,7 +401,8 @@
     "results",
     "result_seen",
     "result_note",
-    "max_sessions_set"
+    "max_sessions_set",
+    "subagents"
   ],
   "slash": [
     "compact",

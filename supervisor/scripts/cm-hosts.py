@@ -1145,6 +1145,10 @@ def remote_session_rows():
             if isinstance(s.get("api"), dict):
                 api = s["api"]
                 rows[-1].update(block=api.get("block") if isinstance(api.get("block"), dict) else None, api_last_at=_rs().utc_epoch(api.get("last_at")))
+            # 23/11 (supervisor-sottoagenti-23-11): i sottoagenti della sessione, dallo stato dell'host (cm-remote.ps1
+            # SubagentsOf, la forma di cm-subagents.summary); assente con l'aiutante di prima o senza sottoagenti
+            if isinstance(s.get("subagents"), dict):
+                rows[-1]["subagents"] = s["subagents"]
     return rows
 
 

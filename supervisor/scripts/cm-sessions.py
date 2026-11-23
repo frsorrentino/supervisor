@@ -742,6 +742,31 @@ def collect(read_screen=True):
 _HOSTS = None
 
 
+_SUB = None
+
+
+def subagent_counts(row):
+    """23/11/2026 (supervisor-sottoagenti-23-11): (lanciati, in corso) dei sottoagenti della sessione, o None se non ne
+    ha. Locale: la cartella accanto alla trascrizione (cm-subagents.counts); su un altro host: il campo `subagents` della
+    riga, dallo stato dell'host."""
+    global _SUB
+    try:
+        if row.get("host"):
+            sa = row.get("subagents")
+            return (int(sa.get("n") or 0), int(sa.get("running") or 0)) if isinstance(sa, dict) and sa.get("n") else None
+        t = transcript_of(row)
+        if not t:
+            return None
+        if _SUB is None:
+            spec = importlib.util.spec_from_file_location("cm_subagents", HERE / "cm-subagents.py")
+            _SUB = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(_SUB)
+        n, running = _SUB.counts(str(t)[:-len(".jsonl")], alive=row.get("status") != "dead")
+        return (n, running) if n else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def hosts_mod():
     global _HOSTS
     if _HOSTS is None:
@@ -843,6 +868,9 @@ def render(rows):
             note += "  <- " + m("sessions.low_priority_offered")
         if r.get("bg"):
             note += "  <- " + m("sessions.bg")
+        sub = subagent_counts(r)
+        if sub:
+            note += "  <- " + (m("sessions.subagents_running", n=sub[0], running=sub[1]) if sub[1] else m("sessions.subagents", n=sub[0]))
         if r.get("goal"):
             note += "  <- " + m("sessions.goal", goal=r["goal"][:60] + ("…" if len(r["goal"]) > 60 else ""), n=r.get("goal_iterations") or 0)
         lines.append(f"{r['pid']:<8} {r['account'][:13]:<13} {shown[:22]:<22} {state[:6]:<6} "

@@ -85,7 +85,7 @@ R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
 STREAM_SILENCE_S = 45   # keep-alive di Firebase ogni 30 s, piu' 15 di margine
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "favicon", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "favicon", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set", "subagents")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1419,6 +1419,7 @@ def collect_sources(now=None):
             pass
     inv = _memo("inventory", inventory, ttl=120)
     return {
+        "subagents": subagents_of(rows),   # 1.158
         "host": str(R.get("host") or socket.gethostname()),
         "root": cm.expand(CFG["workspace"]["root"]), "prefixes": prefixes(), "high_words": R.get("tier_high") or None,
         "account_kinds": S.kinds_of(CFG["accounts"], CFG.get("default_account") or ""),
@@ -3517,7 +3518,7 @@ def commands_from(ev, payload):
     return {}
 
 
-PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results", "attese", "attesa", "monitors", "thumb", "favicon")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
+PASSIVE_OPS = ("transcript", "screen", "last", "file", "projects", "search", "timeline", "pair_add", "night", "agenda", "changes", "diff", "studio", "nights", "done", "close_preview", "plugins", "kpi", "prove", "decisioni", "prima_raccolta", "seguiti", "conti", "results", "attese", "attesa", "monitors", "thumb", "favicon", "subagents")   # letture: non cambiano lo stato, vengono dopo i comandi dell'utente
 
 
 # 03/11/2026, misura del relay dal 02/11 (p95 dell'esecuzione): done 39 s, timeline 34 s, file 13 s, plugins 9 s, kpi
@@ -4057,6 +4058,35 @@ def _favicon_spawn(domains):
     """I siti da rinfrescare in un processo a parte, a bassa priorita': la rete non rallenta mai la push."""
     subprocess.Popen(["nice", "-n", "19", sys.executable, str(HERE / "cm-favicon.py"), "refresh", *domains],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+_SUB = [None]
+
+
+def subagents_of(rows):
+    """1.158 (23/11/2026, supervisor-sottoagenti-23-11): {tmux: riassunto dei sottoagenti} (cm-subagents.summary)
+    delle sessioni che ne hanno lanciati. Locali: la cartella accanto alla trascrizione; su un altro host: il campo
+    `subagents` della riga, dallo stato dell'host (cm-remote.ps1 status). Mai bloccare la push."""
+    out = {}
+    try:
+        if _SUB[0] is None:
+            _SUB[0] = _load("cm-subagents")
+        sa = _SUB[0]
+        for r in rows:
+            key = r.get("tmux") or r.get("name") or ""
+            if r.get("host") and r.get("host") != "local":
+                if isinstance(r.get("subagents"), dict):
+                    out[key] = r["subagents"]
+                continue
+            if not r.get("session_id"):
+                continue
+            d = sa.session_dir(core.transcript_of(r))
+            got = sa.summary(d, alive=r.get("status") != "dead") if d else None
+            if got:
+                out[key] = got
+    except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
+        pass
+    return out
 
 
 def favicons_of(rows):

@@ -1811,6 +1811,26 @@ def diff_op(session, tm, arg):
     return True, json.dumps(DF.redact_diff(hit["diff"]), ensure_ascii=False)
 
 
+def subagents_op(session, tm):
+    """1.158 (23/11/2026, supervisor-sottoagenti-23-11): l'elenco dei sottoagenti di una sessione, come il campo
+    `subagents` dello stato ma con fino a SA.OP_ITEMS voci. Per una sessione su un altro host le voci che porta lo stato
+    dell'host (al piu' tre). {"subagents": null} se non ne ha lanciati."""
+    row = session_row(tm)
+    if not row:
+        return False, M("relay.cmd_file_no_session", name=session or "?")
+    SA = _load("cm-subagents")
+    alive = row.get("status") != "dead"
+    if row.get("host") and row.get("host") != "local":
+        sub = row.get("subagents") if isinstance(row.get("subagents"), dict) else None
+    else:
+        d = SA.session_dir(core.transcript_of(row))
+        sub = SA.summary(d, alive=alive, n_items=SA.OP_ITEMS) if d else None
+    if not sub or not sub.get("n"):
+        return True, json.dumps({"subagents": None})
+    out = S.subagents_field(sub, alive, n_items=SA.OP_ITEMS)
+    return True, json.dumps({"subagents": out}, ensure_ascii=False)
+
+
 def changes_op(session, tm, arg):
     """1.72: la vista «Modifiche» di una sessione. arg null = tutta la cartella (50 file, 2000 righe), «file=<path>» = un
     file solo come lo elenca `files` (5000 righe). Con git tutto rispetto a HEAD (cm-diff.view); fuori da git, o per
@@ -2901,6 +2921,8 @@ def execute(cmd):
             return diff_op(session, tm, arg)
         if op == "changes":
             return changes_op(session, tm, arg)
+        if op == "subagents":   # 1.158
+            return subagents_op(session, tm)
         if op == "file":
             return file_open(cmd, session, tm, arg)
         if op == "slash":

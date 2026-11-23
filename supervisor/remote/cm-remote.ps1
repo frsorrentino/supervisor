@@ -216,6 +216,97 @@ function ApiState($cdPath, $e) {
     } catch { return $null }
 }
 
+function EpochOf($dt) { [int64](($dt.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds) }
+
+function SubTokens($jp) {
+    # {in, out, model} di una trascrizione di sottoagente: l'ultima usage di ogni message.id (Claude Code la ripete su
+    # ogni blocco del messaggio); in = input + cache scritta + cache letta. Come _usage di cm-subagents.py
+    $byId = @{}; $model = $null
+    try {
+        foreach ($l in [IO.File]::ReadLines($jp)) {
+            if ($l -notmatch '"type"\s*:\s*"assistant"') { continue }
+            try { $d = $l | ConvertFrom-Json } catch { continue }
+            if ($d.type -ne 'assistant' -or -not $d.message) { continue }
+            if ($d.message.model -and $d.message.model -ne '<synthetic>') { $model = [string]$d.message.model }
+            if ($d.message.usage) { $byId[[string]$d.message.id] = $d.message.usage }
+        }
+    } catch { return $null }
+    $tin = [int64]0; $tout = [int64]0
+    foreach ($u in $byId.Values) {
+        $tin += [int64]$u.input_tokens + [int64]$u.cache_creation_input_tokens + [int64]$u.cache_read_input_tokens
+        $tout += [int64]$u.output_tokens
+    }
+    @{ in = $tin; out = $tout; model = $model }
+}
+
+function SubagentsOf($cdPath, $e) {
+    # 23/11/2026 (supervisor-sottoagenti-23-11): i sottoagenti della sessione, come summary di cm-subagents.py:
+    # {n, running, at, items (al piu' 3: in corso prima, poi i piu' recenti), workflows}. Ogni sottoagente sta in
+    # <projects>\<slug>\<sid>\subagents\agent-<id>.meta.json + .jsonl; quelli di un Workflow in
+    # subagents\workflows\wf_*\, finiti quando journal.jsonl ha la loro riga result. Inizio = creazione della
+    # trascrizione, fine = la sua ultima scrittura; le trascrizioni si aprono solo per i token delle voci mostrate.
+    try {
+        $slug = ([string]$e.cwd) -replace '[^A-Za-z0-9]', '-'
+        $sub = Join-Path (Join-Path (Join-Path (Join-Path $cdPath 'projects') $slug) ([string]$e.sessionId)) 'subagents'
+    } catch { return $null }
+    if (-not (Test-Path -LiteralPath $sub)) { return $null }
+    $rows = New-Object System.Collections.ArrayList
+    foreach ($mp in @(Get-ChildItem -LiteralPath $sub -Filter 'agent-*.meta.json' -File -ErrorAction SilentlyContinue)) {
+        $meta = ReadJson $mp.FullName
+        [void]$rows.Add(@{ mp = $mp; meta = $meta; wf = $null; done = [bool]($meta -and $meta.finished -eq $true) })
+    }
+    $wfs = New-Object System.Collections.ArrayList
+    foreach ($wd in @(Get-ChildItem -LiteralPath (Join-Path $sub 'workflows') -Directory -Filter 'wf_*' -ErrorAction SilentlyContinue)) {
+        $results = @{}
+        try {
+            foreach ($l in [IO.File]::ReadLines((Join-Path $wd.FullName 'journal.jsonl'))) {
+                try { $j = $l | ConvertFrom-Json } catch { continue }
+                if ($j.agentId -and $j.type -eq 'result') { $results[[string]$j.agentId] = $true }
+            }
+        } catch {}
+        $w = @{ id = $wd.Name; n = 0; running = 0 }
+        foreach ($mp in @(Get-ChildItem -LiteralPath $wd.FullName -Filter 'agent-*.meta.json' -File -ErrorAction SilentlyContinue)) {
+            $aid = $mp.Name.Substring(6, $mp.Name.Length - 6 - 10)
+            $done = [bool]$results[$aid]
+            [void]$rows.Add(@{ mp = $mp; meta = (ReadJson $mp.FullName); wf = $wd.Name; done = $done })
+            $w.n++; if (-not $done) { $w.running++ }
+        }
+        [void]$wfs.Add($w)
+    }
+    if ($rows.Count -eq 0) { return $null }
+    foreach ($r in $rows) {
+        $r.jp = Join-Path $r.mp.DirectoryName ($r.mp.Name.Substring(0, $r.mp.Name.Length - 10) + '.jsonl')
+        $r.jf = Get-Item -LiteralPath $r.jp -ErrorAction SilentlyContinue
+        if ($r.jf) { $r.start = EpochOf $r.jf.CreationTimeUtc } else { $r.start = EpochOf $r.mp.LastWriteTimeUtc }
+    }
+    $ordered = @($rows | Sort-Object -Property @{ Expression = { [bool]$_.done } }, @{ Expression = { $_.start }; Descending = $true })
+    $items = New-Object System.Collections.ArrayList
+    foreach ($r in @($ordered | Select-Object -First 3)) {
+        $m = $r.meta
+        $it = @{ id = $r.mp.Name.Substring(6, $r.mp.Name.Length - 6 - 10); type = '?'; desc = ''; model = $null; bg = $false; depth = 1
+                 started = $r.start; ended = $null; finished = $r.done; tokens = $null }
+        if ($m) {
+            if ($m.agentType) { $it.type = [string]$m.agentType }
+            $desc = [string]$m.description; if ($desc.Length -gt 80) { $desc = $desc.Substring(0, 80) }; $it.desc = $desc
+            if ($m.model) { $it.model = [string]$m.model }
+            $it.bg = ($m.requestShape -eq 'background')
+            if ($m.spawnDepth) { $it.depth = [int]$m.spawnDepth }
+            if ($r.wf -and $m.workflowPhase) { $it.phase = [string]$m.workflowPhase }
+        }
+        if ($r.wf) { $it.wf = $r.wf }
+        if ($r.jf) {
+            if ($r.done) { $it.ended = EpochOf $r.jf.LastWriteTimeUtc }
+            $tk = SubTokens $r.jp
+            if ($tk) { $it.tokens = @{ in = $tk.in; out = $tk.out }; if ($tk.model) { $it.model = $tk.model } }
+        }
+        [void]$items.Add($it)
+    }
+    $at = $null; foreach ($r in $rows) { if ($null -eq $at -or $r.start -gt $at) { $at = $r.start } }
+    $out = @{ n = $rows.Count; running = @($rows | Where-Object { -not $_.done }).Count; at = $at; items = @($items) }
+    if ($wfs.Count -gt 0) { $out.workflows = @($wfs) }
+    $out
+}
+
 function Cmd-Status {
     $os = Get-CimInstance Win32_OperatingSystem
     $jobs = @{}
@@ -229,7 +320,10 @@ function Cmd-Status {
             if ($e) {
                 $alive = [bool](Get-Process -Id ([int]$_.BaseName) -ErrorAction SilentlyContinue)
                 $item = @{ config_dir = $cd.Name; alive = $alive; entry = $e }
-                if ($alive) { $api = ApiState $cd.FullName $e; if ($api) { $item.api = $api } }
+                if ($alive) {
+                    $api = ApiState $cd.FullName $e; if ($api) { $item.api = $api }
+                    try { $sa = SubagentsOf $cd.FullName $e; if ($sa) { $item.subagents = $sa } } catch {}
+                }
                 [void]$sess.Add($item)
             }
         }
