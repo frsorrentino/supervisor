@@ -187,7 +187,8 @@
     "result_seen",
     "result_note",
     "max_sessions_set",
-    "subagents"
+    "subagents",
+    "silence"
   ],
   "slash": [
     "compact",
@@ -313,7 +314,7 @@
       "id": "s-1c0a7e5f21",
       "kind": "choice",
       "key": "choice:pricing-copy",
-      "text": "Pricing page copy: the short one or the full one?",
+      "text": "Pricing copy: the short one or the full one?",
       "at": 1789199500,
       "expires_at": 1789242700,
       "rank": 2,
@@ -377,7 +378,7 @@
       "id": "s-6b5f8a0c76",
       "kind": "proposal",
       "key": "proposal:release-notes-script",
-      "text": "Release notes written by hand three times: a script?",
+      "text": "Release notes by hand three times: a script?",
       "at": 1789199000,
       "expires_at": 1789242200,
       "rank": 6,

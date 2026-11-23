@@ -1811,6 +1811,31 @@ def diff_op(session, tm, arg):
     return True, json.dumps(DF.redact_diff(hit["diff"]), ensure_ascii=False)
 
 
+def silence_op(cmd, arg):
+    """1.159 (23/11/2026, supervisor-silenzio-assenso-23-11): «Dai per risolto se tace». arg = l'id del compito, text = la
+    scadenza (3d, 48h, AAAA-MM-GG; vuoto = 3 giorni) o «off» per toglierla. La mette sulla carta di ok aperta del compito,
+    altrimenti sulle sue prove da fare (`supervisor task silenzio`). Le regole del registro: mai per una scelta ne' per
+    release, push, deploy, merge, pagamenti, invii a clienti. Non e' un ok: il compito si chiude alla scadenza solo col
+    controllo verde."""
+    why = _touch_refused(cmd, "silence")
+    if why:
+        return False, why
+    tid = str(arg or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid):
+        return False, M("relay.cmd_silence_bad_arg", arg=tid)
+    text = str(cmd.get("text") or "").strip()
+    if text and not re.fullmatch(r"off|\d{1,3}[dh]|\d{4}-\d\d-\d\d(?:T\d\d:\d\d)?", text):
+        return False, M("relay.cmd_silence_bad_text", text=text[:40])
+    rc, out = run_cm("task", "silenzio", tid, *([text] if text else []), "--json")
+    if rc != 0:
+        return False, fail_line(out, "silence failed")
+    try:
+        res = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return False, fail_line(out, "silence failed")
+    return True, res["text"], {"task": tid, "silence_until": res.get("silence_until"), "on": res.get("on")}
+
+
 def subagents_op(session, tm):
     """1.158 (23/11/2026, supervisor-sottoagenti-23-11): l'elenco dei sottoagenti di una sessione, come il campo
     `subagents` dello stato ma con fino a SA.OP_ITEMS voci. Per una sessione su un altro host le voci che porta lo stato
@@ -2921,6 +2946,8 @@ def execute(cmd):
             return diff_op(session, tm, arg)
         if op == "changes":
             return changes_op(session, tm, arg)
+        if op == "silence":   # 1.159
+            return silence_op(cmd, arg)
         if op == "subagents":   # 1.158
             return subagents_op(session, tm)
         if op == "file":

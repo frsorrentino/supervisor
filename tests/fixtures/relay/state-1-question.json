@@ -402,7 +402,8 @@
     "result_seen",
     "result_note",
     "max_sessions_set",
-    "subagents"
+    "subagents",
+    "silence"
   ],
   "slash": [
     "compact",

@@ -390,6 +390,10 @@ def run():
             r = subprocess.run([CM_BIN, "task", "tidy"], capture_output=True, text=True, timeout=300)
             if r.stdout.strip():
                 log(f"tidy: {len(r.stdout.strip().splitlines())} voci superate")
+            # 23/11/2026 (supervisor-silenzio-assenso-23-11): le carte e le prove col silenzio assenso scaduto
+            r = subprocess.run([CM_BIN, "task", "silenzio-check"], capture_output=True, text=True, timeout=900)
+            if r.stdout.strip():
+                log("silenzio assenso: " + "; ".join(r.stdout.strip().splitlines()))
         except (OSError, subprocess.TimeoutExpired):
             pass
         unproven_alerts(t)

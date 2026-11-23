@@ -209,3 +209,22 @@ time and text of the original ok, and the person is not asked again. It happens 
 asks for a choice is never inherited, nor is the ok of a task cancelled, failed or
 waiting on a new card. The 60-minute limit on an ok read from the inbox stays for new
 oks.
+
+## Silent consent
+
+An ok card or a test can carry a deadline: `supervisor task wait-ok … --silenzio [3d|48h|AAAA-MM-GG]`,
+`supervisor task prova … --silenzio …`, or later `supervisor task silenzio ID [dur|off]` (the
+app's button «Dai per risolto se tace», op `silence`). Default 3 days, between 1 hour and 60
+days. When nobody answers by then, the guard (`task silenzio-check`, every 10 minutes) closes
+the task only if its check is green, with the reason «silenzio assenso: nessuna risposta entro
+le GG/MM HH:MM»: never as an ok of the person, no ok row with a name. With a red check the task
+stays open, a step `silence-red` says so and the session is told once.
+
+Refused for a choice between options and for anything that publishes or pays: outcome kind
+release, deploy, push, merge, install, payment, send, or a title, outcome or card that speaks
+of release, push, deploy, merge, publishing, payments, invoices or sending to a client.
+
+`supervisor task silenzi [--hours N]` lists what closed (or stayed red) by silent consent; the
+morning recap has the section «SILENZIO ASSENSO». For 14 days a `task add` of a bug on the same
+project proposes `supervisor task defect-of NEW OLD`, to link the defect to the task closed in
+silence.

@@ -677,6 +677,18 @@ def morning_text(now=None):
         cal, items = None, []
     section(M("avvisi.deadlines_title"),
             [esc(f"{dt.date.fromisoformat(e['date']).strftime('%d/%m')} ({cal.when(e)}) {e.get('summary') or '?'}") for e in items])
+    # 23/11/2026 (supervisor-silenzio-assenso-23-11): i compiti chiusi per silenzio assenso (e quelli rimasti aperti col
+    # controllo rosso) nelle ultime 24 ore
+    try:
+        tk = _load("cm-tasks")
+        con = tk.connect(create=False)
+        sil = tk.silences_since(con, int(now) - 86400) if con is not None else []
+        if con is not None:
+            con.close()
+    except Exception:   # noqa: BLE001
+        sil = []
+    section(M("avvisi.silence_title"), [esc(M("avvisi.silence_done" if x["outcome"] == "done" else "avvisi.silence_red", short=x["short"],
+                                              until=time.strftime("%d/%m %H:%M", time.localtime(int(x["until"]))))) for x in sil])
     full = M("avvisi.days_full").split(",")[day.weekday()]
     what = plural(near, "n_near") if near else M("avvisi.all_below")
     head = f"<b>{esc(full)} {day.strftime('%d/%m')} · {esc(what)}</b>"

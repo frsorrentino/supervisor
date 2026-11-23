@@ -85,7 +85,7 @@ R = CFG["relay"]
 CM_BIN = os.environ.get("CM_RELAY_CM") or str(HERE / "supervisor")
 BACKOFF = [1, 2, 5, 15, 30]
 STREAM_SILENCE_S = 45   # keep-alive di Firebase ogni 30 s, piu' 15 di margine
-OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "favicon", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set", "subagents")
+OPS = ("answer", "prompt", "launch", "follow", "unfollow", "resume", "reopen", "screen", "allow_all", "last", "model", "effort", "night_add", "night_remove", "report", "interrupt", "transcript", "file", "slash", "projects", "search", "timeline", "pair_add", "approve", "approval_close", "approval_redo", "attese", "attesa", "monitors", "monitor_refresh", "thumb", "favicon", "attention_done", "decision", "unpair", "night", "agenda", "agenda_set", "quota_route", "project_new", "permission_mode", "changes", "diff", "studio", "nights", "done", "elicit", "suggestion", "close_preview", "close", "sys_kill", "sys_unit_stop", "plugins", "plugin_check", "plugin_update", "plugin_update_all", "kpi", "home_order", "prove", "prova", "decisioni", "decisione", "prima_raccolta", "prima_raccolta_azione", "seguiti", "seguiti_azione", "conti", "conti_azione", "feedback_consent", "feedback_send", "feedback_text", "feedback_app", "results", "result_seen", "result_note", "max_sessions_set", "subagents", "silence")
 LAST_MAX = 4000   # 1.4: l'ultimo messaggio per la lettura vocale — oltre, l'ascolto non regge
 
 
@@ -1676,6 +1676,8 @@ def approvals_list():
             a["options"] = [S.one_line(str(o))[:24] for o in opts[:4]]
         # 1.99 (ok informato): cosa non e' provato, se si torna indietro, il difetto collegato; solo quando ci sono
         a.update({k: S.one_line(str(req[k]))[:300] for k in ("untested", "undo", "undo_how") if req.get(k)})
+        if isinstance(req.get("silence_until"), int):   # 1.159: silenzio assenso, la scadenza
+            a["silence_until"] = req["silence_until"]
         if isinstance(req.get("also"), list) and req["also"]:   # compito dal piano
             a["also"] = [{"task": str(x.get("task")), "short": str(x.get("short") or "")} for x in req["also"]]
         if isinstance(req.get("precedent"), dict):

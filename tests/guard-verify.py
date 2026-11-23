@@ -57,12 +57,14 @@ argslog = tmp / "cm-args.log"
 fake_cm = tmp / "supervisor"
 autoclose_log = tmp / "auto-close.log"
 tidy_log = tmp / "tidy.log"
+silence_log = tmp / "silence.log"   # 23/11/2026: `task silenzio-check` con tidy, in un registro a parte
 login_log, login_file = tmp / "login.log", tmp / "login-due.json"
 unproven_file = tmp / "unproven.json"   # 1.118: `task unproven --json` risponde con questo file   # 1.117: `task login-check` ogni ora, ogni 10 minuti con una voce   # 1.113: `task tidy` ogni 10 minuti, anche lui a parte
 # 16/10/2026: `task auto-close` (una volta l'ora) in un registro a parte: le altre prove contano le riprese
 stall_file = tmp / "stalled.json"   # 22/10/2026: `task stall-check --json` risponde con questo file, se c'e'
 fake_cm.write_text(f'#!/bin/sh\nif [ "$1 $2" = "task auto-close" ]; then echo "$*" >> "{autoclose_log}"; exit 0; fi\n'
                    f'if [ "$1 $2" = "task tidy" ]; then echo "$*" >> "{tidy_log}"; exit 0; fi\n'
+                   f'if [ "$1 $2" = "task silenzio-check" ]; then echo "$*" >> "{silence_log}"; exit 0; fi\n'
                    f'if [ "$1 $2" = "task unproven" ]; then if [ -f "{unproven_file}" ]; then cat "{unproven_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'if [ "$1 $2" = "task login-check" ]; then echo "$*" >> "{login_log}"; if [ -f "{login_file}" ]; then cat "{login_file}"; else echo "[]"; fi; exit 0; fi\n'
                    f'if [ "$1 $2" = "task stall-check" ]; then if [ -f "{stall_file}" ]; then cat "{stall_file}"; else echo "[]"; fi; exit 0; fi\n'
@@ -214,6 +216,8 @@ t1 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
 guard("run", now=NOW + 7200 + 601)
 t2 = len(tidy_log.read_text().splitlines()) if tidy_log.exists() else 0
 T.check("GU-TD guard run calls `task tidy` every 10 minutes: the first pass, not 5 minutes later, again after 10", t1 - t0 == 1 and t2 - t1 == 1, f"{t0} {t1} {t2}")
+_sl = silence_log.read_text().splitlines() if silence_log.exists() else []
+T.check("GU-TD with tidy, `task silenzio-check` (silent consent, 23/11/2026) as often", len(_sl) == len(tidy_log.read_text().splitlines()) and len(_sl) >= 2, str(len(_sl)))
 
 # GU-LC (04/11/2026, 1.117): `task login-check` ogni ora; con un login in scadenza ogni 10 minuti
 _ln = lambda: len(login_log.read_text().splitlines()) if login_log.exists() else 0  # noqa: E731

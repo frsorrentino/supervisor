@@ -361,7 +361,7 @@ T.check("R12 (1.16) goal_of: open → {condition, since = the set sentinel's tim
 T.check("R2 rules: order waiting/busy/idle/gone then alphabetical, short ≤ 200 (1.6), full ≤ 600, n from 1, ≤ 8 KB", [x["state"] for x in st1["sessions"]] == ["waiting", "busy", "idle", "gone"] and all(len(x["outcome"]["short"]) <= 200 and len(x["outcome"]["full"]) <= 600 for x in st1["sessions"] if x["outcome"]) and [o["n"] for o in st1["sessions"][0]["question"]["options"]] == [1, 2] and S.size_of(st1) <= 8192, str(S.size_of(st1)))
 SRC2 = {"host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"],
         "rows": [{"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "off", "goal_status": None, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "idle", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_02atlas", "attached": False, "started_at": 1789214000000}],
-        "ledger": [{"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789213900), "last": "x", "esito": "Esito: seeds reviewed, 42 tests green.", "tail": "Esito: seeds reviewed, 42 tests green.\nWatch: Seeds and admin page reviewed", "watch": "Watch: Seeds and admin page reviewed"}],
+        "ledger": [{"event": "stop", "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "ts": iso(1789213900), "last": "x", "esito": "Esito: 42 tests green.", "tail": "Esito: 42 tests green.\nWatch: Seeds and admin page reviewed", "watch": "Watch: Seeds and admin page reviewed"}],
         "questions": {}, "quota": {"personal": {"cinque_ore_pct": 24, "settimana_pct": 38, "reset_settimanale": 1789610400, "reset_cinque_ore": 1789228800, "vecchia": False,
                                                  # 1.86: campioni orari dal rinnovo (start = 1789005600) e origini a lettura finita
                                                  "settimana_punti": [[1789007400, 1.6], [1789012860, 4.0], [1789016700, 5.4], [1789094400, 30.2], [1789097000, 38.0]],
@@ -428,7 +428,7 @@ SRC3["closed"] = {"work-orbit-docs": {"name": "orbit-docs", "tmux": "work-orbit-
                                       "reason": "salvataggio scaduto"}}   # 1.155: «Salva e chiudi» scaduto
 # 1.88 (27/10): la coda dei suggerimenti — una voce per ciascuno dei sei tipi nuovi (state-2 e' gia' vicino agli 8 KB)
 SRC3["suggestions"] = [
-    {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing page copy: the short one or the full one?",
+    {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing copy: the short one or the full one?",
      "prompt": "For the pricing page the maintainer picks {choice}: go ahead", "at": 1789199500, "expires_at": 1789242700, "rank": 2, "source": "master", "options": ["Short", "Full"]},
     {"id": "s-2d9b4c7e30", "kind": "followup", "key": "followup:atlas-shop:5e1f0a2b", "text": "atlas-shop idle, next: Open the PR for the checkout fix",
      "prompt": "A next step left halfway in session atlas-shop", "at": 1789199400, "expires_at": 1789293000, "rank": 4, "source": "script"},
@@ -441,7 +441,7 @@ SRC3["suggestions"] = [
      "prompt": "Sorting of the claude-observe notes of chrome-bridge", "at": 1789199150, "expires_at": 1789292750, "rank": 5, "source": "script"},
     {"id": "s-5a6e7f9b67", "kind": "idea", "key": "idea:field-notes-on-phone", "text": "Try field-notes on the phone",
      "prompt": "Set up field-notes on the phone", "at": 1789199100, "expires_at": 1789242300, "rank": 6, "source": "master"},
-    {"id": "s-6b5f8a0c76", "kind": "proposal", "key": "proposal:release-notes-script", "text": "Release notes written by hand three times: a script?",
+    {"id": "s-6b5f8a0c76", "kind": "proposal", "key": "proposal:release-notes-script", "text": "Release notes by hand three times: a script?",
      "prompt": "Propose a script for the release notes", "at": 1789199000, "expires_at": 1789242200, "rank": 6, "source": "master"}]
 # 1.89 (28/10): l'ultimo comando di ogni dispositivo (Cmd.uid) e l'ultimo arrivo tenuto dal relay, che vale quando
 # /seen non ce l'ha (il browser, il Pixel 7)
@@ -1754,7 +1754,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-30:-27] == ["suggestion", "close_preview", "close"] and all(s["ops"][-30:-27] == R_OPS[-30:-27] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-31:-28] == ["suggestion", "close_preview", "close"] and all(s["ops"][-31:-28] == R_OPS[-31:-28] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3742,7 +3742,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-33] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-34] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3771,7 +3771,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-32] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-32:-30] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-33] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-33:-31] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4326,7 +4326,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-21] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-22] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

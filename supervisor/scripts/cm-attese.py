@@ -109,6 +109,8 @@ def registry_items(now_):
                     a["card"] = {k: it.get(f) for k, f in (("what", "what"), ("where", "where_to"), ("untested", "untested"), ("undo", "undo"), ("undo_how", "undo_how"))
                                  if it.get(f)} or None
                     a["files"] = it.get("files") or None   # 1.137: i file da guardare (wait-ok --files)
+                    if it.get("silence_until") and kind == "ok":   # 1.159: silenzio assenso, la scadenza
+                        a["silence_until"] = int(it["silence_until"])
                     a["_advice"] = it.get("advice")   # 1.149: il consiglio di chi chiede
                     a["_card"] = tk.card_of(con, it["task"])   # 1.137: la scheda e i suoi giri
                     out.append(a)
@@ -142,6 +144,8 @@ def registry_items(now_):
                         "answer": {"op": "prova", "arg": ",".join(map(str, ids))},
                         # 1.151: ogni prova, con la sua build: l'app dice «installa prima» per quelle di un'altra versione
                         "tests": [_test(x, "todo") for x in xs], "build": max(xs, key=lambda x: (int(x.get("at") or 0), x["id"])).get("build")})
+            if all(x.get("silence_until") for x in xs):   # 1.159: la scadenza della voce = l'ultima delle sue prove
+                out[-1]["silence_until"] = max(int(x["silence_until"]) for x in xs)
         for x in p.get("ko") or []:   # 1.151: segnalata «Non va»; si chiude con «Ora va» o «Non serve piu'»
             out.append({"id": wid("nonva", x["id"]), "type": "carta", "kind": "nonva", "session": x.get("session"), "task": x["task"], "_short": x.get("short"),
                         "files": [f for f in x.get("files") or []] or None, "text": x.get("text"), "options": None, "at": x.get("at"),

@@ -63,6 +63,16 @@
                                                 3 richiesta doppia sullo stesso compito (resta la piu' recente); 4 prova senza
                                                 passi da 7 giorni, compito non in corso: in archivio. Le attese di un'azione
                                                 della persona non scadono mai da sole
+  supervisor task wait-ok ID … --silenzio [3d|48h|AAAA-MM-GG]   1.159 (23/11, silenzio assenso): senza risposta entro la
+                                                scadenza (3 giorni senza valore) il compito si chiude da solo, ma solo col suo
+                                                controllo verde: motivo «silenzio assenso», mai un ok della persona. Anche
+                                                `task prova … --silenzio`. Mai per una scelta fra opzioni ne' per release, push,
+                                                deploy, merge, pagamenti, invii a clienti. Per 14 giorni `task add` di un bug sullo
+                                                stesso progetto propone --defect-of
+  supervisor task silenzio ID [3d|48h|AAAA-MM-GG|off]   mette o toglie la scadenza su cio' che il compito aspetta adesso
+                                                (la carta di ok, altrimenti le prove da fare): il tasto dell'app (op silence)
+  supervisor task silenzio-check [--json]      chiude le scadute (la guardia, con tidy); rosso = resta aperto, detto una volta
+  supervisor task silenzi [--hours 24] [--json]  le chiusure per silenzio assenso (e i rossi) delle ultime ore
   supervisor task auto-close [--hours 6] [--json]   chiude i compiti avviati, non in pausa, aperti da piu' di 6 ore col controllo verde
   supervisor task cancel ID
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
@@ -298,6 +308,8 @@ CREATE TABLE IF NOT EXISTS prove (n INTEGER PRIMARY KEY, task TEXT, build TEXT, 
 CREATE TABLE IF NOT EXISTS defects (task TEXT PRIMARY KEY, defect_of TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS closures (task TEXT PRIMARY KEY, at INTEGER, model TEXT, effort TEXT, kind TEXT);
 CREATE TABLE IF NOT EXISTS tidy (n INTEGER PRIMARY KEY, at INTEGER, task TEXT, kind TEXT, rule INTEGER, text TEXT, build TEXT);
+CREATE TABLE IF NOT EXISTS silences (n INTEGER PRIMARY KEY, task TEXT, project TEXT, kind TEXT, ref INTEGER, until INTEGER, at INTEGER,
+    outcome TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS decision_snooze (key TEXT PRIMARY KEY, at INTEGER, by_ TEXT, until INTEGER, refs TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS cause_notes (key TEXT PRIMARY KEY, note TEXT, at INTEGER, by_ TEXT);
 """
@@ -349,6 +361,12 @@ def connect(create=True):
         con.commit()
     if "advice" not in cols:   # 1.149 (16/11): il consiglio della sessione sulla carta, {text, option, approve}
         con.execute("ALTER TABLE approvals ADD COLUMN advice TEXT")
+        con.commit()
+    if "silence_until" not in cols:   # 1.159 (23/11): silenzio assenso, la scadenza della carta
+        con.execute("ALTER TABLE approvals ADD COLUMN silence_until INTEGER")
+        con.commit()
+    if "silence_until" not in {r[1] for r in con.execute("PRAGMA table_info(prove)")}:   # 1.159: e quella di una prova
+        con.execute("ALTER TABLE prove ADD COLUMN silence_until INTEGER")
         con.commit()
     if "files" not in {r[1] for r in con.execute("PRAGMA table_info(prove)")}:   # 1.137: e quelli di una prova
         con.execute("ALTER TABLE prove ADD COLUMN files TEXT")
@@ -683,7 +701,8 @@ def rounds_of(con, tid):
              "files": files_of(r["files"]), "untested": r["untested"], "undo": r["undo"], "undo_how": r["undo_how"],
              "advice": advice_of(r["advice"]), "state": None, "reason": None, "by": None, "answered_at": None, "choice": None}
         if r["closed_kind"]:
-            g.update(state="redo" if r["closed_kind"] == "redo" else "closed", reason=r["closed_reason"], by=r["closed_by"], answered_at=r["closed_at"])
+            g.update(state="redo" if r["closed_kind"] == "redo" else "silence" if r["closed_kind"] == "silence" else "closed",
+                     reason=r["closed_reason"], by=r["closed_by"], answered_at=r["closed_at"])
         elif ans is not None:
             g.update(state="chosen" if ans["choice"] else "approved", by=ans["by_"], answered_at=int(ans["at"]), choice=ans["choice"])
         elif nxt is not None:
@@ -1482,6 +1501,159 @@ def tidy_rows(con, since=0, rule=None, limit=None):
     return out
 
 
+SILENCE_DEFAULT_S = 3 * 86400   # 1.159: --silenzio senza valore
+SILENCE_REOPEN_S = 14 * 86400   # per 14 giorni un difetto sullo stesso progetto si propone collegato
+SILENCE_FORBIDDEN_KINDS = ("release", "deploy", "push", "merge", "install", "payment", "send")
+SILENCE_FORBIDDEN_RE = re.compile(
+    r"\b(release|rilasci\w*|pre-?release|push\w*|deploy\w*|merg\w*|publish\w*|pubblic\w*|pagament\w*|payment\w*|pay\b|"
+    r"fattur\w*|bonific\w*|invoice\w*|(invi\w*|mand\w*|spedi\w*|send\w*|mail\w*)\b[^.;]{0,30}\bclient\w*)", re.I)
+
+
+def _dmhm(epoch):
+    return time.strftime("%d/%m %H:%M", time.localtime(int(epoch)))
+
+
+def parse_silence(args, verb):
+    """1.159 (23/11/2026, supervisor-silenzio-assenso-23-11): --silenzio [DURATA|DATA], tolto da args. DURATA come 3d,
+    48h, 90m; DATA come 2026-11-26 o 2026-11-26T18:00 (ora locale). Senza valore SILENCE_DEFAULT_S. L'epoca della
+    scadenza, o None senza l'opzione."""
+    flag = next((f for f in ("--silenzio", "--silence") if f in args), None)
+    if flag is None:
+        return None
+    i = args.index(flag)
+    raw = args[i + 1] if i + 1 < len(args) and re.fullmatch(r"\d+[dhm]|\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d)?", args[i + 1]) else None
+    del args[i:i + (2 if raw else 1)]
+    t = now()
+    if raw is None:
+        return t + SILENCE_DEFAULT_S
+    m = re.fullmatch(r"(\d+)([dhm])", raw)
+    if m:
+        secs = int(m.group(1)) * {"d": 86400, "h": 3600, "m": 60}[m.group(2)]
+    else:
+        try:
+            secs = int(time.mktime(time.strptime(raw.replace(" ", "T"), "%Y-%m-%dT%H:%M" if len(raw) > 10 else "%Y-%m-%d"))) - t
+        except ValueError:
+            secs = 0
+    if secs < 3600 or secs > 60 * 86400:
+        sys.exit(M("tasks.silence_bad", verb=verb, raw=raw))
+    return t + secs
+
+
+def silence_forbidden(task, what="", where=""):
+    """Perche' il silenzio non vale per questo compito, o None. Mai per cio' che esce o costa: release, push, deploy, merge,
+    pagamenti, invii a clienti (dal tipo di esito o dalle parole di titolo, esito atteso, cosa e dove)."""
+    kind = str((task.get("outcome") or {}).get("kind") or "")
+    if kind in SILENCE_FORBIDDEN_KINDS:
+        return kind
+    text = " ".join(str(x or "") for x in (task.get("title"), (task.get("outcome") or {}).get("expected"), what, where))
+    m = SILENCE_FORBIDDEN_RE.search(text)
+    return m.group(0).strip() if m else None
+
+
+def _silence_recorded(con, kind, ref):
+    return con.execute("SELECT outcome FROM silences WHERE kind=? AND ref=?", (kind, ref)).fetchone()
+
+
+def silence_due(con, now_=None):
+    """1.159: le carte e le prove col silenzio scaduto. Il compito si chiude solo col suo controllo verde: done, il giro della
+    carta chiuso come «silenzio assenso» (mai un ok della persona: nessuna riga di approvals con by_), una riga in
+    silences, la sessione e la master lo sanno. Rosso: resta aperto, si dice una volta. Una carta di scelta non scade.
+    Le prove: quando ogni prova in vigore del compito e' ok o ha il silenzio scaduto. Torna [{task, kind, outcome, reason}]."""
+    t = int(now_ or now())
+    out = []
+    for a in con.execute("SELECT a.*, t.state AS task_state FROM approvals a JOIN tasks t ON t.id=a.task WHERE a.by_ IS NULL AND a.closed_kind IS NULL "
+                         "AND a.options IS NULL AND a.silence_until IS NOT NULL AND a.silence_until<=? ORDER BY a.n", (t,)).fetchall():
+        if a["task_state"] != "awaiting_ok" or _silence_recorded(con, "ok", a["n"]):
+            continue
+        if con.execute("SELECT 1 FROM approvals WHERE task=? AND n>?", (a["task"], a["n"])).fetchone():
+            continue   # c'e' gia' una risposta o una richiesta piu' nuova
+        out.append(_silence_close(con, a["task"], "ok", a["n"], a["silence_until"], t))
+    tids = [r["task"] for r in con.execute("SELECT DISTINCT p.task FROM prove p JOIN tasks t ON t.id=p.task WHERE p.superseded_at IS NULL "
+                                           "AND p.result IS NULL AND p.silence_until IS NOT NULL AND p.silence_until<=? AND t.state IN (%s)"
+                                           % ",".join("?" * len(OPEN_STATES)), (t, *OPEN_STATES)).fetchall()]
+    for tid in tids:
+        live = _live_prove(con, tid)
+        due = [r for r in live if r["result"] is None]
+        if any(r["result"] not in (None, "ok") for r in live) or any(not r["silence_until"] or r["silence_until"] > t for r in due):
+            continue   # una prova che non va, o una ancora senza scadenza o non scaduta: decide la persona
+        ref = max(r["n"] for r in due)
+        if _silence_recorded(con, "prova", ref):
+            continue
+        out.append(_silence_close(con, tid, "prova", ref, max(r["silence_until"] for r in due), t))
+    return out
+
+
+def _silence_close(con, tid, kind, ref, until, t):
+    row = get_task(con, tid)
+    task = _contract_task(row)
+    oe = outcome_errors(task)
+    rc, tail = (2, "; ".join(oe)) if oe else run_check(task)
+    reason = M("tasks.silence_reason", until=_dmhm(until))
+    if rc == 0:
+        if kind == "ok":
+            con.execute("UPDATE approvals SET closed_kind='silence', closed_by=?, closed_reason=?, closed_at=? WHERE n=?",
+                        (M("tasks.silence_by"), reason, t, ref))
+        con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,NULL,'silence',?,NULL)", (tid, t, reason[:500]))
+        con.execute("INSERT INTO silences (task, project, kind, ref, until, at, outcome, reason) VALUES (?,?,?,?,?,?,?,?)",
+                    (tid, row["project"], kind, ref, until, t, "done", reason))
+        con.commit()
+        done(con, tid, checked=(rc, tail))
+        _tell(row, M("tasks.silence_done", task=tid, until=_dmhm(until)))
+        return {"task": tid, "kind": kind, "outcome": "done", "reason": reason}
+    why = (tail.splitlines() or [""])[-1][:300] or f"exit {rc}"
+    con.execute("INSERT INTO silences (task, project, kind, ref, until, at, outcome, reason) VALUES (?,?,?,?,?,?,?,?)",
+                (tid, row["project"], kind, ref, until, t, "red", why))
+    con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,NULL,'silence-red',?,NULL)", (tid, t, M("tasks.silence_red_step", until=_dmhm(until), why=why)[:500]))
+    con.commit()
+    _tell(row, M("tasks.silence_red", task=tid, until=_dmhm(until), why=why))
+    return {"task": tid, "kind": kind, "outcome": "red", "reason": why}
+
+
+def silence_set(con, tid, until):
+    """1.159: mette (until) o toglie (None) il silenzio assenso su cio' che il compito aspetta adesso: la carta di ok aperta,
+    altrimenti le sue prove ancora da fare. Le stesse regole di --silenzio. {task, on, silence_until, text} o {error}."""
+    row = get_task(con, tid)
+    if row["state"] not in OPEN_STATES:
+        return {"error": f"task {tid}: already {row['state']}"}
+    a = con.execute("SELECT * FROM approvals WHERE task=? AND by_ IS NULL AND closed_kind IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    if row["state"] != "awaiting_ok" or (a and con.execute("SELECT 1 FROM approvals WHERE task=? AND n>?", (tid, a["n"])).fetchone()):
+        a = None
+    prove = [r for r in _live_prove(con, tid) if r["result"] is None]
+    if not a and not prove:
+        return {"error": M("tasks.silence_nothing", task=tid)}
+    if until:
+        if a and a["options"]:
+            return {"error": M("tasks.silence_no_choice")}
+        why = silence_forbidden(_contract_task(row), a["what"] if a else " ".join(r["fai"] for r in prove), a["where_"] if a else "")
+        if why:
+            return {"error": M("tasks.silence_forbidden", task=tid, why=why)}
+    if a:
+        con.execute("UPDATE approvals SET silence_until=? WHERE n=?", (until, a["n"]))
+    else:
+        con.executemany("UPDATE prove SET silence_until=? WHERE n=?", [(until, r["n"]) for r in prove])
+    con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (now(), tid))
+    con.commit()
+    text = M("tasks.silence_set", task=tid, until=_dmhm(until)) if until else M("tasks.silence_off", task=tid)
+    return {"task": tid, "on": "ok" if a else "prova", "silence_until": until, "text": text}
+
+
+def silences_since(con, since):
+    """Le chiusure (e i rossi) per silenzio assenso dall'epoca `since`, dal piu' vecchio: per il recap del mattino."""
+    rows = con.execute("SELECT s.*, t.title, t.contract FROM silences s LEFT JOIN tasks t ON t.id=s.task WHERE s.at>=? ORDER BY s.at, s.n", (since,)).fetchall()
+    return [{"task": r["task"], "short": short_of(json.loads(r["contract"])["task"]) if r["contract"] else r["task"], "project": r["project"],
+             "kind": r["kind"], "until": r["until"], "at": r["at"], "outcome": r["outcome"], "reason": r["reason"]} for r in rows]
+
+
+def silence_defect_hint(con, project, ttype, t=None):
+    """Un compito chiuso per silenzio assenso negli ultimi SILENCE_REOPEN_S sullo stesso progetto, a cui un difetto nuovo
+    si puo' collegare (task add --defect-of): l'id del piu' recente, o None. Solo per un compito di tipo bug."""
+    if ttype != "bug":
+        return None
+    r = con.execute("SELECT task FROM silences WHERE outcome='done' AND project=? AND at>=? ORDER BY at DESC, n DESC LIMIT 1",
+                    (project, int(t or now()) - SILENCE_REOPEN_S)).fetchone()
+    return r["task"] if r else None
+
+
 def auto_close(con, hours=AUTO_CLOSE_H):
     """16/10/2026: i compiti aperti da piu' di `hours` ore, avviati e non in pausa, col controllo verde si chiudono da soli (lo stesso `done`:
     il controllo rieseguito, mai un giudizio). Un controllo rosso qui non conta come tentativo: resta com'era.
@@ -2088,6 +2260,8 @@ def prove_list(con, now_=None):
             base = {"id": r["n"], "task": row["id"], "short": short, "build": r["build"], "dove": r["dove"], "fai": r["fai"], "atteso": r["atteso"]}
             if files_of(r["files"]):   # 1.137: i file da guardare, solo se ci sono
                 base["files"] = files_of(r["files"])
+            if r["silence_until"]:   # 1.159: silenzio assenso, la scadenza
+                base["silence_until"] = int(r["silence_until"])
             if r["result"] == "ko":
                 ko.append(dict(base, text=r["result_text"], at=r["result_at"], session=sess))
             elif r["result"] is None:
@@ -2237,7 +2411,8 @@ def decisions(con, now_=None, snoozed=False):
                                                  options=json.loads(a["options"]) if a and a["options"] else None, since=int(a["at"]) if a else int(r["updated_at"]),
                                                  where="here", untested=a["untested"] if a else None, undo=a["undo"] if a else None, undo_how=a["undo_how"] if a else None,
                                                  precedent=precedent_of(con, tid), also=json.loads(a["also"]) if a and a["also"] else None, needs_you=None,
-                                                 files=files_of(a["files"]) if a else None, advice=advice_of(a["advice"]) if a else None)))
+                                                 files=files_of(a["files"]) if a else None, advice=advice_of(a["advice"]) if a else None,
+                                                 silence_until=int(a["silence_until"]) if a and a["silence_until"] else None)))
             continue
         pz = con.execute("SELECT * FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
         if pz and pz["waits"] == "person" and not prove_pending(con, tid):
@@ -2468,6 +2643,9 @@ def closed(con, day=None, now_=None):
         result = {"reason": res["reason"], "proof": json.loads(res["proof"])} if res else None
         rows.append({"task": r["id"], "title": r["title"], "short": short_of(task), "project": r["project"], "session": r["session"], "at": at,
                      "outcome": "green" if r["state"] == "done" else r["state"], "proof": proof_of(task, result)})
+        sil = con.execute("SELECT kind, until FROM silences WHERE task=? AND outcome='done' ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+        if sil and r["state"] == "done":   # 1.159: chiuso per silenzio assenso, non da un ok
+            rows[-1]["silence"] = {"kind": sil["kind"], "until": int(sil["until"])}
     rows.sort(key=lambda x: -x["at"])
     days = [{"date": d.isoformat(), "n": k} for d, k in sorted(counts.items(), reverse=True) if d < d0][:6]
     return {"date": d0.isoformat(), "rows": rows, "days": days, "more": False}
@@ -2753,6 +2931,11 @@ def main(argv):
             con.execute("INSERT OR REPLACE INTO defects (task, defect_of, at) VALUES (?,?,?)", (tid, defect_of, now()))
             con.commit()
         print(tid)
+        if not defect_of:   # 1.159: un difetto sullo stesso progetto di un compito chiuso per silenzio assenso da poco
+            row_ = get_task(con, tid)
+            old = silence_defect_hint(con, row_["project"], _contract_task(row_).get("type"))
+            if old:
+                print(M("tasks.silence_defect_hint", task=tid, old=old))
         orig = follows_apply(con, tid)
         if orig:
             print(f"{tid}: approved as a follow-up of {orig}")
@@ -2768,8 +2951,10 @@ def main(argv):
         if as_json:
             # contratto 1.37 (05/10): la richiesta di ok (wait-ok: cosa esce e dove) per «Da approvare» nell'app
             for r in rows:
-                a = con.execute("SELECT what, where_, at, options, advice FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
+                a = con.execute("SELECT what, where_, at, options, advice, silence_until FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (r["id"],)).fetchone()
                 r["request"] = {"what": a["what"], "where": a["where_"], "at": a["at"]} if a else None
+                if a and a["silence_until"]:   # 1.159: silenzio assenso, la scadenza
+                    r["request"]["silence_until"] = int(a["silence_until"])
                 if a and advice_of(a["advice"]):   # 1.149: il consiglio di chi chiede
                     r["request"]["advice"] = advice_of(a["advice"])
                 if a and a["options"]:   # 1.81: le opzioni di una scelta
@@ -2808,11 +2993,22 @@ def main(argv):
     if verb == "prova":
         build, dove, fai, atteso, by = _opt(args, "--build"), _opt(args, "--dove"), _opt(args, "--fai"), _opt(args, "--atteso"), _opt(args, "--by")
         files = _opt(args, "--files")
+        silence = parse_silence(args, "prova")   # 1.159
         if len(args) != 1 or not (build and dove and fai and atteso):
-            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B] [--files a.png,b.pdf]\n"
+            sys.exit("usage: task prova ID --build TAG --dove SCHERMATA --fai T --atteso T [--by B] [--files a.png,b.pdf] [--silenzio [3d]]\n"
                      "SCHERMATA con «Portami lì» nell'app: queue, box-aspetta, box-lavoro, box-esiti, lavori, launch, night, search, settings, homeorder, usage, home; una prova che vale solo sul telefono lo dice in --fai")
         files = parse_files(files, get_task(con, args[0])["project"], "prova") if files is not None else None
-        print(prova_add(con, args[0], build, dove, fai, atteso, by, files))
+        if silence:
+            why = silence_forbidden(_contract_task(get_task(con, args[0])), fai, dove)
+            if why:
+                sys.exit(M("tasks.silence_forbidden", task=args[0], why=why))
+        n = prova_add(con, args[0], build, dove, fai, atteso, by, files)
+        if silence:
+            con.execute("UPDATE prove SET silence_until=? WHERE n=?", (silence, n))
+            con.commit()
+        print(n)
+        if silence:
+            print(M("tasks.silence_set", task=args[0], until=_dmhm(silence)))
         return 0
     if verb == "prova-ritira":   # 1.140: «Non serve piu'» dal terminale
         by, reason = _opt(args, "--by"), _opt(args, "--reason")
@@ -3034,6 +3230,9 @@ def main(argv):
         adv_text = _opt(args, "--consiglio") if "--consiglio" in args else _opt(args, "--advice")
         adv_pick = _opt(args, "--consigliata") if "--consigliata" in args else _opt(args, "--recommended")
         undo, undo_how = parse_undo(args, "wait-ok")
+        silence = parse_silence(args, "wait-ok")   # 1.159: prima di leggere l'ID (--silenzio senza valore)
+        if silence and (option_raws or options is not None):
+            sys.exit(M("tasks.silence_no_choice"))
         if option_raws and options is not None:
             sys.exit("task wait-ok: --options or --option, not both")
         if desc is not None and len(" ".join(desc.split())) > DESC_MAX:
@@ -3059,10 +3258,16 @@ def main(argv):
         opts = parse_options(options) if options is not None else None   # 1.81: il compito chiede una scelta
         get_task(con, args[0])
         advice = parse_advice(adv_text, adv_pick, opts)   # 1.149: dopo le opzioni (i loro errori prima), prima di scrivere
-        con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also, files, detail, advice) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?,?,?,?)",
+        if silence:
+            why = silence_forbidden(_contract_task(get_task(con, args[0])), what, where)
+            if why:
+                sys.exit(M("tasks.silence_forbidden", task=args[0], why=why))
+        cur = con.execute("INSERT INTO approvals (task, plan, by_, at, text, what, where_, options, untested, undo, undo_how, also, files, detail, advice, silence_until) VALUES (?,?,NULL,?,NULL,?,?,?,?,?,?,?,?,?,?,?)",
                     (args[0], None, now(), what, where, json.dumps(opts, ensure_ascii=False) if opts else None, untested, undo, undo_how, json.dumps(also) if also else None,
                      json.dumps(files, ensure_ascii=False) if files else None, json.dumps(detail, ensure_ascii=False) if detail else None,
-                     json.dumps(advice, ensure_ascii=False)))   # la richiesta: by NULL finche' nessuno approva
+                     json.dumps(advice, ensure_ascii=False), silence))   # la richiesta: by NULL finche' nessuno approva
+        if silence:
+            print(M("tasks.silence_set", task=args[0], until=_dmhm(silence)))
         set_state(con, args[0], "awaiting_ok")
         con.commit()
         r = standing_apply(con, args[0])   # 23/10 20:00: un ok permanente della persona copre il compito?
@@ -3187,6 +3392,26 @@ def main(argv):
             res = tidy(con, dry=_flag(args, "--dry-run"))
         print(json.dumps(res, ensure_ascii=False) if as_json else "\n".join(f"{x['task']}: {x['kind']} — regola {x['rule']}: {x['text']}" for x in res))
         return 0
+    if verb in ("silenzio", "silence"):   # 1.159: il tasto «Dai per risolto se tace» (op silence) e il terminale
+        if not args:
+            sys.exit("usage: task silenzio ID [3d|48h|AAAA-MM-GG|off]")
+        tid = args.pop(0)
+        off = bool(args) and args[0] == "off"
+        until = None if off else parse_silence(["--silenzio", *args[:1]], "silenzio")
+        res = silence_set(con, tid, until)
+        if res.get("error"):
+            sys.exit(res["error"])
+        print(json.dumps(res, ensure_ascii=False) if as_json else res["text"])
+        return 0
+    if verb in ("silenzio-check", "silence-check"):   # 1.159: la guardia lo lancia con tidy
+        res = silence_due(con)
+        print(json.dumps(res, ensure_ascii=False) if as_json else "\n".join(f"{x['task']}: {x['outcome']} — {x['reason']}" for x in res))
+        return 0
+    if verb in ("silenzi", "silences"):   # 1.159: le chiusure per silenzio assenso (il recap del mattino)
+        hours = float(_opt(args, "--hours", 24))
+        res = silences_since(con, now() - int(hours * 3600))
+        print(json.dumps(res, ensure_ascii=False) if as_json else "\n".join(f"{x['task']}: {x['outcome']} — {x['reason']}" for x in res))
+        return 0
     if verb == "auto-close":
         hours = float(_opt(args, "--hours", AUTO_CLOSE_H))
         res = auto_close(con, hours)
@@ -3242,7 +3467,7 @@ IMPORTANCE_LOW_TYPES = ("chore", "verify", "test", "tests", "test-fix")
 HIGH_STAKES_DEFAULT = ("personali/rino", "clienti", "enti")
 # i verbi che non cambiano il registro: dopo di loro il file dell'importanza non si riscrive
 IMPORTANCE_READ_ONLY = ("show", "list", "impegni", "importance", "closed", "board", "check", "confirmed", "pagella", "unproven",
-                        "login-check", "prove", "decisioni", "stall-check", "help", "-h", "--help")
+                        "login-check", "prove", "decisioni", "stall-check", "silenzi", "silences", "help", "-h", "--help")
 
 
 def importance_path():

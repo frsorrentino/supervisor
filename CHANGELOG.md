@@ -2,6 +2,12 @@
 
 ## 0.3.x
 
+- **0.8.200 — 2026-11-23: silent consent on ok cards and tests (supervisor-silenzio-assenso-23-11).**
+  - An ok card or a test can carry a deadline (`task wait-ok --silenzio`, `task prova --silenzio`, `task silenzio ID [3d|off]`, default 3 days, 1 hour to 60 days). When nobody answers, the guard's `task silenzio-check` closes the task only with a green check, reason «silenzio assenso: nessuna risposta entro le …», never as an ok of the person; with a red check the task stays open, a step says so and the session is told once.
+  - Refused for a choice between options and for release, push, deploy, merge, payments and sends to clients (outcome kind or the words of title, outcome and card), also when asked from the app.
+  - Relay, contract 1.159 (additive): `silence_until` on the items of `attese` (ok and prova), on `state.approvals[]` and on the tests of op `prove`; op `silence` (the button «Dai per risolto se tace»); in the history `silence` on the rows of op `done`, round state `silence`, steps `silence` and `silence-red`.
+  - The morning recap has the section «SILENZIO ASSENSO»; for 14 days a `task add` of a bug on the same project proposes `task defect-of`.
+  - Registry: table `silences`, column `silence_until` on approvals and prove. Test: `tests/silenzio-assenso-verify.py` (SI1-SI8).
 - **0.8.199 — 2026-11-23: the subagents a session launches reach the relay and `supervisor sessions` (supervisor-sottoagenti-23-11).**
   - Until now a session's subagents showed only in its terminal. Claude Code writes each one beside the transcript: `<sid>/subagents/agent-<id>.meta.json` (agentType, description, spawnDepth, requestShape, model, finished) and its `.jsonl`; the agents of a Workflow in `subagents/workflows/wf_*/`, with a `journal.jsonl` that has `started` and `result` per agent and a meta.json without `finished`. `cm-subagents.py` reads them: every meta.json (small) to count launched and running, the transcripts only for the items shown (first and last line for start and end, the whole file for the tokens, counted once per message: Claude Code repeats the usage on every block), with a cache on size and mtime. A Workflow of 43 agents is about 20 MB of transcripts.
   - Relay, contract 1.158 (additive): `state.sessions[].subagents` `{n, running, at, items, workflows?}`, at most 3 items (running first), the first thing `fit_state` drops after the cards' advice; op `subagents` with up to 30 items. A session that is no longer running has none running.
