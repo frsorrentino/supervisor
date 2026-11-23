@@ -52,15 +52,17 @@ function ReadJson($f) {
     try { $t = [IO.File]::ReadAllText($f); if ($t.Trim().StartsWith('{') -and $t.Trim().EndsWith('}')) { return ($t | ConvertFrom-Json) } } catch {}
     $null
 }
-function Ver($exe, $arg) {
-    # solo eseguibili veri (.exe/.cmd/.bat): un .ps1 lanciato da cmd si apre nell'editor associato e il probe si blocca
-    $c = Get-Command $exe -CommandType Application -ErrorAction SilentlyContinue | Where-Object { $_.Source -match '\.(exe|cmd|bat)$' } | Select-Object -First 1
-    if (-not $c -or $c.Source -like '*\WindowsApps\*') { return $null }
-    try {
-        $o = (cmd /c "`"$($c.Source)`" $arg 2>&1" | Select-Object -First 1) -join ''
-        $m = [regex]::Match("$o", '\d+(\.\d+)+'); if ($m.Success) { return $m.Value }
-    } catch {}
-    $null
+function IsTool($fileName) {
+    # true when a program with exactly this file name (node.exe, claude.cmd) is on the PATH and is not the WindowsApps
+    # placeholder; the name carries its extension, so a .ps1 of the same name is never what runs
+    $c = Get-Command $fileName -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    [bool]($c -and $c.Source -notlike '*\WindowsApps\*')
+}
+function VersionIn($output) {
+    # the version number in the first line a tool printed, or $null
+    $first = (@($output) | Select-Object -First 1) -join ''
+    $m = [regex]::Match("$first", '\d+(\.\d+)+')
+    if ($m.Success) { $m.Value } else { $null }
 }
 function Sha($f) { (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLower() }
 function NowIso { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
@@ -140,13 +142,25 @@ function Cmd-Probe {
         if ("$bo".StartsWith('{')) { $b = $bo | ConvertFrom-Json }
     }
     $chrome = Find-Chrome
+    # the version of each tool, each one called by its own file name
+    $tools = New-Object System.Collections.Hashtable
+    $tools['node'] = $null; $tools['ffmpeg'] = $null; $tools['python'] = $null; $tools['git'] = $null
+    $tools['tmux'] = $null; $tools['claude'] = $null; $tools['tar'] = $null; $tools['chrome'] = $chrome
+    try { if (IsTool 'node.exe') { $tools['node'] = VersionIn (node.exe --version 2>&1) } } catch {}
+    try { if (IsTool 'ffmpeg.exe') { $tools['ffmpeg'] = VersionIn (ffmpeg.exe -version 2>&1) } } catch {}
+    try { if (IsTool 'python.exe') { $tools['python'] = VersionIn (python.exe --version 2>&1) } } catch {}
+    try { if (IsTool 'git.exe') { $tools['git'] = VersionIn (git.exe --version 2>&1) } } catch {}
+    try { if (IsTool 'tar.exe') { $tools['tar'] = VersionIn (tar.exe --version 2>&1) } } catch {}
+    try {
+        if (IsTool 'claude.exe') { $tools['claude'] = VersionIn (claude.exe --version 2>&1) }
+        elseif (IsTool 'claude.cmd') { $tools['claude'] = VersionIn (claude.cmd --version 2>&1) }
+    } catch {}
     $arch = $env:PROCESSOR_ARCHITECTURE; if ($arch -eq 'AMD64') { $arch = 'x86_64' } elseif ($arch -eq 'ARM64') { $arch = 'aarch64' }
     Out-J @{ ok = $true; kind = 'windows-native'; os = $pretty; os_version = "$($os.Version)"; os_build = $build; arch = $arch
         cores = [int](($cpu | Measure-Object -Property NumberOfCores -Sum).Sum); threads = [int](($cpu | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
         cpu = $cpu[0].Name.Trim(); ram_gb = Gb $cs.TotalPhysicalMemory; ram_free_gb = Gb ([double]$os.FreePhysicalMemory * 1KB)
         disk_free_gb = @{ $Root = FreeGb $Root }; gpu = $gpus; webgl = $w; bench = $b
-        tools = @{ node = Ver node '--version'; ffmpeg = Ver ffmpeg '-version'; python = Ver python '--version'; git = Ver git '--version'
-                   tmux = $null; claude = Ver claude '--version'; tar = Ver tar '--version'; chrome = $chrome }
+        tools = $tools
         accounts = $accs; foreign_credentials = @($creds); admin = $admin; linger = $null; interactive_desktop = $desk; power = $power
         defender_signature_age_d = $def; defender_note = $defNote; home = $env:USERPROFILE; root = $Root; load_pct = LoadPct }
 }

@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.201 — 2026-11-23: the remote helper names every tool it runs (supervisor-directory-pacchetti-23-11, second pass).**
+  - The directory's portal on 0.8.198 still read two lines as «may change which code a package manager installs or runs» (LAUNCHER_REGISTRY_REDIRECT), in `remote/cm-remote.ps1` and `remote/cm-remote.sh`; `scripts/cm-attach.sh` passed. What was left were the generic launchers of the probe: `Ver $exe $arg` in PowerShell (through `cmd /c`, inside the `tools = @{ ... }` list) and `ver` in sh (`"$@"`).
+  - Now each tool is called by its own name (`node --version`, `node.exe --version`, `claude.exe` or else `claude.cmd`, ...) and the tools list is built line by line; tar uses long options joined to their values (`--extract --file=src.tar --directory=src`, `--create --file=`) and the gh token check reads `hosts.yml` with long options.
+  - Same behaviour: the probe gives the same versions as before on win and in WSL; unpack and pack checked in `tests/directory-pacchetti-verify.py` (DP6-DP9).
 - **0.8.200 — 2026-11-23: silent consent on ok cards and tests (supervisor-silenzio-assenso-23-11).**
   - An ok card or a test can carry a deadline (`task wait-ok --silenzio`, `task prova --silenzio`, `task silenzio ID [3d|off]`, default 3 days, 1 hour to 60 days). When nobody answers, the guard's `task silenzio-check` closes the task only with a green check, reason «silenzio assenso: nessuna risposta entro le …», never as an ok of the person; with a red check the task stays open, a step says so and the session is told once.
   - Refused for a choice between options and for release, push, deploy, merge, payments and sends to clients (outcome kind or the words of title, outcome and card), also when asked from the app.

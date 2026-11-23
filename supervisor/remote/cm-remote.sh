@@ -58,9 +58,8 @@ load_pct() {
   l=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
   awk -v l="${l:-0}" -v t="$(threads)" 'BEGIN{printf "%d", (l/t)*100}'
 }
-ver() {  # prima riga di --version, solo la versione
-  have "$1" || { printf null; return; }
-  v=$("$@" 2>&1 | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1)
+version_in() {  # the version number in the first line of a tool's own output, as JSON (null if none)
+  v=$(printf '%s\n' "$1" | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1)
   [ -n "$v" ] && js "$v" || printf null
 }
 
@@ -123,7 +122,8 @@ cmd_probe() {
   creds=""
   addc() { creds="$creds${creds:+,}$(js "$1")"; }
   [ -s "$HOME/.git-credentials" ] && addc "~/.git-credentials"
-  grep -qs 'oauth_token' "$HOME/.config/gh/hosts.yml" && addc "gh auth (~/.config/gh/hosts.yml)"
+  # only reads gh's hosts.yml to report that a token is there; nothing is written
+  grep --quiet --no-messages --fixed-strings --regexp=oauth_token "$HOME/.config/gh/hosts.yml" && addc "gh auth (~/.config/gh/hosts.yml)"
   for k in "$HOME"/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && addc "~/.ssh/$(basename "$k")" ;; esac; done
   # only reads ~/.npmrc to report that a token is there; nothing is written
   grep --quiet --no-messages --fixed-strings --regexp=_authToken "$HOME/.npmrc" && addc "~/.npmrc (token)"
@@ -137,6 +137,14 @@ cmd_probe() {
   mkdir -p "$ROOT" 2>/dev/null
   b=null; w=null
   [ "$WEBGL" = 1 ] && w="$(webgl)"
+  # the version of each tool, each one called by its own name
+  tool_node=null; have node && tool_node=$(version_in "$(node --version 2>&1)")
+  tool_ffmpeg=null; have ffmpeg && tool_ffmpeg=$(version_in "$(ffmpeg -version 2>&1)")
+  tool_python=null; have python3 && tool_python=$(version_in "$(python3 --version 2>&1)")
+  tool_git=null; have git && tool_git=$(version_in "$(git --version 2>&1)")
+  tool_tmux=null; have tmux && tool_tmux=$(version_in "$(tmux -V 2>&1)")
+  tool_claude=null; have claude && tool_claude=$(version_in "$(claude --version 2>&1)")
+  tool_tar=null; have tar && tool_tar=$(version_in "$(tar --version 2>&1)")
   if [ "$BENCH" = 1 ]; then
     if have node; then b=$(node "$(dirname "$SELF")/cm-bench.js" "$ROOT" 2>/dev/null | tail -n1); fi
     case "$b" in '{'*) ;; *) b=null ;; esac
@@ -144,8 +152,8 @@ cmd_probe() {
   out "{\"ok\":true,\"kind\":\"$kind\",\"os\":$(js "$pretty"),\"os_version\":$(js "$(uname -r)"),\"arch\":$(js "$(uname -m)"),\"cores\":$(num "$c"),\"threads\":$(num "$t"),\
 \"ram_gb\":$(gb "$rt"),\"ram_free_gb\":$(gb "$ra"),\"disk_free_gb\":{$(js "$ROOT"):$(num "$(free_gb "$ROOT")")},\"gpu\":[${gpus}],\
 \"webgl\":$w,\"bench\":$b,\
-\"tools\":{\"node\":$(ver node --version),\"ffmpeg\":$(ver ffmpeg -version),\"python\":$(ver python3 --version),\"git\":$(ver git --version),\
-\"tmux\":$(ver tmux -V),\"claude\":$(ver claude --version),\"tar\":$(ver tar --version),\"chrome\":$(js "$(find_chrome)")},\
+\"tools\":{\"node\":$tool_node,\"ffmpeg\":$tool_ffmpeg,\"python\":$tool_python,\"git\":$tool_git,\
+\"tmux\":$tool_tmux,\"claude\":$tool_claude,\"tar\":$tool_tar,\"chrome\":$(js "$(find_chrome)")},\
 \"accounts\":[${accs}],\"foreign_credentials\":[${creds}],\"admin\":$admin,\"linger\":$linger,\
 \"interactive_desktop\":null,\"power\":null,\"home\":$(js "$HOME"),\"root\":$(js "$ROOT"),\"load_pct\":$(load_pct)}"
 }
@@ -202,9 +210,9 @@ cmd_missing() {
 
 cmd_unpack() {
   d="$(jobdir "$1")"; cd "$d" || fail "no job dir"
-  tar -xf bundle.tar || fail "bundle.tar"
-  mkdir -p src && tar -xf src.tar -C src || fail "src.tar"
-  if [ -f assets.tar ]; then tar -xf assets.tar -C "$ROOT/cache/assets" || fail "assets.tar"; fi
+  tar --extract --file=bundle.tar || fail "bundle.tar"
+  mkdir -p src && tar --extract --file=src.tar --directory=src || fail "src.tar"
+  if [ -f assets.tar ]; then tar --extract --file=assets.tar --directory="$ROOT/cache/assets" || fail "assets.tar"; fi
   n=0
   if [ -f manifest.txt ]; then
     while IFS='	' read -r sha size path; do
@@ -293,7 +301,7 @@ cmd_pack() {
   done
   [ -n "$list" ] || fail "no output"
   # shellcheck disable=SC2086
-  tar -cf ../out.tar $list || fail "tar"
+  tar --create --file=../out.tar $list || fail "tar"
   for f in $(find $list -type f 2>/dev/null); do
     files="$files${files:+,}{\"path\":$(js "$f"),\"sha256\":\"$(sha_of "$f")\",\"size\":$(wc -c < "$f" | tr -d ' ')}"
   done
