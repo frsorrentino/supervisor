@@ -33,13 +33,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 jobdir() { case "${1:-}" in ''|*/*|.*) fail "bad job id" ;; esac; printf '%s/jobs/%s' "$ROOT" "$1"; }
 sha_of() { if have sha256sum; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 is_json_obj() { [ -s "$1" ] && [ "$(head -c1 "$1")" = "{" ] && tail -c 4 "$1" | tr -d ' \r\n' | grep -q '}$'; }
-threads() { nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1; }
 ram_kb() {  # totale libera (kB)
   [ -n "${CM_FAKE_RAM_KB:-}" ] && { printf '%s\n' "$CM_FAKE_RAM_KB"; return; }   # solo prove: «totale libera»
   if [ -r /proc/meminfo ]; then
     awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{print t, a}' /proc/meminfo
   else
-    t=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
     f=$(vm_stat 2>/dev/null | awk '/free|inactive|speculative/{gsub(/\./,"",$NF); s+=$NF} END{print s*4}')
     echo "$t ${f:-0}"
   fi
@@ -55,7 +53,6 @@ disk_of() {  # 1.75: {path, free_b, total_b} of the filesystem holding the folde
 }
 load_pct() {
   [ -n "${CM_FAKE_LOAD_PCT:-}" ] && { printf '%s' "$CM_FAKE_LOAD_PCT"; return; }   # solo prove
-  l=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
   awk -v l="${l:-0}" -v t="$(threads)" 'BEGIN{printf "%d", (l/t)*100}'
 }
 version_in() {  # the version number in the first line of a tool's own output, as JSON (null if none)
@@ -102,7 +99,6 @@ cmd_probe() {
   kind=linux; [ "$os" = Darwin ] && kind=macos; grep -qi microsoft /proc/version 2>/dev/null && kind=wsl
   t=$(threads)
   c=$(lscpu -p=core 2>/dev/null | grep -v '^#' | sort -u | wc -l | tr -d ' ')
-  [ "${c:-0}" -gt 0 ] 2>/dev/null || c=$(sysctl -n hw.physicalcpu 2>/dev/null || echo "$t")
   set -- $(ram_kb); rt=$1; ra=$2
   gpus=""
   if have nvidia-smi; then
@@ -125,8 +121,6 @@ cmd_probe() {
   # only reads gh's hosts.yml to report that a token is there; nothing is written
   grep --quiet --no-messages --fixed-strings --regexp=oauth_token "$HOME/.config/gh/hosts.yml" && addc "gh auth (~/.config/gh/hosts.yml)"
   for k in "$HOME"/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && addc "~/.ssh/$(basename "$k")" ;; esac; done
-  # only reads ~/.npmrc to report that a token is there; nothing is written
-  grep --quiet --no-messages --fixed-strings --regexp=_authToken "$HOME/.npmrc" && addc "~/.npmrc (token)"
   # nomi, mai valori; fuori le variabili di supervisor e di Claude Code stesso
   for v in $(env | cut -d= -f1 | grep -E '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' | grep -vE '^(CM_|CLAUDE_CODE_)|_KEYS$' || true); do
     addc "env $v"; done
@@ -259,13 +253,11 @@ cmd_run_job() {
     cache="$ROOT/cache/deps/$key"
     if [ ! -f "$cache/.ok" ]; then
       write_status deps "$$"
-      ( cd src && sh -c "$dcmd" ) >> log.txt 2>&1 || { write_status failed "$$" 90; exit 90; }
       mkdir -p "$cache" && rm -rf "$cache/$ddir" && mv "src/$ddir" "$cache/$ddir" && touch "$cache/.ok"
     fi
     [ -e "src/$ddir" ] || ln -s "$cache/$ddir" "src/$ddir"
   fi
   to=$(cat timeout.txt 2>/dev/null || echo 0)
-  ( cd src && exec sh -c "$(cat ../cmd.txt)" ) >> log.txt 2>&1 &
   child=$!; echo "$child" > child.pid
   write_status running "$child"
   el=0

@@ -117,7 +117,6 @@ function Cmd-Probe {
     if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
     if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
     Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
-    if (Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('~\.npmrc (token)') }
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
     $ck = (cmd /c 'cmdkey /list 2>nul') -join "`n"
@@ -181,7 +180,6 @@ function JobInfo($d) {
 
 function ApiState($cdPath, $e) {
     # 16/11/2026 (supervisor-blocco-permanente-16-11): l'ultima voce assistant della trascrizione della sessione (non di
-    # un sottoagente). Se e' un errore dell'API, block = {kind limit|login|error, error, text, at, resets_at, limit_type}:
     # la sessione e' ferma li'. La stessa lettura di api_error (cm-relay-state.py) e di apiError (cm-session.js); si
     # leggono gli ultimi 512 KB. last_at = l'ora di quella voce. $null se la trascrizione non c'e'.
     try {
@@ -233,7 +231,6 @@ function ApiState($cdPath, $e) {
 function EpochOf($dt) { [int64](($dt.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds) }
 
 function SubTokens($jp) {
-    # {in, out, model} di una trascrizione di sottoagente: l'ultima usage di ogni message.id (Claude Code la ripete su
     # ogni blocco del messaggio); in = input + cache scritta + cache letta. Come _usage di cm-subagents.py
     $byId = @{}; $model = $null
     try {
@@ -255,7 +252,6 @@ function SubTokens($jp) {
 
 function SubagentsOf($cdPath, $e) {
     # 23/11/2026 (supervisor-sottoagenti-23-11): i sottoagenti della sessione, come summary di cm-subagents.py:
-    # {n, running, at, items (al piu' 3: in corso prima, poi i piu' recenti), workflows}. Ogni sottoagente sta in
     # <projects>\<slug>\<sid>\subagents\agent-<id>.meta.json + .jsonl; quelli di un Workflow in
     # subagents\workflows\wf_*\, finiti quando journal.jsonl ha la loro riga result. Inizio = creazione della
     # trascrizione, fine = la sua ultima scrittura; le trascrizioni si aprono solo per i token delle voci mostrate.
@@ -380,7 +376,6 @@ function Cmd-Missing {
 }
 
 function Tar($argList) {
-    $o = cmd /c "tar.exe $argList 2>&1"
     if ($LASTEXITCODE -ne 0) { Fail "tar $argList : $($o -join ' ')" }
 }
 
@@ -417,9 +412,6 @@ function Write-Status($d, $state, $procId, $rc) {
 function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
     [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
-    $a = @('/d', '/s', '/c', "`"`"$bat`" >> `"$log`" 2>&1`"")
-    if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
-    Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
 }
 
 function Kill-Tree($procId) { if ($procId) { cmd /c "taskkill /T /F /PID $procId >nul 2>&1" } }
@@ -454,7 +446,6 @@ function Cmd-RunJob {
         $ddir = $depsDir -replace '/', '\'
         if (-not (Test-Path (Join-Path $cache '.ok'))) {
             Write-Status $d 'deps' $PID $null
-            $p = Start-Cmd $d 'deps' $depsCmd $srcd $log -Wait
             if ($p.ExitCode -ne 0) { Write-Status $d 'failed' $PID 90; exit 90 }
             New-Item -ItemType Directory -Force -Path $cache | Out-Null
             $tgt = Join-Path $cache $ddir
