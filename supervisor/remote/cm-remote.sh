@@ -78,8 +78,6 @@ webgl() {  # {renderer, hardware, ms} da un Chrome headless; null senza Chrome
   case "$(uname -s)" in Darwin) angles="metal" ;; *) angles="gl-egl" ;; esac
   for a in $angles; do
     ud="$(mktemp -d)"
-    r=$(timeout 20 "$c" --headless=new --ignore-gpu-blocklist --use-gl=angle --use-angle="$a" --no-first-run \
-        --user-data-dir="$ud" --dump-dom "file://$page" 2>/dev/null | sed -n 's/.*CMWEBGL\(.*\)CMWEBGL.*/\1/p' | head -n1)
     rm -rf "$ud"
     case "$r" in *renderer*) break ;; esac
   done

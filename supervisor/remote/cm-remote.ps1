@@ -67,14 +67,6 @@ function VersionIn($output) {
 function Sha($f) { (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLower() }
 function NowIso { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
 
-function Find-Chrome {
-    $c = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-           "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
-    $c += @(Get-ChildItem -Path (Join-Path $Root 'cache\deps') -Filter chrome-headless-shell.exe -Recurse -Depth 8 -ErrorAction SilentlyContinue | ForEach-Object FullName)
-    $c += @(Get-ChildItem -Path "$env:LOCALAPPDATA\ms-playwright" -Filter chrome.exe -Recurse -Depth 4 -ErrorAction SilentlyContinue | ForEach-Object FullName)
-    $c += @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
-    foreach ($x in $c) { if ($x -and (Test-Path $x)) { return $x } }
-    $null
 }
 
 function WebGL {
@@ -85,8 +77,6 @@ function WebGL {
     $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
     $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
     $url = 'file:///' + ($page -replace '\\', '/')
-    $a = "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url"
-    $p = Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
     if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
     Start-Sleep -Milliseconds 300
     $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
