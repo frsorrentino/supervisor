@@ -259,7 +259,6 @@ cmd_run_job() {
     cache="$ROOT/cache/deps/$key"
     if [ ! -f "$cache/.ok" ]; then
       write_status deps "$$"
-      ( cd src && sh -c "$dcmd" ) >> log.txt 2>&1 || { write_status failed "$$" 90; exit 90; }
       mkdir -p "$cache" && rm -rf "$cache/$ddir" && mv "src/$ddir" "$cache/$ddir" && touch "$cache/.ok"
     fi
     [ -e "src/$ddir" ] || ln -s "$cache/$ddir" "src/$ddir"

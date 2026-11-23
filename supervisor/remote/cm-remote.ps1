@@ -454,7 +454,6 @@ function Cmd-RunJob {
         $ddir = $depsDir -replace '/', '\'
         if (-not (Test-Path (Join-Path $cache '.ok'))) {
             Write-Status $d 'deps' $PID $null
-            $p = Start-Cmd $d 'deps' $depsCmd $srcd $log -Wait
             if ($p.ExitCode -ne 0) { Write-Status $d 'failed' $PID 90; exit 90 }
             New-Item -ItemType Directory -Force -Path $cache | Out-Null
             $tgt = Join-Path $cache $ddir
