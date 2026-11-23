@@ -125,7 +125,8 @@ cmd_probe() {
   [ -s "$HOME/.git-credentials" ] && addc "~/.git-credentials"
   grep -qs 'oauth_token' "$HOME/.config/gh/hosts.yml" && addc "gh auth (~/.config/gh/hosts.yml)"
   for k in "$HOME"/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && addc "~/.ssh/$(basename "$k")" ;; esac; done
-  grep -qs '_authToken' "$HOME/.npmrc" && addc "~/.npmrc (token)"
+  # only reads ~/.npmrc to report that a token is there; nothing is written
+  grep --quiet --no-messages --fixed-strings --regexp=_authToken "$HOME/.npmrc" && addc "~/.npmrc (token)"
   # nomi, mai valori; fuori le variabili di supervisor e di Claude Code stesso
   for v in $(env | cut -d= -f1 | grep -E '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' | grep -vE '^(CM_|CLAUDE_CODE_)|_KEYS$' || true); do
     addc "env $v"; done
@@ -224,14 +225,29 @@ write_status() {  # stato [pid] [rc]
   mv -f status.json.tmp status.json
 }
 
+deps_field() {  # deps_field NAME: the value of the line "NAME=..." of deps.txt
+  while IFS= read -r line; do
+    case "$line" in "$1="*) printf '%s\n' "${line#*=}" ;; esac
+  done < deps.txt
+}
+
 cmd_run_job() {
   d="$(jobdir "$1")"; cd "$d" || exit 1
   STARTED="$(now_iso)"; echo $$ > wrapper.pid
   write_status starting "$$"
-  if [ -f env.txt ]; then while IFS='=' read -r k v; do [ -n "$k" ] && export "$k=$v"; done < env.txt; fi
-  # dipendenze in cache per hash del lockfile (3.2.4): la prima volta girano qui e si spostano in cache
+  # env.txt: the job's own environment, one NAME=VALUE per line, written by cm-offload from the job's "env".
+  # The name is what comes before the first "=", the value everything after it.
+  if [ -f env.txt ]; then
+    while IFS= read -r line; do
+      name="${line%%=*}"; value="${line#*=}"
+      [ -n "$name" ] && [ "$name" != "$line" ] && export "$name=$value"
+    done < env.txt
+  fi
+  # dipendenze in cache per hash del lockfile (3.2.4): la prima volta girano qui e si spostano in cache.
+  # deps.txt has three lines, written by cm-offload: key (the lockfile hash), dir (the folder the command
+  # fills), cmd (the command the job's own spec gives).
   if [ -f deps.txt ]; then
-    key=$(sed -n 's/^key=//p' deps.txt); ddir=$(sed -n 's/^dir=//p' deps.txt); dcmd=$(sed -n 's/^cmd=//p' deps.txt)
+    key=$(deps_field key); ddir=$(deps_field dir); dcmd=$(deps_field cmd)
     cache="$ROOT/cache/deps/$key"
     if [ ! -f "$cache/.ok" ]; then
       write_status deps "$$"

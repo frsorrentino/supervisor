@@ -28,6 +28,12 @@ function JobDir($id) {
     Join-Path (Join-Path $Root 'jobs') $id
 }
 function Gb($bytes) { [math]::Round([double]$bytes / 1GB, 1) }
+function DepsField($lines, $field) {
+    # the value of the last line "FIELD=..." of deps.txt, or $null
+    $found = $null
+    foreach ($line in $lines) { if ($line.StartsWith("$field=")) { $found = $line.Substring($field.Length + 1) } }
+    $found
+}
 function FreeGb($path) {
     $p = $path; while ($p -and -not (Test-Path $p)) { $p = Split-Path -Parent $p }
     if (-not $p) { $p = $env:USERPROFILE }
@@ -317,18 +323,30 @@ function Cmd-RunJob {
     Write-Status $d 'starting' $PID $null
     $log = Join-Path $d 'log.txt'
     $srcd = Join-Path $d 'src'
+    # env.txt: the job's own environment, one NAME=VALUE per line, written by cm-offload from the job's "env".
+    # The name is what comes before the first "=", the value everything after it.
     if (Test-Path (Join-Path $d 'env.txt')) {
-        Get-Content -LiteralPath (Join-Path $d 'env.txt') -Encoding UTF8 | Where-Object { $_ -match '=' } | ForEach-Object {
-            $k, $v = $_ -split '=', 2; [Environment]::SetEnvironmentVariable($k, $v, 'Process') }
+        foreach ($line in @(Get-Content -LiteralPath (Join-Path $d 'env.txt') -Encoding UTF8)) {
+            $at = $line.IndexOf('=')
+            if ($at -lt 0) { continue }
+            $name = $line.Substring(0, $at)
+            $value = $line.Substring($at + 1)
+            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+        }
     }
+    # deps.txt has three lines, written by cm-offload: key (the lockfile hash), dir (the folder the command
+    # fills), cmd (the command the job's own spec gives).
     $df = Join-Path $d 'deps.txt'
     if (Test-Path $df) {
-        $dp = @{}; Get-Content -LiteralPath $df -Encoding UTF8 | ForEach-Object { $k, $v = $_ -split '=', 2; $dp[$k] = $v }
-        $cache = Join-Path (Join-Path $Root 'cache\deps') $dp['key']
-        $ddir = $dp['dir'] -replace '/', '\'
+        $depsLines = @(Get-Content -LiteralPath $df -Encoding UTF8)
+        $depsKey = DepsField $depsLines 'key'
+        $depsDir = DepsField $depsLines 'dir'
+        $depsCmd = DepsField $depsLines 'cmd'
+        $cache = Join-Path (Join-Path $Root 'cache\deps') $depsKey
+        $ddir = $depsDir -replace '/', '\'
         if (-not (Test-Path (Join-Path $cache '.ok'))) {
             Write-Status $d 'deps' $PID $null
-            $p = Start-Cmd $d 'deps' $dp['cmd'] $srcd $log -Wait
+            $p = Start-Cmd $d 'deps' $depsCmd $srcd $log -Wait
             if ($p.ExitCode -ne 0) { Write-Status $d 'failed' $PID 90; exit 90 }
             New-Item -ItemType Directory -Force -Path $cache | Out-Null
             $tgt = Join-Path $cache $ddir

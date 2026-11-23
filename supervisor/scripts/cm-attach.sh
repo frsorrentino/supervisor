@@ -22,7 +22,7 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/cm-lib.sh"
 NOME="${1:?uso: supervisor attach <nome-sessione> [ephemeral]}"
 MODE="${2:-}"
 
-cm_tmux has-session -t "=$NOME" 2>/dev/null || {
+cm_tmux has-session -t="$NOME" 2>/dev/null || {
   cm_msg attach.missing "name=$NOME" >&2
   echo "  $(cm_tmux list-sessions -F '#{session_name}' 2>/dev/null | tr '\n' ' ')" >&2
   exit 3
@@ -41,16 +41,23 @@ if [ "$CM_TABS_TITLE" = true ]; then
   # send-keys, T1): risponde «no such session» — l'attacca legacy lo usava e
   # il set-titles falliva in silenzio dal 2026-08-27. Nome nudo, dopo che
   # has-session -t = ha garantito che il nome esatto esiste.
-  cm_tmux set-option -t "$NOME" set-titles on 2>/dev/null
-  cm_tmux set-option -t "$NOME" set-titles-string "$TITOLO" 2>/dev/null
+  cm_tmux set-option -t"$NOME" set-titles on 2>/dev/null
+  cm_tmux set-option -t"$NOME" set-titles-string "$TITOLO" 2>/dev/null
 fi
+
+# `-t=NOME` is tmux's exact-name target (the "=" prefix) with the value joined to the option; set-option takes
+# the bare name (T64), joined too. attach_tmux replaces this shell with tmux, on the same server cm_tmux uses.
+attach_tmux() {
+  # shellcheck disable=SC2086
+  if [ -n "${CM_TMUX_SOCKET:-}" ]; then exec tmux ${CM_TMUX_ARGS:-} -L "$CM_TMUX_SOCKET" "$@"
+  else exec tmux ${CM_TMUX_ARGS:-} "$@"; fi
+}
 
 case "$MODE" in
   ephemeral|effimera)
-    exec "${CM_TMUX_BIN:-tmux}" ${CM_TMUX_ARGS:-} ${CM_TMUX_SOCKET:+-L "$CM_TMUX_SOCKET"} \
-      attach -t "=$NOME" \; set-option -t "$NOME" destroy-unattached on ;;
+    attach_tmux attach -t="$NOME" \; set-option -t"$NOME" destroy-unattached on ;;
   "")
-    exec "${CM_TMUX_BIN:-tmux}" ${CM_TMUX_ARGS:-} ${CM_TMUX_SOCKET:+-L "$CM_TMUX_SOCKET"} attach -t "=$NOME" ;;
+    attach_tmux attach -t="$NOME" ;;
   *)
     echo "supervisor attach: modo sconosciuto '$MODE' (ephemeral)" >&2; exit 2 ;;
 esac
