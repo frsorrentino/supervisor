@@ -33,13 +33,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 jobdir() { case "${1:-}" in ''|*/*|.*) fail "bad job id" ;; esac; printf '%s/jobs/%s' "$ROOT" "$1"; }
 sha_of() { if have sha256sum; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 is_json_obj() { [ -s "$1" ] && [ "$(head -c1 "$1")" = "{" ] && tail -c 4 "$1" | tr -d ' \r\n' | grep -q '}$'; }
-threads() { nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1; }
 ram_kb() {  # totale libera (kB)
   [ -n "${CM_FAKE_RAM_KB:-}" ] && { printf '%s\n' "$CM_FAKE_RAM_KB"; return; }   # solo prove: «totale libera»
   if [ -r /proc/meminfo ]; then
     awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{print t, a}' /proc/meminfo
   else
-    t=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
     f=$(vm_stat 2>/dev/null | awk '/free|inactive|speculative/{gsub(/\./,"",$NF); s+=$NF} END{print s*4}')
     echo "$t ${f:-0}"
   fi
@@ -55,7 +53,6 @@ disk_of() {  # 1.75: {path, free_b, total_b} of the filesystem holding the folde
 }
 load_pct() {
   [ -n "${CM_FAKE_LOAD_PCT:-}" ] && { printf '%s' "$CM_FAKE_LOAD_PCT"; return; }   # solo prove
-  l=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
   awk -v l="${l:-0}" -v t="$(threads)" 'BEGIN{printf "%d", (l/t)*100}'
 }
 version_in() {  # the version number in the first line of a tool's own output, as JSON (null if none)
@@ -102,7 +99,6 @@ cmd_probe() {
   kind=linux; [ "$os" = Darwin ] && kind=macos; grep -qi microsoft /proc/version 2>/dev/null && kind=wsl
   t=$(threads)
   c=$(lscpu -p=core 2>/dev/null | grep -v '^#' | sort -u | wc -l | tr -d ' ')
-  [ "${c:-0}" -gt 0 ] 2>/dev/null || c=$(sysctl -n hw.physicalcpu 2>/dev/null || echo "$t")
   set -- $(ram_kb); rt=$1; ra=$2
   gpus=""
   if have nvidia-smi; then
