@@ -439,7 +439,6 @@ function Cmd-RunJob {
             if ($at -lt 0) { continue }
             $name = $line.Substring(0, $at)
             $value = $line.Substring($at + 1)
-            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
         }
     }
     # deps.txt has three lines, written by cm-offload: key (the lockfile hash), dir (the folder the command

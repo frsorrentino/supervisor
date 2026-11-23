@@ -103,7 +103,6 @@ cmd_probe() {
   t=$(threads)
   c=$(lscpu -p=core 2>/dev/null | grep -v '^#' | sort -u | wc -l | tr -d ' ')
   [ "${c:-0}" -gt 0 ] 2>/dev/null || c=$(sysctl -n hw.physicalcpu 2>/dev/null || echo "$t")
-  set -- $(ram_kb); rt=$1; ra=$2
   gpus=""
   if have nvidia-smi; then
     gpus=$(nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader,nounits 2>/dev/null \
@@ -167,7 +166,6 @@ job_json() {  # stato del lavoro: status.json del lavoro + coda del log
 
 cmd_status() {
   dk="${1:-$ROOT}"   # 1.75: the folder whose disk the status reports (the sessions root), before set -- below
-  set -- $(ram_kb); rt=$1; ra=$2
   jobs=""
   if [ -d "$ROOT/jobs" ]; then
     for d in "$ROOT"/jobs/*/; do [ -d "$d" ] || continue; jobs="$jobs${jobs:+,}$(job_json "$(basename "$d")")"; done
@@ -248,7 +246,6 @@ cmd_run_job() {
   if [ -f env.txt ]; then
     while IFS= read -r line; do
       name="${line%%=*}"; value="${line#*=}"
-      [ -n "$name" ] && [ "$name" != "$line" ] && export "$name=$value"
     done < env.txt
   fi
   # dipendenze in cache per hash del lockfile (3.2.4): la prima volta girano qui e si spostano in cache.
