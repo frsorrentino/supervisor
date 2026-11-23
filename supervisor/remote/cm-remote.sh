@@ -248,7 +248,6 @@ cmd_run_job() {
   if [ -f env.txt ]; then
     while IFS= read -r line; do
       name="${line%%=*}"; value="${line#*=}"
-      [ -n "$name" ] && [ "$name" != "$line" ] && export "$name=$value"
     done < env.txt
   fi
   # dipendenze in cache per hash del lockfile (3.2.4): la prima volta girano qui e si spostano in cache.
