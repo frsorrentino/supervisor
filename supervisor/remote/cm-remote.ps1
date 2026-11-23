@@ -138,7 +138,6 @@ function Cmd-Probe {
     $w = $null; if ($webgl) { $w = WebGL }
     $b = $null
     if ($bench -and (Get-Command node -ErrorAction SilentlyContinue)) {
-        $bo = (cmd /c "node `"$(Join-Path $Here 'cm-bench.js')`" `"$Root`" 2>nul") | Select-Object -Last 1
         if ("$bo".StartsWith('{')) { $b = $bo | ConvertFrom-Json }
     }
     $chrome = Find-Chrome

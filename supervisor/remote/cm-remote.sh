@@ -146,7 +146,6 @@ cmd_probe() {
   tool_claude=null; have claude && tool_claude=$(version_in "$(claude --version 2>&1)")
   tool_tar=null; have tar && tool_tar=$(version_in "$(tar --version 2>&1)")
   if [ "$BENCH" = 1 ]; then
-    if have node; then b=$(node "$(dirname "$SELF")/cm-bench.js" "$ROOT" 2>/dev/null | tail -n1); fi
     case "$b" in '{'*) ;; *) b=null ;; esac
   fi
   out "{\"ok\":true,\"kind\":\"$kind\",\"os\":$(js "$pretty"),\"os_version\":$(js "$(uname -r)"),\"arch\":$(js "$(uname -m)"),\"cores\":$(num "$c"),\"threads\":$(num "$t"),\
