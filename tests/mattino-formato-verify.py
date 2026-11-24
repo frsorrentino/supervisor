@@ -68,7 +68,12 @@ servers = tmp / "spazio-server.json"
 servers.write_text(json.dumps({"Alpha": {"livello": "alto", "liberi_gb": 51, "uso": 90, "ora": "07:30"},
                                "Bravo": {"livello": "alto", "liberi_gb": 20, "uso": 83, "ora": "07:30"},
                                "Gamma": {"livello": "ok", "liberi_gb": 300, "uso": 40, "ora": "07:30"}}))
+# DATA-MF-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte e a fine mese
+# 24/11 (supervisor-test-oggi-24-11): il giorno si legge una volta e va agli script come CM_TODAY: il mattino e le sue scadenze restano in quel
+# giorno anche se fra le due letture scatta la mezzanotte o finisce il mese
 today = dt.date.today()
+TODAY_ENV = {"CM_TODAY": today.isoformat()}
+# DATA-MF-end
 ics = tmp / "cal.ics"
 d1, d2 = today + dt.timedelta(days=3), today + dt.timedelta(days=14)
 ics.write_text("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
@@ -88,7 +93,7 @@ cfg.write_text(json.dumps({
     "calendar": {"url_file": str(secrets), "remind_days": 30, "cases": {"c_000000000001": "~/ws/pratiche/prova-uno", "c_000000000002": "~/ws/pratiche/prova-due"}},
     "tile": {"chrome_bridge_cli": ""}}))
 ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "TMUX_PANE")}
-ENV.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home), "CM_TASKS_DB": str(tmp / "t.db"), "CM_RELAY_NO_PUSH": "1",
+ENV.update({**TODAY_ENV, "CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home), "CM_TASKS_DB": str(tmp / "t.db"), "CM_RELAY_NO_PUSH": "1",
             "CM_MONITORS": str(tmp / "monitors")})
 CLI = str(T.SCRIPTS / "supervisor")
 now = time.time()

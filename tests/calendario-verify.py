@@ -30,7 +30,12 @@ tmp = Path(T.tmpdir())
 home = tmp / "home"
 for d in (".claude/sessions", "ws/personali/alfa", "ws/pratiche/p001"):
     (home / d).mkdir(parents=True)
+# DATA-CA-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte e a fine mese
+# 24/11 (supervisor-test-oggi-24-11): il giorno si legge una volta e va agli script come CM_TODAY: le scadenze, il recap e --json restano in quel
+# giorno anche se fra le due letture scatta la mezzanotte o finisce il mese
 TODAY = dt.date.today()
+TODAY_ENV = {"CM_TODAY": TODAY.isoformat()}
+# DATA-CA-end
 
 
 def ics_date(n):
@@ -105,7 +110,7 @@ def setup(name, url):
 
 
 def env(cfg, **extra):
-    e = {"PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg),
+    e = {**TODAY_ENV, "PATH": os.environ["PATH"], "HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfg),
          "CM_DIARY_FAKE_PROC": "1", "CM_PROC_SCAN_PIDS": "", "TZ": "Europe/Rome"}
     e.update(extra)
     return e

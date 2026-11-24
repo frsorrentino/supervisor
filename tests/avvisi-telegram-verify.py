@@ -160,7 +160,14 @@ T.check("AG3 guard: the stalled commitments go to the master (talk), not to Tele
 stall_file.unlink()
 
 # ------------------------------------------------------------------ AR1-AR3: il recap delle 20
+# DATA-AT-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte e a fine mese
+# 24/11 (supervisor-test-oggi-24-11): il giorno si legge una volta e va agli script come CM_TODAY: recap add, il recap delle 20 e il mattino restano in quel
+# giorno anche se fra le due letture scatta la mezzanotte o finisce il mese
 today = dt.date.today()
+TODAY_ENV = {"CM_TODAY": today.isoformat()}
+# DATA-AT-end
+ENV.update(TODAY_ENV)
+os.environ.update(TODAY_ENV)
 yday = today - dt.timedelta(days=1)
 
 

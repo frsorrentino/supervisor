@@ -57,6 +57,12 @@ def _cm_proc():
 HERE = Path(__file__).resolve().parent
 
 
+def today():
+    """Oggi, o CM_TODAY (YYYY-MM-DD) nei test, come cm-avvisi.today() e cm-calendar.today() (24/11/2026, supervisor-test-oggi-24-11)."""
+    t = os.environ.get("CM_TODAY")
+    return dt.date.fromisoformat(t) if t else dt.date.today()
+
+
 def _load(name):
     spec = importlib.util.spec_from_file_location(name.replace("-", "_"), HERE / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
@@ -745,7 +751,7 @@ def build(argv):
         events = read_events(since=dt.datetime.now() - dt.timedelta(hours=a.since))
         label = M("recap.label_since", h=a.since)
     else:
-        day = dt.date.fromisoformat(a.date) if a.date else dt.date.today()
+        day = dt.date.fromisoformat(a.date) if a.date else today()
         events = read_events(day=day)
         label = day.strftime("%d/%m/%Y")
     sessions = summarize(events)
@@ -794,7 +800,7 @@ def run(argv):
                     "link": link_url(g["link"])}
         print(json.dumps([ser(g) for g in groups], ensure_ascii=False, indent=1))
         return 0
-    day = None if a.since else (dt.date.fromisoformat(a.date) if a.date else dt.date.today())
+    day = None if a.since else (dt.date.fromisoformat(a.date) if a.date else today())
     if a.full:
         text = render_full(sessions, label)
         print(text)
@@ -818,7 +824,7 @@ def run(argv):
             to_app(plain, day)
         # 17/11/2026 (supervisor-avvisi-telegram-17-11): su Telegram il recap delle 20 (uscito, ti aspetta, stanotte, la
         # notte, le voci di recap add), non il diario per progetto, che resta all'app
-        return send(_load("cm-avvisi").evening_text(day or dt.date.today()), True)   # 19/11: HTML (supervisor-recap-telegram-19-11)
+        return send(_load("cm-avvisi").evening_text(day or today()), True)   # 19/11: HTML (supervisor-recap-telegram-19-11)
     return 0
 
 

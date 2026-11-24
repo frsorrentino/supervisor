@@ -37,7 +37,8 @@ os.environ.update({"HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFI
 
 NOW = dt.datetime.now(dt.timezone.utc)
 # i turni di «oggi» stanno nei primi secondi del giorno locale: mai a cavallo della mezzanotte (il test girava alle 00:15)
-DAY0 = dt.datetime.now().replace(hour=0, minute=0, second=1, microsecond=0).astimezone(dt.timezone.utc)
+# 24/11 (supervisor-test-oggi-24-11): dal NOW di sopra, non da una seconda lettura dell'orologio
+DAY0 = NOW.astimezone().replace(hour=0, minute=0, second=1, microsecond=0).astimezone(dt.timezone.utc)
 
 
 def ts(min_ago):
@@ -61,7 +62,7 @@ def tool_result(uid, tid, m):
 
 LONG = ("listino di dicembre pronto con le note e i totali controllati riga per riga, piu' il riepilogo per il cliente "
         "e le modifiche al file condiviso del gruppo")
-yesterday = (dt.datetime.now() - dt.timedelta(days=1)).replace(hour=12)
+yesterday = (NOW.astimezone() - dt.timedelta(days=1)).replace(hour=12)
 rows = [
     {"type": "user", "uuid": "y0", "timestamp": yesterday.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"), "sessionId": "S",
      "origin": {"kind": "human"}, "message": {"role": "user", "content": "ieri"}},

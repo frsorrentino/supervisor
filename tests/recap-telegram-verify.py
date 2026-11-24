@@ -76,7 +76,13 @@ cfg.write_text(json.dumps({
     "recap": {"cron_time": "20:00", "summary": "last"},
     "tile": {"chrome_bridge_cli": ""}}))
 ENV = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "TMUX", "TMUX_PANE")}
-ENV.update({"CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home), "CM_TASKS_DB": str(tmp / "t.db"), "CM_RELAY_NO_PUSH": "1",
+# DATA-RT-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte e a fine mese
+# 24/11 (supervisor-test-oggi-24-11): il giorno si legge una volta e va agli script come CM_TODAY: recap add e il recap delle 20 restano in quel
+# giorno anche se fra le due letture scatta la mezzanotte o finisce il mese
+today = dt.date.today()
+TODAY_ENV = {"CM_TODAY": today.isoformat()}
+# DATA-RT-end
+ENV.update({**TODAY_ENV, "CC_SUPERVISOR_CONFIG": str(cfg), "HOME": str(home), "CM_HOME": str(home), "CM_TASKS_DB": str(tmp / "t.db"), "CM_RELAY_NO_PUSH": "1",
             "CM_CLAUDE_BIN": str(fake_claude), "CM_DIARY_FAKE_PROC": "1"})
 CLI = str(T.SCRIPTS / "supervisor")
 
@@ -134,7 +140,6 @@ r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--send"], c
 msg = SENT[-1] if SENT else {}
 txt = msg.get("text", "")
 lines = txt.splitlines()
-today = dt.date.today()
 DAYS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 head = f"<b>{DAYS[today.weekday()]} {today.strftime('%d/%m')} · 7 ti aspettano · {len(DONE)} fatti</b>"
 T.check("RT1 one HTML message; the first line in bold «Giovedì 19/11 · 7 ti aspettano · N fatti»",

@@ -14,6 +14,13 @@ DM3 ogni tratto, eseguito cosi' com'e' con l'orologio a 23:59:58, 23:59:59 e 00:
 DM4 la forma di prima di ogni tratto, con gli stessi script finti, e' rossa ad almeno una di quelle ore e verde a
     mezzogiorno: la prova vede il difetto e gli script finti non sono rotti
 DM5 T.days: un giorno solo nello stesso giorno, due a cavallo della mezzanotte, nell'ordine
+DM6 avvisi-telegram, calendario, mattino-formato e recap-telegram leggono il giorno fra i segni DATA-<caso> e lo passano
+    agli script come CM_TODAY (TODAY_ENV) (24/11, supervisor-test-oggi-24-11)
+DM7 quel tratto, con l'orologio a 23:59:58, 23:59:59, 00:00:00, all'ultimo giorno del mese e a mezzogiorno, seguito dalle
+    funzioni vere degli script (recap add, recap delle 20, mattino col Firebase del mese, calendario) con lo stesso
+    orologio: lo script trova il giorno del test
+DM8 la forma di prima (senza CM_TODAY) e' rossa ad almeno una di quelle ore e verde a mezzogiorno
+DM9 relay-k-verify prende DAY0 e ieri da NOW, non da una seconda lettura dell'orologio
 """
 import json
 import re
@@ -203,5 +210,127 @@ a, b = local(0, 23, 59, 59), local(1, 0, 0, 1)
 T.check("DM5 T.days: one day within a day, two across midnight, in order",
         hasattr(T, "days") and T.days(a - 60, a) == [ds(a)] and T.days(a, b) == [ds(a), ds(b)] and T.days(a, b, "%d/%m") == [ds(a, "%d/%m"), ds(b, "%d/%m")]
         and T.days(b, a) == [ds(b)], f"{T.days(a, b)}" if hasattr(T, "days") else "no T.days")
+# ---------------------------------------------------------------- DM6-DM9 (24/11, supervisor-test-oggi-24-11)
+# Quattro test leggevano il giorno una volta e lo confrontavano con quello che lo script legge dal suo orologio. Ora il
+# giorno va agli script come CM_TODAY (TODAY_ENV). Qui il tratto del test gira con l'orologio finto, poi le funzioni
+# vere degli script (cm-avvisi, cm-recap, cm-calendar) con lo stesso orologio e l'ambiente che il tratto ha dato.
+import contextlib  # noqa: E402
+import datetime as _dt  # noqa: E402
+import importlib.util  # noqa: E402
+import io  # noqa: E402
+import os  # noqa: E402
+
+TODAY_FILES = {"AT": "avvisi-telegram-verify.py", "CA": "calendario-verify.py", "MF": "mattino-formato-verify.py", "RT": "recap-telegram-verify.py"}
+TB = {}
+for case, fn in TODAY_FILES.items():
+    src = (TESTS / fn).read_text(encoding="utf-8")
+    m = re.search(rf"^# DATA-{case}-begin.*?^# DATA-{case}-end$", src, re.S | re.M)
+    TB[case] = (m.group(0) if m else "", src.count("TODAY_ENV") >= 2)
+T.check("DM6 the four tests that compare today with the script's have their part between DATA-<case> marks, and pass TODAY_ENV on to the scripts",
+        all(b and used for b, used in TB.values()), ", ".join(c for c, (b, u) in TB.items() if not (b and u)))
+rk = (TESTS / "relay-k-verify.py").read_text(encoding="utf-8")
+T.check("DM9 relay-k-verify takes DAY0 and yesterday from NOW, not from a second reading of the clock",
+        "DAY0 = NOW." in rk and "yesterday = (NOW." in rk and "dt.datetime.now().replace" not in rk and "(dt.datetime.now() - dt.timedelta(days=1))" not in rk)
+
+home6 = tmp / "home6"
+(home6 / "state").mkdir(parents=True)
+(home6 / "relay").mkdir()
+cfg6 = home6 / "config.json"
+cfg6.write_text(json.dumps({"language": "it", "state_dir": str(home6 / "state"), "accounts": {"personal": {"config_dir": str(home6 / ".claude")}},
+                            "default_account": "personal", "workspace": {"root": str(home6), "root_session_name": "master"},
+                            "relay": {"dir": str(home6 / "relay")}}))
+os.environ.update({"HOME": str(home6), "CM_HOME": str(home6), "CC_SUPERVISOR_CONFIG": str(cfg6), "CM_TASKS_DB": str(home6 / "t.db")})
+os.environ.pop("CM_TODAY", None)
+
+
+def load(name, alias):
+    sp = importlib.util.spec_from_file_location(alias, T.SCRIPTS / name)
+    mod = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(mod)
+    return mod
+
+
+AV, RC, CAL = load("cm-avvisi.py", "cm_avvisi_dm"), load("cm-recap.py", "cm_recap_dm"), load("cm-calendar.py", "cm_calendar_dm")
+
+
+def fake_dt(clk):
+    class D(_dt.date):
+        @classmethod
+        def today(cls):
+            return _dt.date.fromtimestamp(clk.time())
+    return NS(date=D, datetime=_dt.datetime, timedelta=_dt.timedelta, time=_dt.time, timezone=_dt.timezone)
+
+
+def script_side(case, day, clk):
+    """Quello che lo script vede, con l'orologio finto: [(che cosa, il giorno del test ritrovato?)]."""
+    for mod in (AV, RC, CAL):
+        mod.dt, mod.time = fake_dt(clk), clk
+    out = []
+    if case in ("AT", "RT"):
+        AV.extra_path().unlink(missing_ok=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            AV.cmd_add(["--kind", "rilasci", "prova"])
+        rows = AV.read_jsonl(AV.extra_path())
+        out.append(("recap add day", [r.get("day") for r in rows] == [day.isoformat()]))
+        out.append(("evening header", f" {day:%d/%m}" in AV.evening_text().splitlines()[0]))
+        out.append(("recap today", RC.today() == day))
+    if case in ("AT", "MF"):
+        first = day.replace(day=1)
+        usage = {(first + _dt.timedelta(days=i)).isoformat(): {"result_bytes": 500_000_000, "state_bytes": 0} for i in range(min(day.day, 3))}
+        usage[(first - _dt.timedelta(days=1)).isoformat()] = {"result_bytes": 9_000_000_000, "state_bytes": 0}
+        (home6 / "relay" / "usage-firebase.json").write_text(json.dumps(usage))
+        txt = AV.morning_text()
+        gb = str(round(min(day.day, 3) * 0.5, 1)).replace(".", ",")
+        out.append(("morning header", f" {day:%d/%m}" in txt.splitlines()[0]))
+        out.append(("morning Firebase of the month", f"{gb} GB scaricati" in txt))
+    if case == "CA":
+        out.append(("calendar today", CAL.today() == day))
+        ev = {"uid": "x", "summary": "s", "date": day + _dt.timedelta(days=3), "remind": None, "case": ""}
+        up = CAL.upcoming([ev], 60)
+        out.append(("days_left", [e["days_left"] for e in up] == [3]))
+    return out
+
+
+def run6(case, code, start):
+    clk = Clock(start)
+    ns = {"dt": fake_dt(clk), "time": clk}
+    try:
+        exec(compile(code, f"{TODAY_FILES[case]} {case}", "exec"), ns)
+        day = ns["today" if case != "CA" else "TODAY"]
+        env = ns.get("TODAY_ENV") or {}
+        os.environ.pop("CM_TODAY", None)
+        os.environ.update(env)
+        res = script_side(case, day, clk)
+    except Exception as e:   # noqa: BLE001 — un errore e' un esito rosso, col suo testo
+        res = [("exec", False, repr(e))]
+    finally:
+        os.environ.pop("CM_TODAY", None)
+    return res
+
+
+def ok6(res):
+    return bool(res) and all(x[1] for x in res)
+
+
+def last_of_month():
+    t = _dt.date.today()
+    nxt = (t.replace(day=28) + _dt.timedelta(days=4)).replace(day=1)
+    d = nxt - _dt.timedelta(days=1)
+    return int(_time.mktime((d.year, d.month, d.day, 23, 59, 59, 0, 0, -1)))
+
+
+STARTS6 = dict(STARTS, **{"end of month 23:59:59": last_of_month()})
+for case, (block, _u) in TB.items():
+    new = {h: run6(case, block, s) for h, s in STARTS6.items()} if block else {}
+    noon6 = run6(case, block, NOON) if block else []
+    T.check(f"DM7 {case} ({TODAY_FILES[case]}): the test's day is the script's at 23:59:58, 23:59:59, 00:00:00, at the end of the month and at noon",
+            bool(block) and all(ok6(r) for r in new.values()) and ok6(noon6),
+            "; ".join(f"{h} {[x for x in r if not x[1]]}" for h, r in new.items() if not ok6(r)) + ("" if ok6(noon6) else f"; noon {noon6}"))
+    old_block = re.sub(r"^TODAY_ENV = .*$", "TODAY_ENV = {}", block, flags=re.M)
+    old6 = {h: run6(case, old_block, s) for h, s in STARTS6.items()} if block else {}
+    old_noon6 = run6(case, old_block, NOON) if block else []
+    T.check(f"DM8 {case}: the earlier form (no CM_TODAY) is red at one of those times and green at noon",
+            bool(block) and old_block != block and any(not ok6(r) for r in old6.values()) and ok6(old_noon6),
+            f"{[(h, ok6(r)) for h, r in old6.items()]} noon {old_noon6}")
 T.rm(str(tmp))
 T.finish()

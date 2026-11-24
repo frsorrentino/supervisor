@@ -54,6 +54,23 @@ SERVER_HIGH = {"alto", "critico", "attenzione", "pieno", "high", "critical", "wa
 FIREBASE_MONTH_GB = 10
 
 
+def today():
+    """Oggi, o CM_TODAY (YYYY-MM-DD) nei test, come cm-calendar.today() (24/11/2026, supervisor-test-oggi-24-11)."""
+    t = os.environ.get("CM_TODAY")
+    return dt.date.fromisoformat(t) if t else dt.date.today()
+
+
+def within_today(now):
+    """now, tenuto dentro il giorno di CM_TODAY quando e' impostato: un test che ha fissato il giorno non vede passare la
+    mezzanotte ne' finire il mese fra la sua lettura della data e quella dello script."""
+    t = os.environ.get("CM_TODAY")
+    if not t:
+        return now
+    d = dt.date.fromisoformat(t)
+    a = time.mktime(d.timetuple())
+    return min(max(now, a), time.mktime((d + dt.timedelta(days=1)).timetuple()) - 1)
+
+
 def clean(text):
     return " ".join(EMOJI.sub("", str(text or "")).split())
 
@@ -98,7 +115,7 @@ def extra_path():
 
 
 def cmd_add(argv):
-    kind, day, words = None, dt.date.today(), []
+    kind, day, words = None, today(), []
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -119,7 +136,7 @@ def cmd_add(argv):
     if not kind or not KIND_RE.fullmatch(kind) or not text:
         print(M("avvisi.add_usage"), file=sys.stderr)
         return 2
-    cut = (dt.date.today() - dt.timedelta(days=RECAP_EXTRA_DAYS)).isoformat()
+    cut = (today() - dt.timedelta(days=RECAP_EXTRA_DAYS)).isoformat()
     rows = [r for r in read_jsonl(extra_path()) if str(r.get("day") or "") >= cut]
     rows.append({"at": int(time.time()), "day": day.isoformat(), "kind": kind, "text": text})
     p = extra_path()
@@ -247,7 +264,7 @@ def app_url():
 
 def evening_text(day=None):
     """Il recap delle 20 in HTML di Telegram (parse_mode HTML)."""
-    day = day or dt.date.today()
+    day = day or today()
     out, waits, queue, done, ex = closed_on(day), waiting(), night_queue(), night_done(day), extras(day)
     full = M("avvisi.days_full").split(",")[day.weekday()]
     head = [f"{full} {day.strftime('%d/%m')}"]
@@ -646,7 +663,7 @@ def morning_text(now=None):
     testo breve. Firebase una volta sola: il monitoraggio di Firebase, se c'e', e' la misura (Firebase stesso); senza, la
     stima del relay (solo cio' che il relay manda), detta come stima. Le scadenze: data, quando, cosa; mai l'id della
     pratica ne' la cartella, che restano alla master."""
-    now = now or time.time()
+    now = within_today(now or time.time())
     day = dt.date.fromtimestamp(now)
     near = 0
     blocks = []
