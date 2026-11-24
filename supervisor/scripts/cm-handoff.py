@@ -296,9 +296,12 @@ WAITS_RE = re.compile(r"(?im)^\s*[*_]*(?:tipo|type)[*_]*\s*:\s*[*_]*(?:aspetta|w
 
 
 def clear_blocked(name, final, waiting=False):
-    """Il motivo per non mandare /clear, o None: la sessione aspetta (stato, needs-you, «Tipo: aspetta»), un riavvio armato."""
+    """Il motivo per non mandare /clear, o None: la sessione aspetta (stato, needs-you, «Tipo: aspetta»), un riavvio armato,
+    una chiusura in corso."""
     if waiting:
         return "waiting"
+    if closing(name):
+        return "closing"
     if WAITS_RE.search(final or ""):
         return "asks"
     for f in (STATE / "needs-you").glob("*.json") if (STATE / "needs-you").is_dir() else []:
@@ -311,6 +314,20 @@ def clear_blocked(name, final, waiting=False):
     if Path(f"{flag[:-5] if flag.endswith('.json') else flag}-{name}.json").exists():
         return "restart_armed"
     return None
+
+
+def closing(name):
+    """24/11/2026 (supervisor-close-autoclear-24-11): True se `supervisor close` (o il relay) sta chiudendo la sessione:
+    <state_dir>/closing/<tmux>.json di cm-closesave, scritto prima di chiedere il passaggio di consegne. Alle 18:55 il
+    turno di quel passaggio ha fatto partire l'autoclear, il /clear e' arrivato durante la chiusura e close ha trovato
+    la sessione busy; e la ripresa sarebbe stata una conversazione vuota invece di quella col passaggio di consegne."""
+    if not name:
+        return False
+    f = STATE / "closing" / f"{re.sub(r'[^A-Za-z0-9_.:-]', '_', name)}.json"
+    try:
+        return time.time() - f.stat().st_mtime < 3600   # come closing_all: una piu' vecchia di un'ora non conta
+    except OSError:
+        return False
 
 
 def _done_path():

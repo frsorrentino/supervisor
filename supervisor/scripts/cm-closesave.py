@@ -6,6 +6,8 @@ eseguire e poi chiudere»; alle 15:16 i due tasti dell'app, «Salva e chiudi» e
   cm-closesave.py save NOME [--deadline S]   chiede alla sessione il passaggio di consegne se serve, aspetta la fine
                                              del suo turno (al piu' S secondi, default close.save_timeout_s = 180) e
                                              stampa {handoff, file, reason}; `supervisor close` poi chiude
+  cm-closesave.py settle NOME [--wait S]     lo stato della sessione (idle, busy, waiting, ?), aspettando al piu' S
+                                             secondi (close.settle_s = 30) che smetta di lavorare
 Una sessione che non e' Claude (nessun session_id nel registro: un processo qualsiasi in tmux) non ha niente da salvare.
 La sessione decide da se': scrive il passaggio di consegne, o risponde «niente da salvare».
 
@@ -169,6 +171,36 @@ def save(name, deadline_s=None, remote=False):
     return {"handoff": bool(f), "file": f, "reason": None if done else EXPIRED, "row": row}
 
 
+def settle_s():
+    return float(os.environ.get("CM_CLOSE_SETTLE_S") or (CFG.get("close") or {}).get("settle_s") or 30)
+
+
+def state_of(name):
+    """Lo stato per cm-close.sh, con lo schermo (una domanda a video e' «waiting» solo leggendolo): idle, busy, waiting, ?."""
+    try:
+        out = subprocess.run([_cli(), "sessions", "--json"], capture_output=True, text=True, timeout=60).stdout
+        rows = json.loads(out) if out.strip().startswith("[") else []
+    except (OSError, ValueError, subprocess.SubprocessError):
+        rows = []
+    r = next((r for r in rows if (r.get("tmux") or r.get("name")) == name), None)
+    if not r:
+        return "?"
+    return "waiting" if r.get("waiting") else (r.get("status") or "?")
+
+
+def settle(name, wait_s=None):
+    """24/11/2026 (supervisor-close-autoclear-24-11): dopo il salvataggio la sessione puo' essere ancora al lavoro per un momento
+    (lo Stop hook del turno del passaggio di consegne, un prompt arrivato in quel mentre): si aspetta che si fermi, al
+    piu' wait_s (close.settle_s, 30 s), prima di decidere. Solo busy si aspetta: una domanda aperta non si risolve da sola."""
+    wait_s = settle_s() if wait_s is None else float(wait_s)
+    end = time.time() + wait_s
+    st = state_of(name)
+    while st == "busy" and time.time() < end:
+        time.sleep(1)
+        st = state_of(name)
+    return st
+
+
 def main(argv):
     if argv[:1] == ["save"] and len(argv) >= 2:
         dl = None
@@ -184,6 +216,9 @@ def main(argv):
                 print(M(key, name=argv[1], file=res.get("file") or "", s=int(timeout_s())))
         else:
             print(json.dumps(res, ensure_ascii=False))
+        return 0
+    if argv[:1] == ["settle"] and len(argv) >= 2:   # per cm-close.sh: lo stato, aspettata la fine del lavoro
+        print(settle(argv[1], argv[argv.index("--wait") + 1] if "--wait" in argv else None))
         return 0
     if argv[:1] == ["clear"] and len(argv) == 2:
         clear_closing(argv[1])

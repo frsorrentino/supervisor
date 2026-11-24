@@ -87,9 +87,11 @@ cm_tmux has-session -t "=$BERSAGLIO" 2>/dev/null || {
   exit 3
 }
 # il salvataggio, mai per la sessione da cui si chiama (si rifiuta sotto: non puo' chiudere se stessa)
+SALVATA=no
 if ! { [ -n "${TMUX:-}" ] && [ "$(cm_tmux display-message -p '#S' 2>/dev/null)" = "$BERSAGLIO" ]; }; then
   trap 'dopo "$BERSAGLIO" $?' EXIT
   detto "$(salva "$BERSAGLIO")"
+  [ "$SUBITO" = si ] || [ "$PROVA" = si ] || SALVATA=si
 fi
 if attaccata "$BERSAGLIO"; then
   # 07/10/2026 (ok del maintainer): con destroy-unattached ogni sessione con finestra risulta attaccata, e la vecchia
@@ -100,6 +102,11 @@ if attaccata "$BERSAGLIO"; then
     cm_msg close.self "name=$BERSAGLIO" >&2; exit 4
   fi
   # con lo schermo: una domanda a video senza il flag dell'hook e' «waiting» solo leggendolo
+  # 24/11/2026 (supervisor-close-autoclear-24-11): dopo il salvataggio la sessione puo' essere ancora al lavoro per un momento
+  # (alle 18:55 l'autoclear le aveva appena mandato /clear e close l'ha rifiutata busy): si aspetta che si fermi
+  if [ "$SALVATA" = si ]; then
+    stato=$(python3 "$CM_SCRIPTS/cm-closesave.py" settle "$BERSAGLIO" 2>/dev/null || echo "?")
+  else
   stato=$(python3 "$CM_SCRIPTS/cm-sessions.py" --json 2>/dev/null | python3 -c '
 import json, sys
 n = sys.argv[1]
@@ -108,6 +115,7 @@ for r in json.load(sys.stdin):
         print("waiting" if r.get("waiting") else (r.get("status") or "?")); break
 else:
     print("?")' "$BERSAGLIO")
+  fi
   if [ "$stato" != idle ]; then
     cm_msg close.attached_busy "name=$BERSAGLIO" "state=$stato" >&2; exit 4
   fi
