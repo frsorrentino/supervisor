@@ -113,7 +113,8 @@ function Cmd-Probe {
     $accs = @(Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue |
               Where-Object { Test-Path (Join-Path $_.FullName '.credentials.json') } | ForEach-Object Name)
     $creds = New-Object System.Collections.ArrayList
-    if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
+    $gitCred = Get-Item -LiteralPath "$env:USERPROFILE\.git-credentials" -ErrorAction SilentlyContinue
+    if ($gitCred -and $gitCred.Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
     if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
     Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
     $npmTok = Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue
@@ -185,7 +186,7 @@ function JobInfo($d) {
 
 function ApiState($cdPath, $e) {
     # 16/11/2026 (supervisor-blocco-permanente-16-11): l'ultima voce assistant della trascrizione della sessione (non di
-    # un sottoagente). Se e' un errore dell'API, block = {kind limit|login|error, error, text, at, resets_at, limit_type}:
+    # un sottoagente). Se e' un errore dell'API, block = (kind limit|login|error, error, text, at, resets_at, limit_type):
     # la sessione e' ferma li'. La stessa lettura di api_error (cm-relay-state.py) e di apiError (cm-session.js); si
     # leggono gli ultimi 512 KB. last_at = l'ora di quella voce. $null se la trascrizione non c'e'.
     try {
@@ -237,7 +238,7 @@ function ApiState($cdPath, $e) {
 function EpochOf($dt) { [int64](($dt.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds) }
 
 function SubTokens($jp) {
-    # {in, out, model} di una trascrizione di sottoagente: l'ultima usage di ogni message.id (Claude Code la ripete su
+    # (in, out, model) di una trascrizione di sottoagente: l'ultima usage di ogni message.id (Claude Code la ripete su
     # ogni blocco del messaggio); in = input + cache scritta + cache letta. Come _usage di cm-subagents.py
     $byId = @{}; $model = $null
     try {
@@ -259,7 +260,7 @@ function SubTokens($jp) {
 
 function SubagentsOf($cdPath, $e) {
     # 23/11/2026 (supervisor-sottoagenti-23-11): i sottoagenti della sessione, come summary di cm-subagents.py:
-    # {n, running, at, items (al piu' 3: in corso prima, poi i piu' recenti), workflows}. Ogni sottoagente sta in
+    # (n, running, at, items (al piu' 3: in corso prima, poi i piu' recenti), workflows). Ogni sottoagente sta in
     # <projects>\<slug>\<sid>\subagents\agent-<id>.meta.json + .jsonl; quelli di un Workflow in
     # subagents\workflows\wf_*\, finiti quando journal.jsonl ha la loro riga result. Inizio = creazione della
     # trascrizione, fine = la sua ultima scrittura; le trascrizioni si aprono solo per i token delle voci mostrate.
@@ -328,7 +329,7 @@ function SubagentsOf($cdPath, $e) {
 $ShellNames = @('bash.exe', 'sh.exe', 'zsh.exe', 'cmd.exe', 'powershell.exe', 'pwsh.exe', 'wsl.exe')
 function ShellKids($procId) {
     # 23/11/2026 (supervisor-chiusura-remota-23-11): the shells started by the claude process of a session, each
-    # {pid, name, cmd (at most 600 chars)}. The relay decides which ones are background work (the Bash and PowerShell
+    # (pid, name, cmd (at most 600 chars)). The relay decides which ones are background work (the Bash and PowerShell
     # tool shells); the status bar and the MCP servers are shells too. One process list per call.
     if ($null -eq $script:Procs) {
         $script:Procs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Select-Object ProcessId, ParentProcessId, Name, CommandLine)
