@@ -5358,6 +5358,17 @@ def remind_after(kind):
     return REMIND_AFTER_BY_KIND.get(kind, REMIND_AFTER_S)
 
 
+def quiet_now(t):
+    """24/11 (supervisor-promemoria-notte-24-11): tasks.quiet_hours [da, a), la stessa lettura di cm-guard.quiet_now:
+    di notte i promemoria di «Serve te» non suonano (la voce resta in «Serve te»)."""
+    q = (CFG.get("tasks") or {}).get("quiet_hours") or []
+    if len(q) != 2:
+        return False
+    h = dt.datetime.fromtimestamp(t).hour
+    a, b = int(q[0]), int(q[1])
+    return (a <= h < b) if a <= b else (h >= a or h < b)
+
+
 def attention_reminders(full, now):
     """1.68 (14/10): per ogni voce di state.attention ancora aperta, un evento attention_reminder dopo 10 e dopo 30
     minuti, una volta ciascuno (reminders.json); le voci chiuse escono dal file. 1.160: le soglie per tipo
@@ -5368,6 +5379,7 @@ def attention_reminders(full, now):
     p = rdir() / "reminders.json"
     sent = read_json(p, {})
     live = {}
+    quiet = quiet_now(now)
     for x in items:
         key = f"{x.get('kind')}|{x.get('ref')}|{x.get('since')}"
         steps = remind_after(x.get("kind"))
@@ -5377,10 +5389,18 @@ def attention_reminders(full, now):
             live[key] = [a for a in steps if now - float(x.get("since") or now) >= a]
             continue
         done = list(sent.get(key) or [])
-        for after in steps:
-            if after not in done and now - float(x.get("since") or now) >= after:
-                done.append(after)
-                emit("attention_reminder", M("relay.event_attention_reminder", min=after // 60, title=S.one_line(x.get("title") or "")[:120]), "",
+        since = float(x.get("since") or now)
+        due = [a for a in steps if a not in done and now - since >= a]
+        # 24/11 (supervisor-promemoria-notte-24-11): nelle ore di quiete nessun promemoria e nessuna soglia segnata; una
+        # o piu' soglie passate di notte suonano una volta sola, alla prima ora fuori dalla quiete, con l'eta' vera
+        if due and not quiet:
+            if any(quiet_now(since + a) for a in due):
+                rings = [(due, int((now - since) // 60))]   # dopo la notte: una volta, con l'eta' vera
+            else:
+                rings = [([a], a // 60) for a in due]       # di giorno come prima: una per soglia
+            for marks, mins in rings:
+                done.extend(marks)
+                emit("attention_reminder", M("relay.event_attention_reminder", min=mins, title=S.one_line(x.get("title") or "")[:120]), "",
                      ref=x.get("ref"), session=x.get("session"), extra={"attention_kind": x.get("kind"), "wid": x.get("wid")})
         live[key] = done
     open_now = {(str(x.get("kind")), str(x.get("ref"))) for x in items}

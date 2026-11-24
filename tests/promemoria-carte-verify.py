@@ -125,10 +125,14 @@ r2.mkdir()
 _rd, _em = RL.rdir, RL.emit
 got = []
 RL.rdir, RL.emit = (lambda: r2), (lambda kind, title, body, **kw: got.append((kind, title, kw.get("ref"), (kw.get("extra") or {}))))
-c0 = dict(cards[0], since=NOW)
-f2 = {"attention": [c0, {"kind": "needs_you", "session": "beta", "ref": "beta", "title": "il codice", "since": NOW}]}
+# 24/11 (supervisor-promemoria-notte-24-11): alle 09:00 di oggi, fuori dalle ore di quiete [23, 7): con l'ora vera, di
+# notte i promemoria non suonano piu' e PC2 diventava rosso
+_lt2 = time.localtime(NOW)
+D2 = int(time.mktime((_lt2.tm_year, _lt2.tm_mon, _lt2.tm_mday, 9, 0, 0, 0, 0, -1)))
+c0 = dict(cards[0], since=D2)
+f2 = {"attention": [c0, {"kind": "needs_you", "session": "beta", "ref": "beta", "title": "il codice", "since": D2}]}
 for dt in (5, 700, 1900, 3700, 7200, 10900, 11000):
-    RL.attention_reminders(f2, NOW + dt)
+    RL.attention_reminders(f2, D2 + dt)
 RL.rdir, RL.emit = _rd, _em
 card_rem = [g for g in got if g[0] == "attention_reminder" and g[2] == c0["ref"]]
 other_rem = [g for g in got if g[0] == "attention_reminder" and g[2] == "beta"]

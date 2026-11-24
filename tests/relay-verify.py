@@ -3316,6 +3316,10 @@ _rd, _em = RL.rdir, RL.emit
 got52 = []
 RL.rdir, RL.emit = (lambda: r52), (lambda kind, title, body, **kw: got52.append((kind, title, kw.get("ref"))))
 full52 = {"attention": [{"kind": "needs_you", "session": "pix-docs", "ref": "pix-docs", "title": "login su win", "since": 1789210000}]}
+# 24/11 (supervisor-promemoria-notte-24-11): le ore di quiete le prova promemoria-notte-verify; qui spente, perche' l'ora
+# fissa di R52 (10:46 UTC) cade di notte in altri fusi
+_q52 = (RL.CFG.get("tasks") or {}).get("quiet_hours")
+RL.CFG.setdefault("tasks", {})["quiet_hours"] = []
 RL.attention_reminders(full52, 1789210000 + 300)   # vista per la prima volta a 5 min: niente
 RL.attention_reminders(full52, 1789210000 + 700)
 RL.attention_reminders(full52, 1789210000 + 800)
@@ -3327,6 +3331,7 @@ n_old52 = len(got52)
 RL.attention_reminders(old52, 1789210000)
 RL.attention_reminders(old52, 1789210060)
 RL.rdir, RL.emit = _rd, _em
+RL.CFG["tasks"]["quiet_hours"] = _q52
 T.check("R52 (1.68) an item first seen already old (after a restart) does not fire its past reminders at once",
         not [g for g in got52[n_old52:] if g[0] == "attention_reminder"], str(got52[n_old52:]))
 got52 = [g for g in got52 if g[0] == "attention_reminder"]   # 1.160: la voce di full52 sparita manda anche attention_closed
@@ -3814,6 +3819,9 @@ T.check("R61 (1.75) a host down: up false, error in plain words («ssh: timeout�
         and _hs61["never"] == {"name": "never", "up": False, "at": None, "error": "no reading yet", "cpu": None, "ram_used": None, "ram_total": None,
                                "disk_free": None, "disk_total": None, "sessions": []}, str((_hs61["down"], _hs61["late"]["error"])))
 # git: un repository con un remoto nudo; un push e un tag oggi, un tag mai spinto, uno di ieri
+# 24/11 (supervisor-test-mezzanotte-24-11): la finestra parte da prima dei commit, non dalla mezzanotte dell'orologio
+# vero: una suite che passava le 00:00 fra i commit e la lettura li trovava nel giorno prima
+_since61 = time.time() - 5
 _g61 = tmp / "git61"; _bare61 = tmp / "git61.git"
 _genv = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
 for _c in (["git", "init", "-q", "--bare", str(_bare61)], ["git", "init", "-q", "-b", "main", str(_g61)],
@@ -3825,7 +3833,7 @@ for _c in (["git", "init", "-q", "--bare", str(_bare61)], ["git", "init", "-q", 
 subprocess.run(["git", "-C", str(_g61), "checkout", "-q", "main"], capture_output=True)
 subprocess.run(["git", "-C", str(_g61), "commit", "-q", "--allow-empty", "-m", "c"], capture_output=True, env=_genv)
 subprocess.run(["git", "-C", str(_g61), "tag", "v1.2.0"], capture_output=True, env=_genv)   # mai spinto: il suo commit non sta su un ramo remoto
-_gp61 = RL.git_published(str(_g61), "personal/g61", RL._midnight(time.time()), time.time() + 5)
+_gp61 = RL.git_published(str(_g61), "personal/g61", _since61, time.time() + 5)
 _gp61b = RL.git_published(str(_g61), "personal/g61", time.time() + 60, time.time() + 120)
 T.check("R61 (1.75) git_published: the pushed branch (origin/<branch>, once even if pushed again) and the tags of the day whose commit is on a remote branch (text without the «v»); a tag never pushed is not published; nothing outside the window",
         sorted((x["kind"], x["text"]) for x in _gp61) == [("push", "origin/main"), ("push", "origin/notte/x"), ("release", "1.0.0"), ("release", "1.1.0")]
@@ -3833,9 +3841,14 @@ T.check("R61 (1.75) git_published: the pushed branch (origin/<branch>, once even
 T.check("R61 (1.75) the link only for a GitHub remote (ssh or https, with or without .git), never guessed",
         RL._web_of("git@github.com:frsorrentino/supervisor.git") == RL._web_of("https://github.com/frsorrentino/supervisor") == "https://github.com/frsorrentino/supervisor"
         and RL._web_of("https://gitlab.com/a/b.git") is None and RL._web_of("/tmp/x.git") is None, "")
+# R61-clock-begin — tests/mezzanotte-verify.py esegue questo tratto cosi' com'e', con TEST_NOW e l'orologio a 23:59:50
+# e a 00:00:20
 # deploy: solo un `firebase deploy` finito con «Deploy complete!»
+# 24/11 (supervisor-test-mezzanotte-24-11): le voci e la finestra contano da TEST_NOW, non dall'orologio vero, e la
+# finestra e' l'ultima ora, non da mezzanotte: il 24/11 alle 00:00 le voci di 40-50 s prima cadevano nel giorno prima
+_clk61 = TEST_NOW
 _tx61 = tmp / "deploy61.jsonl"
-_ts61 = lambda s: _dt.datetime.fromtimestamp(time.time() - s, _dt.timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
+_ts61 = lambda s: _dt.datetime.fromtimestamp(_clk61 - s, _dt.timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
 def _tu61(i, cmd, s):
     return json.dumps({"type": "assistant", "timestamp": _ts61(s), "cwd": ROOT_WS + "/work/own/orbit-docs", "message": {"content": [{"type": "tool_use", "id": i, "name": "Bash", "input": {"command": cmd}}]}})
 def _tr61(i, text, s, err=False):
@@ -3846,14 +3859,15 @@ _tx61.write_text("\n".join([_tu61("a", "cd site && npx firebase deploy --only ho
                             _tu61("c", "echo 'firebase deploy' >> notes.txt", 20), _tr61("c", "Deploy complete!", 19),
                             _tu61("d", "firebase deploy", 10)]) + "\n")
 _scan61 = {}
-_d61 = list(RL.transcript_deploys(str(_tx61), RL._midnight(time.time()), _scan61))
+_d61 = list(RL.transcript_deploys(str(_tx61), _clk61 - 3600, _scan61))
 with open(_tx61, "a") as _f:
     _f.write(_tr61("d", "✔  Deploy complete!\nProject Console: https://console.firebase.google.com/project/orbit-docs/overview", 5) + "\n")
-_d61b = RL.transcript_deploys(str(_tx61), RL._midnight(time.time()), _scan61)
+_d61b = RL.transcript_deploys(str(_tx61), _clk61 - 3600, _scan61)
 T.check("R61 (1.75) transcript_deploys: a `firebase deploy` whose result says «Deploy complete!» is a deploy (text from --only, url the Hosting URL); a failed one and one inside quotes are not",
         [(x["kind"], x["text"], x["url"], x["cwd"]) for x in _d61] == [("deploy", "hosting orbit-docs", "https://orbit-docs.web.app", ROOT_WS + "/work/own/orbit-docs")], str(_d61))
 T.check("R61 (1.75) the transcript is read once: the next call reads only what was appended and pairs the result with the command it left pending",
         len(_d61b) == 2 and _d61b[1]["text"] == "firebase orbit-docs" and _d61b[1]["url"] is None and _scan61["offset"] == _tx61.stat().st_size, str(_d61b))
+# R61-clock-end
 # la copia su disco: di ieri non vale; vecchia di un minuto → un ricalcolo staccato, uno alla volta
 _rd61 = tmp / "relay61"; _rd61.mkdir(exist_ok=True)
 _rdir61, _popen61, _spawn61 = RL.rdir, RL.subprocess.Popen, []
