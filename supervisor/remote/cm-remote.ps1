@@ -226,3 +226,41 @@ function ApiState($cdPath, $e) {
             if ($q -and $q.resetsAt) { $resets = [int64]$q.resetsAt }
             $lt = $null
             if ($q -and $q.rateLimitType) { $lt = [string]$q.rateLimitType }
+            $err = 'api_error'
+            if ($d.error) { $err = [string]$d.error } elseif ($d.apiError) { $err = [string]$d.apiError }
+            if ($text.Length -gt 300) { $text = $text.Substring(0, 300) }
+            return @{ block = @{ kind = $kind; error = $err; text = $text; at = $at; resets_at = $resets; limit_type = $lt }; last_at = $at }
+        }
+        return @{ block = $null; last_at = $null }
+    } catch { return $null }
+}
+
+function EpochOf($dt) { [int64](($dt.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds) }
+
+function SubTokens($jp) {
+    # {in, out, model} di una trascrizione di sottoagente: l'ultima usage di ogni message.id (Claude Code la ripete su
+    # ogni blocco del messaggio); in = input + cache scritta + cache letta. Come _usage di cm-subagents.py
+    $byId = @{}; $model = $null
+    try {
+        foreach ($l in [IO.File]::ReadLines($jp)) {
+            if ($l -notmatch '"type"\s*:\s*"assistant"') { continue }
+            try { $d = $l | ConvertFrom-Json } catch { continue }
+            if ($d.type -ne 'assistant' -or -not $d.message) { continue }
+            if ($d.message.model -and $d.message.model -ne '<synthetic>') { $model = [string]$d.message.model }
+            if ($d.message.usage) { $byId[[string]$d.message.id] = $d.message.usage }
+        }
+    } catch { return $null }
+    $tin = [int64]0; $tout = [int64]0
+    foreach ($u in $byId.Values) {
+        $tin += [int64]$u.input_tokens + [int64]$u.cache_creation_input_tokens + [int64]$u.cache_read_input_tokens
+        $tout += [int64]$u.output_tokens
+    }
+    @{ in = $tin; out = $tout; model = $model }
+}
+
+function SubagentsOf($cdPath, $e) {
+    # 23/11/2026 (supervisor-sottoagenti-23-11): i sottoagenti della sessione, come summary di cm-subagents.py:
+    # {n, running, at, items (al piu' 3: in corso prima, poi i piu' recenti), workflows}. Ogni sottoagente sta in
+    # <projects>\<slug>\<sid>\subagents\agent-<id>.meta.json + .jsonl; quelli di un Workflow in
+    # subagents\workflows\wf_*\, finiti quando journal.jsonl ha la loro riga result. Inizio = creazione della
+    # trascrizione, fine = la sua ultima scrittura; le trascrizioni si aprono solo per i token delle voci mostrate.
