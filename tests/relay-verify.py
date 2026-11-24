@@ -51,7 +51,7 @@ WATCH = next((p for p in (Path.home() / "Desktop" / "workspaces" / "personali" /
 FIX = T.ROOT / "tests" / "fixtures" / "relay"
 # 1.21: le op che il relay esegue, lette dal sorgente (l'allow-list OPS), non ricopiate a mano
 import ast as _ast, re as _re0  # noqa: E401
-R_OPS = list(_ast.literal_eval(_re0.search(r"^OPS = (\(.*?\))$", (T.SCRIPTS / "cm-relay.py").read_text(), _re0.M).group(1)))
+R_OPS = list(_ast.literal_eval(_re0.search(r"^OPS = (\(.*?\))$", T.relay_src(), _re0.M).group(1)))
 
 # R0: fixture identiche al contratto pubblicato dall'app (30/09: non il ramo del suo worktree, che puo' stare indietro;
 # 17/10: il ramo remoto con l'ultimo commit su contract/, non sempre master)
@@ -502,7 +502,7 @@ ev_cut, _ = S.events_between(crowd, tight, 1789210900, 1)
 T.check("R2 (23/09, 06/10) even under a tight cap no live session is trimmed, so none is ever «gone» by the cut; events come from the full state",
         not dropped and not [e for e in ev_full if e["kind"] == "gone"] and not [e for e in ev_cut if e["kind"] == "gone"],
         f"dropped={sorted(dropped)} gone_full={[e['session'] for e in ev_full if e['kind'] == 'gone']}")
-relay_src = (T.SCRIPTS / "cm-relay.py").read_text()
+relay_src = T.relay_src()
 T.check("R2 (23/09) _push diffs full states and keeps the full one in last-state.json",
         "full = S.build_state(src, now, fit=False)" in relay_src and 'last.get("full") or last.get("state")' in relay_src
         and '"full": full' in relay_src, "")
@@ -3915,7 +3915,7 @@ T.check("R61 (1.75) the fixtures: state-2-idle with win up and one publication o
         and F3["hosts_status"][0]["up"] is False and F3["hosts_status"][0]["error"] == "ssh: timeout" and F3["published_today"] == [], "")
 T.check("R61 (1.75) a src without the two keys (an old caller) gives a /state without them; collect_sources passes both",
         "hosts_status" not in S.build_state({}, 1) and "published_today" not in S.build_state({}, 1)
-        and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now, rows)' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+        and '"hosts_status": hosts_status(rows, now), "published_today": published_cached(now, rows)' in T.relay_src(), "")
 # R62 (contratto 1.76, 22/10, impegni sempre visibili): /state.commitments dal registro, l'evento task_stalled, le fixture
 _cm62 = F2["commitments"]
 T.check("R62 (1.76) the fixtures: state-1 (at the 8 KB cap) []; state-2 a stalled running task of ledger-api (its session gone, red check, outcome deploy) and atlas-seo-pages just approved, waiting for atlas-shop; state-3 one paused, never stalled",
@@ -3934,7 +3934,7 @@ _big62 = S.build_state(dict(SRC2, decisions={}, prove={}, recurring=[], publishe
 T.check("R62 (1.76) /state carries at most 30 commitments; fit_state cuts them to 10 (then 5) before touching projects or sessions; a src without the key gives none",
         len(S.build_state(dict(SRC2, approvals=[], elicitations=[], commitments=[_small62] * 40), 1789214400, fit=False)["commitments"]) == 30
         and [x["task"] for x in _big62["commitments"]] == [f"t-{i:02d}" for i in range(10)] and _big62["sessions"] == _st2n["sessions"] and _big62["projects"] == st2["projects"]
-        and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in (T.SCRIPTS / "cm-relay.py").read_text(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
+        and "commitments" not in S.build_state({}, 1) and '"commitments": commitments_list()' in T.relay_src(), str(S.size_of(_big62)) + str([x["task"] for x in _big62["commitments"]]))
 # R68 (23/10 23:42, supervisor-app: «win:bluey» nello stato, «win-bluey» nel registro): dentro lo stato vale il nome dello stato
 _row68 = {"name": "win:bluey", "tmux": "", "host": "win", "remote_name": "win-bluey", "account": "personal", "cwd": "D:/cm-sessions/personali/bluey", "status": "idle", "waiting": False,
           "session_id": "S-WB", "channel": "remoto", "attached": None, "started_at": 1789214000000, "link": "", "socket": "", "registry": "", "low_priority": "off", "goal_status": None}
@@ -4290,7 +4290,7 @@ T.check("R90 system_stuck (1.91) sys_unit_stop: units that are not the advised o
 
 # R91 (28/10): l'impronta del codice copre ogni modulo che il demone tiene caricato — dal vivo la 0.8.76 (solo cm-system.py)
 # non riavviava il demone, e /state restava col testo vecchio
-_loaded91 = sorted(set(re.findall(r'_load\("(cm-[a-z-]+)"\)', (T.SCRIPTS / "cm-relay.py").read_text())))
+_loaded91 = sorted(set(re.findall(r'_load\("(cm-[a-z-]+)"\)', T.relay_src())))
 T.check("R91 code_print covers every module the daemon keeps loaded (cm-system among them): a change to one of them restarts the daemon",
         "cm-system.py" in RL.CODE_FILES and all(f"{n}.py" in RL.CODE_FILES for n in ("cm-relay-state", "cm-relay-crypto", "cm-diff", "cm-core", "cm-system")), str((RL.CODE_FILES, _loaded91)))
 
@@ -4592,7 +4592,7 @@ try:
     _w97.start(); time.sleep(1.2); _w97.stop.set(); _w97.join()
 finally:
     RL._trim, RL.TRIM_EVERY_S = _sv97["trim"], _sv97["every"]
-_src97 = (T.SCRIPTS / "cm-relay.py").read_text()
+_src97 = T.relay_src()
 T.check("R97 (30/10) the push worker gives the freed memory back on its clock; serve sets malloc up before its threads",
         2 <= len(_n97) <= 11 and _src97.index("malloc_setup()   # prima dei thread") < _src97.index("search_warm_async()   # 04/10"), str(_n97))
 
@@ -4620,7 +4620,7 @@ T.check("R98 (1.97) home_order with arg empty, absent or [] goes back to the def
 T.check("R98 (1.97) home_order is a command in ops (not passive: its push carries the new order); state.home_order only when set",
         "home_order" in RL.OPS and "home_order" not in RL.PASSIVE_OPS and "home_order" not in F1 and F2["home_order"][0] == "suggestions"
         and S.build_state(dict(SRC2, home_order=["a"]), 1789210800)["home_order"] == ["a"], "")
-T.check("R98 (1.97) the push reads the saved order", 'home_order": home_order_read()' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+T.check("R98 (1.97) the push reads the saved order", 'home_order": home_order_read()' in T.relay_src(), "")
 
 # R99 (31/10/2026, nota 8f2a8108): il /clear era partito ma il telefono leggeva solo «Traceback (most recent call last):»
 _saved = RL.relay_talk, RL._json_cmd, RL.slash_allowed
@@ -4699,8 +4699,8 @@ T.check("R100 the /cmd stream only dispatches: put returns at once, the answer a
         and sorted(_served100) == ["s1", "s3", "s4", "s5"] and [c for _, c, _ in _ran100].count("s4") == 1
         and sorted(_done_list100) == ["s1", "s3", "s4", "s5"], str((_put_s100, _ran100, _served100, _done_list100)))
 T.check("R100 the stream loop hands commands to the lanes and no longer runs handle_cmd itself",
-        "lanes.put(commands_from(ev, payload), arrived)" in (T.SCRIPTS / "cm-relay.py").read_text()
-        and "if handle_cmd(cid, doc, done, arrived):" not in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+        "lanes.put(commands_from(ev, payload), arrived)" in T.relay_src()
+        and "if handle_cmd(cid, doc, done, arrived):" not in T.relay_src(), "")
 
 
 # R150 (12/11/2026, supervisor-relay-file-corsia-12-11 e supervisor-relay-file-chiave-12-11): nella PWA un'anteprima ha

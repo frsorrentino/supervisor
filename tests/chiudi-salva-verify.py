@@ -213,7 +213,7 @@ T.check("CS6 a session that is not Claude (no session_id): nothing asked, nothin
 # ------------------------------------------------------------------ CS7
 src = (T.SCRIPTS / "cm-close.sh").read_text()
 T.check("CS7 close --subito asks nothing (the save step is skipped), and the relay's close passes --subito",
-        "--subito|--now) SUBITO=si" in src and '[ "$SUBITO" = si ]' in src and 'run_cm("close", row.get("tmux") or row.get("name"), "--subito")' in (T.SCRIPTS / "cm-relay.py").read_text(), "")
+        "--subito|--now) SUBITO=si" in src and '[ "$SUBITO" = si ]' in src and 'run_cm("close", row.get("tmux") or row.get("name"), "--subito")' in T.relay_src(), "")
 
 # ------------------------------------------------------------------ CS8
 md = (T.ROOT / "details" / "relay.md").read_text()

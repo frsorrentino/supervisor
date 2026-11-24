@@ -165,7 +165,7 @@ cl = [g for g in got3 if g[0] == "attention_closed"]
 T.check("PC3 one quiet attention_closed event per closed card (ref, wid, attention_kind card), once: phone and watch drop the notification",
         sorted(g[1] for g in cl) == sorted([ok_wid, prova_wid]) and all(g[2].get("wid") == g[1] and g[2].get("attention_kind") == "card" and g[2].get("quiet") is True for g in cl),
         str(cl))
-src = (T.SCRIPTS / "cm-relay.py").read_text(encoding="utf-8")
+src = T.relay_src()
 T.check("PC3 the FCM wake-up of an event says quiet when the event is quiet", '{"quiet": "1"} if ev.get("quiet")' in src, "")
 T.check("PC3 the FCM wake-up of attention_reminder and attention_closed carries ref and wid (the web's service worker does not read /events); not the others",
         RL.fcm_attention("attention_closed", {"ref": ok_wid, "wid": ok_wid}) == {"ref": ok_wid, "wid": ok_wid}

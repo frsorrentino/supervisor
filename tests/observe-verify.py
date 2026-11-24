@@ -70,7 +70,7 @@ T.check("OI4 the copy's hook: a failed supervisor command → a record with the 
 code = ("import importlib.util,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('o',Path(sys.argv[1]));"
         "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.record_external('relay','relay answer','sessione occupata','atlas-shop')")
 subprocess.run([sys.executable, "-c", code, str(T.SCRIPTS.parent / "observe" / "observe.py")], env=ENV, check=True)
-relay_src = (T.SCRIPTS / "cm-relay.py").read_text()
+relay_src = T.relay_src()
 T.check("OI5 relay: record_external as cm-relay.py calls it → a relay record",
         any(x["source"] == "relay" for x in recs()) and 'HERE.parent / "observe" / "observe.py"' in relay_src and 'record_external("relay"' in relay_src, "")
 st = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-hook.py"), "SessionStart"], input=json.dumps({"session_id": "S", "cwd": str(T.ROOT)}),

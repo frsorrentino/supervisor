@@ -197,6 +197,17 @@ class PrivateTmux:
         return {"CM_TMUX_ARGS": f"-L {self.socket}"}
 
 
+def relay_src():
+    """Il testo di cm-relay.py con le parti eseguite nel suo namespace (cm-relay-sessions.py, cm-relay-measure.py) al loro
+    posto: il file com'era prima della divisione, per i test che ne cercano un pezzo (24/11/2026, supervisor-relay-256kb-24-11).
+    cm-relay-cmds.py, diviso il 25/10, i test lo leggono da solo."""
+    import re as _re
+    src = (SCRIPTS / "cm-relay.py").read_text(encoding="utf-8")
+    pat = _re.compile(r'^# in (cm-relay-[a-z]+\.py) \(24/11/2026.*\n(_PART_[A-Z]+) = HERE / "\1"\n'
+                      r'exec\(compile\(\2\.read_text\(encoding="utf-8"\), str\(\2\), "exec"\)\)\n\n\n', _re.M)
+    return pat.sub(lambda m: (SCRIPTS / m.group(1)).read_text(encoding="utf-8").split("\n\n", 1)[1].split("\n", 1)[1], src)
+
+
 def days(t0, t1, fmt="%Y-%m-%d"):
     """Le date (fmt, ora locale) dei giorni da t0 a t1 compresi. Un test che confronta la data di oggi con un file o un
     testo scritto da uno script fra t0 e t1 la prende da qui, non da una lettura dell'orologio prima o dopo: se in mezzo
