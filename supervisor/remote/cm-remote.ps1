@@ -85,7 +85,7 @@ function WebGL {
     $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
     $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
     $url = 'file:///' + ($page -replace '\\', '/')
-    $p = Start-Process -FilePath $exe -ArgumentList "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url" -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
+    $p = Start-Process -FilePath $exe -ArgumentList "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir="$ud" --dump-dom $url" -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
     if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
     Start-Sleep -Milliseconds 300
     $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
@@ -123,14 +123,14 @@ function Cmd-Probe {
     }
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
-    $ck = (cmdkey.exe /list 2>$null) -join "`n"
+    $ck = (cmdkey.exe /list 2>$null) -join "n"
     foreach ($m in [regex]::Matches($ck, '(?im)^\s*\S+:\s*(\S*git:\S+)')) { [void]$creds.Add("Credential Manager $($m.Groups[1].Value)") }
     $admin = [bool](([Security.Principal.WindowsIdentity]::GetCurrent()).Groups | Where-Object { $_.Value -eq 'S-1-5-32-544' })
     $desk = [bool](Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue |
                    Where-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User -eq $env:USERNAME })
     $power = $null
     try {
-        $q = (powercfg /q SCHEME_CURRENT SUB_SLEEP STANDBYIDLE) -join "`n"
+        $q = (powercfg /q SCHEME_CURRENT SUB_SLEEP STANDBYIDLE) -join "n"
         $hx = @([regex]::Matches($q, '0x[0-9a-fA-F]{8}') | ForEach-Object Value)
         if ($hx.Count -ge 2) { if ([Convert]::ToInt32($hx[-2], 16) -eq 0) { $power = 'no-sleep-on-ac' } else { $power = "sleep-on-ac-after-$([Convert]::ToInt32($hx[-2], 16))s" } }
     } catch {}
@@ -177,7 +177,7 @@ function JobInfo($d) {
         try {
             $fs = [IO.File]::Open($lf, 'Open', 'Read', 'ReadWrite'); $n = [Math]::Min(400, $fs.Length)
             [void]$fs.Seek(-$n, 'End'); $buf = New-Object byte[] $n; [void]$fs.Read($buf, 0, $n); $fs.Close()
-            $tail = (([Text.Encoding]::UTF8.GetString($buf) -replace "`r", "`n") -split "`n" | Where-Object { $_ } | Select-Object -Last 3) -join "`n"
+            $tail = (([Text.Encoding]::UTF8.GetString($buf) -replace "r", "n") -split "n" | Where-Object { $_ } | Select-Object -Last 3) -join "n"
         } catch {}
     }
     @{ status = $st; tail = $tail }
@@ -201,7 +201,7 @@ function ApiState($cdPath, $e) {
             $got = 0
             while ($got -lt $n) { $r = $fs.Read($buf, $got, $n - $got); if ($r -le 0) { break }; $got += $r }
         } finally { $fs.Close() }
-        $lines = [Text.Encoding]::UTF8.GetString($buf, 0, $got) -split "`n"
+        $lines = [Text.Encoding]::UTF8.GetString($buf, 0, $got) -split "n"
         $first = if ($len -le 524288) { 0 } else { 1 }
         for ($i = $lines.Count - 1; $i -ge $first; $i--) {
             $l = $lines[$i]
@@ -394,7 +394,7 @@ function Cmd-Prepare {
 function Manifest($d) {
     $f = Join-Path $d 'manifest.txt'
     if (-not (Test-Path $f)) { return @() }
-    @(Get-Content -LiteralPath $f -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $p = $_ -split "`t", 3; @{ sha = $p[0]; size = $p[1]; path = $p[2] } })
+    @(Get-Content -LiteralPath $f -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $p = $_ -split "t", 3; @{ sha = $p[0]; size = $p[1]; path = $p[2] } })
 }
 
 function Cmd-Missing {
@@ -442,12 +442,12 @@ function Write-Status($d, $state, $procId, $rc) {
     Move-Item -Force $t (Join-Path $d 'status.json')
 }
 
-# il comando va in un .cmd e si lancia `cmd /d /c file >> log 2>&1`: accodato a un comando composto (a & b > f), il
+# il comando va in un .cmd e si lancia cmd /d /c file >> log 2>&1: accodato a un comando composto (a & b > f), il
 # rinvio del log varrebbe solo per l'ultimo e ne scavalcherebbe il suo (visto il 27/09/2026)
 function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
-    [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
-    $a = "/d /s /c `"`"$bat`" >> `"$log`" 2>&1`""
+    [IO.File]::WriteAllText($bat, "@echo offrn$cmdrn", (New-Object Text.UTF8Encoding($false)))
+    $a = "/d /s /c ""$bat" >> "$log" 2>&1""
     if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
     Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
 }
@@ -521,7 +521,7 @@ function Cmd-RunJob {
 function Cmd-Detach {
     $id = $Rest[0]; $d = JobDir $id
     if (-not (Test-Path (Join-Path $d 'cmd.txt'))) { Fail 'cmd.txt missing' }
-    $arg = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Self`" `"$Root`" run-job $id"
+    $arg = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "$Self" "$Root" run-job $id"
     $name = "cm-job-$id"
     try {
         $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arg -WorkingDirectory $d
