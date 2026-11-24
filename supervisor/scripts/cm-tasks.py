@@ -573,6 +573,7 @@ def done(con, tid, constraint=None, checked=None):
     rc, tail = checked or run_check(task)
     n = attempts(con, tid) + 1
     green = rc == 0
+    card = open_card(con, tid) if green else None   # prima di set_state: dopo il compito non e' piu' awaiting_ok
     # 06/11/2026 (supervisor-settle-in-fila-06-11): modello ed effort prima di scrivere. Letti dopo l'INSERT, la scrittura
     # restava aperta per tutto `sessions --json` (fino a 20 s) e gli altri settle dell'ok in blocco morivano su «database
     # is locked» senza esito
@@ -586,6 +587,17 @@ def done(con, tid, constraint=None, checked=None):
     if green:
         set_state(con, tid, "done")   # 1.103: la pagella parte da qui (closures), all'indietro solo dove il legame e' certo
         con.execute("INSERT OR REPLACE INTO closures (task, at, model, effort, kind) VALUES (?,?,?,?,?)", (tid, res["at"], model, effort, task.get("type")))
+        if card is not None:
+            # 24/11/2026 (supervisor-autoclose-carta-24-11): `task done` a mano su un compito con la carta aperta. Prima la carta restava orfana
+            # (closed_at nullo, fuori dalla coda e da `task decisioni`): ora si chiude col motivo, il registro lo dice e chi
+            # ha chiuso lo legge. auto-close non arriva qui: salta i compiti con una carta aperta
+            kind = M("tasks.done_card_choice") if card["options"] else M("tasks.done_card_ok")
+            why = M("tasks.done_card_closed", kind=kind)
+            con.execute("UPDATE approvals SET closed_at=?, closed_by=?, closed_kind='closed', closed_reason=? WHERE n=?",
+                        (res["at"], "task done", why, card["n"]))
+            con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,NULL,'step',?,NULL)", (tid, res["at"], why[:500]))
+            res["card_closed"] = card["n"]
+            print(M("tasks.done_card_warn", task=tid, kind=kind, n=card["n"], what=card["what"] or ""), file=sys.stderr)
     elif n >= task["attempts_max"]:
         set_state(con, tid, "failed")
     if constraint or (not green and n >= task["attempts_max"]):
@@ -689,6 +701,22 @@ def advice_of(raw):
     except ValueError:
         return None
     return a if isinstance(a, dict) and a.get("text") else None
+
+
+def open_card(con, tid):
+    """24/11/2026 (supervisor-autoclose-carta-24-11): la carta (richiesta di ok o di scelta) che aspetta ancora la persona, o None: il compito
+    in awaiting_ok e la sua ultima richiesta senza risposta ne' chiusura, lo stato «open» di rounds_of. Il 24/11 alle 16:57
+    auto-close ha chiuso app-indicatore-attivita-24-11 con la scelta 1899 ancora aperta: il controllo guardava solo i
+    mockup, e la carta e' sparita da `task decisioni` e dagli impegni."""
+    st = con.execute("SELECT state FROM tasks WHERE id=?", (tid,)).fetchone()
+    if not st or st["state"] != "awaiting_ok":
+        return None
+    r = con.execute("SELECT * FROM approvals WHERE task=? AND by_ IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    if not r or r["closed_kind"]:
+        return None
+    ans = con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL AND n>? AND COALESCE(what, '') != 'confirmed' LIMIT 1",
+                      (tid, r["n"])).fetchone()
+    return None if ans else r
 
 
 def rounds_of(con, tid):
@@ -1676,6 +1704,8 @@ def auto_close(con, hours=AUTO_CLOSE_H):
         if outcome_errors(task):   # P1: un controllo che non tocca l'esito non chiude niente da solo
             continue
         if prove_pending(con, r["id"]):   # 1.99: una prova da fare tiene aperto il compito: la persona deve ancora vederla
+            continue
+        if open_card(con, r["id"]):   # 24/11/2026 (supervisor-autoclose-carta-24-11): e cosi' una carta di ok o di scelta senza risposta
             continue
         # 02/11 (chiusi alle 03:38 tre compiti approvati a lavoro non fatto): un controllo verde non dice che il lavoro c'e'.
         # Una pausa ferma il compito; un ok della persona non e' lavoro. `task done` a mano resta com'era.
