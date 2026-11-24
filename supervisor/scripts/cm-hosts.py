@@ -1149,6 +1149,10 @@ def remote_session_rows():
             # SubagentsOf, la forma di cm-subagents.summary); assente con l'aiutante di prima o senza sottoagenti
             if isinstance(s.get("subagents"), dict):
                 rows[-1]["subagents"] = s["subagents"]
+            # 23/11 (supervisor-chiusura-remota-23-11): le shell figlie del processo claude, [{pid, name, cmd}], dallo
+            # stato dell'host (cm-remote.ps1 ShellKids); cm-relay.background_pids sceglie quelle che sono sottofondo
+            if isinstance(s.get("shells"), list):
+                rows[-1]["shells"] = [x for x in s["shells"] if isinstance(x, dict)]
     return rows
 
 

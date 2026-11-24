@@ -2,6 +2,11 @@
 
 ## 0.3.x
 
+- **0.8.203 — 2026-11-23: a session on win with a job in the background is no longer closable from the phone without a warning (supervisor-chiusura-remota-23-11).**
+  - On 23/11 at 21:15 `close_preview` gave win:supervisor closable while a release ran in a background Bash, and the close stopped the release halfway through its tests: `background_pids` returned nothing for every session of another host.
+  - `cm-remote.ps1 status` now carries, for every live session, the shells its claude process started (`shells`: pid, name, the first 600 characters of the command line). The relay counts as background the shells of Claude Code's Bash and PowerShell tools (`shell-snapshots`, `CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT`), not the status bar nor the MCP servers started with `cmd /c npx`; `close_check` gives `blocked_by: "background"` as for the sessions of here.
+  - «Chiudi comunque» stops them on win too: `taskkill /T /F` of each one on the host (the whole tree, `wsl.exe` included), only while that pid is still a child of the session's claude process.
+  - Relay contract unchanged (`background` already existed). Test: `tests/chiusura-remota-verify.py` (CR1-CR6, CR6 also live when `powershell.exe` is at hand).
 - **0.8.202 — 2026-11-23: the cards that block a task are in «Serve te», with reminders after 1 and 3 hours, and an answer in one place closes them everywhere (supervisor-promemoria-carte-23-11); the WebGL probe of the remote helper opens its page by name (supervisor-directory-pacchetti-23-11).**
   - A card of app-silenzio-assenso-23-11 stayed open five hours without a reminder: `state.attention` had only questions, failed turns, quotas and red tasks. Now the ok, choice and prova cards of a task with no open pause enter it as kind `card` (`ref` = `wid` = the attese id, `task`, `card_kind`), their attese item has `blocking: true`, and the reminders go by kind: a card after 1 and after 3 hours, the others still at 10 and 30 minutes. The evening recap lists the blocking cards first.
   - An answer from any place (app, web, watch, terminal, the master) closes the item at the next round, and a quiet `attention_closed` event (`ref`, `wid`, `attention_kind`, also in the FCM wake-up) tells phone and watch to drop the notification already shown.

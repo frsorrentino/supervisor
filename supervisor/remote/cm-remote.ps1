@@ -321,7 +321,28 @@ function SubagentsOf($cdPath, $e) {
     $out
 }
 
+$ShellNames = @('bash.exe', 'sh.exe', 'zsh.exe', 'cmd.exe', 'powershell.exe', 'pwsh.exe', 'wsl.exe')
+function ShellKids($procId) {
+    # 23/11/2026 (supervisor-chiusura-remota-23-11): the shells started by the claude process of a session, each
+    # {pid, name, cmd (at most 600 chars)}. The relay decides which ones are background work (the Bash and PowerShell
+    # tool shells); the status bar and the MCP servers are shells too. One process list per call.
+    if ($null -eq $script:Procs) {
+        $script:Procs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Select-Object ProcessId, ParentProcessId, Name, CommandLine)
+    }
+    $out = New-Object System.Collections.ArrayList
+    foreach ($p in $script:Procs) {
+        if ([int]$p.ParentProcessId -ne [int]$procId) { continue }
+        $n = ([string]$p.Name).ToLower()
+        if ($ShellNames -notcontains $n) { continue }
+        $c = [string]$p.CommandLine
+        if ($c.Length -gt 600) { $c = $c.Substring(0, 600) }
+        [void]$out.Add(@{ pid = [int]$p.ProcessId; name = $n; cmd = $c })
+    }
+    , @($out)
+}
+
 function Cmd-Status {
+    $script:Procs = $null
     $os = Get-CimInstance Win32_OperatingSystem
     $jobs = @{}
     $jd = Join-Path $Root 'jobs'
@@ -337,6 +358,7 @@ function Cmd-Status {
                 if ($alive) {
                     $api = ApiState $cd.FullName $e; if ($api) { $item.api = $api }
                     try { $sa = SubagentsOf $cd.FullName $e; if ($sa) { $item.subagents = $sa } } catch {}
+                    try { $item.shells = ShellKids ([int]$_.BaseName) } catch {}
                 }
                 [void]$sess.Add($item)
             }

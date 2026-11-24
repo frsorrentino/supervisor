@@ -1922,17 +1922,69 @@ def statusline_cmds(cwd=None):
 
 def background_of(row):
     """1.84: la sessione ha un lavoro in sottofondo — un Bash in background o un processo figlio di una shell: fra i
-    figli del processo claude una shell (i server MCP sono node o python, non shell). Solo per le sessioni di qui.
+    figli del processo claude una shell (i server MCP sono node o python, non shell). 23/11: anche per le sessioni su
+    win, dalle shell figlie che porta lo stato dell'host (remote_background_pids).
     28/10: la barra di stato non conta — Claude Code la lancia ogni pochi secondi come «/bin/sh -c <statusLine.command>»,
     e la chiusura falliva a caso."""
     return bool(background_pids(row))
 
 
+# 23/11 (supervisor-chiusura-remota-23-11): su win le shell degli strumenti di Claude Code si riconoscono dalla riga di
+# comando — il Bash parte con «bash.exe -c "source …/shell-snapshots/snapshot-bash-…"», il PowerShell con «cmd.exe /d /s
+# /c "chcp 65001 & powershell … $env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT"». Le altre shell figlie non sono sottofondo: la
+# barra di stato («bash.exe -c "<statusLine.command>"», ogni pochi secondi) e i server MCP («cmd.exe /d /s /c "npx …"»).
+# Visti il 23/11 su Claude Code 2.1.329 per Windows.
+WIN_TOOL_SHELL = ("/shell-snapshots/", "CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT")
+
+
+def remote_background_pids(row):
+    """I pid del sottofondo di una sessione di un altro host, dalle shell figlie che porta lo stato dell'host (`shells`
+    della riga, cm-remote.ps1); [] con l'aiutante di prima."""
+    out = []
+    for c in row.get("shells") or []:
+        cmd = str(c.get("cmd") or "").replace("\\", "/")
+        try:
+            k = int(c.get("pid") or 0)
+        except (TypeError, ValueError):
+            continue
+        if k > 0 and any(m in cmd for m in WIN_TOOL_SHELL):
+            out.append(k)
+    return out
+
+
+def kill_background(row, pids):
+    """«Chiudi comunque»: ferma i lavori in sottofondo. Qui SIGTERM; su un altro host (04/11 ne restava fuori)
+    `taskkill /T /F`, l'albero intero (la release in wsl.exe sotto il bash.exe), e solo se quel pid e' ancora figlio
+    del processo claude della sessione: il pid viene da uno stato di fino a un minuto prima."""
+    if not pids:
+        return
+    host = row.get("host")
+    if not host or host == "local":
+        for k in pids:
+            try:
+                os.kill(k, signal.SIGTERM)
+            except OSError:
+                pass
+        return
+    parent = int(row.get("pid") or 0)
+    script = ("foreach ($k in @(%s)) { $p = Get-CimInstance Win32_Process -Filter \"ProcessId=$k\" -ErrorAction SilentlyContinue; "
+              "if ($p -and [int]$p.ParentProcessId -eq %d) { cmd /c \"taskkill /T /F /PID $k >nul 2>&1\" } }"
+              % (",".join(str(int(k)) for k in pids), parent))
+    try:
+        rc, _, err = _hosts_mod().adapter(host).exec(script, timeout=60)
+        if rc != 0:
+            log(f"sottofondo di {row.get('name')} su {host} non fermato: rc {rc} {S.one_line(err or '')[:160]}")
+    except Exception as e:   # noqa: BLE001 — host spento o trasporto caduto: la chiusura armata va avanti lo stesso
+        log(f"sottofondo di {row.get('name')} su {host} non fermato: {S.one_line(str(e))[:160]}")
+
+
 def background_pids(row):
     """I pid delle shell figlie del processo claude che sono lavoro in sottofondo (vedi background_of); [] se non ce ne
-    sono o la sessione e' su un altro host. 04/11: «Chiudi comunque» le ferma."""
+    sono. 04/11: «Chiudi comunque» le ferma. 23/11: su un altro host da `shells` (remote_background_pids)."""
     pid = row.get("pid")
-    if not pid or (row.get("host") and row.get("host") != "local"):
+    if row.get("host") and row.get("host") != "local":
+        return remote_background_pids(row)
+    if not pid:
         return []
     shells = [k for k, name in _children(pid) if name in BG_SHELLS]
     if not shells:
@@ -2038,11 +2090,7 @@ def close_force_start(n, row, chk, by):
     tm = row.get("tmux") or row.get("name")
     if chk["blocked_by"] in ("busy", "question"):
         run_cm("interrupt", tm, "--wait", "10")
-    for k in background_pids(row):
-        try:
-            os.kill(k, signal.SIGTERM)
-        except OSError:
-            pass
+    kill_background(row, background_pids(row))
     rc, _ = relay_talk(tm, M("relay.close_force_handoff"), "--no-wait")
     return rc == 0
 
@@ -2143,11 +2191,7 @@ def close_tick(now=None):
                 late = now >= float(a.get("deadline") or 0)
                 if late and not go and chk["blocked_by"] in ("busy", "question", "background"):
                     run_cm("interrupt", tm, "--wait", "10")
-                    for k in background_pids(row):
-                        try:
-                            os.kill(k, signal.SIGTERM)
-                        except OSError:
-                            pass
+                    kill_background(row, background_pids(row))
                     chk = dict(chk, closable=True, blocked_by=None, save=chk.get("save") or {"outcome": None, "next": None,
                                "session_id": row.get("session_id") or None, "dirty_n": None, "dirty": None})
                     go = chk["blocked_by"] is None

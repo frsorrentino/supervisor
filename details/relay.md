@@ -469,7 +469,9 @@ state saved, today's quota per session). All additive, `v` stays 1.
 - **Closing with the state saved.** The op `close_preview {arg: "a,b"}` (a passive
   read) answers `{sessions: [{name, closable, blocked_by, save}]}`: `blocked_by` is
   `busy`, `question`, `background` (a shell among the claude process's children: a
-  Bash in the background or a job it started), `gone` (not running) or null (since
+  Bash in the background or a job it started; for a session on win, since 23/11/2026,
+  a shell of the Bash or PowerShell tool among the children the host's status reports),
+  `gone` (not running) or null (since
   20/11/2026 a session open in a window on the PC is no longer `attached`: an idle one
   closes like with `supervisor close`, which closes its tab first); `save` (only when closable) is `{outcome, next, session_id, dirty_n,
   dirty}`, with `dirty` the first 20 paths of `git status --porcelain` and null
