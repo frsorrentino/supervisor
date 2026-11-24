@@ -1300,23 +1300,31 @@ def new_events(kind, before):
     return [C.decrypt(v, k) for kk, v in sorted((STORE.get("events") or {}).items()) if kk not in before and C.decrypt(v, k)["kind"] == kind]
 
 
-today = time.strftime("%Y-%m-%d")
 before, n_fcm = set(STORE.get("events") or {}), len(CALLS["fcm"])
 seq0 = int(json.loads((rdir2 / "last-state.json").read_text()).get("seq") or 0)
+# DATA-R14-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte
+# 24/11 (supervisor-test-data-24-11): il giorno del diario e' uno di quelli fra prima e dopo il recap, non la data letta
+# prima: se in mezzo scatta la mezzanotte, il recap scrive il giorno dopo
+_t14 = time.time()
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-recap.py"), "--send"], capture_output=True, text=True, env=ENV, timeout=120)
+_u14 = time.time()
 ev = new_events("recap", before)
+_d14 = [("Diario del " + a, b) for a, b in zip(T.days(_t14, _u14, "%d/%m"), T.days(_t14, _u14))]
 T.check("R14 (1.18) recap --send → one `recap` event: title «Diario del dd/mm», body = the plain diary as printed (no Telegram HTML), ref = the day, key after the push seq (a push in background may take a number first); FCM with kind recap",
-        r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Diario del " + time.strftime("%d/%m") and ev[0]["ref"] == today and "<b>" not in ev[0]["body"]
+        r.returncode == 0 and len(ev) == 1 and (ev[0]["title"], ev[0]["ref"]) in _d14 and "<b>" not in ev[0]["body"]
         and ev[0]["body"].splitlines()[0] == r.stdout.splitlines()[0] and int(ev[0]["key"].split("_")[1]) > seq0 and ev[0]["session"] is None
         and ev_ok(ev[0]) and CALLS["fcm"][n_fcm:] and CALLS["fcm"][-1]["message"]["data"]["kind"] == "recap", r.stdout[-300:] + r.stderr[-300:] + str(ev))
+# DATA-R14-end
 nq = state_dir / "night-queue.jsonl"
 nq.write_text(json.dumps({"id": "c0ffee01", "dir": str(ws / "personal" / "atlas-shop"), "prompt": "fix the flaky tests", "account": "personal", "model": "", "effort": "", "max_turns": 5, "added": iso(1789207200)}) + "\n")
 before = set(STORE.get("events") or {})
+_t14n = time.time()   # il ref e' il giorno del resoconto: uno di quelli fra prima e dopo il run
 r = subprocess.run([sys.executable, str(T.SCRIPTS / "cm-night.py"), "run", "--send"], capture_output=True, text=True, timeout=120,
                    env=dict(ENV, CM_CLAUDE_BIN=str(T.ROOT / "tests" / "lib" / "fake-claude.sh"), CM_NIGHT_FREE_MB="4000"))
+_u14n = time.time()
 ev = new_events("night_report", before)
 T.check("R14 (1.18) night run --send → one `night_report` event: title «Notte: 1 lavori, 1 riusciti», body = the Telegram summary, ref = today",
-        r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Notte: 1 lavori, 1 riusciti" and ev[0]["ref"] == today
+        r.returncode == 0 and len(ev) == 1 and ev[0]["title"] == "Notte: 1 lavori, 1 riusciti" and ev[0]["ref"] in T.days(_t14n, _u14n)
         and ev[0]["body"].startswith("Turno di notte: 1 lavori eseguiti") and "ok atlas-shop" in ev[0]["body"] and "✓" not in ev[0]["body"], r.stdout[-300:] + r.stderr[-300:] + str(ev))
 nq.unlink(missing_ok=True)
 CORE = f"import importlib.util as u; s = u.spec_from_file_location('c', {str(T.SCRIPTS / 'cm-core.py')!r}); m = u.module_from_spec(s); s.loader.exec_module(m); "
@@ -2225,16 +2233,22 @@ _a43, _b43 = _c43[_ok43]["arg"].split(",")
 http("PUT", f"/share/{_a43}.json", C.encrypt({"mime": "image/png", "data": base64.b64encode(_PNG43).decode()}, k))
 _parts42(_b43, _JPG43, "image/jpeg", "b.jpg", 64)   # il secondo a pezzi (1.48): le due strade insieme
 n_calls = len(cm_calls())
+# DATA-R43-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte
+# 24/11 (supervisor-test-data-24-11): la data dei file e' quella del giorno, fra prima e dopo il comando, in cui sono stati
+# salvati: letta dopo, a mezzanotte appena passata, sarebbe il giorno dopo
+_t43 = time.time()
 r43 = send_cmd(_c43[_ok43])
-_log43 = "\n".join(cm_calls()[n_calls:])
-_talks43 = _log43.count("talk atlas-shop ")
+_u43 = time.time()
 _seg43 = atlas / "docs" / "segnalazioni"
-_day43 = time.strftime("%Y-%m-%d")
+_day43 = next((d for d in T.days(_t43, _u43) if (_seg43 / f"{d}-two-screens-of-the-checkout.png").is_file()), T.days(_t43, _u43)[-1])
 _p43 = [_seg43 / f"{_day43}-two-screens-of-the-checkout.png", _seg43 / f"{_day43}-two-screens-of-the-checkout.jpg"]
 T.check("R43 report-multi (1.50): two ids (one single node, one in parts) → both images saved in the report folder, /result as the fixture's …0500 (today's date); both /share nodes gone",
         r43 and r43["ok"] is True and r43["text"] == _r43[_ok43]["text"].replace("2026-10-10", _day43)
         and [x.read_bytes() if x.is_file() else None for x in _p43] == [_PNG43, _JPG43]
         and not {_a43, _b43} & set(STORE.get("share") or {}), str(r43) + str(list(_seg43.glob("*two-screens*"))))
+# DATA-R43-end
+_log43 = "\n".join(cm_calls()[n_calls:])
+_talks43 = _log43.count("talk atlas-shop ")
 T.check("R43 report-multi (1.50): ONE message to the session — the phone's prefix, the text, then both paths in order; no report run",
         _talks43 == 1 and "Dall'utente via telefono." in _log43 and "two screens of the checkout" in _log43
         and str(_p43[0]) in _log43 and str(_p43[1]) in _log43 and _log43.index(str(_p43[0])) < _log43.index(str(_p43[1]))
@@ -2254,10 +2268,12 @@ r43c = send_cmd(dict(_c43[_ok43], id="6f1c2d3e-0502-4000-8000-000000000502", arg
 _d43, _f43 = "6f1c2d3e-0503-4000-8000-00000000d503", "6f1c2d3e-0503-4000-8000-00000000f503"
 http("PUT", f"/share/{_d43}.json", C.encrypt({"mime": "image/png", "data": base64.b64encode(_PNG43).decode()}, k))
 http("PUT", f"/share/{_f43}.json", C.encrypt({"mime": "application/pdf", "data": base64.b64encode(PDF).decode(), "name": "offerta.pdf"}, k))
+_t43d = time.time()
 r43d = send_cmd(dict(_c43[_ok43], id="6f1c2d3e-0503-4000-8000-000000000503", arg=f"{_d43},{_f43}", text="screen and offer"))
+_u43d = time.time()
 T.check("R43 report-multi (1.50): six ids → «too many attachments: at most 5», every node gone; an image and a PDF → «sent <image path>, offerta.pdf to atlas-shop», the PDF in the inbox",
         r43c and r43c["ok"] is False and r43c["text"] == "too many attachments: at most 5" and not set(_ids43) & set(STORE.get("share") or {})
-        and r43d and r43d["ok"] is True and r43d["text"] == f"sent docs/segnalazioni/{_day43}-screen-and-offer.png, offerta.pdf to atlas-shop"
+        and r43d and r43d["ok"] is True and r43d["text"] in [f"sent docs/segnalazioni/{d}-screen-and-offer.png, offerta.pdf to atlas-shop" for d in T.days(_t43d, _u43d)]
         and any(inbox26.glob("*-offerta.pdf")), str([r43c, r43d]))
 T.check("R43 report-multi (1.50): /state share.multi = 5, as in the three state fixtures",
         json.loads(relay("push", "--dry-run").stdout).get("share", {}).get("multi") == 5 and F1["share"]["multi"] == 5, "")

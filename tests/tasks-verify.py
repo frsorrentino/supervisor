@@ -457,14 +457,18 @@ for z in ("z2", "z3", "z4", "z5"):
     cm("cancel", z)
 # una suite partita prima di mezzanotte (13/11/2026, release 0.8.157: g1 chiuso alle 23:5x, T18 dopo le 00:00) ha chiuso g1
 # e gli altri «ieri»: T18 guarda il formato e i giorni che crea lui, quindi quelle chiusure passano alla mezzanotte di oggi
-mid18 = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d")))
+# 24/11 (supervisor-test-data-24-11): una lettura dell'orologio sola per la mezzanotte; la data di `closed` e' uno dei giorni
+# fra questa lettura e la risposta
+_t18 = time.time()
+mid18 = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d", time.localtime(_t18)), "%Y-%m-%d")))
 con18 = sqlite3.connect(str(tmp / "tasks.db"))
 con18.execute("UPDATE results SET at=? WHERE at>=? AND at<?", (mid18, mid18 - 86400, mid18))
 con18.execute("UPDATE tasks SET updated_at=? WHERE updated_at>=? AND updated_at<?", (mid18, mid18 - 86400, mid18)); con18.commit(); con18.close()
 c18 = json.loads(cm("closed", "--json", env=IT)[1])
+_u18 = time.time()
 rows18 = {x["task"]: x for x in c18["rows"]}
 T.check("T18 closed --json: {date (today), rows (newest first, outcome green|cancelled|failed, at, session, proof), days, more false}",
-        c18["date"] == time.strftime("%Y-%m-%d") and c18["more"] is False and [x["at"] for x in c18["rows"]] == sorted((x["at"] for x in c18["rows"]), reverse=True)
+        c18["date"] in T.days(_t18, _u18) and c18["more"] is False and [x["at"] for x in c18["rows"]] == sorted((x["at"] for x in c18["rows"]), reverse=True)
         and rows18["g1"]["outcome"] == "green" and rows18["g1"]["session"] == "cm-a" and rows18["r1"]["outcome"] == "failed" and rows18["z2"]["outcome"] == "cancelled"
         and list(rows18["g1"]) == ["task", "title", "short", "project", "session", "at", "outcome", "proof"], json.dumps(c18)[:400])
 T.check("T18 the proof: release from the check's tag; commit from the outcome (short hash, no url without a GitHub remote); file from the outcome; else the check's first line",

@@ -142,6 +142,7 @@ first = try_push()
 T.check("PF0 a push with the projects folder readable works and leaves no failure count", first is None and not fails().get("n"), f"{first} {fails()}")
 
 broken(True)
+_t2 = time.time()   # PF2: l'ora dell'ultimo errore e' fra qui e la lettura di status
 e1, e2 = try_push(), try_push()
 f2, ev2 = fails(), stale_events()
 e3 = try_push()
@@ -159,9 +160,13 @@ T.check("PF1 on macOS with the projects under Desktop the event says what to do:
         bool(ev3) and "/usr/sbin/cron" in ev3[0].get("body", "") and "Desktop" in ev3[0].get("body", ""), str(ev3))
 T.check("PF1 the fourth and the fifth failure do not tell again", len(ev5) == 1, str(len(ev5)))
 
+# DATA-PF2-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte
+# 24/11 (supervisor-test-data-24-11): la data dell'ultimo errore e' uno dei giorni fra il primo push fallito e la lettura
 s = relay("status").stdout
+_u2 = time.time()
 T.check("PF2 relay status: the last error with its time and message, the failed pushes of the last hour and in a row",
-        "last error:" in s and "Operation not permitted" in s and time.strftime("%Y-%m-%d") in s and "5 in the last hour, 5 in a row" in s, s)
+        "last error:" in s and "Operation not permitted" in s and any(d in s for d in T.days(_t2, _u2)) and "5 in the last hour, 5 in a row" in s, s)
+# DATA-PF2-end
 
 d = doctor()
 T.check("PF3 doctor FAIL: the daemon cannot read the projects folder, with the way out on macOS (/usr/sbin/cron)",

@@ -50,19 +50,31 @@ def field(out, key):
     return next((l.split(": ", 1)[1] for l in out.splitlines() if l.startswith(key + ": ")), "")
 
 
-today = time.strftime("%Y-%m-%d")
+# DATA-H1-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte
+# 24/11 (supervisor-test-data-24-11): la data nel nome e' uno dei giorni fra prima e dopo --prepare, non la data letta prima
+_t1 = time.time()
 r = ho("--prepare")
+_u1 = time.time()
 p_state = field(r.stdout, "PATH")
+today = next((d for d in T.days(_t1, _u1) if p_state.startswith(str(tmp / "state" / "handoffs" / f"alfa-{d}-"))), "")
 T.check("H1 --prepare without --here → the state folder, named after the project and dated",
-        r.returncode == 0 and p_state.startswith(str(tmp / "state" / "handoffs" / f"alfa-{today}-")) and p_state.endswith(".md"), r.stdout + r.stderr)
+        r.returncode == 0 and bool(today) and p_state.endswith(".md"), r.stdout + r.stderr)
+# DATA-H1-end
 T.check("H1 eight sections, the last «8. Resume» (03/11, supervisor-riavvio-recap-03-11), and the THEN line", len(field(r.stdout, "SECTIONS").split(" | ")) == 8 and field(r.stdout, "SECTIONS").endswith("| 8. Resume")
         and field(r.stdout, "THEN") == f"supervisor handoff --written {p_state}", r.stdout)
+_t1 = time.time()
 r = ho("--prepare", "--here")
+_u1 = time.time()
 p_here = field(r.stdout, "PATH")
-T.check("H1 --here → <project>/docs/handoff-<date>.md, docs/ created", p_here == str(proj / "docs" / f"handoff-{today}.md") and (proj / "docs").is_dir(), r.stdout)
+T.check("H1 --here → <project>/docs/handoff-<date>.md, docs/ created", p_here in [str(proj / "docs" / f"handoff-{d}.md") for d in T.days(_t1, _u1)] and (proj / "docs").is_dir(), r.stdout)
+today = Path(p_here).stem[len("handoff-"):]
 Path(p_here).write_text("## 1. Goal and state\nall green\n")
+_t1 = time.time()
 r = ho("--prepare", "--here")
-T.check("H1 --here when today's file exists → -HHMM suffix", field(r.stdout, "PATH").startswith(str(proj / "docs" / f"handoff-{today}-")), r.stdout)
+_u1 = time.time()
+# passata la mezzanotte il file di oggi non c'e' ancora: niente suffisso, ed e' giusto
+T.check("H1 --here when today's file exists → -HHMM suffix", field(r.stdout, "PATH").startswith(str(proj / "docs" / f"handoff-{today}-"))
+        or field(r.stdout, "PATH") in [str(proj / "docs" / f"handoff-{d}.md") for d in T.days(_t1, _u1) if d != today], r.stdout)
 
 r = ho("--written", str(proj / "docs" / "missing.md"))
 T.check("H2 --written on a missing file → exit 1", r.returncode == 1, r.stdout + r.stderr)

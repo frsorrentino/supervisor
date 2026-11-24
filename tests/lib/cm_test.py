@@ -5,6 +5,8 @@ con codice diverso da zero se uno fallisce (convenzione di fable-director).
 
 Fornisce:
 - check(name, ok, detail): registra e stampa;
+- days(t0, t1, fmt): le date dei giorni fra due letture dell'orologio, per confrontare la data di un file scritto
+  fra le due (24/11, supervisor-test-data-24-11);
 - finish(): riepilogo + exit;
 - fake_home(): una HOME finta con la forma di questa macchina (due account,
   workspace, script legacy) per i test di init/doctor, senza toccare la vera;
@@ -14,6 +16,7 @@ Fornisce:
 - PrivateTmux: un server tmux su socket privato (-L), ucciso a fine test.
   Nessun test tocca il server tmux vero: le sessioni di lavoro non si toccano.
 """
+import datetime as _dt
 import json
 import os
 import shutil
@@ -192,6 +195,17 @@ class PrivateTmux:
     @property
     def env(self):
         return {"CM_TMUX_ARGS": f"-L {self.socket}"}
+
+
+def days(t0, t1, fmt="%Y-%m-%d"):
+    """Le date (fmt, ora locale) dei giorni da t0 a t1 compresi. Un test che confronta la data di oggi con un file o un
+    testo scritto da uno script fra t0 e t1 la prende da qui, non da una lettura dell'orologio prima o dopo: se in mezzo
+    scatta la mezzanotte, le letture sono due giorni diversi (24/11/2026, supervisor-test-data-24-11)."""
+    d, end, out = _dt.date.fromtimestamp(t0), _dt.date.fromtimestamp(max(t0, t1)), []
+    while d <= end:
+        out.append(d.strftime(fmt))
+        d += _dt.timedelta(days=1)
+    return out
 
 
 def tmpdir():

@@ -129,11 +129,17 @@ T.check("AR3 after the second has passed it runs again; another client and anoth
 
 T.check("AR4 the burst does not grow the log: under 4 KB for 300 requests, the equal lines written once with their count",
         len(burst) < 4096 and "ripetuta" in logtext(), f"{len(burst)} bytes | {burst[-300:]}")
+# DATA-AR5-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte
+# 24/11 (supervisor-test-data-24-11): il file e' del giorno in cui il comando e' fallito, fra l'inizio della raffica (t0) e
+# adesso; passata la mezzanotte possono essere due, e le righe si contano su tutti
+_u5 = time.time()
 errs = sorted(rdir.glob("relay-errors-*.log"))
-etext = errs[-1].read_text() if errs else ""
+etext = "".join(e.read_text() for e in errs)
+_n5 = [f"relay-errors-{d}.log" for d in T.days(t0, _u5)]
 T.check("AR5 the failed command is also in the errors file of the day (relay-errors-AAAA-MM-GG.log), a few lines and not 300",
-        len(errs) == 1 and errs[0].name == f"relay-errors-{time.strftime('%Y-%m-%d')}.log" and "agenda" in etext and "ERR" in etext
+        1 <= len(errs) and all(e.name in _n5 for e in errs) and "agenda" in etext and "ERR" in etext
         and len(etext.splitlines()) <= 8, f"{[e.name for e in errs]} | {etext[-300:]}")
+# DATA-AR5-end
 stop_daemon()
 
 # ---------------------------------------------------------------- AR1: con l'agenda configurata l'op e' offerta

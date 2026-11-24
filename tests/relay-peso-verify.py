@@ -71,6 +71,7 @@ RL.rtdb = fake_rtdb
 RL.log = lambda *_a, **_k: None
 
 # PW1
+_t5 = time.time()   # PW5: i conti di PW1-PW4 cadono nei giorni da qui alla lettura
 for i in range(3):
     RL.handle_cmd(f"c{i}", {"id": f"c{i}", "op": "monitors", "device": "web", "by": "maintainer"}, [])
 written = json.loads((rd / "results-written.json").read_text())
@@ -148,19 +149,29 @@ T.check("PW4 results-prune --yes removes the old entries and keeps the ones on t
         rc_yes == 0 and sorted(DB["result"]) == ["arrived-meanwhile", "fresh"], str(DB["result"].keys()))
 
 # PW5
+# DATA-PW5-begin — tests/data-mezzanotte-verify.py esegue questo tratto con l'orologio a mezzanotte
+# 24/11 (supervisor-test-data-24-11): i conti sono per giorno; se la suite passa la mezzanotte stanno su due giorni, e si
+# sommano quelli fra l'inizio di PW1 e adesso invece di leggere solo la data di adesso
+_u5 = time.time()
 u = json.loads((rd / "usage-firebase.json").read_text())
-today = u[time.strftime("%Y-%m-%d")]
+today = {}
+for _d5 in T.days(_t5, _u5):
+    for _k5, _v5 in (u.get(_d5) or {}).items():
+        today[_k5] = today.get(_k5, 0) + _v5
 T.check("PW5 the counters: results written with their bytes, the ones removed, state published and skipped, the old ones pruned",
         today.get("results") == 3 and today.get("result_bytes", 0) > 0 and today.get("results_deleted") == 3 and today.get("state_pubs") == 1
         and today.get("state_skipped") == 1 and today.get("results_pruned") == 7, str(today))
+# DATA-PW5-end
 spc = importlib.util.spec_from_file_location("cm_config_peso", T.SCRIPTS / "cm-config.py")
 CC = importlib.util.module_from_spec(spc)
 spc.loader.exec_module(CC)
 c = CC.load(cfg, warn=False)
-row_ok = CC.firebase_usage_row(c)
-u[time.strftime("%Y-%m-%d")]["result_bytes"] = 900e6
+# il doctor legge il giorno di un'ora data: la stessa per le due letture e per la riga scritta in mezzo
+_n5 = time.time()
+row_ok = CC.firebase_usage_row(c, _n5)
+u.setdefault(time.strftime("%Y-%m-%d", time.localtime(_n5)), {})["result_bytes"] = 900e6
 (rd / "usage-firebase.json").write_text(json.dumps(u))
-row_hi = CC.firebase_usage_row(c)
+row_hi = CC.firebase_usage_row(c, _n5)
 T.check("PW5 doctor: firebase_usage PASS under the free threshold, WARN with the fix above it",
         row_ok[0] == "PASS" and row_ok[1] == "doctor.firebase_usage" and row_hi[0] == "WARN" and row_hi[3] == "doctor.fix_firebase_usage", f"{row_ok} {row_hi}")
 
