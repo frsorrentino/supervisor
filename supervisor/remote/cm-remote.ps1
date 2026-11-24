@@ -1,35 +1,3 @@
-    if ($m.Success) { $m.Value } else { $null }
-}
-function Sha($f) { (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLower() }
-function NowIso { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
-
-function Find-Chrome {
-    $c = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-           "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
-    $c += @(Get-ChildItem -Path (Join-Path $Root 'cache\deps') -Filter chrome-headless-shell.exe -Recurse -Depth 8 -ErrorAction SilentlyContinue | ForEach-Object FullName)
-    $c += @(Get-ChildItem -Path "$env:LOCALAPPDATA\ms-playwright" -Filter chrome.exe -Recurse -Depth 4 -ErrorAction SilentlyContinue | ForEach-Object FullName)
-    $c += @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
-    foreach ($x in $c) { if ($x -and (Test-Path $x)) { return $x } }
-    $null
-}
-
-function WebGL {
-    $exe = Find-Chrome
-    if (-not $exe) { return $null }
-    $page = Join-Path $Here 'cm-webgl.html'
-    if (-not (Test-Path $page)) { return $null }
-    $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
-    $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
-    $url = 'file:///' + ($page -replace '\\', '/')
-    $p = Start-Process -FilePath $exe -ArgumentList "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url" -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
-    if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
-    Start-Sleep -Milliseconds 300
-    $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
-    Remove-Item -Recurse -Force $ud, $of, "$of.err" -ErrorAction SilentlyContinue
-    $m = [regex]::Match($o, 'CMWEBGL(.*)CMWEBGL')
-    if (-not $m.Success) { return @{ renderer = $null; hardware = $false; ms = $null; browser = $exe } }
-    $r = $m.Groups[1].Value | ConvertFrom-Json
-    $hw = $false; if ($r.renderer -and $r.renderer -notmatch '(?i)swiftshader|llvmpipe|softpipe|software|basic render') { $hw = $true }
     @{ renderer = $r.renderer; hardware = $hw; ms = $r.ms; browser = $exe; error = $r.error }
 }
 
