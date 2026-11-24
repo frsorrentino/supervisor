@@ -245,3 +245,12 @@ function SubTokens($jp) {
             if ($l -notmatch '"type"\s*:\s*"assistant"') { continue }
             try { $d = $l | ConvertFrom-Json } catch { continue }
             if ($d.type -ne 'assistant' -or -not $d.message) { continue }
+            if ($d.message.model -and $d.message.model -ne '<synthetic>') { $model = [string]$d.message.model }
+            if ($d.message.usage) { $byId[[string]$d.message.id] = $d.message.usage }
+        }
+    } catch { return $null }
+    $tin = [int64]0; $tout = [int64]0
+    foreach ($u in $byId.Values) {
+        $tin += [int64]$u.input_tokens + [int64]$u.cache_creation_input_tokens + [int64]$u.cache_read_input_tokens
+        $tout += [int64]$u.output_tokens
+    }
