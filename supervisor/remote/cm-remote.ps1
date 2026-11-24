@@ -150,3 +150,79 @@ function Cmd-Probe {
     $tools = New-Object System.Collections.Hashtable
     $tools['node'] = $null; $tools['ffmpeg'] = $null; $tools['python'] = $null; $tools['git'] = $null
     $tools['tmux'] = $null; $tools['claude'] = $null; $tools['tar'] = $null; $tools['chrome'] = $chrome
+    try { if (IsTool 'node.exe') { $tools['node'] = VersionIn (node.exe --version 2>&1) } } catch {}
+    try { if (IsTool 'ffmpeg.exe') { $tools['ffmpeg'] = VersionIn (ffmpeg.exe -version 2>&1) } } catch {}
+    try { if (IsTool 'python.exe') { $tools['python'] = VersionIn (python.exe --version 2>&1) } } catch {}
+    try { if (IsTool 'git.exe') { $tools['git'] = VersionIn (git.exe --version 2>&1) } } catch {}
+    try { if (IsTool 'tar.exe') { $tools['tar'] = VersionIn (tar.exe --version 2>&1) } } catch {}
+    try {
+        if (IsTool 'claude.exe') { $tools['claude'] = VersionIn (claude.exe --version 2>&1) }
+        elseif (IsTool 'claude.cmd') { $tools['claude'] = VersionIn (claude.cmd --version 2>&1) }
+    } catch {}
+    $arch = $env:PROCESSOR_ARCHITECTURE; if ($arch -eq 'AMD64') { $arch = 'x86_64' } elseif ($arch -eq 'ARM64') { $arch = 'aarch64' }
+    Out-J @{ ok = $true; kind = 'windows-native'; os = $pretty; os_version = "$($os.Version)"; os_build = $build; arch = $arch
+        cores = [int](($cpu | Measure-Object -Property NumberOfCores -Sum).Sum); threads = [int](($cpu | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
+        cpu = $cpu[0].Name.Trim(); ram_gb = Gb $cs.TotalPhysicalMemory; ram_free_gb = Gb ([double]$os.FreePhysicalMemory * 1KB)
+        disk_free_gb = @{ $Root = FreeGb $Root }; gpu = $gpus; webgl = $w; bench = $b
+        tools = $tools
+        accounts = $accs; foreign_credentials = @($creds); admin = $admin; linger = $null; interactive_desktop = $desk; power = $power
+        defender_signature_age_d = $def; defender_note = $defNote; home = $env:USERPROFILE; root = $Root; load_pct = LoadPct }
+}
+
+function JobInfo($d) {
+    $st = $null; $sf = Join-Path $d 'status.json'; if (Test-Path $sf) { $st = ReadJson $sf }
+    $tail = ''
+    $lf = Join-Path $d 'log.txt'
+    if (Test-Path $lf) {
+        try {
+            $fs = [IO.File]::Open($lf, 'Open', 'Read', 'ReadWrite'); $n = [Math]::Min(400, $fs.Length)
+            [void]$fs.Seek(-$n, 'End'); $buf = New-Object byte[] $n; [void]$fs.Read($buf, 0, $n); $fs.Close()
+            $tail = (([Text.Encoding]::UTF8.GetString($buf) -replace "`r", "`n") -split "`n" | Where-Object { $_ } | Select-Object -Last 3) -join "`n"
+        } catch {}
+    }
+    @{ status = $st; tail = $tail }
+}
+
+function ApiState($cdPath, $e) {
+    # 16/11/2026 (supervisor-blocco-permanente-16-11): l'ultima voce assistant della trascrizione della sessione (non di
+    # un sottoagente). Se e' un errore dell'API, block = {kind limit|login|error, error, text, at, resets_at, limit_type}:
+    # la sessione e' ferma li'. La stessa lettura di api_error (cm-relay-state.py) e di apiError (cm-session.js); si
+    # leggono gli ultimi 512 KB. last_at = l'ora di quella voce. $null se la trascrizione non c'e'.
+    try {
+        $slug = ([string]$e.cwd) -replace '[^A-Za-z0-9]', '-'
+        $f = Join-Path (Join-Path (Join-Path $cdPath 'projects') $slug) ([string]$e.sessionId + '.jsonl')
+        if (-not (Test-Path -LiteralPath $f)) { return $null }
+        $fs = [IO.File]::Open($f, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try {
+            $len = $fs.Length
+            $n = [int][Math]::Min($len, 524288)
+            [void]$fs.Seek(-$n, [IO.SeekOrigin]::End)
+            $buf = New-Object byte[] $n
+            $got = 0
+            while ($got -lt $n) { $r = $fs.Read($buf, $got, $n - $got); if ($r -le 0) { break }; $got += $r }
+        } finally { $fs.Close() }
+        $lines = [Text.Encoding]::UTF8.GetString($buf, 0, $got) -split "`n"
+        $first = if ($len -le 524288) { 0 } else { 1 }
+        for ($i = $lines.Count - 1; $i -ge $first; $i--) {
+            $l = $lines[$i]
+            if ($l -notmatch '"type"\s*:\s*"assistant"') { continue }
+            if ($l -match '"isSidechain"\s*:\s*true') { continue }
+            $at = if ($l -match '"timestamp"\s*:\s*"([^"]+)"') { $Matches[1] } else { $null }
+            if ($l -notmatch '"isApiErrorMessage"\s*:\s*true' -and $l -notmatch '"model"\s*:\s*"<synthetic>"') { return @{ block = $null; last_at = $at } }
+            try { $d = $l | ConvertFrom-Json } catch { return @{ block = $null; last_at = $at } }
+            $text = ''
+            foreach ($c in @($d.message.content)) { if ($c -and $c.type -eq 'text' -and $c.text) { $text = [string]$c.text; break } }
+            $limitText = $text -match "You've (hit|reached) your|out of (extra )?usage|usage credits|usage limit"
+            $loginText = $text -match '/login|not logged in|invalid api key|oauth token|authentication'
+            if (-not $d.isApiErrorMessage -and -not $limitText -and -not $loginText) { return @{ block = $null; last_at = $at } }
+            $code = ([string]$d.error + ' ' + [string]$d.apiError).Trim()
+            $q = $d.quotaLimits
+            if (-not $q -and $d.apiErrorParams) { $q = $d.apiErrorParams.rate_limit_info }
+            $kind = 'error'
+            if ($code -match 'usage_limit|billing|credit' -or ($q -and $q.status -eq 'rejected') -or $limitText) { $kind = 'limit' }
+            elseif ($code -match 'auth|oauth|login' -or $loginText) { $kind = 'login' }
+            $resets = $null
+            if ($q -and $q.resetsAt) { $resets = [int64]$q.resetsAt }
+            $lt = $null
+            if ($q -and $q.rateLimitType) { $lt = [string]$q.rateLimitType }
+            $err = 'api_error'
