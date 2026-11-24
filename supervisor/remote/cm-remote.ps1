@@ -1,11 +1,3 @@
-    $exe = Find-Chrome
-    if (-not $exe) { return $null }
-    $page = Join-Path $Here 'cm-webgl.html'
-    if (-not (Test-Path $page)) { return $null }
-    $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
-    $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
-    $url = 'file:///' + ($page -replace '\\', '/')
-    $p = Start-Process -FilePath $exe -ArgumentList "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url" -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
     if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
     Start-Sleep -Milliseconds 300
     $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
