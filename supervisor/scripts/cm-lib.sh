@@ -37,11 +37,32 @@ if [ "${CM_CONFIG_LOADED:-}" != "$_cm_key" ]; then
 fi
 unset _cm_cfg _cm_key
 
+# 24/11/2026 (supervisor-lancio-ambiente-24-11): le variabili che Claude Code mette nell'ambiente dei suoi figli (la sessione, il
+# relay dei messaggi, il plugin, lo sforzo scelto). Una sessione lanciata dal Bash della master le ereditava, anche
+# dall'ambiente globale del server tmux: sul Chromebook 16 variabili della master 27560c52 del 20/11, e con
+# CLAUDE_CODE_EFFORT_LEVEL=max e CLAUDE_EFFORT=max ogni sessione girava a max invece dello sforzo dei settings. Il lancio
+# le toglie tutte (CM_ENV_UNSET, argomenti di env); restano CLAUDE_CONFIG_DIR, che il lancio imposta per l'account, le
+# preferenze come CLAUDE_CODE_DISABLE_CFC_PROMPT e quello che il profilo rimette. Copia in cm-adapters.py (CHILD_ENV)
+CM_CHILD_ENV="CLAUDECODE CLAUDE_CODE_BRIDGE_SESSION_ID CLAUDE_CODE_CHILD_NOTES_DIR CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_SESSION_ID CLAUDE_CODE_SSE_PORT CLAUDE_EFFORT CLAUDE_ENV_FILE CLAUDE_PID CLAUDE_PLUGIN_DATA CLAUDE_PLUGIN_ROOT CLAUDE_PROJECT_DIR"
+CM_ENV_UNSET=()
+for _cm_v in $CM_CHILD_ENV; do CM_ENV_UNSET+=(-u "$_cm_v"); done
+unset _cm_v
+
 cm_tmux() {
   # shellcheck disable=SC2086
   if [ -n "${CM_TMUX_ARGS:-}" ]; then tmux $CM_TMUX_ARGS "$@"
   elif [ -n "${CM_TMUX_SOCKET:-}" ]; then tmux -L "$CM_TMUX_SOCKET" "$@"
   else tmux "$@"; fi
+}
+
+cm_tmux_clean_env() {  # toglie le variabili di CM_CHILD_ENV dall'ambiente globale del server tmux (24/11/2026)
+  # Il server le prende da chi lo avvia (la master, dal suo Bash) e le passa a ogni sessione aperta a mano nel tmux;
+  # una volta tolte, le sessioni gia' aperte restano come sono
+  local v
+  for v in $(cm_tmux show-environment -g 2>/dev/null | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
+    case " $CM_CHILD_ENV " in *" $v "*) cm_tmux set-environment -g -u "$v" 2>/dev/null ;; esac
+  done
+  return 0
 }
 
 cm_orphan_hook() {  # l'hook session-closed del server tmux: alla morte di una sessione si chiudono i claude rimasti senza pannello

@@ -224,6 +224,7 @@
   "launch.resume_missing": "supervisor launch: no conversation “{id}” for this directory.\n  looked in: {dir}",
   "launch.resume_recent": "  most recent (id, size, last modified):",
   "launch.unknown_profile": "supervisor launch: unknown profile “{profile}” (configured: {known})",
+  "launch.root_profile_unknown": "supervisor launch: workspace.root_profile “{profile}” is not a configured profile (configured: {known}), launching without it",
   "launch.bg_failed": "supervisor launch: claude --bg failed (exit {rc}):",
   "launch.bg_started": "background session started",
   "launch.bg_howto": "  follow it: claude agents (Ctrl+F or filter n:{name}, Enter opens the best match)  ·  claude attach <id>  ·  claude logs <id>\n  stop it:   claude stop <id>\n  prompt it from a terminal: claude --resume <id> \"prompt\" (opens the session in that terminal; refused without one)\n  from another session: ListAgents -> SendMessage {{\"to\": \"{name}\"}}  ·  from a script: supervisor talk {name} \"prompt\"",

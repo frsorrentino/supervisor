@@ -33,6 +33,9 @@ import time
 import uuid
 from pathlib import Path
 
+# 24/11/2026 (supervisor-lancio-ambiente-24-11): le variabili che Claude Code mette nei suoi figli; copia di CM_CHILD_ENV in cm-lib.sh
+CHILD_ENV = tuple("CLAUDECODE CLAUDE_CODE_BRIDGE_SESSION_ID CLAUDE_CODE_CHILD_NOTES_DIR CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_SESSION_ID CLAUDE_CODE_SSE_PORT CLAUDE_EFFORT CLAUDE_ENV_FILE CLAUDE_PID CLAUDE_PLUGIN_DATA CLAUDE_PLUGIN_ROOT CLAUDE_PROJECT_DIR".split())
+
 HERE = Path(__file__).resolve().parent
 PLUGIN = HERE.parent
 REMOTE = PLUGIN / "remote"
@@ -550,8 +553,9 @@ node $js $d {self.q(cn)}""")
         # dentro la stringa PowerShell fra virgolette doppie: le virgolette del set con l'apice inverso
         env_line = "" if cn == ".claude" else "set `\"CLAUDE_CONFIG_DIR=%USERPROFILE%\\" + cn + "`\"`r`n"
         # 24/11/2026 (supervisor-lancio-trascrizione-24-11): il .cmd toglie il segno di sessione figlia, come cm-launch.sh: con
-        # CLAUDE_CODE_CHILD_SESSION ereditato Claude Code non salva la trascrizione
-        env_line = "set `\"CLAUDE_CODE_CHILD_SESSION=`\"`r`n" + env_line
+        # CLAUDE_CODE_CHILD_SESSION ereditato Claude Code non salva la trascrizione. Dal 24/11 (supervisor-lancio-ambiente-24-11) tutte
+        # le variabili figlie (CHILD_ENV): con CLAUDE_CODE_EFFORT_LEVEL ereditato la sessione non usa lo sforzo dei settings
+        env_line = "".join("set `\"" + v + "=`\"`r`n" for v in CHILD_ENV) + env_line
         def cq(a):
             a = str(a)
             return '"' + a.replace('"', '""') + '"' if re.search(r'[\s&|<>^()"]', a) else a

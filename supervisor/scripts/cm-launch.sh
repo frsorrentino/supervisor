@@ -218,6 +218,16 @@ if [ -n "$RIPRENDI" ]; then
 fi
 
 # --- profilo (N8): argomenti, modello, effort, env, bg/finestra ---------------------
+# 24/11/2026 (supervisor-lancio-ambiente-24-11): la radice (la master) senza --profile prende workspace.root_profile. Fino alla 0.8.209
+# la master tornava a max dopo `supervisor restart` solo perche' CLAUDE_CODE_EFFORT_LEVEL=max restava nell'ambiente, e
+# lo stesso max finiva in tutte le altre sessioni; ora l'ambiente ereditato si toglie e lo sforzo della master viene
+# dal suo profilo (restart, restore, cron e telefono passano tutti di qui). Un profilo che non c'e' non ferma la master
+if [ -z "$PROFILO" ] && [ "$RADICE" = si ] && [ -n "${CM_WORKSPACE_ROOT_PROFILE:-}" ]; then
+  case " ${CM_PROFILES_KEYS:-} " in
+    *" $CM_WORKSPACE_ROOT_PROFILE "*) PROFILO="$CM_WORKSPACE_ROOT_PROFILE" ;;
+    *) cm_msg launch.root_profile_unknown "profile=$CM_WORKSPACE_ROOT_PROFILE" "known=${CM_PROFILES_KEYS:-}" >&2 ;;
+  esac
+fi
 PROF_ARGS=(); PROF_ENV=()
 if [ -n "$PROFILO" ]; then
   case " ${CM_PROFILES_KEYS:-} " in *" $PROFILO "*) ;; *) cm_msg launch.unknown_profile "profile=$PROFILO" "known=${CM_PROFILES_KEYS:-}" >&2; exit 2 ;; esac
@@ -272,7 +282,7 @@ fi
 if [ "$BG" = si ]; then
   BGARGS=(--bg -n "$NOME" ${ARGS[@]+"${ARGS[@]}"})
   [ "$CM_SESSION_BG_REMOTE_CONTROL" = true ] && BGARGS+=(--remote-control "$NOME")
-  ESITO=$(cd "$CARTELLA" && env -u CLAUDE_CODE_CHILD_SESSION ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${BGARGS[@]+"${BGARGS[@]}"} 2>&1) || RC=$?
+  ESITO=$(cd "$CARTELLA" && env "${CM_ENV_UNSET[@]}" ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${BGARGS[@]+"${BGARGS[@]}"} 2>&1) || RC=$?
   if [ "${RC:-0}" -ne 0 ]; then
     cm_msg launch.bg_failed "rc=$RC" >&2; printf '%s\n' "$ESITO" | sed 's/^/  /' >&2; exit 7
   fi
@@ -296,15 +306,19 @@ RC="$(cm_get "$ACCOUNT" REMOTE_CONTROL)"; RC="${RC:-$CM_SESSION_REMOTE_CONTROL}"
 ARGS+=(-n "$NOME")
 [ -n "$PRIMO" ] && ARGS+=("$PRIMO")   # posizionale, in coda: claude [opzioni] [prompt] parte col turno gia' avviato
 if [ "$AGENT" = codex ]; then   # S09: Codex CLI nudo, senza gli argomenti di Claude Code (-n, remote control, profili)
-  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env CM_LAUNCHED=1 CM_AGENT=codex "$CODEX"
+  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env "${CM_ENV_UNSET[@]}" CM_LAUNCHED=1 CM_AGENT=codex "$CODEX"
 else
   # 24/11/2026 (supervisor-lancio-trascrizione-24-11): senza CLAUDE_CODE_CHILD_SESSION. Una sessione lanciata dal Bash di una sessione Claude
   # (la master) lo eredita, anche dall'ambiente globale del server tmux, e Claude Code (2.1.331) la tratta da figlia: la
   # trascrizione resta spenta, salvo che `tmux show-environment -g` (250 ms al massimo) lo veda nell'ambiente globale. Col
   # PC carico la prova scade, e il 24/11 alle 12:43 derattizzazione e' partita senza trascrizione. La sessione nuova non e'
   # figlia di nessuno: il segno si toglie, qui e nel --bg
-  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env -u CLAUDE_CODE_CHILD_SESSION ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${ARGS[@]+"${ARGS[@]}"}
+  # 24/11/2026 (supervisor-lancio-ambiente-24-11): con lui tutte le variabili figlie di Claude Code (CM_ENV_UNSET, cm-lib.sh)
+  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env "${CM_ENV_UNSET[@]}" ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${ARGS[@]+"${ARGS[@]}"}
 fi
+# 24/11/2026 (supervisor-lancio-ambiente-24-11): e dall'ambiente globale del server tmux, che le passa alle sessioni aperte
+# a mano: dopo new-session, perche' un server che nasce qui le prende dall'ambiente di chi lancia
+cm_tmux_clean_env
 cm_orphan_hook   # 28/10/2026: alla morte del tmux di una sessione il suo claude si chiude (HUP, TERM, KILL)
 # Il file di registro NON e' <pane_pid>.json: il binario `claude` si rilancia
 # in un figlio (visto dal vivo il 09/09: pane 1122 → sessione registrata 1146),

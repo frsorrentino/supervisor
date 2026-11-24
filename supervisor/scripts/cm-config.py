@@ -56,6 +56,9 @@ DEFAULTS = {
     "workspace": {
         "root": "~",
         "root_session_name": "master",
+        # 24/11/2026 (supervisor-lancio-ambiente-24-11): il profilo (profiles.<nome>) della radice quando il lancio non ne dice uno: la
+        # master al riavvio, dal cron, dal telefono. "" = nessuno, lo sforzo e il modello dei settings
+        "root_profile": "",
         "excluded_dirs": [".git", "node_modules"],
         "project_dirs": ["."],
         # 12/11/2026 (supervisor-ambito-sessioni-12-11): «root» = supervisor legge solo le sessioni sotto la root (e sotto

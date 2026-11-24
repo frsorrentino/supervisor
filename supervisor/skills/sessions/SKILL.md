@@ -42,7 +42,11 @@ il percorso completo.
   conversazione vuota che sembra una ripresa riuscita; `launch` si ferma prima e stampa gli id veri
   con peso e data
 - `--profile <nome>`: argomenti, modello, effort, variabili d'ambiente da `profiles.<nome>` in
-  config (per esempio uno scan economico in background)
+  config (per esempio uno scan economico in background). La radice (la master) senza `--profile` prende
+  `workspace.root_profile`, anche al riavvio, dal cron e dal telefono: lì si mette lo sforzo della master
+  (per esempio `max`), le altre sessioni hanno quello dei settings. Il lancio toglie le variabili che Claude Code
+  mette nei suoi figli (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_EFFORT_LEVEL`, `CLAUDE_EFFORT`…), anche
+  dall'ambiente globale del server tmux: una sessione lanciata dalla master non ne eredita lo sforzo
 - `--bg`: lavori muti (scansioni, batch senza domande) — niente tmux, niente finestra, niente
   colore; si segue con `claude agents` (Ctrl+F o il filtro `n:<nome>`, Invio apre la corrispondenza migliore; Alt+↑/↓ salta fra i gruppi; le risposte da lì arrivano in coda, i
   comandi slash girano a fine turno) / `claude attach <id>`; nasce **idle**, va nutrita con un

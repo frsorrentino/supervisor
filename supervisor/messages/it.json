@@ -224,6 +224,7 @@
   "launch.resume_missing": "supervisor launch: nessuna conversazione «{id}» per questa cartella.\n  cercata in: {dir}",
   "launch.resume_recent": "  le più recenti (id, peso, ultima modifica):",
   "launch.unknown_profile": "supervisor launch: profilo sconosciuto «{profile}» (in config: {known})",
+  "launch.root_profile_unknown": "supervisor launch: workspace.root_profile «{profile}» non è un profilo in config (in config: {known}), lancio senza",
   "launch.bg_failed": "supervisor launch: claude --bg ha fallito (exit {rc}):",
   "launch.bg_started": "sessione in background avviata",
   "launch.bg_howto": "  seguirla:  claude agents (Ctrl+F o filtro n:{name}, Invio apre la migliore)  ·  claude attach <id>  ·  claude logs <id>\n  fermarla:  claude stop <id>\n  darle un prompt da un terminale: claude --resume <id> \"prompt\" (apre la sessione in quel terminale; senza terminale rifiuta)\n  da un'altra sessione: ListAgents -> SendMessage {{\"to\": \"{name}\"}}  ·  da uno script: supervisor talk {name} \"prompt\"",

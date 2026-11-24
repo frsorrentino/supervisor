@@ -112,6 +112,9 @@ with T.PrivateTmux() as tm:
         tm("new-session", "-d", "-s", name, "-c", str(alfa), f"env -u CLAUDE_CODE_CHILD_SESSION {cmd} {WRAP} -n {name}")
         T.wait_until(lambda: bool(logline(name)), 15)
         return logline(name)
+    # dal 24/11 (supervisor-lancio-ambiente-24-11) il lancio di LT1 toglie il segno dall'ambiente globale: lo si rimette per
+    # provare la regola con la prova ambient
+    tm("set-environment", "-g", "CLAUDE_CODE_CHILD_SESSION", "1")
     tm("set-environment", "-g", "FAKE_PROBE", "fast")
     no_mark = direct("lt2a")
     ambient = direct("lt2b", CLAUDE_CODE_CHILD_SESSION="1")
@@ -137,9 +140,13 @@ with T.PrivateTmux() as tm:
 
 src = (T.SCRIPTS / "cm-launch.sh").read_text(encoding="utf-8")
 runs = [ln for ln in src.splitlines() if '"$CLAUDE" ${' in ln and not ln.lstrip().startswith("#")]
+LIB = (T.SCRIPTS / "cm-lib.sh").read_text(encoding="utf-8")
+MARK = 'env "${CM_ENV_UNSET[@]}" '
 desk = [ln for ln in (T.SCRIPTS / "cm-cloud.sh").read_text(encoding="utf-8").splitlines() if '"$CLAUDE" remote-control' in ln]
 T.check("LT5 every line of cm-launch.sh that starts claude (tmux and --bg) and the desk of cm-cloud.sh drop the marker",
-        len(runs) == 2 and all("env -u CLAUDE_CODE_CHILD_SESSION " in ln for ln in runs) and desk and all("env -u CLAUDE_CODE_CHILD_SESSION " in ln for ln in desk),
+        # dal 24/11 (supervisor-lancio-ambiente-24-11) il segno si toglie con le altre variabili figlie: CM_ENV_UNSET di cm-lib.sh
+        len(runs) == 2 and all(MARK in ln for ln in runs) and desk and all(MARK in ln for ln in desk)
+        and " CLAUDE_CODE_CHILD_SESSION " in " " + (re.search(r'^CM_CHILD_ENV="([^"]*)"', LIB, re.M) or [None, ""])[1] + " ",
         "\n".join(runs + desk))
 
 sp = importlib.util.spec_from_file_location("cm_adapters_lt", T.SCRIPTS / "cm-adapters.py")

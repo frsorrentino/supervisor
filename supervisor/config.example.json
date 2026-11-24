@@ -5,6 +5,7 @@
   "workspace": {
     "root": "~",
     "root_session_name": "master",
+    "root_profile": "",
     "excluded_dirs": [
       ".git",
       "node_modules"
