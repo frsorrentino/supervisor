@@ -256,6 +256,3 @@ function SubTokens($jp) {
     }
     @{ in = $tin; out = $tout; model = $model }
 }
-
-function SubagentsOf($cdPath, $e) {
-    # 23/11/2026 (supervisor-sottoagenti-23-11): i sottoagenti della sessione, come summary di cm-subagents.py:
