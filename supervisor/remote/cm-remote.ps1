@@ -113,7 +113,8 @@ function Cmd-Probe {
     $accs = @(Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue |
               Where-Object { Test-Path (Join-Path $_.FullName '.credentials.json') } | ForEach-Object Name)
     $creds = New-Object System.Collections.ArrayList
-    if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
+    $gitCred = Get-Item -LiteralPath "$env:USERPROFILE\.git-credentials" -ErrorAction SilentlyContinue
+    if ($gitCred -and $gitCred.Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
     if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
     Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
     $npmTok = Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue
