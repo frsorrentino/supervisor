@@ -1,19 +1,3 @@
-    @{ renderer = $r.renderer; hardware = $hw; ms = $r.ms; browser = $exe; error = $r.error }
-}
-
-function Cmd-Probe {
-    $bench = $Rest -contains '--bench'; $webgl = $Rest -contains '--webgl'
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
-    $build = [int]$cv.CurrentBuild
-    $caption = $os.Caption; if ($build -ge 22000) { $caption = $caption -replace 'Windows 10', 'Windows 11' }
-    $pretty = "$caption $($cv.DisplayVersion) ($build)".Trim()
-    $cpu = @(Get-CimInstance Win32_Processor)
-    $cs = Get-CimInstance Win32_ComputerSystem
-    $gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object {
-        $v = $null; if ($_.AdapterRAM -gt 0) { $v = Gb ([uint32]$_.AdapterRAM) }
-        $dd = $null; if ($_.DriverDate) { $dd = $_.DriverDate.ToString('yyyy-MM-dd') }
-        @{ name = $_.Name; vram_gb = $v; driver = $_.DriverVersion; driver_date = $dd } })
     $accs = @(Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue |
               Where-Object { Test-Path (Join-Path $_.FullName '.credentials.json') } | ForEach-Object Name)
     $creds = New-Object System.Collections.ArrayList
