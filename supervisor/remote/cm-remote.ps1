@@ -254,3 +254,8 @@ function SubTokens($jp) {
     foreach ($u in $byId.Values) {
         $tin += [int64]$u.input_tokens + [int64]$u.cache_creation_input_tokens + [int64]$u.cache_read_input_tokens
         $tout += [int64]$u.output_tokens
+    }
+    @{ in = $tin; out = $tout; model = $model }
+}
+
+function SubagentsOf($cdPath, $e) {
