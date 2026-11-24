@@ -382,7 +382,17 @@ def connect(create=True):
 
 
 def now():
-    return int(time.time())
+    """L'ora, in secondi. Con CM_TODAY (YYYY-MM-DD, solo nei test) tenuta dentro quel giorno, come cm-avvisi.within_today: un
+    test che ha fissato il giorno e poi chiude un compito (task done) dopo la mezzanotte trova la chiusura nel suo giorno, e il
+    recap di CM_TODAY la conta (24/11/2026, supervisor-test-chiusi-24-11)."""
+    t = int(time.time())
+    d = os.environ.get("CM_TODAY")
+    if not d:
+        return t
+    import datetime as dt
+    d = dt.date.fromisoformat(d)
+    a = int(time.mktime(d.timetuple()))
+    return min(max(t, a), int(time.mktime((d + dt.timedelta(days=1)).timetuple())) - 1)
 
 
 def get_task(con, tid):

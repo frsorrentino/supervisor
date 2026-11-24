@@ -197,8 +197,9 @@ def closed_on(day):
         return []
     if con is None:
         return []
+    # 24/11/2026 (supervisor-test-chiusi-24-11): la fine dal giorno dopo, non a + 86400: nel giorno di 25 ore del cambio d'ora l'ultima ora restava fuori
     a = int(time.mktime(day.timetuple()))
-    b = a + 86400
+    b = int(time.mktime((day + dt.timedelta(days=1)).timetuple()))
     try:
         rows = con.execute("SELECT t.id, t.title, t.project, t.session, t.contract FROM closures c JOIN tasks t ON t.id=c.task "
                            "WHERE t.state='done' AND c.at>=? AND c.at<? ORDER BY c.at", (a, b)).fetchall()

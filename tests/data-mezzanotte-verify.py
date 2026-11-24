@@ -21,6 +21,9 @@ DM7 quel tratto, con l'orologio a 23:59:58, 23:59:59, 00:00:00, all'ultimo giorn
     orologio: lo script trova il giorno del test
 DM8 la forma di prima (senza CM_TODAY) e' rossa ad almeno una di quelle ore e verde a mezzogiorno
 DM9 relay-k-verify prende DAY0 e ieri da NOW, non da una seconda lettura dell'orologio
+DM10 avvisi-telegram e recap-telegram fissano il giorno (DATA-AT, DATA-RT) e dopo chiudono un compito con task done, con lo
+    stesso ENV: il tratto a 23:59:59 e la chiusura vera di cm-tasks a 00:00:00, 00:00:01 e alla fine del mese; il recap
+    di quel giorno (cm-avvisi.closed_on, cm-tasks closed) conta il compito; senza CM_TODAY no (24/11, supervisor-test-chiusi-24-11)
 """
 import json
 import re
@@ -332,5 +335,73 @@ for case, (block, _u) in TB.items():
     T.check(f"DM8 {case}: the earlier form (no CM_TODAY) is red at one of those times and green at noon",
             bool(block) and old_block != block and any(not ok6(r) for r in old6.values()) and ok6(old_noon6),
             f"{[(h, ok6(r)) for h, r in old6.items()]} noon {old_noon6}")
+# ---------------------------------------------------------------- DM10 (24/11, supervisor-test-chiusi-24-11)
+# avvisi-telegram e recap-telegram fissano il giorno e poi chiudono compiti con task done: la chiusura prendeva l'ora
+# dell'orologio vero (cm-tasks now()), e dopo la mezzanotte era di domani. Ora now() resta dentro CM_TODAY.
+CLOSE_FILES = {"AT": ("avvisi-telegram-verify.py", 'task("done", "rel-a")'), "RT": ("recap-telegram-verify.py", 'task("done", tid)')}
+for case, (fn, call) in CLOSE_FILES.items():
+    src = (TESTS / fn).read_text(encoding="utf-8")
+    end, at = src.find(f"# DATA-{case}-end"), src.find(call)
+    T.check(f"DM10 {case} ({fn}): task done comes after the day is fixed, through task() with ENV (which carries TODAY_ENV)",
+            0 <= end < at and re.search(r"def task\(.*\n.*env=ENV", src) is not None, f"end {end} done {at}")
+
+os.environ["CM_RELAY_NO_PUSH"] = "1"
+TK = load("cm-tasks.py", "cm_tasks_dm")
+TK.closing_runtime = lambda _s: (None, None)   # `sessions --json`: qui nessuna sessione
+
+
+def close10(case, code, start, close_at, tag):
+    """Il tratto con l'orologio a start, poi un compito chiuso da cm-tasks con l'orologio a close_at: e' nel recap del giorno?"""
+    clk = Clock(start)
+    ns = {"dt": fake_dt(clk), "time": clk}
+    out = []
+    try:
+        exec(compile(code, f"{CLOSE_FILES[case][0]} {case}", "exec"), ns)
+        day = ns["today"]
+        os.environ.pop("CM_TODAY", None)
+        os.environ.update(ns.get("TODAY_ENV") or {})
+        os.environ["CM_TASKS_DB"] = str(home6 / f"t10-{case}-{tag}.db")
+        TK.time = Clock(close_at)
+        tid = f"c10-{case.lower()}"
+        c = {"schema_version": 1, "task": {"id": tid, "title": "chiuso a mezzanotte", "plan": "p",
+                                           "where": {"project": str(home6), "session": "alfa", "host": "local", "account": None},
+                                           "check": {"cmd": "true", "cwd": str(home6), "timeout_s": 30}, "perimeter": ["x"], "lane": "open",
+                                           "depends_on": [], "route": "session", "hold": False, "attempts_max": 3, "data_class": "internal",
+                                           "requested_by": "test", "outcome": {"expected": "x", "kind": "custom", "proof": "x"}}}
+        con = TK.connect()
+        _tid, errs = TK.add(con, c)
+        con.commit()
+        green, _res = TK.done(con, tid, checked=(0, "ok"))
+        cl = TK.closed(con, day.isoformat())
+        con.close()
+        for mod in (AV,):
+            mod.dt, mod.time = _dt, _time
+        out.append(("added", not errs, str(errs)))
+        out.append(("done green", green, ""))
+        out.append(("recap closed_on of the test's day", [d["title"] for d in AV.closed_on(day)] == ["chiuso a mezzanotte"], str(AV.closed_on(day))))
+        out.append(("task closed of the test's day", [r["task"] for r in cl["rows"]] == [tid], str(cl.get("rows"))[:200]))
+    except BaseException as e:   # noqa: BLE001 — anche sys.exit di cm-tasks: un esito rosso, col suo testo
+        out.append(("exec", False, repr(e)))
+    finally:
+        os.environ.pop("CM_TODAY", None)
+        TK.time = _time
+    return out
+
+
+eom = last_of_month()
+CLOSES = {"23:59:59 → 00:00:00": (STARTS["23:59:59"], STARTS["00:00:00"]), "23:59:59 → 00:00:01": (STARTS["23:59:59"], STARTS["00:00:00"] + 1),
+          "end of month 23:59:59 → 00:00:00": (eom, eom + 1)}
+for case in CLOSE_FILES:
+    block = TB[case][0]
+    new = {h: close10(case, block, s, c, "new" + str(i)) for i, (h, (s, c)) in enumerate(CLOSES.items())} if block else {}
+    noon = close10(case, block, NOON, NOON + 5, "newnoon") if block else []
+    T.check(f"DM10 {case}: day fixed at 23:59:59, task done by cm-tasks at 00:00:00, 00:00:01 and at the end of the month: the closure is in that day's recap; at noon too",
+            bool(block) and all(ok6(r) for r in new.values()) and ok6(noon),
+            "; ".join(f"{h} {[x for x in r if not x[1]]}" for h, r in new.items() if not ok6(r)) + ("" if ok6(noon) else f"; noon {noon}"))
+    old_block = re.sub(r"^TODAY_ENV = .*$", "TODAY_ENV = {}", block, flags=re.M)
+    old = {h: close10(case, old_block, s, c, "old" + str(i)) for i, (h, (s, c)) in enumerate(CLOSES.items())} if block else {}
+    old_noon = close10(case, old_block, NOON, NOON + 5, "oldnoon") if block else []
+    T.check(f"DM10 {case}: without CM_TODAY the closure after midnight is tomorrow's (red), at noon green: the proof sees the defect",
+            bool(block) and any(not ok6(r) for r in old.values()) and ok6(old_noon), f"{[(h, ok6(r)) for h, r in old.items()]} noon {old_noon}")
 T.rm(str(tmp))
 T.finish()
