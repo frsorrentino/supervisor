@@ -256,6 +256,3 @@ function SubTokens($jp) {
         $tout += [int64]$u.output_tokens
     }
     @{ in = $tin; out = $tout; model = $model }
-}
-
-function SubagentsOf($cdPath, $e) {
