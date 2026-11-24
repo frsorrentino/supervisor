@@ -84,7 +84,8 @@ desk_run() {  # $1 = nome: il ciclo dentro la sessione tmux dello sportello
   [ "$(readlink -f "$conf")" != "$(readlink -f "$(eval echo ~)/.claude")" ] && login="CLAUDE_CONFIG_DIR=$conf claude auth login"
   while :; do
     t0="$(date +%s)"
-    env "$(account_env "$CM_DEFAULT_ACCOUNT")" "$CLAUDE" remote-control \
+    # 24/11/2026 (supervisor-lancio-trascrizione-24-11): senza il segno di sessione figlia, come cm-launch.sh
+    env -u CLAUDE_CODE_CHILD_SESSION "$(account_env "$CM_DEFAULT_ACCOUNT")" "$CLAUDE" remote-control \
       --name "$nome" --capacity "${CM_DESK_CAPACITY:-4}" --permission-mode "${CM_DESK_PERMISSION_MODE:-default}"
     rc=$?
     case "$rc" in

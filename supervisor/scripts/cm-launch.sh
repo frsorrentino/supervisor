@@ -272,7 +272,7 @@ fi
 if [ "$BG" = si ]; then
   BGARGS=(--bg -n "$NOME" ${ARGS[@]+"${ARGS[@]}"})
   [ "$CM_SESSION_BG_REMOTE_CONTROL" = true ] && BGARGS+=(--remote-control "$NOME")
-  ESITO=$(cd "$CARTELLA" && env ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${BGARGS[@]+"${BGARGS[@]}"} 2>&1) || RC=$?
+  ESITO=$(cd "$CARTELLA" && env -u CLAUDE_CODE_CHILD_SESSION ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${BGARGS[@]+"${BGARGS[@]}"} 2>&1) || RC=$?
   if [ "${RC:-0}" -ne 0 ]; then
     cm_msg launch.bg_failed "rc=$RC" >&2; printf '%s\n' "$ESITO" | sed 's/^/  /' >&2; exit 7
   fi
@@ -298,7 +298,12 @@ ARGS+=(-n "$NOME")
 if [ "$AGENT" = codex ]; then   # S09: Codex CLI nudo, senza gli argomenti di Claude Code (-n, remote control, profili)
   cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env CM_LAUNCHED=1 CM_AGENT=codex "$CODEX"
 else
-  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${ARGS[@]+"${ARGS[@]}"}
+  # 24/11/2026 (supervisor-lancio-trascrizione-24-11): senza CLAUDE_CODE_CHILD_SESSION. Una sessione lanciata dal Bash di una sessione Claude
+  # (la master) lo eredita, anche dall'ambiente globale del server tmux, e Claude Code (2.1.331) la tratta da figlia: la
+  # trascrizione resta spenta, salvo che `tmux show-environment -g` (250 ms al massimo) lo veda nell'ambiente globale. Col
+  # PC carico la prova scade, e il 24/11 alle 12:43 derattizzazione e' partita senza trascrizione. La sessione nuova non e'
+  # figlia di nessuno: il segno si toglie, qui e nel --bg
+  cm_tmux new-session -d -s "$NOME" -c "$CARTELLA" env -u CLAUDE_CODE_CHILD_SESSION ${ENVARGS[@]+"${ENVARGS[@]}"} "$CLAUDE" ${ARGS[@]+"${ARGS[@]}"}
 fi
 cm_orphan_hook   # 28/10/2026: alla morte del tmux di una sessione il suo claude si chiude (HUP, TERM, KILL)
 # Il file di registro NON e' <pane_pid>.json: il binario `claude` si rilancia

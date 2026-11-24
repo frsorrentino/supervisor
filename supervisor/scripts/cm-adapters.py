@@ -549,6 +549,9 @@ node $js $d {self.q(cn)}""")
             raise HostError("remote", f"bad config dir {config_dir}")
         # dentro la stringa PowerShell fra virgolette doppie: le virgolette del set con l'apice inverso
         env_line = "" if cn == ".claude" else "set `\"CLAUDE_CONFIG_DIR=%USERPROFILE%\\" + cn + "`\"`r`n"
+        # 24/11/2026 (supervisor-lancio-trascrizione-24-11): il .cmd toglie il segno di sessione figlia, come cm-launch.sh: con
+        # CLAUDE_CODE_CHILD_SESSION ereditato Claude Code non salva la trascrizione
+        env_line = "set `\"CLAUDE_CODE_CHILD_SESSION=`\"`r`n" + env_line
         def cq(a):
             a = str(a)
             return '"' + a.replace('"', '""') + '"' if re.search(r'[\s&|<>^()"]', a) else a
