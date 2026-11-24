@@ -1,3 +1,68 @@
+    if ($m.Success) { $m.Value } else { $null }
+}
+function Sha($f) { (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLower() }
+function NowIso { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+
+function Find-Chrome {
+    $c = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+           "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
+    $c += @(Get-ChildItem -Path (Join-Path $Root 'cache\deps') -Filter chrome-headless-shell.exe -Recurse -Depth 8 -ErrorAction SilentlyContinue | ForEach-Object FullName)
+    $c += @(Get-ChildItem -Path "$env:LOCALAPPDATA\ms-playwright" -Filter chrome.exe -Recurse -Depth 4 -ErrorAction SilentlyContinue | ForEach-Object FullName)
+    $c += @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
+    foreach ($x in $c) { if ($x -and (Test-Path $x)) { return $x } }
+    $null
+}
+
+function WebGL {
+    $exe = Find-Chrome
+    if (-not $exe) { return $null }
+    $page = Join-Path $Here 'cm-webgl.html'
+    if (-not (Test-Path $page)) { return $null }
+    $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
+    $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
+    $url = 'file:///' + ($page -replace '\\', '/')
+    $p = Start-Process -FilePath $exe -ArgumentList "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url" -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
+    if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
+    Start-Sleep -Milliseconds 300
+    $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
+    Remove-Item -Recurse -Force $ud, $of, "$of.err" -ErrorAction SilentlyContinue
+    $m = [regex]::Match($o, 'CMWEBGL(.*)CMWEBGL')
+    if (-not $m.Success) { return @{ renderer = $null; hardware = $false; ms = $null; browser = $exe } }
+    $r = $m.Groups[1].Value | ConvertFrom-Json
+    $hw = $false; if ($r.renderer -and $r.renderer -notmatch '(?i)swiftshader|llvmpipe|softpipe|software|basic render') { $hw = $true }
+    @{ renderer = $r.renderer; hardware = $hw; ms = $r.ms; browser = $exe; error = $r.error }
+}
+
+function Cmd-Probe {
+    $bench = $Rest -contains '--bench'; $webgl = $Rest -contains '--webgl'
+    $os = Get-CimInstance Win32_OperatingSystem
+    $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
+    $build = [int]$cv.CurrentBuild
+    $caption = $os.Caption; if ($build -ge 22000) { $caption = $caption -replace 'Windows 10', 'Windows 11' }
+    $pretty = "$caption $($cv.DisplayVersion) ($build)".Trim()
+    $cpu = @(Get-CimInstance Win32_Processor)
+    $cs = Get-CimInstance Win32_ComputerSystem
+    $gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object {
+        $v = $null; if ($_.AdapterRAM -gt 0) { $v = Gb ([uint32]$_.AdapterRAM) }
+        $dd = $null; if ($_.DriverDate) { $dd = $_.DriverDate.ToString('yyyy-MM-dd') }
+        @{ name = $_.Name; vram_gb = $v; driver = $_.DriverVersion; driver_date = $dd } })
+    $accs = @(Get-ChildItem -Path $env:USERPROFILE -Directory -Force -Filter '.claude*' -ErrorAction SilentlyContinue |
+              Where-Object { Test-Path (Join-Path $_.FullName '.credentials.json') } | ForEach-Object Name)
+    $creds = New-Object System.Collections.ArrayList
+    if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
+    if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
+    Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
+    $npmTok = Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue
+    $npmLabel = '~\.npmrc (token)'
+    if ($npmTok) {
+        [void]$creds.Add($npmLabel)
+    }
+    $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
+    $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
+    $ck = (cmdkey.exe /list 2>$null) -join "`n"
+    foreach ($m in [regex]::Matches($ck, '(?im)^\s*\S+:\s*(\S*git:\S+)')) { [void]$creds.Add("Credential Manager $($m.Groups[1].Value)") }
+    $admin = [bool](([Security.Principal.WindowsIdentity]::GetCurrent()).Groups | Where-Object { $_.Value -eq 'S-1-5-32-544' })
+    $desk = [bool](Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue |
                    Where-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User -eq $env:USERNAME })
     $power = $null
     try {
