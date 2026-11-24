@@ -85,8 +85,6 @@ function WebGL {
     $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
     $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
     $url = 'file:///' + ($page -replace '\\', '/')
-    $p = Start-Process -FilePath $exe -ArgumentList "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url" -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
-    if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
     Start-Sleep -Milliseconds 300
     $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
     Remove-Item -Recurse -Force $ud, $of, "$of.err" -ErrorAction SilentlyContinue
@@ -116,11 +114,6 @@ function Cmd-Probe {
     if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
     if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
     Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
-    $npmTok = Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue
-    $npmLabel = '~\.npmrc (token)'
-    if ($npmTok) {
-        [void]$creds.Add($npmLabel)
-    }
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
     $ck = (cmdkey.exe /list 2>$null) -join "`n"
@@ -448,8 +441,6 @@ function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
     [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
     $a = "/d /s /c `"`"$bat`" >> `"$log`" 2>&1`""
-    if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
-    Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
 }
 
 function Kill-Tree($procId) {
@@ -532,8 +523,6 @@ function Cmd-Detach {
         Out-J @{ ok = $true; id = "task:$name" }; return
     } catch { $why = "$_" }
     # ripiego: il processo nasce dal servizio WMI, fuori dal job object di sshd
-    $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = "powershell.exe $arg"; CurrentDirectory = $d }
-    if ($r.ReturnValue -ne 0) { Fail "detach: task ($why), Win32_Process.Create rc $($r.ReturnValue)" }
     Out-J @{ ok = $true; id = "pid:$($r.ProcessId)"; fallback = $why }
 }
 
