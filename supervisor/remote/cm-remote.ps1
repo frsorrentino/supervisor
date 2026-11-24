@@ -1,7 +1,3 @@
-    if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
-    Start-Sleep -Milliseconds 300
-    $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
-    Remove-Item -Recurse -Force $ud, $of, "$of.err" -ErrorAction SilentlyContinue
     $m = [regex]::Match($o, 'CMWEBGL(.*)CMWEBGL')
     if (-not $m.Success) { return @{ renderer = $null; hardware = $false; ms = $null; browser = $exe } }
     $r = $m.Groups[1].Value | ConvertFrom-Json
