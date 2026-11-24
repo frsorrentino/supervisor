@@ -116,10 +116,6 @@ function Cmd-Probe {
     if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
     if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
     Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
-    $npmTok = Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue
-    $npmLabel = '~\.npmrc (token)'
-    if ($npmTok) {
-        [void]$creds.Add($npmLabel)
     }
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
@@ -448,8 +444,6 @@ function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
     [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
     $a = "/d /s /c `"`"$bat`" >> `"$log`" 2>&1`""
-    if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
-    Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
 }
 
 function Kill-Tree($procId) {
