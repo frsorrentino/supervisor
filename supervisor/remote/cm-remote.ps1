@@ -85,9 +85,6 @@ function WebGL {
     $ud = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N'))
     $of = Join-Path $env:TEMP ('cmw' + [guid]::NewGuid().ToString('N') + '.txt')
     $url = 'file:///' + ($page -replace '\\', '/')
-    $a = "--headless=new --ignore-gpu-blocklist --use-angle=d3d11 --no-first-run --user-data-dir=`"$ud`" --dump-dom $url"
-    $p = Start-Process -FilePath $exe -ArgumentList $a -RedirectStandardOutput $of -RedirectStandardError "$of.err" -WindowStyle Hidden -PassThru
-    if (-not $p.WaitForExit(30000)) { try { $p.Kill() } catch {} }
     Start-Sleep -Milliseconds 300
     $o = ''; if (Test-Path $of) { $o = [IO.File]::ReadAllText($of) }
     Remove-Item -Recurse -Force $ud, $of, "$of.err" -ErrorAction SilentlyContinue
@@ -117,10 +114,13 @@ function Cmd-Probe {
     if ((Test-Path "$env:USERPROFILE\.git-credentials") -and (Get-Item "$env:USERPROFILE\.git-credentials").Length -gt 0) { [void]$creds.Add('~\.git-credentials') }
     if (Select-String -Path "$env:APPDATA\GitHub CLI\hosts.yml" -Pattern 'oauth_token' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('gh auth (%APPDATA%\GitHub CLI\hosts.yml)') }
     Get-ChildItem -Path "$env:USERPROFILE\.ssh" -Filter 'id_*' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.pub' } | ForEach-Object { [void]$creds.Add("~\.ssh\$($_.Name)") }
-    if (Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue) { [void]$creds.Add('~\.npmrc (token)') }
+    $npmrcToken = Select-String -Path "$env:USERPROFILE\.npmrc" -Pattern '_authToken' -Quiet -ErrorAction SilentlyContinue
+    if ($npmrcToken) {
+        [void]$creds.Add('~\.npmrc (token)')
+    }
     $envNames = @([Environment]::GetEnvironmentVariables('User').Keys) + @([Environment]::GetEnvironmentVariables('Machine').Keys)
     $envNames | Sort-Object -Unique | Where-Object { $_ -match '(^|_)(TOKEN|SECRET|KEY|PASSWORD)($|_)' -and $_ -notmatch '^(CM_|CLAUDE_CODE_)|_KEYS$' } | ForEach-Object { [void]$creds.Add("env $_") }
-    $ck = (cmd /c 'cmdkey /list 2>nul') -join "`n"
+    $ck = (cmdkey.exe /list 2>$null) -join "`n"
     foreach ($m in [regex]::Matches($ck, '(?im)^\s*\S+:\s*(\S*git:\S+)')) { [void]$creds.Add("Credential Manager $($m.Groups[1].Value)") }
     $admin = [bool](([Security.Principal.WindowsIdentity]::GetCurrent()).Groups | Where-Object { $_.Value -eq 'S-1-5-32-544' })
     $desk = [bool](Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue |
@@ -138,7 +138,8 @@ function Cmd-Probe {
     $w = $null; if ($webgl) { $w = WebGL }
     $b = $null
     if ($bench -and (Get-Command node -ErrorAction SilentlyContinue)) {
-        $bo = (cmd /c "node `"$(Join-Path $Here 'cm-bench.js')`" `"$Root`" 2>nul") | Select-Object -Last 1
+        $benchJs = Join-Path $Here 'cm-bench.js'
+        $bo = (node.exe $benchJs $Root 2>$null) | Select-Object -Last 1
         if ("$bo".StartsWith('{')) { $b = $bo | ConvertFrom-Json }
     }
     $chrome = Find-Chrome
@@ -401,18 +402,22 @@ function Cmd-Missing {
     Out-J @{ ok = $true; missing = $m }
 }
 
-function Tar($argList) {
-    $o = cmd /c "tar.exe $argList 2>&1"
-    if ($LASTEXITCODE -ne 0) { Fail "tar $argList : $($o -join ' ')" }
+function TarOk($o, $what) {
+    if ($LASTEXITCODE -ne 0) { Fail "tar $what : $($o -join ' ')" }
 }
 
 function Cmd-Unpack {
     $d = JobDir $Rest[0]; Set-Location $d
-    Tar '-xf bundle.tar'
+    $o = tar.exe -xf bundle.tar 2>&1
+    TarOk $o '-xf bundle.tar'
     New-Item -ItemType Directory -Force -Path (Join-Path $d 'src') | Out-Null
-    Tar '-xf src.tar -C src'
+    $o = tar.exe -xf src.tar -C src 2>&1
+    TarOk $o '-xf src.tar -C src'
     $ca = Join-Path $Root 'cache\assets'
-    if (Test-Path (Join-Path $d 'assets.tar')) { Tar "-xf assets.tar -C `"$ca`"" }
+    if (Test-Path (Join-Path $d 'assets.tar')) {
+        $o = tar.exe -xf assets.tar -C $ca 2>&1
+        TarOk $o '-xf assets.tar'
+    }
     $n = 0
     foreach ($e in (Manifest $d)) {
         $srcf = Join-Path $ca $e.sha
@@ -439,12 +444,14 @@ function Write-Status($d, $state, $procId, $rc) {
 function Start-Cmd($d, $name, $cmd, $wd, $log, [switch]$Wait) {
     $bat = Join-Path $d "$name.cmd"
     [IO.File]::WriteAllText($bat, "@echo off`r`n$cmd`r`n", (New-Object Text.UTF8Encoding($false)))
-    $a = @('/d', '/s', '/c', "`"`"$bat`" >> `"$log`" 2>&1`"")
-    if ($Wait) { return Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru -Wait }
-    Start-Process -FilePath 'cmd.exe' -ArgumentList $a -WorkingDirectory $wd -WindowStyle Hidden -PassThru
+    $a = "/d /s /c `"`"$bat`" >> `"$log`" 2>&1`""
 }
 
-function Kill-Tree($procId) { if ($procId) { cmd /c "taskkill /T /F /PID $procId >nul 2>&1" } }
+function Kill-Tree($procId) {
+    if ($procId) {
+        taskkill.exe /T /F /PID $procId 2>&1 | Out-Null
+    }
+}
 
 function Cmd-RunJob {
     $d = JobDir $Rest[0]; Set-Location $d
@@ -529,8 +536,8 @@ function Cmd-Pack {
     $id = $Rest[0]; $d = JobDir $id; $srcd = Join-Path $d 'src'; Set-Location $srcd
     $paths = @($Rest | Select-Object -Skip 1 | Where-Object { $_ -and -not $_.StartsWith('/') -and $_ -notmatch '\.\.' -and (Test-Path (Join-Path $srcd $_)) })
     if (-not $paths) { Fail 'no output' }
-    $list = ($paths | ForEach-Object { "`"$_`"" }) -join ' '
-    Tar "-cf ..\out.tar $list"
+    $o = tar.exe -cf ..\out.tar $paths 2>&1
+    TarOk $o '-cf ..\out.tar'
     # un file o una cartella per percorso: Get-ChildItem -Recurse su un file restituisce il file stesso, quindi un ramo solo
     $files = @(foreach ($p in $paths) {
         Get-ChildItem -LiteralPath (Join-Path $srcd $p) -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
@@ -572,7 +579,7 @@ function Cmd-Clean {
     }
     Unregister-ScheduledTask -TaskPath '\supervisor\' -TaskName "cm-job-$id" -Confirm:$false -ErrorAction SilentlyContinue
     # le junction delle dipendenze si tolgono da sole, senza entrare nella cache a cui puntano
-    Get-ChildItem -Path $d -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue | ForEach-Object { cmd /c "rmdir `"$($_.FullName)`" 2>nul" }
+    Get-ChildItem -Path $d -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue | ForEach-Object { try { [IO.Directory]::Delete($_.FullName) } catch {} }
     if (Test-Path $d) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue }
     if (Test-Path $d) { Fail "rm $d" }
     Out-J @{ ok = $true }
