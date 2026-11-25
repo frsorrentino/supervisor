@@ -111,6 +111,12 @@ How the relay works, its protocol and its rules: [details/relay.md](details/rela
 
 ## What you are trusting
 
+- **Folders under your projects root are trusted for you.** Before starting a
+  session in a folder under `workspace.root`, supervisor marks it as trusted in
+  that account's `.claude.json`, and answers «Yes» if Claude Code still asks. The
+  question guards against the hooks and MCP servers of a folder you do not know,
+  so a folder outside the root (a link out of it included) is never trusted
+  automatically: the session waits for you.
 - **Permissions stay yours.** supervisor never turns on
   `--dangerously-skip-permissions` by itself. `init` tells you when most of your
   live sessions run with it, and you add it to `session.claude_args` if you
@@ -211,9 +217,10 @@ what to do. These are the problems seen on clean installs.
   Claude Code; if that happened, `npm install -g @anthropic-ai/claude-code` in
   PowerShell brings it back.
 - **The first `launch` says the session is waiting for you.** Claude Code is not
-  signed in on this machine, or asks whether to trust the folder. Answer in the
-  session's window (or `tmux attach -t =<name>`): supervisor never answers these
-  by itself unless you list them in `session.dialog_patterns`.
+  signed in on this machine, or asks whether to trust a folder outside
+  `workspace.root`. Answer in the session's window (or `tmux attach -t =<name>`);
+  the app shows it under «Serve te». supervisor never answers these by itself
+  unless you list them in `session.dialog_patterns`.
 - **`WINDOW NOT OPENED`.** The session is running; only the tab is missing. Open
   it with the `tmux attach` line that `launch` prints. Over ssh, or with no
   supported terminal, set `terminal.backend` to `none`.

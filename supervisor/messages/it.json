@@ -239,6 +239,7 @@
   "launch.window_none": "senza finestra (--no-window) · tmux attach -t ={name}",
   "launch.slow_screen": "schermo lento a disegnare e registro non ancora scritto: controllare che non sia ferma su un dialogo",
   "launch.needs_person": "la sessione aspetta te (accesso, primo avvio o domanda di fiducia): rispondi nella sua finestra, o tmux attach -t ={name}",
+  "launch.folder_trusted": "cartella segnata come fidata per Claude Code ({dir}): sta sotto la radice dei progetti",
   "launch.no_link": "cercala per cartella nell'elenco dell'app: il link non è ancora nel registro",
   "launch.too_many": "supervisor launch: {n} sessioni già al lavoro (tetto sessions.max_sessions = {max}), memoria libera {free} MB: ogni sessione pesa ~350 MB.",
   "launch.too_many_ask": "  aprirne un'altra lo stesso? [s/N]",

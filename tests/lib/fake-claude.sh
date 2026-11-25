@@ -102,6 +102,13 @@ dialog() {  # $1 = testo della domanda, $2 = voce si'
 }
 
 case "$SCEN" in *,trust-late,*) sleep "$DELAY";; esac
+# 25/11/2026: come Claude Code, niente domanda se il .claude.json dell'account ha gia' la cartella fidata
+# (projects.<cartella>.hasTrustDialogAccepted; ~/.claude.json senza CLAUDE_CONFIG_DIR). trust-always chiede comunque
+fidata() {
+  local f="${CLAUDE_CONFIG_DIR:+$CLAUDE_CONFIG_DIR/.claude.json}"; f="${f:-$HOME/.claude.json}"
+  [ -f "$f" ] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if (d.get("projects") or {}).get(sys.argv[2], {}).get("hasTrustDialogAccepted") is True else 1)' "$f" "$PWD" 2>/dev/null
+}
+case "$SCEN" in *,trust-always,*) SCEN="${SCEN},trust,";; *,trust,*|*,trust-late,*) fidata && SCEN="${SCEN//,trust,/,}" && SCEN="${SCEN//,trust-late,/,}";; esac
 case "$SCEN" in *,trust,*|*,trust-late,*)
   dialog "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first." "Yes, I trust this folder" ;;
 esac

@@ -278,6 +278,17 @@ if [ -n "$HOST" ]; then
   exec python3 "$CM_SCRIPTS/cm-rsession.py" launch "$HOST" "$CARTELLA" "$BASE" --account "$ACCOUNT" ${PROMPT_ARGS[@]+"${PROMPT_ARGS[@]}"} -- ${ARGS[@]+"${ARGS[@]}"}
 fi
 
+# 25/11/2026 (supervisor-fiducia-cartella-25-11, il maintainer: «quando su una sessione appena avviata appare la scritta trust this
+# folder? in supervisor non appare niente, invece dovrebbe prima rispondere yes in automatico»): la fiducia nella
+# cartella si scrive nel .claude.json dell'account prima di avviare claude (cm-trust.py), solo sotto la radice dei
+# progetti. Se la domanda compare lo stesso (un .claude.json che manca, una versione che chiede ancora) si risponde Yes,
+# con la stessa regola; fuori dalla radice resta alla persona e va in «Serve te», come prima.
+FIDUCIA=""; FIDUCIA_AUTO=no
+if [ "$AGENT" = claude ]; then
+  FIDUCIA=$(python3 "$CM_SCRIPTS/cm-trust.py" ensure "$CARTELLA" "$CONF_DIR" 2>/dev/null || echo error)
+  python3 "$CM_SCRIPTS/cm-trust.py" allowed "$CARTELLA" 2>/dev/null && FIDUCIA_AUTO=si
+fi
+
 # --- --bg: nel gestore di background di Claude Code, non in tmux (T47) --------------
 if [ "$BG" = si ]; then
   BGARGS=(--bg -n "$NOME" ${ARGS[@]+"${ARGS[@]}"})
@@ -339,12 +350,15 @@ REG_FILE=""
 
 # T1/T54: il prefisso "=" vale per has-session, non per capture-pane/send-keys.
 schermo() { cm_tmux capture-pane -p -t "$NOME" 2>/dev/null; }
+# 25/11/2026 (supervisor-fiducia-cartella-25-11): la domanda di fiducia di Claude Code, accettata da se' sotto la radice dei progetti
+FIDUCIA_RE='Do you trust the (files|contents)|trust (this|the) folder|Is this a project you'
 e_dialogo() {  # una delle domande da accettare con "Yes" (trust T3, bypass T61)
   # Nessun pattern (il default dal 07/10): nessun dialogo da accettare. `grep -E ""` riconosce ogni riga: su
   # un'installazione nuova launch premeva Giu'+Invio sulla schermata di accesso e aspettava fino allo scadere
   # (prova d'installazione da zero del 13/10).
-  [ -n "$CM_SESSION_DIALOG_REGEX" ] || { cat >/dev/null; return 1; }
-  grep -qiE "$CM_SESSION_DIALOG_REGEX"
+  local s; s=$(cat)
+  [ -n "$CM_SESSION_DIALOG_REGEX" ] && grep -qiE "$CM_SESSION_DIALOG_REGEX" <<<"$s" && return 0
+  [ "$FIDUCIA_AUTO" = si ] && grep -qiE "$FIDUCIA_RE" <<<"$s"
 }
 # Una schermata a cui risponde la persona: l'accesso di Claude Code, il primo avvio, o un dialogo di fiducia o
 # permessi che la config non accetta da se'. Si smette di aspettare la registrazione e si apre la finestra.
@@ -463,6 +477,7 @@ else
 fi
 [ "$ILLEGGIBILE" = si ] && echo "  nota:      $(cm_msg launch.slow_screen)"
 [ "$ASPETTA_PERSONA" = si ] && echo "  nota:      $(cm_msg launch.needs_person "name=$NOME")"
+[ "$FIDUCIA" = trusted ] && echo "  nota:      $(cm_msg launch.folder_trusted "dir=$CARTELLA")"
 # 19/11/2026 (supervisor-avvio-domanda-19-11, regola n3): ferma su una domanda per la persona, l'app lo deve sapere
 # («Serve te» col testo della domanda): servizio d'avvio, «Riapri» e launch dall'app non hanno nessuno davanti allo schermo.
 # La richiesta si chiude da sola quando la sessione parte (SessionStart o relay).

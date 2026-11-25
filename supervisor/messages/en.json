@@ -239,6 +239,7 @@
   "launch.window_none": "no window (--no-window) · tmux attach -t ={name}",
   "launch.slow_screen": "screen slow to draw and registry not written yet: check it is not stuck on a dialog",
   "launch.needs_person": "the session is waiting for you (sign-in, first start or trust question): answer it in its window, or tmux attach -t ={name}",
+  "launch.folder_trusted": "folder marked as trusted for Claude Code ({dir}): it is under the projects root",
   "launch.no_link": "find it by folder in the app's list: the link is not in the registry yet",
   "launch.too_many": "supervisor launch: {n} sessions already at work (sessions.max_sessions cap = {max}), free memory {free} MB: each session weighs ~350 MB.",
   "launch.too_many_ask": "  open another one anyway? [y/N]",
