@@ -274,6 +274,26 @@ def act(sid, action, now=None, choice=None):
     return code, hit
 
 
+def restore(hit, now=None):
+    """26/11/2026 (supervisor-issue4-osservazioni-26-11): una voce accettata il cui prompt non e' arrivato (la master chiusa) torna nella
+    lista com'era, e la sua chiusura esce dalla storia. True se e' tornata."""
+    if not isinstance(hit, dict) or not hit.get("id"):
+        return False
+    now = int(now or time.time())
+    d = load()
+    if any(x.get("id") == hit["id"] for x in d["items"]):
+        return False
+    d["items"].append(hit)
+    for i in range(len(d["history"]) - 1, -1, -1):
+        h = d["history"][i]
+        if h.get("key") == hit.get("key") and h.get("action") in ACCEPTED:
+            del d["history"][i]
+            break
+    d["accepted_live"].pop(hit.get("key"), None)
+    save(d, now)
+    return True
+
+
 def upsert(d, now, kind, key, text, prompt, ttl_s, source="master", rank=None, options=None, after=None):
     """Una voce nella coda; l'id. Da script, con la stessa key: aggiornata sul posto (id, at e hidden restano)."""
     rank = RANK_OF.get(kind, RANK_NONE) if rank is None else rank

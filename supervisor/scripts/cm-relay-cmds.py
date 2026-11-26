@@ -528,6 +528,10 @@ def file_open(cmd, session, tm, arg):
         src = str(got)
     try:
         data = Path(src).read_bytes()
+    except FileNotFoundError:
+        # 26/11/2026 (supervisor-issue4-osservazioni-26-11): la conversazione lo nomina ma non c'e' piu' (spostato, cancellato, una
+        # cartella temporanea): uno stato normale, non «illeggibile» (#4: «missing or unreadable» ×63)
+        return False, M("relay.cmd_file_gone", name=name)
     except OSError:
         return False, M("relay.cmd_file_unreadable")
     import mimetypes

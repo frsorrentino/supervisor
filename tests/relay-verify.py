@@ -1519,7 +1519,8 @@ r22c = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000201", arg=pdf
 r22d = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000202", arg=pdf22))
 r22e = send_cmd(dict(fcmd[0], id="6f1c2d3e-0140-4000-8000-000000000203", session="atlas-shop-none"))
 T.check("R22 (1.24) refusals in plain words: a listed file that is missing, a listed non-image over the cap («too large: <bytes> max <bytes>», 1.34), a session that is not running",
-        r22c and r22c["text"] == "missing or unreadable" and r22d and r22d["text"] == f"too large: 1300000 max {RL.FILE_ONE_MAX}" and r22e and r22e["text"] == "no session atlas-shop-none", str([r22c, r22d, r22e]))
+        # 26/11/2026 (supervisor-issue4-osservazioni-26-11): un file elencato che non c'e' piu' lo dice
+        r22c and r22c["text"] == "minutes.pdf non c'è più sul disco (spostato o cancellato dopo la conversazione)" and r22d and r22d["text"] == f"too large: 1300000 max {RL.FILE_ONE_MAX}" and r22e and r22e["text"] == "no session atlas-shop-none", str([r22c, r22d, r22e]))
 from PIL import Image as _Im22
 rep22 = (ws / "personal" / "atlas-shop").resolve() / "docs" / "reports"   # l'immagine archiviata da `supervisor report`
 rep22.mkdir(parents=True, exist_ok=True)

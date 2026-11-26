@@ -64,7 +64,9 @@ with T.PrivateTmux() as tm:
                     "env", "FAKE_CLAUDE_SCENARIO=question2", "FAKE_CLAUDE_REGISTER=0", str(FAKE)], env=env(tm), check=True)
     time.sleep(2)
     r = answer(tm, "alfa", "--show")
-    T.check("A1 --show: question, three numbered options (the footers «Type something.» / «Chat about this» are not options), cursor on 1", r.returncode == 0 and "colore preferito?" in r.stdout and "❯ 1. rosso" in r.stdout and "3. verde" in r.stdout and "Type something." not in r.stdout and "Chat about" not in r.stdout, r.stdout + r.stderr)
+    T.check("A1 --show: question, three numbered options (the footers «Type something.» / «Chat about this» are not options), cursor on 1", r.returncode == 0 and "colore preferito?" in r.stdout and "❯ 1. rosso" in r.stdout and "3. verde" in r.stdout and "4. Type" not in r.stdout and "5. Chat" not in r.stdout
+            # 26/11/2026 (supervisor-issue4-osservazioni-26-11): le voci fisse non numerate, «+ …», per lo stato del relay
+            and "+ Type something." in r.stdout and "+ Chat about this" in r.stdout, r.stdout + r.stderr)
     r = answer(tm, "alfa", "3")
     scr = subprocess.run(["tmux", "-L", tm.socket, "capture-pane", "-p", "-t", "alfa"], capture_output=True, text=True).stdout
     T.check("A2 answer 3 → verde chosen, second question on screen", r.returncode == 0 and "risposto 3. verde" in r.stdout and "taglia?" in scr, r.stdout + r.stderr + scr)

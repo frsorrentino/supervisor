@@ -43,6 +43,12 @@ def suggestion_act(cmd, arg):
     master = str((CFG.get("workspace") or {}).get("root_session_name") or "master")
     rc, out = relay_talk(master, prefix_for(cmd, master) + " " + M("relay.suggestion_label") + " " + prompt, "--no-wait")
     if rc != 0:
+        # 26/11/2026 (supervisor-issue4-osservazioni-26-11): accettato con la master chiusa, talk rispondeva «sessione master inesistente»
+        # e il suggerimento era gia' tolto: perso (#4). Torna nella lista, e il messaggio dice di riaprire la master
+        if code in ("accepted", "chosen"):
+            _load("cm-suggest").restore(hit)
+        if not is_live(master):
+            return False, M("relay.cmd_suggestion_master_closed", name=master)
         return False, (out.splitlines() or ["talk failed"])[0]
     if saved_in_inbox(out):
         return True, M("relay.cmd_suggestion_inbox")

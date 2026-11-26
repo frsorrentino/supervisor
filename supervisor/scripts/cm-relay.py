@@ -757,8 +757,15 @@ def question_of(name, tool):
     if rc != 0:
         return "", []
     q, opts = "", []
+    foot = []
     for l in out.splitlines():
         m = re.match(r"^\s*(?:❯)?\s*(\d+)\.\s+(.*\S)\s*$", l)
+        f = re.match(r"^\s*\+\s+(.*\S)\s*$", l)   # 26/11: le voci fisse in coda (answer --show)
+        if f:
+            kind = {"type something": "type", "chat about this": "chat"}.get(f.group(1).lower().rstrip("."))
+            if kind:
+                foot.append(kind)
+            continue
         if m:
             opts.append(m.group(2).strip())
         elif " — " in l and not q:
@@ -767,7 +774,13 @@ def question_of(name, tool):
             if sep and (tool == "AskUserQuestion" or head == "-"):
                 q = rest.strip()
     # «-» e' il segnaposto di --show per un pezzo che manca: mai come testo (07/10, «-: -» sul polso)
+    _FOOT[name] = foot if opts else None
     return ("" if q == "-" else q), opts
+
+
+# 26/11/2026 (supervisor-issue4-osservazioni-26-11): le voci fisse lette con l'ultima domanda di ogni sessione (None: non lette dallo schermo)
+_FOOT = {}
+ALLOW_ALL_RE = re.compile(r"don.?t ask again|non chiedere|sempre|always", re.I)
 
 
 def permission_body(name, tool, inp):
@@ -1364,6 +1377,7 @@ def collect_sources(now=None):
             text, opts = pa or ("", [])
         elif S.state_of(r) == "waiting":
             wi = waiting_info(r.get("session_id") or "")
+            _FOOT.pop(tm, None)
             tool = str(wi.get("tool") or "")
             inp = wi.get("input") if isinstance(wi.get("input"), dict) else {}
             text, opts = question_of(tm, tool)
@@ -1396,6 +1410,13 @@ def collect_sources(now=None):
                                  # 1.53: etichetta → spiegazione, dal payload dell'hook (AskUserQuestion)
                                  "descriptions": {str(lb): str(ds) for lb, ds in zip(inp.get("options") or [], inp.get("descriptions") or []) if ds},
                                  **permission_body(tm, tool, inp)}
+                # 26/11/2026 (supervisor-issue4-osservazioni-26-11): l'app offriva «Chat about this» e «Consenti sempre» anche a domande che
+                # non li hanno (#4: «non ha la voce Chat about this» ×3, «no don't ask again option» ×2). allow_all:
+                # un'opzione «don't ask again» c'e'; foot: le voci fisse in coda («type», «chat»), solo se lette dallo
+                # schermo (senza, l'app fa come prima)
+                questions[tm]["allow_all"] = any(ALLOW_ALL_RE.search(str(o)) for o in opts)
+                if _FOOT.get(tm) is not None:
+                    questions[tm]["foot"] = list(_FOOT[tm])
         if S.state_of(r) != "waiting" and (r.get("status") == "busy" or tm in aw):
             # anche le «awaiting» (prompt dal polso in corso): senza questo la card restava senza attivita'
             t, note = tool_of(r)
@@ -3528,6 +3549,10 @@ def offered_ops():
     """13/11/2026 (supervisor-agenda-raffica-13-11): le op che lo stato offre. agenda e agenda_set solo con un
     relay.agenda_file che c'e': senza, un'app che le vedeva in `ops` chiedeva l'agenda e riceveva «no agenda file»."""
     off = () if agenda_path() else ("agenda", "agenda_set")
+    # 26/11/2026 (supervisor-issue4-osservazioni-26-11): lo stesso per night senza nessun rapporto della notte su disco: il 12/11 il Mac di
+    # un collega riceveva «no night report yet» 614 volte in un minuto (la raffica la ferma il limite del 13/11)
+    if night_report_latest() is None:
+        off = off + ("night",)
     return [o for o in OPS if o not in off]
 
 
@@ -3652,7 +3677,8 @@ def _run_cmd(cmd, arrived=None):
     if not ok and not normal_state(text):   # osservazioni (23/09): un comando del polso fallito finisce nella casella di supervisor (claude-observe); 22/11: gli stati normali no
         try:
             obs = _observe()
-            obs.record_external("relay", f"relay {cmd.get('op') or ''}", str(text), str(cmd.get("session") or ""))
+            obs.record_external("relay", f"relay {cmd.get('op') or ''}", scrub_names(str(text), str(cmd.get("session") or "")),
+                                str(cmd.get("session") or ""))
         except Exception:   # noqa: BLE001 — un'informazione in piu': mai far cadere il comando
             pass
     # 30/09 (dal vivo): la push sincrona dopo OGNI comando costava ~6 s, anche dopo una lettura della chat, e i prompt
@@ -3840,8 +3866,11 @@ NORMAL_STATE_KEYS = (
     "interrupt.nothing", "interrupt.not_running", "relay.cmd_prompt_duplicate", "relay.cmd_prova_gone",
     "relay.cmd_prova_unknown", "relay.cmd_slash_busy", "relay.cmd_reopen_alive", "relay.cmd_attention_unknown",
     "relay.cmd_night_empty",
+    # 26/11/2026 (supervisor-issue4-osservazioni-26-11): la domanda cambiata dopo la risposta (niente premuto), un file che la conversazione
+    # nomina ma che non c'e' piu' sul disco, un suggerimento accettato con la master chiusa (resta nella lista)
+    "relay.cmd_question_changed", "relay.cmd_file_gone", "relay.cmd_suggestion_master_closed",
 )
-NORMAL_STATE_LITERALS = ("empty prompt",)
+NORMAL_STATE_LITERALS = ("empty prompt", "no night report yet")
 _NORMAL_RE = []
 
 
@@ -3860,6 +3889,61 @@ def normal_state(text):
         pats.update(re.escape(x) for x in NORMAL_STATE_LITERALS)
         _NORMAL_RE.append(re.compile(r"(?:relay [a-z_]+ )?(?:" + "|".join(sorted(pats)) + ")", re.S))
     return bool(_NORMAL_RE[0].fullmatch(str(text or "").strip()))
+
+
+# 26/11/2026 (supervisor-issue4-osservazioni-26-11): la #4, il rapporto di claude-observe dal Mac di un collega, portava nel testo pubblico i
+# nomi delle sessioni, che sono domini di clienti («… not closed: it is attached to the PC», «no session …»): observe
+# generalizza solo quelli fra «». Prima di registrare, il nome della sessione del comando diventa <session>, ovunque
+# nel testo; le note gia' raccolte si ripuliscono una volta (scrub_note_names). Solo quel nome: quelli di tutte le
+# sessioni prenderebbero anche parole del testo come «supervisor».
+SESSION_MARK = "<session>"
+
+
+def known_names(*extra):
+    names = {str(x) for x in extra if x}
+    for n in list(names):
+        names.add(n.rsplit(":", 1)[-1])   # win:beta → anche beta
+    return sorted((n for n in names if len(n) >= 2 and n != SESSION_MARK), key=len, reverse=True)
+
+
+def scrub_names(text, *extra):
+    out = str(text or "")
+    for n in known_names(*extra):
+        out = re.sub(r"(?<![\w.-])" + re.escape(n) + r"(?![\w-]|\.\w)", SESSION_MARK, out)
+    return out
+
+
+def scrub_note_names():
+    """Una volta per casella: nelle note di supervisor non ancora mandate i nomi delle sessioni (quello della
+    sessione del comando, nel campo project) diventano <session>. Torna quante note sono cambiate, o None se era gia' fatto."""
+    flag = rdir() / "notes-names-scrubbed"
+    if flag.exists():
+        return None
+    try:
+        obs = _observe()
+        if not obs.tools():
+            return None
+        n = 0
+        with obs.Box(obs.TOOL["name"]) as box:
+            for x in box.recs:
+                if x.get("status") == "reported":
+                    continue
+                proj = str(x.get("project") or "")
+                proj = "" if "/" in proj or "\\" in proj else proj   # una cartella, non un nome di sessione
+                changed = False
+                for d in [x] + [e for e in (x.get("examples") or []) if isinstance(e, dict)]:
+                    for f in ("error", "key", "call", "error_raw"):
+                        if isinstance(d.get(f), str):
+                            new = scrub_names(d[f], proj)
+                            if new != d[f]:
+                                d[f], changed = new, True
+                n += changed
+        flag.write_text(f"{int(time.time())} {n}\n")
+        log(f"note: nomi delle sessioni tolti da {n} note")
+        return n
+    except Exception as e:   # noqa: BLE001 — una pulizia: mai far cadere il demone
+        log(f"note: pulizia dei nomi FAILED: {e}")
+        return None
 
 
 def _observe():
@@ -3913,6 +3997,7 @@ def serve():
     signal.signal(signal.SIGTERM, _stop); signal.signal(signal.SIGINT, _stop)
     log(f"serve: avvio pid {os.getpid()}")
     tidy_noise_notes()   # 22/11: le note di stati normali raccolte prima, chiuse una volta
+    scrub_note_names()   # 26/11: i nomi delle sessioni fuori dalle note raccolte prima
     search_warm_async()   # 04/10: la prima ricerca dal telefono trova la cache gia' piena
     push_request("serve")   # all'avvio una push, poi quelle chieste da hook, cron e comandi
     worker = PushWorker()

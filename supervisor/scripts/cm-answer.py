@@ -223,7 +223,8 @@ def dialog_body(text):
 
 
 def show(name):
-    d = parse(screen(name))
+    scr = screen(name)
+    d = parse(scr)
     if not d:
         print(M("answer.no_question", name=name))
         return 1
@@ -231,6 +232,12 @@ def show(name):
     print(M("answer.question", name=name, header=header or "-", question=question or "-"))
     for n, label, cur, _d in options:
         print(f"  {'❯' if cur else ' '} {n}. {label}")
+    # 26/11/2026 (supervisor-issue4-osservazioni-26-11): le voci fisse in coda che il dialogo ha davvero, «+ Chat about this»: il relay le
+    # mette nello stato e l'app non offre quelle che mancano
+    numbers = {o[0] for o in options}
+    for n, label, _cur in items(scr):
+        if n not in numbers and label.lower().rstrip(".") in FOOT_KIND.values():
+            print(f"    + {label}")
     return 0
 
 

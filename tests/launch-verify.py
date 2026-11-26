@@ -310,8 +310,10 @@ with T.PrivateTmux() as tm:
     t0 = time.time()
     r = run(str(home / "ws" / "personali" / "signin"), "--no-window", extra={"CC_SUPERVISOR_CONFIG": str(cfg6b), "CM_CLAUDE_BIN": str(fake_signin)})
     took = time.time() - t0
-    T.check("L6b empty dialog_patterns + sign-in screen → no key pressed, launch stops waiting and says the session waits for the person",
-            r.returncode == 0 and not (keys.is_file() and keys.read_text().strip()) and "aspetta te" in r.stdout and took < 20,
+    # 26/11/2026 (supervisor-ci-macos-su2-26-11): «prima dello scadere» e' startup_timeout_s (25), non 20 s: il runner
+    # macOS, lento (11 minuti per questa suite), ci metteva 21 s fermandosi alla prima schermata
+    T.check("L6b empty dialog_patterns + sign-in screen → no key pressed, launch stops waiting (before startup_timeout_s) and says the session waits for the person",
+            r.returncode == 0 and not (keys.is_file() and keys.read_text().strip()) and "aspetta te" in r.stdout and took < 25,
             f"rc={r.returncode} took={took:.0f}s keys={keys.read_text() if keys.is_file() else ''}\n" + r.stdout + r.stderr)
     fake_codex = tmp / "fake-codex.sh"
     fake_codex.write_text('#!/bin/sh\necho "$@" > "%s"\necho ">_ OpenAI Codex (v0-demo)"\nexec sleep 300\n' % (tmp / "codex-args.log"))
