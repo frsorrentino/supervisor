@@ -882,10 +882,11 @@ AUTO_CLOSE_H = 6
 
 
 def _caller_session():
-    """Il nome tmux della sessione che chiama (TMUX_PANE), o ''."""
+    """Il nome tmux della sessione che chiama (TMUX_PANE), o ''. Fuori da tmux, il nome di una sessione `launch --bg`
+    di cui questo processo discende (_bg_caller)."""
     pane = os.environ.get("TMUX_PANE")
     if not pane:
-        return ""
+        return _bg_caller()
     try:
         r = subprocess.run(["tmux"] + os.environ.get("CM_TMUX_ARGS", "").split() + ["display-message", "-p", "-t", pane, "#{session_name}"],
                            capture_output=True, text=True, timeout=5)
@@ -893,6 +894,24 @@ def _caller_session():
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
 
+
+
+def _bg_caller():
+    """26/11/2026 (supervisor-ok-sessioni-bg-26-11; l'ok del maintainer delle 19:25 in una sessione --bg, inbox eca3b8, rifiutato):
+    una sessione di `launch --bg` (claude --bg -n NOME) non sta in tmux, TMUX_PANE e' vuoto e l'ok arrivato nella sua
+    casella non si registrava mai. Il nome e' quello che il registro di Claude Code da' al processo claude con
+    "kind": "bg", e conta solo se quel processo e' un antenato di chi chiama: una shell o un'altra sessione non
+    discendono da lui, e una variabile d'ambiente non basta a fingerlo. Nessun nome dedotto (nameSource «derived»,
+    tolto da registry_entries), nessuna sessione interattiva fuori da tmux: il buco resta chiuso come prima."""
+    try:
+        S = _load("cm-sessions")
+        for d in S.registry_entries():
+            name = str(d.get("name") or "")
+            if d.get("kind") == "bg" and name and S.is_ancestor(d["pid"]):
+                return name
+    except Exception:   # noqa: BLE001 — senza registro leggibile resta «questa shell», come prima
+        pass
+    return ""
 
 def _load(name):
     spec = importlib.util.spec_from_file_location(name.replace("-", "_"), HERE / f"{name}.py")

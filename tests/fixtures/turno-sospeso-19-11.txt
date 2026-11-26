@@ -1,5 +1,5 @@
 Ho i tre file della master per `recap-telegram`:
-- il recap vero delle 20 di oggi, non inviato, con i tagli «Conversio,», «nel,», «ripiega s» e gerardosacco.com ripetuto;
+- il recap vero delle 20 di oggi, non inviato, con i tagli «Conversio,», «nel,», «ripiega s» e negozio-prova.it ripetuto;
 - la menzione GitHub di esempio con la riga attesa;
 - lo screenshot di come la persona vede il recap.
 

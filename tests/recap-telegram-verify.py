@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Il recap delle 20 su Telegram leggibile, e le menzioni GitHub in una riga italiana (19/11/2026, supervisor-recap-telegram-19-11;
 formato approvato dal maintainer alle 20:10). Caso vero: il recap del 19/11 (27 uscite, 13 voci) era un solo paragrafo coi titoli
-tagliati a 90 caratteri a meta' parola («… eventi Conversio,», «… leggibili nel,», «reopen ripiega su ,») e «gerardosacco.com:»
+tagliati a 90 caratteri a meta' parola («… eventi Conversio,», «… leggibili nel,», «reopen ripiega su ,») e «negozio-prova.it:»
 ripetuto a ogni voce; la menzione di HOL Guard delle 13:50 era il corpo inglese della PR tagliato.
 
 RT1 un messaggio in HTML; la prima riga in grassetto «Giovedì 19/11 · 7 ti aspettano · N fatti» (giorno della settimana per esteso)
@@ -106,9 +106,9 @@ def add(tid, title, project, session, short=None):
 
 # i titoli veri del recap del 19/11 (col prefisso del progetto, come le sessioni li scrivono)
 DONE = [
-    ("g1", "gerardosacco.com: testi SEO del cliente in 9 categorie, titolo e descrizione leggibili nel menu del negozio", "gerardosacco.com", None),
-    ("g2", "gerardosacco.com: patch ai moduli di terzi elencate con diff, controllo giornaliero su GitHub", "gerardosacco.com", None),
-    ("g3", "gerardosacco.com: testi SEO delle 9 categorie in inglese e verifica degli eventi Conversion API", "gerardosacco.com", None),
+    ("g1", "negozio-prova.it: testi SEO del cliente in 9 categorie, titolo e descrizione leggibili nel menu del negozio", "negozio-prova.it", None),
+    ("g2", "negozio-prova.it: patch ai moduli di terzi elencate con diff, controllo giornaliero su GitHub", "negozio-prova.it", None),
+    ("g3", "negozio-prova.it: testi SEO delle 9 categorie in inglese e verifica degli eventi Conversion API", "negozio-prova.it", None),
     ("s1", "Un tocco dall'app lancia la master anche quando non è nella fotografia: reopen ripiega sulla radice", "supervisor", None),
     ("s2", "Un prompt scritto mentre la sessione lavora (messo in coda) arriva comunque nella casella", "supervisor", "Prompt in coda"),
     ("j1", "Joy: in home il banner Summer Sale diventa Autunno Inverno (immagine già nei media del sito)", "joy", None),
@@ -172,7 +172,7 @@ def fair(item, title, short):
     return t.startswith(item) and (len(item) == len(t) or t[len(item)] == " ") and not item.endswith((",", ":", "("))
 
 
-ok3 = bool(m) and sorted(by_proj) == sorted(titles) and quote.count("gerardosacco.com") == 1 \
+ok3 = bool(m) and sorted(by_proj) == sorted(titles) and quote.count("negozio-prova.it") == 1 \
     and all(len(by_proj[p]) == len(titles[p]) and all(fair(i, t, s) for i, (t, s) in zip(by_proj[p], titles[p])) for p in titles)
 T.check("RT3 FATTI OGGI in <blockquote expandable>, one line per project, the project once, titles without its prefix, task.short when there, "
         "never a cut word nor a trailing comma", ok3, quote[:900])

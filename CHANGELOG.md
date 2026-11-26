@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.218 — 2026-11-26: `task ok --inbox` works in a session started with `launch --bg` (supervisor-ok-sessioni-bg-26-11).**
+  - A `--bg` session is not in tmux: `TMUX_PANE` is empty, `_caller_session()` returned nothing and every ok that reached its inbox was refused with «only the session that received an ok records it» (26/11, an ok at 19:25 to a session launched at 18:37 with `--bg`). Outside tmux the caller's name now comes from Claude Code's session registry: the claude process with `"kind": "bg"` and a chosen name, and only when that process is an ancestor of the caller. A shell or another session does not descend from it, and an environment variable cannot stand in for it; an interactive session outside tmux still gets no name, as before.
+  - A real domain in an example, a test and a fixture is now a made-up one.
+  - Test: `tests/ok-sessioni-bg-verify.py` (BG1-BG3).
 - **0.8.217 — 2026-11-26: the hooks answer Claude Code in one write and say no more than they do; the excluded files are called what they are; doctor no longer opens the Firebase CLI's token (supervisor-directory-hook-credenziali-26-11).**
   - The directory's portal read the PermissionRequest and PreToolUse hooks as hooks that may grant a permission (HOOK_GRANTS_PERMISSION). None does: PermissionRequest prints nothing, the lane guard prints only a `deny`. Now `cm-hook.py` collects what goes to Claude Code and writes it once, at the end; `cm-fast.sh` hands the input over with a here-string instead of `printf`; `py.sh` and `detach.sh` send stderr to its own `/dev/null`, never merged into stdout (`2>&1`), and `detach.sh` calls tmux by name; the lane guard reads the registry through `cm-tasks.py` (`lane_covered`, `lane_waiting_start`) and its texts say «ok». Same behaviour.
   - `scheduler.secret_globs` is now `scheduler.exclude_globs`: the list of files that never leave for another host, none of which is read. A config file with the old name keeps working: `load` moves it to the new one.

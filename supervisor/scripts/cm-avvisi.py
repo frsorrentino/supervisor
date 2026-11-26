@@ -164,7 +164,7 @@ def kind_label(kind):
 
 # ------------------------------------------------------------------ la sera
 # 19/11/2026 (supervisor-recap-telegram-19-11, formato approvato dal maintainer alle 20:10): il recap del 19/11 era un
-# paragrafo solo, coi titoli tagliati a 90 caratteri a meta' parola («… eventi Conversio,») e «gerardosacco.com:» ripetuto a
+# paragrafo solo, coi titoli tagliati a 90 caratteri a meta' parola («… eventi Conversio,») e «negozio-prova.it:» ripetuto a
 # ogni voce. Ora: una riga col giorno e i conteggi; TI ASPETTANO (al massimo WAIT_SHOW voci «progetto: cosa, cosa serve» col
 # link); FATTI OGGI per progetto, una riga ciascuno coi titoli brevi, in un <blockquote expandable>; HTML di Telegram.
 WAIT_SHOW = 5
