@@ -914,6 +914,11 @@ def build_state(src, now, fit=True):
         cl = (src.get("closing") or {}).get(x["name"])   # 1.120: una chiusura armata dall'app, solo quando c'e'
         if cl:
             x["closing"] = {"mode": cl.get("mode"), "at": cl.get("at"), "deadline": cl.get("deadline")}
+        # 1.162 (26/11/2026, supervisor-relay-tappe-26-11): le tappe della prova del compito in verifica della sessione;
+        # solo quando c'e' (assente = null): una chiave in piu' su ogni sessione faceva scattare il taglio a 8 KB
+        sp = (src.get("steps") or {}).get(x["name"])
+        if sp:
+            x["steps"] = sp
         tc = (src.get("tocca") or {}).get(x["name"])   # 1.111: solo con almeno una voce
         if tc and any(tc.values()):
             x["tocca"] = {k: int(tc.get(k) or 0) for k in ("prove", "decidi", "guarda", "segui")}

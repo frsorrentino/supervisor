@@ -1472,6 +1472,7 @@ def collect_sources(now=None):
         "feedback": feedback_summary(),   # 1.105
         "results": results_summary(live),   # 1.106
         "tocca": tocca_summary(),   # 1.111
+        "steps": steps_summary(),   # 1.162
         "tocca_state": tocca_state(),   # 1.113
         # 1.12: le scelte valide per il polso, dalla config (tune.models / tune.efforts)
         "choices": {"models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in ((CFG.get("tune") or {}).get("models") or []) if m.get("id")],
@@ -2986,10 +2987,15 @@ def in_order(cmds):
     # di piu' letture uguali della stessa sessione vale l'ultima: il telefono si e' gia' scordato le altre
     # 04/11 (supervisor-relay-pagina-before-04-11): una pagina vecchia della chat (`before=`) non e' la stessa lettura delle
     # `after=` che la chat aperta chiede di continuo: ha la sua chiave, se no «Carica i messaggi precedenti» non arriva mai
+    # 26/11/2026 (supervisor-relay-file-corsia-26-11): una carta con 8 PNG dichiarati (task wait-ok --files) aperta insieme sul telefono e
+    # nella web: le due chiedono gli stessi file, e la lettura di un dispositivo sostituiva («superseded») quella
+    # dell'altro, che dopo due tentativi restava senza immagine (ne arrivavano 6). Ogni lettura aspetta il suo esito:
+    # vale l'ultima dello STESSO dispositivo (il cliente come in rate_key), mai quella di un altro
     def same(c):
+        who = str(c.get("uid") or "") or f"{c.get('by') or '?'}/{c.get('device') or ''}"
         if str(c.get("op") or "") in ARG_KEYED_OPS:
-            return (c.get("op"), c.get("session"), "arg", str(c.get("arg") or "").strip())
-        return (c.get("op"), c.get("session"), "before" if "before=" in str(c.get("arg") or "") else "")
+            return (who, c.get("op"), c.get("session"), "arg", str(c.get("arg") or "").strip())
+        return (who, c.get("op"), c.get("session"), "before" if "before=" in str(c.get("arg") or "") else "")
     newest = {}
     for cid, _, c in items:
         if str(c.get("op") or "") in PASSIVE_OPS:

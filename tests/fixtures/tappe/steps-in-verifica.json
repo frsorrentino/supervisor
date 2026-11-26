@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "_note": "1.162 (26/11/2026, supervisor-relay-tappe-26-11): a session with a task under test; test ok, CI ok, pre-release in progress, prova to do. A session with no task under test has no steps key (read as null).",
+  "sessions": [
+    {
+      "name": "supervisor-app",
+      "steps": {
+        "task": "app-animazioni-otto-26-11",
+        "items": [
+          {
+            "key": "test",
+            "label": "Test",
+            "state": "ok",
+            "at": 1795689000
+          },
+          {
+            "key": "ci",
+            "label": "CI",
+            "state": "ok",
+            "at": 1795689300
+          },
+          {
+            "key": "prerelease",
+            "label": "Pre-release",
+            "state": "run",
+            "at": 1795689300
+          },
+          {
+            "key": "proof",
+            "label": "Prova",
+            "state": "todo",
+            "at": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "gamma"
+    }
+  ]
+}

@@ -705,3 +705,151 @@ def commitments_list():
     return out[:S.COMMITMENTS_MAX]
 
 
+# ------------------------------------------------------------------ 1.162 (26/11/2026): le tappe della prova
+# supervisor-relay-tappe-26-11, chiesto da win-supervisor-app per i passi della prova nell'app (app-animazioni-otto-26-11):
+# per ogni sessione con un compito in verifica, sessions[].steps = {task, items: [{key, label, state, at}]}, o null.
+# Le tappe sono quelle che outcome.proof del contratto nomina, nel suo ordine: test, ci, prerelease, proof. Le fonti:
+# - test: l'ultimo esito del compito (task result): green ok, red ko;
+# - ci: le run di GitHub del commit del compito (l'id nel messaggio), con gh nella cartella del progetto; in corso = run,
+#   tutte riuscite = ok, una fallita = ko. Il Chromebook resta leggero: gh solo per i compiti in verifica, solo con un
+#   commit, al piu' una volta ogni STEPS_CI_TTL_S per commit; senza gh, o gh non autenticato (il Mac di un collega), la
+#   tappa resta todo e il log non dice niente;
+# - prerelease: un tag che contiene il commit (come task unproven);
+# - proof: le prove del compito (task prova): una aperta = run, tutte ok = ok, una ko = ko.
+# In verifica = un compito aperto (non proposed) di quella sessione con almeno una tappa non todo; di piu' compiti vale
+# quello toccato per ultimo. Se nessuna tappa e' in corso o fallita, la prima ancora da fare e' quella in corso (run).
+STEP_KEYS = (("test", re.compile(r"\btest", re.I)), ("ci", re.compile(r"\bci\b", re.I)),
+             ("prerelease", re.compile(r"pre-?release|\brelease\b|\bbeta\b", re.I)),
+             ("proof", re.compile(r"\bprova\b|\bproof\b|\bprove\b", re.I)))
+STEP_LABELS = {"test": "Test", "ci": "CI", "prerelease": "Pre-release", "proof": "Prova"}
+STEPS_CI_TTL_S = 60
+STEPS_OPEN = ("assigned", "running", "awaiting_ok", "approved")
+_STEPS_CI = {}
+
+
+def step_keys(proof):
+    """Le tappe che il testo di outcome.proof nomina, nell'ordine in cui le nomina."""
+    hits = [(m.start(), k) for k, rx in STEP_KEYS for m in [rx.search(str(proof or ""))] if m]
+    return [k for _, k in sorted(hits)]
+
+
+def _steps_git(project, *a):
+    try:
+        p = subprocess.run(["git", "-C", str(project), *a], capture_output=True, text=True, timeout=20)
+        return p.stdout if p.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def task_commit(project, tid):
+    """(hash, epoch) dell'ultimo commit che nomina il compito nel messaggio, o None."""
+    if not project or not os.path.isdir(str(project)):
+        return None
+    for ln in _steps_git(project, "log", "--all", "-n", "20", "-F", f"--grep={tid}", "--format=%H%x09%ct%x09%s").splitlines():
+        h, _, rest = ln.partition("\t")
+        ct, _, subj = rest.partition("\t")
+        if re.search(r"(?<![\w-])" + re.escape(tid) + r"(?![\w-])", subj):
+            return h, int(ct or 0)
+    return None
+
+
+def _utc_epoch(ts):
+    """«2026-11-26T10:00:00Z» di GitHub → epoch s (0 se non si legge)."""
+    try:
+        return int(dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
+
+
+def ci_state(project, commit, now=None):
+    """(state, at) della CI di GitHub per il commit: run, ok, ko, o todo (nessuna run, gh che manca o non risponde)."""
+    now = time.time() if now is None else now
+    hit = _STEPS_CI.get(commit)
+    if hit and now - hit[0] < STEPS_CI_TTL_S:
+        return hit[1]
+    got = ("todo", None)
+    gh = shutil.which(str((CFG.get("relay") or {}).get("gh_bin") or "gh"))
+    if gh:
+        try:
+            p = subprocess.run([gh, "run", "list", "--commit", commit, "--limit", "30", "--json", "status,conclusion,updatedAt"],
+                               cwd=str(project), capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+            runs = json.loads(p.stdout) if p.returncode == 0 and p.stdout.strip().startswith("[") else []
+        except (OSError, subprocess.SubprocessError, ValueError):
+            runs = []
+        at = max((_utc_epoch(r.get("updatedAt")) for r in runs), default=0) or None
+        if runs:
+            if any(r.get("status") != "completed" for r in runs):
+                got = ("run", at)
+            elif any(r.get("conclusion") not in ("success", "skipped", "neutral") for r in runs):
+                got = ("ko", at)
+            else:
+                got = ("ok", at)
+    _STEPS_CI[commit] = (now, got)
+    return got
+
+
+def task_steps(tk, con, r, now=None):
+    """{task, items} di un compito, o None se non e' in verifica (nessuna tappa nominata, o tutte ancora da fare)."""
+    try:
+        contract = json.loads(r["contract"] or "{}")
+    except ValueError:
+        contract = {}
+    task = contract.get("task") if isinstance(contract.get("task"), dict) else contract
+    keys = step_keys(((task or {}).get("outcome") or {}).get("proof"))
+    if not keys:
+        return None
+    tid, project = r["id"], r["project"]
+    st = {}
+    res = con.execute("SELECT outcome, at FROM results WHERE task=? ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    st["test"] = ({"green": "ok", "red": "ko"}.get(res["outcome"], "todo"), res["at"]) if res else ("todo", None)
+    commit = task_commit(project, tid) if ("ci" in keys or "prerelease" in keys) else None
+    st["ci"] = ci_state(project, commit[0]) if commit and "ci" in keys else ("todo", None)
+    st["prerelease"] = ("todo", None)
+    if commit and "prerelease" in keys:
+        tags = [x.split("\t") for x in _steps_git(project, "for-each-ref", "--contains", commit[0], "--format=%(refname:short)\t%(creatordate:unix)",
+                                                   "refs/tags").splitlines() if "\t" in x]
+        if tags:
+            st["prerelease"] = ("ok", min(int(ts or 0) for _, ts in tags) or None)
+    pv = con.execute("SELECT result, at, result_at FROM prove WHERE task=? AND superseded_at IS NULL", (tid,)).fetchall()
+    if pv:
+        at = max((p["result_at"] or p["at"] or 0) for p in pv) or None
+        if any(p["result"] == "ko" for p in pv):
+            st["proof"] = ("ko", at)
+        elif all(p["result"] == "ok" for p in pv):
+            st["proof"] = ("ok", at)
+        else:
+            st["proof"] = ("run", at)
+    else:
+        st["proof"] = ("todo", None)
+    items = [{"key": k, "label": STEP_LABELS[k], "state": st[k][0], "at": int(st[k][1]) if st[k][1] else None} for k in keys]
+    if all(i["state"] == "todo" for i in items):
+        return None
+    if not any(i["state"] in ("run", "ko") for i in items):
+        nxt = next((i for i in items if i["state"] == "todo"), None)
+        if nxt:
+            nxt["state"] = "run"
+            nxt["at"] = max((i["at"] or 0 for i in items), default=0) or None   # da quando la tappa prima e' finita
+    return {"task": tid, "items": items}
+
+
+def steps_summary():
+    """1.162: {nome della sessione in state.sessions[].name: {task, items}} delle sessioni con un compito in verifica."""
+    def read():
+        def all_(tk, con):
+            out = {}
+            rows = con.execute("SELECT * FROM tasks WHERE state IN (%s) AND session IS NOT NULL ORDER BY updated_at DESC"
+                               % ",".join("?" * len(STEPS_OPEN)), STEPS_OPEN).fetchall()
+            for r in rows:
+                if r["session"] in out:
+                    continue   # di piu' compiti della stessa sessione vale quello toccato per ultimo
+                got = task_steps(tk, con, r)
+                if got:
+                    out[r["session"]] = got
+            return out
+        try:
+            return _tasks_read(all_) or {}
+        except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
+            return {}
+    raw = _memo("steps_summary", read, ttl=STEPS_CI_TTL_S, deps=[tasks_version])
+    alias = state_alias()
+    return {alias.get(str(s), S.short_name(str(s), prefixes())): v for s, v in raw.items()}
