@@ -18,7 +18,7 @@ Regola di ammissione (letta dal codice, mai a giudizio), tutte vere:
   c. il percorso relativo alla radice corrisponde a `hosts.H.sessions.allow` e a nessun `hosts.H.sessions.deny`
      (glob; vale anche per le sottocartelle di una voce);
   d. nessun segreto: `.cm-offload.json` senza `secrets: true` (con trust.secrets false), nessun file dai nomi di
-     `scheduler.secret_globs` e nessun segreto noto nel commit che parte (la scansione di offload).
+     `scheduler.exclude_globs` e nessun segreto noto nel commit che parte (la scansione di offload).
 Il rifiuto nomina la condizione mancata.
 
 Cosa va la' e cosa torna: la FOTOGRAFIA di HEAD (git archive, senza i file segreti), mai la storia: su H diventa un
@@ -188,7 +188,7 @@ def snapshot_check(folder):
         raise Refused(M("rsession.not_top", dir=folder, top=top))
     sha = git(folder, "rev-parse", "HEAD").strip()
     off = _load("cm-offload")
-    globs = S["secret_globs"]
+    globs = S["exclude_globs"]
     # 13/11 (supervisor-segreti-finti-test-13-11): le chiavi finte dei file che il repo dichiara non sono segreti
     hits = off.secret_hits(folder, sha, ["."] + off.secret_pathspecs(globs))
     if hits:
@@ -342,7 +342,7 @@ def cmd_launch(argv):
         try:
             tar = tmpd / "snap.tar"
             subprocess.run(["git", "-C", folder, "archive", "--format=tar", "-o", str(tar), sha, "--", "."]
-                           + off.secret_pathspecs(S["secret_globs"]), check=True, capture_output=True)
+                           + off.secret_pathspecs(S["exclude_globs"]), check=True, capture_output=True)
             who = (git(folder, "config", "user.name", check=False).strip(), git(folder, "config", "user.email", check=False).strip())
             a.session_seed(rdir, tar, sha, who)
         finally:

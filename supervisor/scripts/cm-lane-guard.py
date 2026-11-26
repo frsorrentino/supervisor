@@ -3,9 +3,9 @@
 
 Nega `git push`, `gh release create|upload|edit|delete`, `npm publish`, `claude plugin publish` e uno script
 `release.sh` quando nella cartella del comando non c'e' un compito che li copre:
-- un compito in corso (o approvato) di un piano approvato, senza `hold`, la cui cartella contiene quella del
+- un compito in corso (o con l'ok) di un piano con l'ok, senza `hold`, la cui cartella contiene quella del
   comando; oppure
-- un compito con un ok registrato (`task approve`) nella stessa cartella, non ancora chiuso.
+- un compito con un ok registrato nella stessa cartella, non ancora chiuso.
 La cartella del comando (09/10/2026) e' quella in cui gira davvero: dopo un `cd <dir>` della stessa catena
 (`&&`, `;`, `||`, `|`, a capo) o con `git -C <dir> push`, relativa alla cartella di prima e con ~ espansa; senza,
 la cartella della sessione. Un `cd` che non si sa leggere (una variabile, `cd -`) lascia una cartella che nessun
@@ -44,34 +44,15 @@ def _load(name):
 
 
 def covered(con, cwd):
-    """(coperto, motivo). Il compito copre la cartella se il comando gira dentro la sua."""
-    real = os.path.realpath(cwd)
-    for r in con.execute("SELECT t.id, t.plan, t.state, t.project, t.contract, p.approved_at FROM tasks t "
-                         "LEFT JOIN plans p ON p.id = t.plan WHERE t.state IN ('running', 'approved')"):
-        proj = os.path.realpath(r["project"])
-        if real != proj and not real.startswith(proj.rstrip("/") + "/"):
-            continue
-        task = json.loads(r["contract"])["task"]
-        if r["plan"] and r["approved_at"] and not task.get("hold"):
-            return True, f"task {r['id']} of approved plan {r['plan']}"
-        if con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL", (r["id"],)).fetchone():
-            return True, f"task {r['id']} approved"
-    return False, ""
+    """(coperto, motivo). Il compito copre la cartella se il comando gira dentro la sua. Le letture del registro stanno
+    in cm-tasks (26/11/2026, supervisor-directory-hook-credenziali-26-11): la guardia decide soltanto se negare."""
+    return _load("cm-tasks").lane_covered(con, cwd)
 
 
 def waiting_start(con, cwd):
-    """22/11/2026 (supervisor-guardia-ok-start-22-11, nota supervisor-d5ee4048): l'id di un compito di questa cartella
-    che ha gia' l'ok registrato ma non e' ancora partito (assigned, o proposed dopo task approve), o None. Il push resta
-    negato, ma il rifiuto dice di lanciare `supervisor task start ID` invece di «non c'è un ok registrato»: il 22/11 una
-    sessione con l'ok in mano ha letto che l'ok mancava."""
-    real = os.path.realpath(cwd)
-    for r in con.execute("SELECT t.id, t.project FROM tasks t WHERE t.state IN ('assigned', 'proposed') ORDER BY t.id"):
-        proj = os.path.realpath(r["project"])
-        if real != proj and not real.startswith(proj.rstrip("/") + "/"):
-            continue
-        if con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL", (r["id"],)).fetchone():
-            return r["id"]
-    return None
+    """22/11/2026 (supervisor-guardia-ok-start-22-11): l'id di un compito di questa cartella con l'ok registrato ma non
+    ancora partito, o None: il rifiuto dice di lanciare `supervisor task start ID`. La lettura sta in cm-tasks."""
+    return _load("cm-tasks").lane_waiting_start(con, cwd)
 
 
 SEP = re.compile(r"&&|\|\||[;|\n]")
@@ -140,7 +121,7 @@ def decide(payload):
     bad = [(d, ok) for d, ok in (targets(plain, cwd) or [(cwd, True)]) if not (ok and covered(con, d)[0])]
     if not bad:
         return None
-    if any(not ok for _, ok in bad):   # l'ok forse c'e': manca la cartella, non l'approvazione
+    if any(not ok for _, ok in bad):   # l'ok forse c'e': manca la cartella, non l'ok
         return cm.msg(cfg, "guard.lane_cd_unreadable", cmd=cmd.strip().splitlines()[0][:120])
     tid = next((t for t in (waiting_start(con, d) for d, _ in bad) if t), None)
     if tid:

@@ -552,7 +552,7 @@ def secret_pathspecs(globs):
 
 
 # 13/11/2026 (supervisor-segreti-finti-test-13-11): i test degli scanner portano chiavi finte, e la scansione le prendeva
-# per segreti: per far partire il repo si toglievano i file dalla fotografia con scheduler.secret_globs nella config.
+# per segreti: per far partire il repo si toglievano i file dalla fotografia con scheduler.exclude_globs nella config.
 # Ora il repo lo dichiara da se': <radice>/.cm-offload.json, "secret_examples": [percorsi dalla radice], letto dal commit
 # che parte. In un file dichiarato passa SOLO la forma nota di una chiave finta: l'intestazione di una chiave privata
 # dentro una stringa, seguita sulla stessa riga da un a capo scritto con la barra («\n»), da un corpo di al piu'
@@ -614,7 +614,7 @@ def prepare(job):
         raise Refused(M("offload.dirty", files=", ".join(l[3:] for l in dirty.splitlines()[:5])))
     commit = (git(folder, "stash", "create").strip() if dirty else "") or git(folder, "rev-parse", "HEAD").strip()
     job["commit"] = commit
-    globs = S["secret_globs"]
+    globs = S["exclude_globs"]
     specs = ["."] + secret_pathspecs(globs)
     hits = secret_hits(top, commit, specs)
     if hits:
@@ -682,7 +682,7 @@ def build_bundle_fn(job, name, h, adapter):
         top, sub = job["git_top"], job["sub"]
         treeish = job["commit"] + (f":{sub}" if sub != "." else "")
         with open(work / "src.tar", "wb") as f:
-            subprocess.run(["git", "-C", top, "archive", "--format=tar", treeish, "--", "."] + secret_pathspecs(S["secret_globs"]),
+            subprocess.run(["git", "-C", top, "archive", "--format=tar", treeish, "--", "."] + secret_pathspecs(S["exclude_globs"]),
                            stdout=f, check=True)
         if job.get("secrets") and (h.get("trust") or {}).get("secrets") or (job.get("secrets") and name == "local"):
             # solo i segreti elencati, e solo verso un host che li ammette (3.2.5)

@@ -9,13 +9,13 @@ cache="${XDG_CACHE_HOME:-$HOME/.cache}/cc-supervisor/python"
 py="${CC_SUPERVISOR_PY:-${TEAM_SUPERVISOR_PY:-${CLAUDE_MASTER_PY:-}}}"
 if [ -z "$py" ] && [ -r "$cache" ]; then
   read -r py < "$cache" || py=""
-  command -v "${py%% *}" >/dev/null 2>&1 || py=""   # uninstalled since: probe again
+  command -v "${py%% *}" >/dev/null 2>/dev/null || py=""   # uninstalled since: probe again
 fi
 if [ -z "$py" ]; then
   for c in python3 python "py -3"; do
-    if $c -c 'import sys; sys.exit(sys.version_info < (3, 8))' >/dev/null 2>&1; then
+    if $c -c 'import sys; sys.exit(sys.version_info < (3, 8))' >/dev/null 2>/dev/null; then
       py=$c
-      { mkdir -p "${cache%/*}" && printf '%s\n' "$py" > "$cache"; } 2>/dev/null
+      { mkdir -p "${cache%/*}" && echo "$py" > "$cache"; } 2>/dev/null
       break
     fi
   done

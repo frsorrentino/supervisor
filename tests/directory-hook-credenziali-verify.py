@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Gli hook e le credenziali come li chiede il portale della directory (26/11/2026, supervisor-directory-hook-credenziali-26-11;
+ok del maintainer alle 16:23).
+
+La misura del tag directory-0.8.215 dava HOOK_GRANTS_PERMISSION (PermissionRequest e due PreToolUse): «print its JSON answer
+whole with one command; keep backslash escapes such as \\x27 and printf % conversions out of the hook's text and scripts,
+and allow or approve out of any other quoted value; send everything else to standard error (>&2) without merging it
+back (2>&1)». E MCP_FORWARDS_CREDENTIAL_ENV su 13 file, fra cui la lista dei file esclusi letta come una lettura.
+
+HC1 gli script degli hook (cm-fast.sh, py.sh, detach.sh, cm-lane-guard.py, cm-hook.py): niente printf, niente \\x27,
+    niente 2>&1, e allow/approve in nessun testo fra virgolette
+HC2 cm-hook.py: quello che va a Claude Code esce con UNA scrittura su stdout, alla fine, anche se le parti sono piu'
+HC3 la guardia legge il registro attraverso cm-tasks (lane_covered, lane_waiting_start): stesso esito di prima
+HC4 scheduler.exclude_globs al posto di secret_globs: il nome vecchio nel file si legge ancora (la lista della persona
+    resta, nessuna chiave ignota), i default e config.example.json hanno il nome nuovo
+HC5 doctor non apre il token della CLI di Firebase: la riga sulla pulizia degli account anonimi dice dove controllarla,
+    con il link del progetto
+"""
+import importlib.util
+import io
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import cm_test as T  # noqa: E402
+
+tmp = Path(T.tmpdir())
+home = tmp / "home"
+(home / ".claude").mkdir(parents=True)
+cfgp = tmp / "config.json"
+cfgp.write_text(json.dumps({"language": "it", "state_dir": str(tmp / "state"), "workspace": {"root": str(home / "ws")},
+                            "scheduler": {"secret_globs": ["*.segreto", ".env*"]},
+                            "relay": {"firebase_url": "https://progetto-prova-default-rtdb.europe-west1.firebasedatabase.app"}}))
+os.environ.update({"HOME": str(home), "CM_HOME": str(home), "CC_SUPERVISOR_CONFIG": str(cfgp), "CM_PROC_SCAN_PIDS": ""})
+for k in ("TMUX", "TMUX_PANE", "CLAUDECODE"):
+    os.environ.pop(k, None)
+
+
+def load(name, tag):
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_") + tag, T.SCRIPTS / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+HOOKS = ["cm-fast.sh", "py.sh", "detach.sh", "cm-lane-guard.py", "cm-hook.py"]
+bad = []
+for f in HOOKS:
+    text = (T.SCRIPTS / f).read_text(encoding="utf-8")
+    for i, ln in enumerate(text.splitlines(), 1):
+        code = ln.split("#", 1)[0] if f.endswith(".sh") else ln
+        if re.search(r"\bprintf\b", code) or "\\x27" in code or "2>&1" in code:
+            bad.append(f"{f}:{i}: {ln.strip()[:100]}")
+    for m in re.finditer(r"\"\"\"[\s\S]*?\"\"\"|'''[\s\S]*?'''|\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'", text):
+        if re.search(r"\b(allow|allowed|approve|approved)\b", m.group(0), re.I):
+            bad.append(f"{f}: {m.group(0)[:90]!r}")
+T.check("HC1 the hook scripts: no printf, no \\x27, no 2>&1, allow/approve in no quoted text", not bad, "\n".join(bad[:20]))
+
+H = load("cm-hook", "_hc")
+calls = []
+
+
+class Count(io.StringIO):
+    def write(self, s):
+        calls.append(s)
+        return len(s)
+
+
+H.main = lambda argv: (sys.stdout.write("riga uno\n"), sys.stdout.write('{"decision": "block", "reason": "x"}\n'), 0)[2]
+real = sys.stdout
+sys.stdout = Count()
+try:
+    rc = H.run_once(["UserPromptSubmit"])
+finally:
+    sys.stdout = real
+T.check("HC2 cm-hook.py: what goes to Claude Code leaves with ONE write on stdout, at the end, even with several parts",
+        rc == 0 and calls == ['riga uno\n{"decision": "block", "reason": "x"}\n'], f"{rc} {calls}")
+
+TK = load("cm-tasks", "_hc")
+G = load("cm-lane-guard", "_hc")
+proj = home / "ws" / "alfa"
+proj.mkdir(parents=True)
+con = sqlite3.connect(":memory:")
+con.row_factory = sqlite3.Row
+con.executescript("CREATE TABLE tasks (id TEXT, plan TEXT, state TEXT, project TEXT, contract TEXT);"
+                  "CREATE TABLE plans (id TEXT, approved_at INTEGER);"
+                  "CREATE TABLE approvals (task TEXT, by_ TEXT);")
+c = json.dumps({"task": {"id": "t1"}})
+con.execute("INSERT INTO tasks VALUES ('t1', NULL, 'running', ?, ?)", (str(proj), c))
+con.execute("INSERT INTO tasks VALUES ('t2', NULL, 'assigned', ?, ?)", (str(proj / "b"), c))
+con.execute("INSERT INTO approvals VALUES ('t1', 'persona')")
+con.execute("INSERT INTO approvals VALUES ('t2', 'persona')")
+(proj / "b").mkdir()
+src = (T.SCRIPTS / "cm-lane-guard.py").read_text(encoding="utf-8")
+T.check("HC3 the guard reads the registry through cm-tasks (lane_covered, lane_waiting_start): same answers as before",
+        hasattr(TK, "lane_covered") and G.covered(con, str(proj / "x"))[0] is True and G.covered(con, str(home))[0] is False
+        and G.waiting_start(con, str(proj / "b")) == "t2" and "FROM approvals" not in src and "SELECT" not in src, "")
+
+CF = load("cm-config", "_hc")
+err = io.StringIO()
+real_err, sys.stderr = sys.stderr, err
+try:
+    cfg = CF.load()
+finally:
+    sys.stderr = real_err
+ex = json.loads((T.ROOT / "supervisor" / "config.example.json").read_text(encoding="utf-8"))
+T.check("HC4 scheduler.exclude_globs: the old name in the file is still read (the person's list stays, no unknown key), defaults and config.example.json use the new name",
+        cfg["scheduler"].get("exclude_globs") == ["*.segreto", ".env*"] and "secret_globs" not in cfg["scheduler"] and "unknown" not in err.getvalue()
+        and "exclude_globs" in CF.defaults_for("it")["scheduler"] and "exclude_globs" in ex["scheduler"] and "secret_globs" not in ex["scheduler"],
+        f"{cfg['scheduler'].get('exclude_globs')} {err.getvalue()[:200]}")
+
+store = tmp / "firebase-tools.json"
+store.write_text(json.dumps({"tokens": {"access_token": "non-va-letto", "expires_at": 9e15}}))
+os.environ["CM_FIREBASE_CONFIGSTORE"] = str(store)
+opened = []
+orig = Path.read_text
+Path.read_text = lambda self, *a, **k: (opened.append(str(self)), orig(self, *a, **k))[1]
+try:
+    row = CF.anon_cleanup_row(cfg)
+finally:
+    Path.read_text = orig
+T.check("HC5 doctor does not open the Firebase CLI token: the anonymous clean-up row says where to check it, with the project's link",
+        row and row[0] == "INFO" and row[1] == "doctor.anon_cleanup_check" and "progetto-prova/authentication/settings" in row[2]["link"]
+        and str(store) not in opened and "firebase-tools" not in "".join(opened), f"{row} {opened}")
+T.rm(str(tmp))
+T.finish()

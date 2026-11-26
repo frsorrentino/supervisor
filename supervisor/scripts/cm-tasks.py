@@ -3631,5 +3631,39 @@ def cli(argv):
                 pass
 
 
+
+# ------------------------------------------------------------------ la corsia: le letture della guardia
+def lane_covered(con, cwd):
+    """Per cm-lane-guard (spostata qui il 26/11/2026, supervisor-directory-hook-credenziali-26-11): (coperto, motivo). Il compito copre la
+    cartella se il comando gira dentro la sua."""
+    real = os.path.realpath(cwd)
+    for r in con.execute("SELECT t.id, t.plan, t.state, t.project, t.contract, p.approved_at FROM tasks t "
+                         "LEFT JOIN plans p ON p.id = t.plan WHERE t.state IN ('running', 'approved')"):
+        proj = os.path.realpath(r["project"])
+        if real != proj and not real.startswith(proj.rstrip("/") + "/"):
+            continue
+        task = json.loads(r["contract"])["task"]
+        if r["plan"] and r["approved_at"] and not task.get("hold"):
+            return True, f"task {r['id']} of approved plan {r['plan']}"
+        if con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL", (r["id"],)).fetchone():
+            return True, f"task {r['id']} approved"
+    return False, ""
+
+
+def lane_waiting_start(con, cwd):
+    """22/11/2026 (supervisor-guardia-ok-start-22-11, nota supervisor-d5ee4048): l'id di un compito di questa cartella
+    che ha gia' l'ok registrato ma non e' ancora partito (assigned, o proposed dopo task approve), o None. Il push resta
+    negato, ma il rifiuto dice di lanciare `supervisor task start ID` invece di «non c'è un ok registrato»: il 22/11 una
+    sessione con l'ok in mano ha letto che l'ok mancava."""
+    real = os.path.realpath(cwd)
+    for r in con.execute("SELECT t.id, t.project FROM tasks t WHERE t.state IN ('assigned', 'proposed') ORDER BY t.id"):
+        proj = os.path.realpath(r["project"])
+        if real != proj and not real.startswith(proj.rstrip("/") + "/"):
+            continue
+        if con.execute("SELECT 1 FROM approvals WHERE task=? AND by_ IS NOT NULL", (r["id"],)).fetchone():
+            return r["id"]
+    return None
+
+
 if __name__ == "__main__":
     sys.exit(cli(sys.argv[1:]))

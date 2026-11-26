@@ -706,7 +706,7 @@ PRUNE_EVERY_S = 3600
 def record_person_prompt(p):
     """22/10/2026 (ok-in-sessione, the maintainer from the web at 13:34: «l'ok nella sessione deve essere valido come gli
     altri»): ogni messaggio scritto dalla persona in questa sessione va nella sua casella con origine «terminal», gia'
-    consegnato, cosi' `task approve --inbox` lo puo' citare. L'origine (23/10) la dice la riga `user` della trascrizione,
+    consegnato, cosi' `task ok --inbox` lo puo' citare. L'origine (23/10) la dice la riga `user` della trascrizione,
     che Claude Code scrive dopo gli hook: il record nasce «unverified» e lo risolve ib.resolve piu' tardi. Mai i testi delle altre sessioni (cross-session, notifiche, comandi) ne' un prompt che coincide con un record
     recente scritto da altri (il relay e `talk` scrivono il record prima di consegnare: quello non e' la persona); i
     record di questo hook non contano (23/10, 11:15: «ok a tutti e tre» due volte in tre minuti, il secondo perso).
@@ -742,7 +742,7 @@ def record_person_prompt(p):
                 return r.get("id") if r.get("origin") == "relay" else None   # 04/11: un messaggio del telefono, gia' in casella
         # 23/10 16:22 (regressione della 0.8.46): Claude Code 2.1.308 scrive la riga `user` della trascrizione DOPO gli
         # hook, quindi qui l'origine non si sa: il record nasce «unverified» con la via della trascrizione e lo risolve
-        # ib.resolve (al prompt seguente, allo Stop, nell'elenco e dentro task approve --inbox)
+        # ib.resolve (al prompt seguente, allo Stop, nell'elenco e dentro task ok --inbox)
         rec = ib.put(name, text[:4000], "terminal", p.get("cwd") or "", origin="unverified", quiet=True, transcript=p.get("transcript_path") or None)
         ib.mark(rec["id"], "delivered", "terminal")
         for r in stale:
@@ -765,7 +765,7 @@ def launch_prompt(ib, name, text, p):
     """18/11/2026 (supervisor-prompt-launch-origine-16-11): il primo prompt di `launch --prompt` lo scrive chi lancia (la
     master, restart), non la persona; claude lo riceve come un messaggio del terminale e la trascrizione lo segna «human».
     cm-launch.sh mette nell'ambiente chi l'ha scritto e l'impronta del testo: se il prompt e' quello, il record ha origine
-    «launch» (task approve --inbox lo rifiuta) e a contesto va una riga che lo dice. Torna True se era quello."""
+    «launch» (task ok --inbox lo rifiuta) e a contesto va una riga che lo dice. Torna True se era quello."""
     by, sha = os.environ.get("CM_FIRST_PROMPT_BY") or "", os.environ.get("CM_FIRST_PROMPT_SHA") or ""
     if not by or not sha:
         return False
@@ -809,7 +809,7 @@ def answers_pending_block(rec_id, reasons=True):
 
 
 def commitments_block(ids=True, mine_ids=True):
-    """P2 (22/10/2026): solo nella master, a ogni prompt e a ogni avvio, gli impegni dal registro — gli approvati non
+    """P2 (22/10/2026): solo nella master, a ogni prompt e a ogni avvio, gli impegni dal registro — quelli con l'ok non
     compiuti con eta', fermo da, prossimo passo, chi aspetta chi, pausa — letti da sqlite (niente git, niente figli:
     l'hook ha 5 s). Niente se la lista e' vuota, se il registro non c'e' o se tasks.commitments_prompt e' falso."""
     T_ = CFG.get("tasks") or {}
@@ -1219,5 +1219,19 @@ def run_event(argv):
     return 0
 
 
+def run_once(argv):
+    """26/11/2026 (supervisor-directory-hook-credenziali-26-11): la risposta dell'hook a Claude Code esce intera con UNA scrittura su
+    stdout, alla fine; il resto va su stderr. Le parti (righe di contesto, il JSON di Stop) si raccolgono qui."""
+    import io
+    real, buf = sys.stdout, io.StringIO()
+    sys.stdout = buf
+    try:
+        rc = main(argv)
+    finally:
+        sys.stdout = real
+        real.write(buf.getvalue())
+    return rc
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(run_once(sys.argv[1:]))

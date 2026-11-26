@@ -332,7 +332,10 @@ DEFAULTS = {
         "bench_max_load_pct": 20,    # sopra questo carico il micro-benchmark si rimanda: misurerebbe il rumore
         "remote_root": {"posix": "~/claude-work", "windows": "%USERPROFILE%\\claude-work"},
         "client_paths": [],          # il perimetro clienti: mai su un host con trust.clients false
-        "secret_globs": [".env*", "*.pem", "*.key", "id_*", ".npmrc", "credentials*"],
+        # i file che non partono MAI verso un altro host (offload, rsession): una lista di esclusione, nessuno di questi
+        # file si legge. 26/11/2026 (supervisor-directory-hook-credenziali-26-11): era secret_globs, letta dal portale della directory
+        # come «.npmrc is read»; il nome vecchio nel file si legge ancora (load lo sposta qui)
+        "exclude_globs": [".env*", "*.pem", "*.key", "id_*", ".npmrc", "credentials*"],
         "ssh_connect_timeout_s": 4,
         "min_free_gb": 2,
         # launch propone (e --host auto sceglie) un host con il ruolo sessions quando la regia e' carica: carico a
@@ -802,6 +805,10 @@ def _load_raw(path=None, warn=True):
     data = {}
     if p.is_file():
         data = json.loads(p.read_text())
+    sch = data.get("scheduler")
+    if isinstance(sch, dict) and "secret_globs" in sch:   # 26/11/2026: il nome di prima (fino alla 0.8.216)
+        old = sch.pop("secret_globs")
+        sch.setdefault("exclude_globs", old)
     # S03 (14/09/2026): senza `language` nel file vale la lingua rilevata (come in init), non sempre l'inglese
     lang = data.get("language") or detect_language()[0]
     unknown = []
@@ -1080,31 +1087,19 @@ CLAUDE_INSTALL_WSL = "curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/
 
 
 def anon_cleanup_row(cfg, timeout=6):
-    """(livello, chiave, kwargs, rimedio) sullo stato di autodeleteAnonymousUsers, o None se non si puo' leggere."""
-    import urllib.request
+    """(livello, chiave, kwargs, rimedio) sulla pulizia automatica degli account anonimi, o None senza progetto.
+
+    26/11/2026 (supervisor-directory-hook-credenziali-26-11): doctor non apre piu' il token della CLI di Firebase
+    (~/.config/configstore/firebase-tools.json), che e' di un altro strumento: la riga dice dove controllarla nella
+    console, con il link del progetto. relay setup, lanciato dalla persona, la legge e la spegne come prima."""
     pid = str((cfg["relay"].get("firebase_app") or {}).get("project_id") or "").strip()
     if not pid:
         m_ = re.match(r"https://([a-z0-9-]+?)(-default-rtdb)?\.", str(cfg["relay"].get("firebase_url") or ""))
         pid = m_.group(1) if m_ else ""
-    store = Path(os.environ.get("CM_FIREBASE_CONFIGSTORE") or (home() / ".config" / "configstore" / "firebase-tools.json"))
-    try:
-        t = json.loads(store.read_text()).get("tokens") or {}
-        tok = t.get("access_token") if float(t.get("expires_at") or 0) / 1000 - time.time() > 30 else None
-    except (OSError, ValueError, AttributeError):
-        tok = None
-    if not pid or not tok:
-        return None
-    base = (os.environ.get("CM_SETUP_IDENTITY_URL") or "https://identitytoolkit.googleapis.com").rstrip("/")
-    try:
-        req = urllib.request.Request(f"{base}/admin/v2/projects/{pid}/config", headers={"Authorization": f"Bearer {tok}"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            conf = json.loads(r.read().decode() or "{}")
-    except (OSError, ValueError):
+    if not pid:
         return None
     link = f"https://console.firebase.google.com/project/{pid}/authentication/settings"
-    if conf.get("autodeleteAnonymousUsers"):
-        return ("WARN", "doctor.anon_cleanup_on", {"link": link}, None)
-    return ("PASS", "doctor.anon_cleanup_off", {}, None)
+    return ("INFO", "doctor.anon_cleanup_check", {"link": link}, None)
 
 
 def install_hint(cfg, what, pm, kind=""):
@@ -1827,7 +1822,7 @@ def cmd_doctor():
                     else ("WARN", "doctor.firebase_app_missing", {"why": msg(cfg, why, path=expand(cfg["relay"].get("google_services") or ""), package=cfg["relay"].get("app_package") or "")}, "doctor.fix_firebase_app"))
 
     # 12/11 (supervisor-note-mac-iphone-12-11): la pulizia automatica degli account anonimi stacca il telefono dopo 30
-    # giorni. Si legge col token della CLI di Firebase, se c'e' e non e' scaduto; altrimenti niente riga
+    # giorni. Dal 26/11 doctor non la legge (il token e' della CLI di Firebase): dice dove controllarla
     if cfg["relay"]["enabled"] and str(cfg["relay"].get("firebase_url") or "").strip() and m.fake is None:
         r = anon_cleanup_row(cfg)
         if r:

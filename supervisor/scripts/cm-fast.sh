@@ -19,7 +19,9 @@ set -u
 mode="${1:-}"
 here="$(dirname "${BASH_SOURCE[0]}")"
 in="$(cat)"
-run_py() { printf '%s' "$in" | exec bash "$here/py.sh" "$@"; }
+# 26/11/2026 (supervisor-directory-hook-credenziali-26-11): l'input passa con un here-string; un a capo in piu' in fondo al JSON non cambia
+# niente per json.load
+run_py() { exec bash "$here/py.sh" "$@" <<<"$in"; }
 case "$mode" in
   pre)
     case "$in" in

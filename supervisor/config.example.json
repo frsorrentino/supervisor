@@ -551,7 +551,7 @@
       "windows": "%USERPROFILE%\\claude-work"
     },
     "client_paths": [],
-    "secret_globs": [
+    "exclude_globs": [
       ".env*",
       "*.pem",
       "*.key",

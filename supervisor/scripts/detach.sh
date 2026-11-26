@@ -10,17 +10,17 @@
 # detaching, and handed over in CM_HOOK_TMUX_NAME.
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [ -n "${TMUX_PANE:-}" ] && [ -z "${CM_HOOK_TMUX_NAME:-}" ]; then
-  CM_HOOK_TMUX_NAME=$("${CM_TMUX_BIN:-tmux}" ${CM_TMUX_ARGS:-} display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)
+  CM_HOOK_TMUX_NAME=$(tmux ${CM_TMUX_ARGS:-} display-message -p -t"$TMUX_PANE" '#{session_name}' 2>/dev/null)
   export CM_HOOK_TMUX_NAME
 fi
 tmp=$(mktemp "${TMPDIR:-/tmp}/cm-detach.XXXXXX") || exit 0
 cat > "$tmp"
-run() { bash "$here/py.sh" "$@" < "$tmp" > /dev/null 2>&1; rm -f "$tmp"; }
-if command -v setsid > /dev/null 2>&1; then
+run() { bash "$here/py.sh" "$@" < "$tmp" > /dev/null 2> /dev/null; rm -f "$tmp"; }
+if command -v setsid > /dev/null 2> /dev/null; then
   export -f run 2> /dev/null
   export here tmp
-  setsid bash -c 'run "$@"' _ "$@" < /dev/null > /dev/null 2>&1 &
+  setsid bash -c 'run "$@"' _ "$@" < /dev/null > /dev/null 2> /dev/null &
 else
-  ( run "$@" & ) < /dev/null > /dev/null 2>&1
+  ( run "$@" & ) < /dev/null > /dev/null 2> /dev/null
 fi
 exit 0
