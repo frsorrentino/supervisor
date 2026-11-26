@@ -58,7 +58,7 @@
   "install.summary_link": "  web app su questo computer: {link}",
   "install.pre_header": "Prima di cominciare:",
   "install.pre_claude_ok": "Claude Code: accesso fatto",
-  "install.pre_claude_missing": "Claude Code non trovato. Rimedio: curl -fsSL https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh | bash",
+  "install.pre_claude_missing": "Claude Code non trovato. Installalo come dice la sua documentazione, https://code.claude.com/docs/en/setup, poi rilancia setup",
   "install.pre_claude_login_ask": "Claude Code non ha ancora l'accesso al tuo account. Lo facciamo adesso? (si apre il browser, o un link da aprire)",
   "install.pre_claude_no_login": "Claude Code senza accesso: la master non si può aprire. Rimedio: claude auth login, poi rilancia",
   "install.pre_fb_install_ask": "Per il telefono serve la CLI di Firebase (senza Node). La installo con: {line} ?",

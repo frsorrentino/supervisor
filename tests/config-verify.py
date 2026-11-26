@@ -304,7 +304,7 @@ T.check("C13g ChromeOS → system line names the Linux development environment, 
 r = doctor_on("wslwin", which=base + ["tmux", "apt-get"], exists=[], env={"LANG": "en_US.UTF-8", "WSL_DISTRO_NAME": "Ubuntu"},
               paths={"claude": "/mnt/c/Users/u/AppData/Roaming/npm/claude"})
 T.check("C13g WSL2 with the Windows claude → FAIL claude_windows with the native installer",
-        r.returncode == 1 and "system: WSL2" in r.stdout and "FAIL claude_windows" in r.stdout and "curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash" in r.stdout, r.stdout)
+        r.returncode == 1 and "system: WSL2" in r.stdout and "FAIL claude_windows" in r.stdout and "https://code.claude.com/docs/en/setup" in r.stdout and "PATH=/usr/local/bin:/usr/bin:/bin" in r.stdout and "| bash" not in r.stdout, r.stdout)
 r = doctor_on("old", which=base + ["tmux", "apt-get"], versions={"python3": "Python 3.6.9", "claude": "2.1.200 (Claude Code)", "tmux": "tmux 3.4"})
 T.check("C13g too old: python3 3.6 and claude 2.1.200 → FAIL too_old, claude update",
         "FAIL too_old — python3 Python 3.6.9: needs 3.8 or newer" in r.stdout and "FAIL too_old — claude 2.1.200" in r.stdout and "fix: claude update" in r.stdout, r.stdout)

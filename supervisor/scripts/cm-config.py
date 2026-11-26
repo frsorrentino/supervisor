@@ -1056,7 +1056,9 @@ INSTALL = {   # prerequisito → gestore di pacchetti → comando
     "crontab": {"apt": "sudo apt install cron", "dnf": "sudo dnf install cronie", "pacman": "sudo pacman -S cronie",
                 "zypper": "sudo zypper install cronie", "brew": "crontab ships with macOS"},
 }
-CLAUDE_INSTALL = "curl -fsSL https://claude.ai/install.sh | bash"
+# 26/11/2026 (supervisor-directory-hook-credenziali-26-11, RUNTIME_FETCH_EXEC del portale della directory): il rimedio rimanda alle istruzioni
+# d'installazione di Claude Code invece di mostrare il comando che scarica ed esegue
+CLAUDE_INSTALL = "install Claude Code as its documentation says: https://code.claude.com/docs/en/setup"
 # 12/11 (dal collega su Mac): con /usr/local di root `npm install -g` chiede sudo; in ~/.local no, e setup e relay setup
 # cercano gia' ~/.local/bin/firebase
 FIREBASE_INSTALL = "npm install -g --prefix ~/.local firebase-tools && ~/.local/bin/firebase login"
@@ -1083,7 +1085,8 @@ def version_tuple(text):
 
 # in WSL2 l'installer lancia `npm uninstall -g @anthropic-ai/claude-code` e `npm` e' quello di Windows: senza le
 # cartelle di Windows nel PATH non tocca il Claude Code di Windows (provato il 13/10 con un npm finto)
-CLAUDE_INSTALL_WSL = "curl -fsSL https://claude.ai/install.sh | PATH=/usr/local/bin:/usr/bin:/bin bash"
+CLAUDE_INSTALL_WSL = ("install the native Claude Code inside WSL as its documentation says (https://code.claude.com/docs/en/setup), running the "
+                      "installer with PATH=/usr/local/bin:/usr/bin:/bin so it does not touch the Windows install")
 
 
 def anon_cleanup_row(cfg, timeout=6):

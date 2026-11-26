@@ -56,7 +56,13 @@ def waiting_start(con, cwd):
 
 
 SEP = re.compile(r"&&|\|\||[;|\n]")
-QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
+# 26/11/2026 (supervisor-directory-hook-credenziali-26-11, seconda misura del portale): nel testo della guardia nessuna sequenza con la barra
+# rovescia che una shell o un parser JSON trasformino in un carattere stampabile; la barra rovescia e il
+# carattere zero si costruiscono con chr(), le virgolette doppie stanno fra apici
+NUL = chr(0)
+BS = re.escape(chr(92))
+QUOTED = re.compile("'[^']*'|" + '"(?:[^"' + BS + "]|" + BS + '.)*"')
+HEREDOC = re.compile(r'''<<-?\s*['"]?(?P<tag>\w+)['"]?.*?^(?P=tag)$''', re.S | re.M)
 
 
 def targets(cmd, cwd):
@@ -66,10 +72,10 @@ def targets(cmd, cwd):
 
     def hold(m):
         keep.append(m.group(0)[1:-1])
-        return f"\x00{len(keep) - 1}\x00"
+        return f"{NUL}{len(keep) - 1}{NUL}"
 
     def word(w):
-        return os.path.expanduser(re.sub(r"\x00(\d+)\x00", lambda m: keep[int(m.group(1))], w))
+        return os.path.expanduser(re.sub(NUL + "([0-9]+)" + NUL, lambda m: keep[int(m.group(1))], w))
 
     cur, readable, out = cwd, True, []
     for seg in SEP.split(QUOTED.sub(hold, cmd)):
@@ -83,7 +89,7 @@ def targets(cmd, cwd):
                 readable = True
             cur = os.path.join(cur, arg)
             continue
-        if CLOSED.search(re.sub(r"\x00\d+\x00", "''", seg)):
+        if CLOSED.search(re.sub(NUL + "[0-9]+" + NUL, "''", seg)):
             m = re.search(r"\bgit\s+-C\s+(\S+)", seg)
             d = word(m.group(1)) if m else ""
             out.append((os.path.join(cur, d) if d else cur,
@@ -96,14 +102,21 @@ def targets(cmd, cwd):
 # `paste-buffer` (`pasteb`) sono negati sempre, anche a guardia spenta; le sessioni si parlano con `supervisor talk`
 KEYS = re.compile(r"\btmux\b[^|;&\n]*\b(send-keys|send|paste-buffer|pasteb)\b")
 KEYS_REASON = ("tmux send-keys/paste-buffer from a Claude session is blocked (23/10/2026): text typed into a pane counts as the person's. "
-               "To reach a session: supervisor talk NAME \"…\"; to answer its question: supervisor answer; to close it: supervisor close NAME.")
+               "To reach a session: supervisor talk NAME «…»; to answer its question: supervisor answer; to close it: supervisor close NAME.")
+
+
+def shown(cmd):
+    """La prima riga del comando, come la mostra il rifiuto: su una riga, senza virgolette doppie ne' barre rovesce,
+    cosi' il JSON della risposta non ha sequenze di escape (26/11/2026, supervisor-directory-hook-credenziali-26-11)."""
+    first = (cmd.strip().splitlines() or [""])[0]
+    return " ".join(first.replace('"', "'").replace(chr(92), "/").split())[:120]
 
 
 def decide(payload):
     """None = lascia passare; altrimenti il motivo del rifiuto."""
     cmd = str((payload.get("tool_input") or {}).get("command") or "")
-    bare = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", "", cmd, flags=re.S | re.M)   # un heredoc non e' un comando
-    bare = re.sub(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"", "''", bare)   # ne' il testo fra virgolette (messaggi di commit…)
+    bare = HEREDOC.sub("", cmd)   # un heredoc non e' un comando
+    bare = QUOTED.sub("''", bare)   # ne' il testo fra virgolette (messaggi di commit…)
     if KEYS.search(bare):   # 19:26: un messaggio di `supervisor talk` che PARLA di send-keys passa; il comando no
         return KEYS_REASON
     if not CLOSED.search(bare):   # il caso comune: nessun caricamento di config
@@ -117,16 +130,16 @@ def decide(payload):
     if con is None:
         return None
     cwd = payload.get("cwd") or os.getcwd()
-    plain = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", "", cmd, flags=re.S | re.M)
+    plain = HEREDOC.sub("", cmd)
     bad = [(d, ok) for d, ok in (targets(plain, cwd) or [(cwd, True)]) if not (ok and covered(con, d)[0])]
     if not bad:
         return None
     if any(not ok for _, ok in bad):   # l'ok forse c'e': manca la cartella, non l'ok
-        return cm.msg(cfg, "guard.lane_cd_unreadable", cmd=cmd.strip().splitlines()[0][:120])
+        return cm.msg(cfg, "guard.lane_cd_unreadable", cmd=shown(cmd))
     tid = next((t for t in (waiting_start(con, d) for d, _ in bad) if t), None)
     if tid:
-        return cm.msg(cfg, "guard.lane_needs_start", cmd=cmd.strip().splitlines()[0][:120], id=tid)
-    return cm.msg(cfg, "guard.lane_closed", cmd=cmd.strip().splitlines()[0][:120])
+        return cm.msg(cfg, "guard.lane_needs_start", cmd=shown(cmd), id=tid)
+    return cm.msg(cfg, "guard.lane_closed", cmd=shown(cmd))
 
 
 def main():

@@ -29,15 +29,20 @@ case "$mode" in
     esac
     exit 0 ;;
   post)
-    cfg="${CC_SUPERVISOR_CONFIG:-${TEAM_SUPERVISOR_CONFIG:-${CLAUDE_MASTER_CONFIG:-${CM_HOME:-$HOME}/.config/cc-supervisor/config.json}}}"
+    # 26/11/2026 (supervisor-directory-hook-credenziali-26-11): un nome alla volta, senza espansioni annidate
+    cfg="${CC_SUPERVISOR_CONFIG:-}"
+    [ -n "$cfg" ] || cfg="${TEAM_SUPERVISOR_CONFIG:-}"
+    [ -n "$cfg" ] || cfg="${CLAUDE_MASTER_CONFIG:-}"
+    [ -n "$cfg" ] || cfg="${CM_HOME:-$HOME}/.config/cc-supervisor/config.json"
     key="${cfg//[^A-Za-z0-9]/_}"
     [ "${#key}" -le 180 ] || key="${key: -180}"   # gli ultimi 180 caratteri (un offset negativo oltre la lunghezza da' vuoto)
     cache="${XDG_CACHE_HOME:-$HOME/.cache}/cc-supervisor/state-dir.$key"
     state=""
     [ -r "$cache" ] && IFS= read -r state < "$cache"
-    sid="${in#*\"session_id\"}"
+    q='"'   # le virgolette doppie in una variabile: nessuna barra rovescia nel testo
+    sid="${in#*${q}session_id${q}}"
     [ "$sid" != "$in" ] || sid=""
-    sid="${sid#*\"}"; sid="${sid%%\"*}"
+    sid="${sid#*$q}"; sid="${sid%%$q*}"
     case "$sid" in *[!A-Za-z0-9._-]*) sid="" ;; esac   # un id che non si legge pulito: decide python
     if [ -n "$state" ] && [ -d "$state" ] && [ -n "$sid" ] && [ ! -e "$state/waiting/$sid" ]; then
       exit 0   # nessuna domanda aperta: niente da chiudere

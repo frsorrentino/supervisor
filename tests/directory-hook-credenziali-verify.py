@@ -15,6 +15,14 @@ HC4 scheduler.exclude_globs al posto di secret_globs: il nome vecchio nel file s
     resta, nessuna chiave ignota), i default e config.example.json hanno il nome nuovo
 HC5 doctor non apre il token della CLI di Firebase: la riga sulla pulizia degli account anonimi dice dove controllarla,
     con il link del progetto
+
+Seconda misura (directory-0.8.217): la guardia «writes a backslash escape (such as \\156 or \\x22) that printf, echo or a
+JSON parser could turn into a printable character», e il testo di PermissionRequest (py.sh) «could not be read to the end».
+HC6 cm-lane-guard.py, cm-fast.sh e py.sh: nessuna sequenza di escape stampabile (barra rovescia + x, u, una cifra
+    ottale, virgolette, apice, barra o barra rovescia)
+HC7 il rifiuto della guardia, per un comando con virgolette e barre rovesce: il JSON scritto non ha sequenze di escape
+HC8 py.sh: nessuna espansione annidata, nessun interprete lanciato da una variabile spezzata in parole; la cache di
+    prima con «py -3» si legge ancora
 """
 import importlib.util
 import io
@@ -127,5 +135,35 @@ finally:
 T.check("HC5 doctor does not open the Firebase CLI token: the anonymous clean-up row says where to check it, with the project's link",
         row and row[0] == "INFO" and row[1] == "doctor.anon_cleanup_check" and "progetto-prova/authentication/settings" in row[2]["link"]
         and str(store) not in opened and "firebase-tools" not in "".join(opened), f"{row} {opened}")
+ESC = re.compile(re.escape(chr(92)) + "(x[0-9a-fA-F]|u[0-9a-fA-F]{4}|[0-7]|[" + chr(34) + "'/]|" + re.escape(chr(92)) + ")")
+bad = []
+for f in ("cm-lane-guard.py", "cm-fast.sh", "py.sh"):
+    for i, ln in enumerate((T.SCRIPTS / f).read_text(encoding="utf-8").splitlines(), 1):
+        if ESC.search(ln):
+            bad.append(f"{f}:{i}: {ln.strip()[:100]}")
+T.check("HC6 cm-lane-guard.py, cm-fast.sh, py.sh: no printable backslash escape in the text", not bad, "\n".join(bad[:20]))
+
+cmd = 'git commit -m "x" && cd ' + chr(92) + 'tmp' + chr(92) + 'b && git push'
+shown = G.shown(cmd)
+out = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                         "permissionDecisionReason": "Closed lane: «" + shown + "» … " + G.KEYS_REASON}}, ensure_ascii=False)
+T.check("HC7 the guard's refusal for a command with quotes and backslashes: no escape sequence in the JSON it writes",
+        chr(92) not in out and "git push" in shown and json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "deny", out)
+
+ps = (T.SCRIPTS / "py.sh").read_text(encoding="utf-8")
+code = "\n".join(ln.split("#", 1)[0] for ln in ps.splitlines())
+cache = home / ".cache" / "cc-supervisor" / "python"
+cache.parent.mkdir(parents=True, exist_ok=True)
+cache.write_text("py -3\n")
+fakebin = tmp / "bin-py"
+fakebin.mkdir()
+(fakebin / "py").write_text("#!/bin/sh\necho \"py:$*\"\n")
+(fakebin / "py").chmod(0o755)
+env = {k: v for k, v in os.environ.items() if k not in ("CC_SUPERVISOR_PY", "TEAM_SUPERVISOR_PY", "CLAUDE_MASTER_PY", "XDG_CACHE_HOME")}
+env.update({"HOME": str(home), "PATH": str(fakebin) + os.pathsep + env.get("PATH", "")})
+r = subprocess.run(["bash", str(T.SCRIPTS / "py.sh"), "x.py", "a"], capture_output=True, text=True, env=env, timeout=30)
+T.check("HC8 py.sh: no nested expansion, no interpreter run from a word-split variable; the old cache «py -3» still works",
+        ":-${" not in code and not re.search(r"(^|[;&|]|exec)\s+\$[A-Za-z_]", code, re.M) and r.stdout.strip() == "py:-3 x.py a",
+        f"{r.returncode} {r.stdout!r} {r.stderr!r}")
 T.rm(str(tmp))
 T.finish()

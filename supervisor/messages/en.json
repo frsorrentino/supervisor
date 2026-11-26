@@ -58,7 +58,7 @@
   "install.summary_link": "  web app on this computer: {link}",
   "install.pre_header": "Before starting:",
   "install.pre_claude_ok": "Claude Code: signed in",
-  "install.pre_claude_missing": "Claude Code not found. Fix: curl -fsSL https://raw.githubusercontent.com/frsorrentino/supervisor/main/install.sh | bash",
+  "install.pre_claude_missing": "Claude Code not found. Install it as its documentation says, https://code.claude.com/docs/en/setup, then run setup again",
   "install.pre_claude_login_ask": "Claude Code is not signed in to your account yet. Sign in now? (the browser opens, or a link to open)",
   "install.pre_claude_no_login": "Claude Code is not signed in: the master cannot open. Fix: claude auth login, then run this again",
   "install.pre_fb_install_ask": "The phone needs the Firebase CLI (no Node needed). Install it with: {line} ?",
