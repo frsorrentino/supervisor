@@ -762,7 +762,13 @@ def _utc_epoch(ts):
 
 
 def ci_state(project, commit, now=None):
-    """(state, at) della CI di GitHub per il commit: run, ok, ko, o todo (nessuna run, gh che manca o non risponde)."""
+    """(state, at) della CI di GitHub per il commit: run, ok, ko, o todo (nessuna run, gh che manca o non risponde).
+
+    26/11/2026 (supervisor-tappe-ci-successiva-26-11): vale l'ultimo commit con run del ramo che contiene quello del compito,
+    non solo quello del compito. Caso vero: app-animazioni-passi-26-11, commit 136c0229, la sua run fallita per un golden
+    mancante, preso nel commit dopo (98ed9c23, verde): la riga diceva ancora CI ✕. Una sola chiamata a gh (le run recenti
+    del repository, con headSha); fra i commit che hanno run, quelli che contengono il commit del compito (lui compreso,
+    git merge-base --is-ancestor); del piu' recente: una run in corso = run, una fallita = ko, tutte riuscite = ok."""
     now = time.time() if now is None else now
     hit = _STEPS_CI.get(commit)
     if hit and now - hit[0] < STEPS_CI_TTL_S:
@@ -771,16 +777,32 @@ def ci_state(project, commit, now=None):
     gh = shutil.which(str((CFG.get("relay") or {}).get("gh_bin") or "gh"))
     if gh:
         try:
-            p = subprocess.run([gh, "run", "list", "--commit", commit, "--limit", "30", "--json", "status,conclusion,updatedAt"],
+            p = subprocess.run([gh, "run", "list", "--limit", "50", "--json", "status,conclusion,updatedAt,createdAt,headSha"],
                                cwd=str(project), capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
             runs = json.loads(p.stdout) if p.returncode == 0 and p.stdout.strip().startswith("[") else []
         except (OSError, subprocess.SubprocessError, ValueError):
             runs = []
-        at = max((_utc_epoch(r.get("updatedAt")) for r in runs), default=0) or None
-        if runs:
-            if any(r.get("status") != "completed" for r in runs):
+        heads = {}
+        for r in runs if isinstance(runs, list) else []:
+            h = str(r.get("headSha") or "")
+            if h:
+                heads.setdefault(h, []).append(r)
+
+        def contains(h):
+            if h.startswith(commit) or commit.startswith(h):
+                return True
+            try:
+                return subprocess.run(["git", "-C", str(project), "merge-base", "--is-ancestor", commit, h], capture_output=True,
+                                      timeout=10).returncode == 0
+            except (OSError, subprocess.SubprocessError):
+                return False
+        mine = [(max(_utc_epoch(r.get("createdAt") or r.get("updatedAt")) for r in rs), h, rs) for h, rs in heads.items() if contains(h)]
+        if mine:
+            _, _, rs = max(mine)
+            at = max((_utc_epoch(r.get("updatedAt")) for r in rs), default=0) or None
+            if any(r.get("status") != "completed" for r in rs):
                 got = ("run", at)
-            elif any(r.get("conclusion") not in ("success", "skipped", "neutral") for r in runs):
+            elif any(r.get("conclusion") not in ("success", "skipped", "neutral") for r in rs):
                 got = ("ko", at)
             else:
                 got = ("ok", at)

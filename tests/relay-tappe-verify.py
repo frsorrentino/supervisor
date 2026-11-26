@@ -90,8 +90,8 @@ con.execute("INSERT INTO prove (task, build, dove, fai, atteso, at) VALUES (?,?,
 task("app-tutto-da-fare-26-11", "gamma", "test, CI")
 task("app-senza-tappe-26-11", "delta", "screenshot")
 con.commit()
-ghout.write_text(json.dumps([{"status": "completed", "conclusion": "success", "updatedAt": "2026-11-26T10:00:00Z"},
-                             {"status": "completed", "conclusion": "success", "updatedAt": "2026-11-26T10:05:00Z"}]))
+ghout.write_text(json.dumps([{"status": "completed", "conclusion": "success", "updatedAt": "2026-11-26T10:00:00Z", "headSha": sha},
+                             {"status": "completed", "conclusion": "success", "updatedAt": "2026-11-26T10:05:00Z", "headSha": sha}]))
 
 RL = load("cm-relay", "_tp")
 RL.MEMO_ON = False
@@ -108,14 +108,15 @@ T.check("TP1 the fixture: test ok (result green), CI ok (the commit's runs passe
 
 b = st.get("beta") or {}
 c1 = RL.ci_state(str(proj), "c-run", now=1) if hasattr(RL, "ci_state") else None
-ghout.write_text(json.dumps([{"status": "in_progress", "conclusion": "", "updatedAt": "2026-11-26T10:00:00Z"}]))
+ghout.write_text(json.dumps([{"status": "in_progress", "conclusion": "", "updatedAt": "2026-11-26T10:00:00Z", "headSha": "c-run2"}]))
 c2 = RL.ci_state(str(proj), "c-run2", now=1) if hasattr(RL, "ci_state") else None
-ghout.write_text(json.dumps([{"status": "completed", "conclusion": "failure", "updatedAt": "2026-11-26T10:00:00Z"}]))
+ghout.write_text(json.dumps([{"status": "completed", "conclusion": "failure", "updatedAt": "2026-11-26T10:00:00Z", "headSha": "c-fail"}]))
 c3 = RL.ci_state(str(proj), "c-fail", now=1) if hasattr(RL, "ci_state") else None
 T.check("TP2 the steps the proof names, in its order (prova, test, pre-release); a tag containing the commit = pre-release ok; an open test = run; CI in progress = run, a failed run = ko",
         [(i["key"], i["state"]) for i in b.get("items") or []] == [("proof", "run"), ("test", "todo"), ("prerelease", "ok")]
         and c2 and c2[0] == "run" and c3 and c3[0] == "ko", f"{b} {c1} {c2} {c3}")
 
+ghout.write_text(json.dumps([{"status": "completed", "conclusion": "failure", "updatedAt": "2026-11-26T10:00:00Z", "headSha": sha}]))
 ghlog.unlink(missing_ok=True)
 if hasattr(RL, "_STEPS_CI"):
     RL._STEPS_CI.clear()
@@ -135,7 +136,7 @@ nogh = RL.ci_state(str(proj), sha) if hasattr(RL, "ci_state") else None
 logf = RL.log_path() if hasattr(RL, "log_path") else tmp / "none"
 calls = ghlog.read_text() if ghlog.exists() else ""
 T.check("TP3 light: gh only for a task with a commit (never for the others), at most once per commit in 60 s, again after; no gh or gh not signed in → todo, nothing in the log",
-        n1 == 1 and sha in calls and n2 == 2 and x1 == "ko" and noauth == ("todo", None) and nogh == ("todo", None)
+        n1 == 1 and "run list" in calls and n2 == 2 and x1 == "ko" and noauth == ("todo", None) and nogh == ("todo", None)
         and not (logf.exists() and "gh" in logf.read_text()), f"{n1} {n2} {x1} {noauth} {nogh} {calls}")
 
 src = {"rows": [{"name": n, "tmux": n, "status": "idle", "session_id": f"s-{n}"} for n in ("supervisor-app", "gamma", "delta", "epsilon")], "steps": st}
