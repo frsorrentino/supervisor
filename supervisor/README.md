@@ -6,6 +6,8 @@
 
 **Who it is for:** people who keep three or more Claude Code sessions open at once, on one machine, with one or two Claude accounts. If you open one session at a time, you do not need it. It runs daily on one workstation (ChromeOS, two accounts, up to eight sessions); the other terminals are supported in code but not yet tried on real hardware.
 
+> **Directory edition.** This copy is the one in Anthropic's plugin directory: it runs everything on the local machine, but not sessions or jobs on other hosts (ssh, Windows), whose helper is only in the full plugin of the `fsorrentino` marketplace.
+
 ## What you get
 
 | you want to… | you type |
