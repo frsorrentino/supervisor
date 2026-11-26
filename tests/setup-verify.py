@@ -54,7 +54,10 @@ ENV = {"PATH": f"{tmp / 'bin'}:{_tmux_dir}:/usr/local/bin:/usr/bin:/bin", "HOME"
        "CM_RELAY_OPEN": "true", "TZ": "Europe/Rome", "CM_SETUP_CRON_RUNNING": "1", "CM_FIREBASE_CMD": str(tmp / "bin" / "no-firebase")}
 CLI = str(T.SCRIPTS / "supervisor")
 conf = home / ".config" / "cc-supervisor" / "config.json"
-bashrc = home / ".bashrc"
+# 26/11/2026 (supervisor-ci-macos-su2-26-11): il file della shell e' quello che setup sceglie per questa piattaforma
+# (SHELL=/bin/bash qui): .bash_profile su macOS, dove ogni Terminale apre una shell di login, .bashrc su Linux (MR7).
+# Col solo .bashrc la CI macOS era rossa da 30 run (FileNotFoundError a SU5).
+bashrc = home / (".bash_profile" if sys.platform == "darwin" else ".bashrc")
 
 
 def setup(*a, timeout=600):
@@ -110,7 +113,7 @@ try:
     T.check("SU2 the config is written with the projects folder; the shim is in ~/.local/bin",
             conf.is_file() and Path(str(cfg.get("workspace", {}).get("root", "")).replace("~", str(home), 1)) == ws
             and (home / ".local" / "bin" / "supervisor").is_file(), out2[-1500:])
-    T.check("SU2 one block in .bashrc: ~/.local/bin on the PATH and the shell integration",
+    T.check(f"SU2 one block in {bashrc.name}: ~/.local/bin on the PATH and the shell integration",
             bashrc.is_file() and bashrc.read_text().count("# supervisor (supervisor setup)") == 1 and ".local/bin" in bashrc.read_text()
             and "cc-supervisor/shell.sh" in bashrc.read_text(), bashrc.read_text() if bashrc.is_file() else "-")
     T.check("SU2 crossSessionInbound accept in the account's settings, the other keys kept, a copy .bak-supervisor",
@@ -144,7 +147,7 @@ try:
     r5 = setup("--yes", "--no-window")
     out5 = r5.stdout + r5.stderr
     sessions = tmux("list-sessions", "-F", "#{session_name}").stdout.split()
-    T.check("SU5 repeatable: the second run keeps the config and the root, adds nothing to .bashrc or the crontab, opens no second master, exits 0",
+    T.check(f"SU5 repeatable: the second run keeps the config and the root, adds nothing to {bashrc.name} or the crontab, opens no second master, exits 0",
             r5.returncode == 0 and cron() == cron_before and bashrc.read_text() == rc_before and sessions.count("master") == 1
             and not any(s.startswith("master-") for s in sessions) and "già presente" in out5 and "master è già aperta" in out5
             and Path(str(json.loads(conf.read_text())["workspace"]["root"]).replace("~", str(home), 1)) == ws,
