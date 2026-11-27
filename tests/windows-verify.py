@@ -5,7 +5,8 @@ P1  py.sh: python3 e' l'alias dello Store (esce 9009) → salta a `python`, espo
 P2  py.sh: la scelta resta in cache (~/.cache/cc-supervisor/python) e vale al giro dopo, senza sonde
 P3  py.sh: nessun Python (python3, python, py tutti rotti) → UNA riga su stderr, niente stdout, uscita 0
 P4  py.sh: CC_SUPERVISOR_PY vince su cache e sonde
-P5  hooks.json: ogni hook di cm-hook.py passa da scripts/py.sh (SessionEnd da detach.sh, che usa py.sh), nessun `python3` nudo
+P5  hooks.json: ogni hook di cm-hook.py passa da scripts/py.sh (SessionEnd da detach.sh, che usa py.sh), nessun `python3` nudo;
+    nell'edizione per la directory l'unica eccezione e' PermissionRequest in forma exec (python3 + args, chiesta dal portale)
 H1  cm-hook.py con os.name == "nt": il primo SessionStart stampa una riga (WSL2) ed esce 0, senza caricare la config
 H2  cm-hook.py su Windows: il secondo SessionStart e Stop/UserPromptSubmit/PostToolUse/SessionEnd tacciono, uscita 0
 C1  CLI con uname MINGW: un comando qualunque → una riga su stderr, niente stdout, uscita 3, nessun python avviato
@@ -76,6 +77,10 @@ T.check("P4 CC_SUPERVISOR_PY wins", r.returncode == 0 and r.stdout.strip() == "o
 hooks = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
 cmds = [h["command"] for groups in hooks.values() for g in groups for h in g["hooks"]]
 cm = [c for c in cmds if "cm-hook.py" in c]
+# 27/11/2026 (edizione per la directory, supervisor-directory-hook-credenziali-26-11): PermissionRequest in forma exec, senza
+# shell, come chiede il portale; su Windows nativo gli hook sono spenti, e un python3 che e' solo l'alias dello Store fa
+# segnalare a Claude Code l'hook fallito (il dialogo va avanti)
+execf = [(ev, h["command"], h.get("args")) for ev, groups in hooks.items() for g in groups for h in g["hooks"] if "args" in h]
 # SessionEnd passa da detach.sh, che lancia py.sh staccato (2.1.287: 1,5 s per tutti gli hook di session.end)
 # 24/10/2026 (1.83): nove con Elicitation ed ElicitationResult
 # 16/11/2026 (supervisor-hook-lenti-16-11): PostToolUse e la guardia di PreToolUse passano da cm-fast.sh, che decide in
@@ -84,8 +89,9 @@ fast = [c for c in cmds if "cm-fast.sh" in c]
 T.check("P5 the fast door (cm-fast.sh: PostToolUse, and the lane guard on Bash and Monitor) starts python through py.sh, never bare",
         sorted(c.rsplit(" ", 1)[1] for c in fast) == ["post", "pre", "pre"] and "py.sh" in (T.SCRIPTS / "cm-fast.sh").read_text()
         and "python3" not in (T.SCRIPTS / "cm-fast.sh").read_text().replace("# ", ""), json.dumps(fast))
-T.check("P5 every cm-hook.py hook runs through scripts/py.sh (SessionEnd through detach.sh, which runs py.sh)",
-        len(cm) == 8 and all(c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" ')
+T.check("P5 every cm-hook.py hook runs through scripts/py.sh (SessionEnd through detach.sh, which runs py.sh), except PermissionRequest in exec form (directory edition)",
+        len(cm) == 7 and execf == [("PermissionRequest", "python3", ["${CLAUDE_PLUGIN_ROOT}/scripts/cm-hook.py", "PermissionRequest"])]
+        and all(c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" ')
                              or (c.startswith('bash "${CLAUDE_PLUGIN_ROOT}/scripts/detach.sh" ') and c.endswith(" SessionEnd"))
                              for c in cm)
         and 'py.sh' in (T.SCRIPTS / "detach.sh").read_text(), json.dumps(cm)[:400])
