@@ -1954,8 +1954,8 @@ def approve_task(cmd, arg):
     if live and (isinstance(n, bool) or not isinstance(n, int) or n < 2):
         return False, M("relay.cmd_approve_live_needs_two", task=tid or "?")
     entry = next((a for a in approvals_list() if a["task"] == tid), None) if re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid) else None
-    if entry is None:
-        return False, M("relay.cmd_approve_not_waiting", task=tid or "?")
+    if entry is None:   # 26/11/2026 (supervisor-standby-26-11, contratto 1.163): senza carta, una pausa per la persona vale come `task ok`
+        return _approve_pause(cmd, tid) or (False, M("relay.cmd_approve_not_waiting", task=tid or "?"))
     # 1.81 (23/10): un compito che chiede una scelta vuole `choice`, una delle sue `options`; senza opzioni, niente choice
     opts = entry.get("options") or []
     choice = S.one_line(str(cmd.get("choice") or "")).strip()[:24] if isinstance(cmd.get("choice"), str) else ""
@@ -1985,6 +1985,66 @@ def approve_task(cmd, arg):
         con.close()
     wake_after_approve(tid, text)
     return True, M("relay.cmd_approved_choice", task=tid, choice=choice) if choice else M("relay.cmd_approved", task=tid)
+
+
+def _answer_pause(con, tk, tid, cmd):
+    """La risposta «ok» della persona a una pausa che la aspetta, registrata come `task ok` (la pausa chiusa con «Tutto
+    va», il controllo se era una prova, la sessione e la master avvisate). (ok, testo) o (False, motivo)."""
+    text = S.one_line(str(cmd.get("text") or cmd.get("reason") or "").strip())[:500] or "ok"
+    try:
+        tk.answer(con, [tid], str(cmd.get("by") or "app"), text, origin=from_device(cmd))
+    except SystemExit as e:
+        return False, fail_line(str(e), "task ok failed")
+    return True, None
+
+
+def _approve_pause(cmd, tid):
+    """26/11/2026 (supervisor-standby-26-11, contratto 1.163): l'ok dell'app a un compito senza carta (approvals vuoto) ma in pausa per la persona.
+    Prima rispondeva «non aspetta un ok» e l'ok del maintainer su supervisor-app-pulizia-nomi-29-10 non si e' mai registrato.
+    None se il compito non e' cosi'."""
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid):
+        return None
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT state FROM tasks WHERE id=?", (tid,)).fetchone()
+        if row is None or row["state"] not in tk.OPEN_STATES or row["state"] == "awaiting_ok" or not tk._person_pause(con, tid):
+            return None
+        ok, why = _answer_pause(con, tk, tid, cmd)
+    finally:
+        con.close()
+    return (True, M("relay.cmd_decisione_ok", n=1)) if ok else (False, why)
+
+
+def standby_op(cmd, arg):
+    """26/11/2026 (supervisor-standby-26-11, contratto 1.163), concordata con supervisor-app): «Stand by» e «Riprendi». arg = il compito, on true lo
+    mette in stand by (`task standby`), on false lo toglie; reason facoltativo. Nello stato: commitments[].paused.waits
+    = "standby", paused.at da quando."""
+    why = _touch_refused(cmd, "standby")
+    if why:
+        return False, why
+    tid, on = str(arg or "").strip(), cmd.get("on")
+    if not isinstance(on, bool):
+        return False, M("relay.cmd_standby_bad_on")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", tid):
+        return False, M("relay.cmd_standby_not_open", task=tid or "?")
+    reason = S.one_line(str(cmd.get("reason") or "").strip())[:300] if isinstance(cmd.get("reason"), str) else ""
+    tk = _load("cm-tasks")
+    con = tk.connect(create=False)
+    if con is None:
+        return False, M("relay.cmd_standby_not_open", task=tid)
+    try:
+        done = tk.standby_set(con, tid, on, str(cmd.get("by") or "app"),
+                              reason or M("tasks.standby_reason", person=M("tasks.person"), device=from_device(cmd)))
+    finally:
+        con.close()
+    if done is None:
+        return False, M("relay.cmd_standby_not_open", task=tid)
+    if not done:
+        return False, M("relay.cmd_standby_not_in", task=tid)
+    return True, M("relay.cmd_standby_on" if on else "relay.cmd_standby_off", task=tid)
 
 
 def wake_after_approve(tid, text):
@@ -2404,7 +2464,7 @@ def decisione_op(cmd, arg):
     if why:
         return False, why
     action, key = cmd.get("action"), str(arg or "").strip()
-    if action not in ("not_now", "drop", "provato", "non_va"):
+    if action not in ("not_now", "drop", "provato", "non_va", "ok"):   # 1.163: ok = la risposta della persona, come `task ok`
         return False, M("relay.cmd_decisione_bad_action")
     reason = S.one_line(str(cmd.get("reason") or "").strip())[:300] if isinstance(cmd.get("reason"), str) else ""
     if action in ("drop", "non_va") and not reason:
@@ -2424,6 +2484,15 @@ def decisione_op(cmd, arg):
             h = h if isinstance(h, int) and not isinstance(h, bool) and 1 <= h <= SNOOZE_MAX_H else tk.SNOOZE_DEFAULT_H
             tk.decision_snooze(con, key, g["refs"], by, h, reason or None)
             return True, M("relay.cmd_decisione_snoozed", hours=h)
+        if action == "ok":
+            paused = [i for i in g["items"] if i["kind"] == "pause" and i.get("task")]
+            if not paused:
+                return False, M("relay.cmd_decisione_no_pause")
+            for i in paused:
+                ok, why = _answer_pause(con, tk, i["task"], cmd)
+                if not ok:
+                    return False, why
+            return True, M("relay.cmd_decisione_ok", n=len(paused))
         if action in ("provato", "non_va"):
             paused = [i for i in g["items"] if i["kind"] == "pause" and i.get("task")]
             if not paused:
@@ -3000,6 +3069,8 @@ def execute(cmd):
             return decisioni_op()
         if op == "decisione":   # 1.99
             return decisione_op(cmd, arg)
+        if op == "standby":   # 1.163
+            return standby_op(cmd, arg)
         if op == "conti":   # 1.103
             return True, json.dumps(conti_op(cmd, arg), ensure_ascii=False)
         if op == "conti_azione":   # 1.103

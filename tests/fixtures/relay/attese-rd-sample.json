@@ -1,7 +1,7 @@
 {
   "attese": {
     "at": 1794850200,
-    "rev": "e4eaf1f0b9",
+    "rev": "0473160574",
     "items": [
       {
         "id": "wd44db7b16f",
@@ -155,6 +155,16 @@
               "action": "drop"
             },
             "text_field": "reason"
+          },
+          {
+            "label": "Stand by",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "standby",
+              "arg": "app-x",
+              "on": true
+            }
           }
         ],
         "blocking": true
@@ -234,6 +244,16 @@
               "result": "ko"
             },
             "text_field": "text"
+          },
+          {
+            "label": "Stand by",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "standby",
+              "arg": "app-y",
+              "on": true
+            }
           }
         ],
         "blocking": true
@@ -405,7 +425,7 @@
   },
   "state": {
     "attese": {
-      "rev": "e4eaf1f0b9",
+      "rev": "0473160574",
       "n": 6,
       "closed": []
     },

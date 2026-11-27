@@ -880,18 +880,25 @@ T.check("LG6 the contract's sample: a login item with the keys the code sends, r
 # che contiene il commit di un compito in corso senza prova: `task unproven` lo trova, la guardia avvisa la sessione
 _up = tmp / "up-repo"
 _up.mkdir()
-def _ug(*a, when=None):
+def _ug(*a, when=None, repo=None):
     e = dict(_genv, **({"GIT_COMMITTER_DATE": when, "GIT_AUTHOR_DATE": when} if when else {}))
-    return subprocess.run(["git", "-C", str(_up), *a], capture_output=True, text=True, env=e, check=True).stdout
+    return subprocess.run(["git", "-C", str(repo or _up), *a], capture_output=True, text=True, env=e, check=True).stdout
+def _uc(msg, when=None, files=("src/a.txt",), repo=None):   # 26/11/2026: un commit conta solo se cambia qualcosa fuori da docs/
+    for f in files:
+        q = (repo or _up) / f
+        q.parent.mkdir(parents=True, exist_ok=True)
+        q.write_text(q.read_text() + msg + "\n" if q.exists() else msg + "\n")
+        _ug("add", f, repo=repo)
+    _ug("commit", "-q", "-m", msg, when=when, repo=repo)
 _iso_l = lambda t: time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t))  # noqa: E731
 _n = int(time.time())
 _ug("init", "-q", "-b", "main")
-_ug("commit", "-q", "--allow-empty", "-m", "fix: old work (up-old)", when=_iso_l(_n - 3 * 86400)); _ug("tag", "old-tag")
-_ug("commit", "-q", "--allow-empty", "-m", "fix: the menu (up-run, up-paused, up-proved)", when=_iso_l(_n - 7200))
-_ug("commit", "-q", "--allow-empty", "-m", "fix: the menu again (up-run-2)", when=_iso_l(_n - 7100))
+_uc("fix: old work (up-old)", when=_iso_l(_n - 3 * 86400)); _ug("tag", "old-tag")
+_uc("fix: the menu (up-run, up-paused, up-proved)", when=_iso_l(_n - 7200))
+_uc("fix: the menu again (up-run-2)", when=_iso_l(_n - 7100))
 _ug("tag", "menu-pre")
-_ug("commit", "-q", "--allow-empty", "-m", "fix: the web only (up-web)", when=_iso_l(_n - 600))
-_ug("commit", "-q", "--allow-empty", "-m", "fix: after the deploy (up-late)", when=_iso_l(_n - 60))
+_uc("fix: the web only (up-web)", when=_iso_l(_n - 600))
+_uc("fix: after the deploy (up-late)", when=_iso_l(_n - 60))
 for _t in ("up-old", "up-run", "up-paused", "up-proved", "up-web", "up-late", "up-none"):
     add_in(_t, _up, session="app")
 cm("pause", "up-paused", "--reason", "Serve una scelta", "--waits", "person")
@@ -910,6 +917,27 @@ T.check("UP3 a web published today by the project (a deploy seen by the relay) a
         _unp.get("up-web", {}).get("kind") == "web" and _unp["up-web"]["build"] is None and "up-late" not in _unp, str(_unp.get("up-web")))
 cm("prova", "up-run", "--build", "menu-pre", "--dove", "home", "--fai", "tocca", "--atteso", "si apre")
 T.check("UP4 once the test is registered the task is no longer listed", "up-run" not in {x["task"] for x in json.loads(cm("unproven", "--json")[1])}, "")
+
+# 26/11/2026 (supervisor-standby-26-11): un tag di tasks.unproven_ignore_tags (default directory-*, le edizioni per la
+# directory) non e' un'uscita da provare; un commit che cambia solo docs/ non conta, uno che cambia anche altro si'
+_up2 = tmp / "up2-repo"
+_up2.mkdir()
+_ug("init", "-q", "-b", "main", repo=_up2)
+_uc("docs: the notes (up-docs)", when=_iso_l(_n - 3000), files=("docs/notes.md",), repo=_up2)
+_uc("fix: notes and code (up-mix)", when=_iso_l(_n - 2900), files=("docs/notes.md", "src/b.txt"), repo=_up2)
+_ug("tag", "pre-2", repo=_up2)
+_uc("fix: the edition (up-dir)", when=_iso_l(_n - 2800), repo=_up2)
+_ug("tag", "-a", "-m", "edition", "directory-0.8.1", repo=_up2)
+for _t in ("up-docs", "up-mix", "up-dir"):
+    add_in(_t, _up2, session="app")
+_c = _sq()
+_c.execute("UPDATE tasks SET state='running' WHERE id IN ('up-docs', 'up-mix', 'up-dir')")
+_c.commit(); _c.close()
+_unp2 = {x["task"]: x for x in json.loads(cm("unproven", "--json")[1])}
+T.check("UP5 a commit inside only a directory-* tag (an edition for the plugin directory) is not listed",
+        "up-dir" not in _unp2, str(_unp2.get("up-dir")))
+T.check("UP6 a commit that changes only docs/ is not listed; one that changes docs/ and code is (kind release, its tag)",
+        "up-docs" not in _unp2 and _unp2.get("up-mix", {}).get("kind") == "release" and _unp2["up-mix"]["build"] == "pre-2", str(sorted(_unp2)))
 
 
 # ------------------------------------------------------------------ una prova per numero (supervisor-prova-numero-10-11, contratto 1.134)
@@ -1022,5 +1050,75 @@ T.check("RT2 retiring is for one test at a time, a test already retired is gone;
 _cli = cm("prova-ritira", str(_rb), "--by", "tester", "--reason", "doppione")
 T.check("RT3 the same from the terminal: task prova-ritira N --by B [--reason T]; the task stays open with no test to do",
         _cli[0] == 0 and ids_of("rt1") == [] and show("rt1")["state"] in ("running", "assigned"), str(_cli))
+
+
+# ------------------------------------------------------------------ stand by (supervisor-standby-26-11, contratto 1.163)
+# the maintainer, 26/11/2026 dal telefono: «film e albo sono in stand by, servirebbe possibilità di indicare stand by che li rimuova
+# da per te … pulizia ho provato tante volte a dare l'ok ma non ha mai funzionato»
+_sbrepo = tmp / "sb-repo"
+_sbrepo.mkdir()
+for _t in ("sb-film", "sb-ok", "sb-dec", "sb-run"):
+    add_in(_t, _sbrepo, session="app")
+_c = _sq()
+_c.execute("UPDATE tasks SET state='assigned' WHERE id IN ('sb-film', 'sb-ok', 'sb-dec', 'sb-run')")
+for _t in ("sb-film", "sb-ok", "sb-dec", "sb-run"):   # un ok registrato: sono negli impegni
+    _c.execute("INSERT INTO approvals (task, plan, by_, at, text, what) VALUES (?, NULL, 'tester', ?, 'ok', 'il piano')", (_t, int(time.time())))
+_c.commit(); _c.close()
+cm("pause", "sb-film", "--reason", "Serve una scelta sul film", "--waits", "person")
+_in_dec = lambda tid: group_of(tid) is not None  # noqa: E731
+_imp = lambda tid: next((x for x in json.loads(cm("impegni", "--json")[1]) if x["task"] == tid), None)  # noqa: E731
+T.check("SB0 before: a pause for the person is in the decisions and waits on the person (Per te)",
+        _in_dec("sb-film") and _imp("sb-film")["waits"]["on"] == "person", str(_imp("sb-film")))
+_r = cm("standby", "sb-film", "--by", "tester")
+_i = _imp("sb-film")
+T.check("SB1 task standby ID: out of the decisions and of Per te (waits not on the person), paused.waits standby with its time",
+        _r[0] == 0 and not _in_dec("sb-film") and _i["waits"]["on"] != "person" and _i["paused"]["waits"] == "standby"
+        and isinstance(_i["paused"]["at"], int) and not _i["stalled"], str(_i))
+_l = json.loads(cm("standby", "--json")[1])
+T.check("SB2 task standby lists the tasks in stand by apart, with since and reason; a task not in stand by is not there",
+        [x["task"] for x in _l] == ["sb-film"] and _l[0]["since"] and _l[0]["reason"].startswith("Stand by"), str(_l))
+cm("resume", "sb-film")
+T.check("SB3 task resume takes it out of stand by", json.loads(cm("standby", "--json")[1]) == [] and _imp("sb-film")["paused"] is None, "")
+_r4 = cm("pause", "sb-run", "--reason", "messo da parte", "--waits", "standby")
+T.check("SB4 task pause --waits standby is the same stand by; --waits anything else is refused",
+        _r4[0] == 0 and [x["task"] for x in json.loads(cm("standby", "--json")[1])] == ["sb-run"] and cm("pause", "sb-run", "--reason", "x", "--waits", "boh")[0] != 0, str(_r4))
+cm("resume", "sb-run")
+
+_s1 = RL.standby_op(dict(PHONE, on=True), "sb-film")
+_i = _imp("sb-film")
+T.check("SB5 op standby on true from the phone: in stand by, the reason says who and from where",
+        _s1[0] is True and _i["paused"]["waits"] == "standby" and not _in_dec("sb-film") and _i["paused"]["reason"].startswith("Stand by"), str((_s1, _i["paused"])))
+_s2 = RL.standby_op(dict(PHONE, on=False), "sb-film")
+T.check("SB6 op standby on false: back, no pause open", _s2[0] is True and _imp("sb-film")["paused"] is None, str(_s2))
+T.check("SB7 refused: on missing or not a bool, a task not open, on false on a task not in stand by, a command with no device",
+        RL.standby_op(dict(PHONE), "sb-film")[0] is False and RL.standby_op(dict(PHONE, on="yes"), "sb-film")[0] is False
+        and RL.standby_op(dict(PHONE, on=True), "sb-nessuno")[0] is False and RL.standby_op(dict(PHONE, on=False), "sb-film")[0] is False
+        and RL.standby_op({"by": "x", "on": True}, "sb-film")[0] is False and "standby" in RL.OPS, "")
+
+# l'ok dell'app a un compito senza carta, in pausa per la persona (supervisor-app-pulizia-nomi-29-10)
+cm("pause", "sb-ok", "--reason", "Dai l'ok alla pulizia dei nomi", "--waits", "person")
+_a = RL.approve_task(dict(PHONE, text="ok pulizia nomi"), "sb-ok")
+_sh = show("sb-ok")
+T.check("SB8 approve on a task with no card but a pause for the person: recorded as task ok (pause closed, confirmation), no longer in the decisions",
+        _a[0] is True and _imp("sb-ok")["paused"] is None and not _in_dec("sb-ok")
+        and any(x.get("what") == "confirmed" for x in _sh.get("approvals") or []), str((_a, _sh.get("approvals"))))
+T.check("SB9 approve on a task with no card and no pause still says it is not waiting", RL.approve_task(dict(PHONE), "sb-run")[0] is False, "")
+cm("pause", "sb-dec", "--reason", "Decidi il nome del pacchetto", "--waits", "person")
+_g = group_of("sb-dec")
+_d = RL.decisione_op(dict(PHONE, action="ok"), _g["key"])
+T.check("SB10 decisione action ok on a pause for the person: the answer recorded as task ok, the group gone",
+        _d[0] is True and _imp("sb-dec")["paused"] is None and group_of("sb-dec") is None, str(_d))
+
+_AT = RL._load("cm-attese")
+_pa = {"kind": "pausa", "task": "sb-dec", "session": "app", "answer": {"op": "decisione", "arg": "kx"}, "decision": {"key": "kx"}}
+_acts = _AT._actions(_pa)
+_okc = {"kind": "ok", "task": "sb-dec", "session": "app", "answer": {"op": "approve", "arg": "sb-dec"}, "decision": {"key": "kx"}}
+_acts2 = _AT._actions(_okc)
+_lg = _AT._actions({"kind": "login", "task": None, "answer": None, "decision": {"key": "kx"}})
+T.check("SB11 a pause item for the person: «Ok» first (decisione ok, primary), then Reply; every task item ends with «Stand by» (op standby, on true); a login has none",
+        _acts[0]["cmd"] == {"session": None, "op": "decisione", "arg": "kx", "action": "ok"} and _acts[0]["style"] == "primary"
+        and _acts[1]["cmd"]["op"] == "prompt" and _acts[1]["style"] != "primary"
+        and _acts[-1]["cmd"] == {"session": None, "op": "standby", "arg": "sb-dec", "on": True} and _acts2[-1]["cmd"]["op"] == "standby"
+        and not any(a["cmd"].get("op") == "standby" for a in _lg), str(_acts))
 
 T.finish()

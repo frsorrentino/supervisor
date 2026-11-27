@@ -134,8 +134,9 @@ ok1, pv1, rc1 = by.get("ok") or {}, by.get("prova") or {}, by.get("raccolta") or
 key1 = (ok1.get("decision") or {}).get("key")
 T.check("RD1 a registry item carries its decision group (key, title, weight, where) and «Non ora» (24 h) and «Lascia perdere» (with the reason), as in op decisioni",
         bool(key1) and (ok1.get("decision") or {}).get("weight") == 1 and (ok1.get("decision") or {}).get("where") == "here" and ok1.get("asks") == "ok"
-        and acts(ok1)[-2:] == [("decisione", key1, "not_now"), ("decisione", key1, "drop")] and ok1["actions"][-2]["cmd"].get("hours") == 24
-        and ok1["actions"][-1].get("text_field") == "reason" and acts(ok1)[0] == ("approve", "rd-ok", None), json.dumps(ok1, ensure_ascii=False)[:900])
+        and acts(ok1)[-3:-1] == [("decisione", key1, "not_now"), ("decisione", key1, "drop")] and ok1["actions"][-3]["cmd"].get("hours") == 24
+        and ok1["actions"][-2].get("text_field") == "reason" and acts(ok1)[-1][:2] == ("standby", "rd-ok")   # 1.163: Stand by in fondo
+        and acts(ok1)[0] == ("approve", "rd-ok", None), json.dumps(ok1, ensure_ascii=False)[:900])
 T.check("RD1 a prova carries each test (id, build, dove, fai, atteso, state todo) and its build: the app says «installa prima» for another version",
         [(t["build"], t["dove"], t["fai"], t["atteso"], t["state"]) for t in pv1.get("tests") or []] == [("b1", "home", "apri la home", "si vede", "todo")]
         and pv1.get("build") == "b1" and pv1.get("label") == "verify", json.dumps(pv1, ensure_ascii=False)[:700])

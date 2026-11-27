@@ -222,7 +222,7 @@ SRC1 = {
     "host": "crostini-demo", "root": ROOT_WS, "prefixes": ["work-"], "high_words": None,
     "rows": [
         {"name": "work-ledger-api", "tmux": "work-ledger-api", "low_priority": "offered", "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/clients/ledger-api", "status": "waiting", "waiting": True, "session_id": "9e9c87fb-edcd-4c51-8c62-328c0146019b", "link": "https://claude.ai/code/session_01ledger", "attached": False, "started_at": 1789210000000},
-        {"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "active", "suggestion": "stale text from before the turn", "goal_status": {"text": "Checkout tests green, release tagged", "since": 1789210700, "met": False}, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "busy", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_02atlas", "attached": True, "started_at": 1789209000000},
+        {"name": "atlas-shop", "tmux": "atlas-shop", "low_priority": "active", "suggestion": "stale text from before the turn", "goal_status": {"text": "Checkout green, tagged", "since": 1789210700, "met": False}, "account": "personal", "cwd": ROOT_WS + "/personal/atlas-shop", "status": "busy", "waiting": False, "session_id": "f61903c0-ea6a-409c-a961-d01126a0f3ad", "link": "https://claude.ai/code/session_02atlas", "attached": True, "started_at": 1789209000000},
         {"name": "field-notes", "tmux": "field-notes", "low_priority": "off", "suggestion": "commit the README changes and open a PR", "goal_status": None, "account": "personal", "cwd": ROOT_WS + "/personal/field-notes", "status": "idle", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000003", "link": "https://claude.ai/code/session_03fieldnotes", "attached": False, "started_at": 1789120000000},
         {"name": "work-orbit-docs", "tmux": "work-orbit-docs", "low_priority": None, "goal_status": None, "account": "work", "cwd": ROOT_WS + "/work/own/orbit-docs", "status": "dead", "waiting": False, "session_id": "3d1b2c4e-0000-4000-8000-000000000004", "link": "", "attached": False, "visto_ts": 1789200000},
     ],
@@ -339,7 +339,7 @@ T.check("R13 (1.17) an empty queue still carries night.items = [] (its presence 
 T.check("R20 (1.23) suggestion: the idle session carries its dim suggestion; the busy one gets null even if its row had one; waiting and gone null",
         [(x["name"], x["suggestion"]) for x in st1["sessions"]] == [("ledger-api", None), ("atlas-shop", None), ("field-notes", "commit the README changes and open a PR"), ("orbit-docs", None)], str([(x["name"], x["suggestion"]) for x in st1["sessions"]]))
 T.check("R12 (1.16) state-1: low_priority offered/active/off/null and goal {text, since, met} on the busy session, null elsewhere",
-        [x["low_priority"] for x in st1["sessions"]] == ["offered", "active", "off", None] and st1["sessions"][1]["goal"] == {"text": "Checkout tests green, release tagged", "since": 1789210700, "met": False} and all(x["goal"] is None for i, x in enumerate(st1["sessions"]) if i != 1), str([(x["low_priority"], x["goal"]) for x in st1["sessions"]]))
+        [x["low_priority"] for x in st1["sessions"]] == ["offered", "active", "off", None] and st1["sessions"][1]["goal"] == {"text": "Checkout green, tagged", "since": 1789210700, "met": False} and all(x["goal"] is None for i, x in enumerate(st1["sessions"]) if i != 1), str([(x["low_priority"], x["goal"]) for x in st1["sessions"]]))
 _lp = SES.low_priority_on_screen
 T.check("R12 (1.16) the screen decides: «Working at lower priority» → active, «/low-priority to continue now at lower priority» → offered, the menu line «Continue now at lower priority» → offered, a plain screen → off, no screen → null",
         _lp("x", "…\n  Working at lower priority · waiting for capacity\n") == "active" and _lp("x", "Usage limit reached · /low-priority to continue now at lower priority · uses your weekly limit") == "offered"
@@ -388,7 +388,7 @@ SRC2["elicitations"] = F2["elicitations"]   # 1.83: le domande dei server MCP pa
 # 1.84 (24/10): tre suggerimenti della master di tipo diverso, i token di oggi su due account, e una richiesta per la persona
 # che la master ha legato a un compito di atlas-shop (needs-you --task)
 SRC2["suggestions"] = [
-    {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "ledger-api invoice due Friday",
+    {"id": "s-8b3f6a1d47", "kind": "deadline", "key": "deadline:ledger-invoice-2026-09", "text": "invoice due Friday",
      "prompt": "Prepare the September invoice for ledger-api", "at": 1789207180, "expires_at": 1789250380, "rank": 2, "source": "master"},
     {"id": "s-a41c7e2b90", "kind": "recurring", "key": "recurring:night-report", "text": "Night report ready",
      "prompt": "Read me last night's report", "at": 1789207200, "expires_at": 1789250400, "rank": 6, "source": "master"},
@@ -428,7 +428,7 @@ SRC3["closed"] = {"work-orbit-docs": {"name": "orbit-docs", "tmux": "work-orbit-
                                       "reason": "salvataggio scaduto"}}   # 1.155: «Salva e chiudi» scaduto
 # 1.88 (27/10): la coda dei suggerimenti — una voce per ciascuno dei sei tipi nuovi (state-2 e' gia' vicino agli 8 KB)
 SRC3["suggestions"] = [
-    {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing copy: the short one or the full one?",
+    {"id": "s-1c0a7e5f21", "kind": "choice", "key": "choice:pricing-copy", "text": "Pricing copy: short or full?",
      "prompt": "For the pricing page the maintainer picks {choice}: go ahead", "at": 1789199500, "expires_at": 1789242700, "rank": 2, "source": "master", "options": ["Short", "Full"]},
     {"id": "s-2d9b4c7e30", "kind": "followup", "key": "followup:atlas-shop:5e1f0a2b", "text": "atlas-shop idle, next: Open the PR for the checkout fix",
      "prompt": "A next step left halfway in session atlas-shop", "at": 1789199400, "expires_at": 1789293000, "rank": 4, "source": "script"},
@@ -1763,7 +1763,7 @@ _sg72.write_text(json.dumps({"items": [dict(x, prompt=_pr72[x["id"]], at=_now72 
 _d72 = json.loads(relay("push", "--dry-run").stdout)
 T.check("R72 (1.84) push: state.suggestions from suggestions.json, newest first, with the fixture's fields, an expired one left out; usage_today is a list; ops end with suggestion, close_preview, close; only close_preview is a passive read",
         [x["id"] for x in _d72.get("suggestions") or []] == [x["id"] for x in F2["suggestions"]] and all(list(x) == list(F2["suggestions"][0]) for x in _d72["suggestions"])
-        and isinstance(_d72.get("usage_today"), list) and R_OPS[-31:-28] == ["suggestion", "close_preview", "close"] and all(s["ops"][-31:-28] == R_OPS[-31:-28] for s in (F1, F2, F3))
+        and isinstance(_d72.get("usage_today"), list) and R_OPS[-32:-29] == ["suggestion", "close_preview", "close"] and all(s["ops"][-32:-29] == R_OPS[-32:-29] for s in (F1, F2, F3))
         and "close_preview" in RL.PASSIVE_OPS and "close" not in RL.PASSIVE_OPS and "suggestion" not in RL.PASSIVE_OPS, str(_d72.get("suggestions"))[:300])
 _n72 = len(cm_calls())
 r72a = send_cmd(CM184[0])
@@ -3766,7 +3766,7 @@ T.check("R60 (1.74) nights: {nights: [{date, title, generated_at, v}]}, newest f
         _two60[0] is True and json.loads(_two60[1]) == json.loads(_res60["6f1c2d3e-0750-4000-8000-0000000000750"]["text"])
         and json.loads(_two60[1])["nights"][0]["title"] == _v2["title"], str(_two60)[:300])
 T.check("R60 (1.74) nights with no report → ok with nights [], as the fixture's …0751", _empty60 == (True, _res60["6f1c2d3e-0751-4000-8000-0000000000751"]["text"]), str(_empty60))
-T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-34] == "nights"
+T.check("R60 (1.74) nights is a passive read in ops, last before the 1.84 ops, sys_kill (1.90), sys_unit_stop (1.91), the plugin ops (1.95), kpi (1.96) and home_order (1.97); /state does not carry it", "nights" in RL.PASSIVE_OPS and RL.OPS[-35] == "nights"
         and "nights" not in S.build_state({}, 1) and "nights" not in S.build_state({}, 1).get("night", {}), "")
 
 # R64 (contratto 1.77, 22/10, blocco «Fatto» della pagina Lavori): op done — i compiti chiusi per giorno con la prova, i giorni prima, senza registro
@@ -3795,7 +3795,7 @@ finally:
     RL.run_cm = _rc64
 T.check("R64 (1.77) rows beyond 60 KB are cut from the end and more is true; done is a passive read, the last read in ops but close_preview (1.83: elicit after it; 1.84: suggestion, close_preview, close), absent from /state; the fixtures carry it there",
         _cut64["more"] is True and 0 < len(_cut64["rows"]) < 400 and len(json.dumps(_cut64, ensure_ascii=False).encode()) <= RL.DONE_MAX_BYTES and _cut64["rows"][0]["task"] == "t-0000"
-        and "done" in RL.PASSIVE_OPS and RL.OPS[-33] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-33:-31] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
+        and "done" in RL.PASSIVE_OPS and RL.OPS[-34] == "done" and "done" not in S.build_state({}, 1) and all(s["ops"][-34:-32] == ["done", "elicit"] for s in (F1, F2, F3)), str(len(_cut64["rows"])))
 T.check("R64 (1.77) state-3: the paused orbit-docs-site waits for the person (waits.on person, who = its session), paused.at is the real start (before the pause step), never stalled",
         F3["commitments"][0]["waits"] == {"who": "orbit-docs", "on": "person"} and F3["commitments"][0]["paused"]["at"] < F3["commitments"][0]["last_step"]["at"] and F3["commitments"][0]["stalled"] is False, str(F3["commitments"][0]))
 
@@ -4359,7 +4359,7 @@ T.check("R94 kpi_tasks kpi_waits (1.96) the fixture: op kpi gives at and the six
         list(_s94) == ["at", "kpi_tasks", "kpi_checks_week", "kpi_turns_today", "kpi_health", "kpi_suggestions_7d", "kpi_waits"]
         and len(_s94["kpi_checks_week"]) == 7 and len(_s94["kpi_waits"]["week"]) == 7
         and all(list(t) == ["start", "end", "outcome", "tokens", "cache_read"] for x in _s94["kpi_turns_today"] for t in x["turns"])
-        and "kpi" in RL.PASSIVE_OPS and all(o[-22] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
+        and "kpi" in RL.PASSIVE_OPS and all(o[-23] == "kpi" for o in (F1["ops"], F2["ops"], F3["ops"])) and not any(k.startswith("kpi") for k in F3), json.dumps(_s94)[:300])
 _r94 = tmp / "r94"
 _r94.mkdir(parents=True, exist_ok=True)
 _sv94 = RL.rdir

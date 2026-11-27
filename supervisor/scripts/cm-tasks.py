@@ -83,7 +83,7 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
   supervisor task impegni [--json] [--stalled] [--brief]   gli approvati non compiuti (e chi aspetta un ok), con eta',
                                                 ultimo passo, prossimo passo, chi aspetta chi, pausa; --brief per l'hook
   supervisor task step ID "testo" [--next "prossimo passo"] [--by B]   un passo fatto (e il prossimo)
-  supervisor task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO]
+  supervisor task pause ID --reason R [--by B] [--waits person|external|standby] [--recheck 2d|ISO] [--since EPOCH|ISO]
                        [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui]
                        [--prova [--release TAG] [--web VERSIONE]]
                                                 1.107: --prova = la persona deve provare qualcosa (con --waits person):
@@ -95,7 +95,10 @@ Impegni (22/10/2026: un compito nato da un ok resta visibile finche' il suo esit
                                                 «salvo altre priorita'», visibile, mai in allarme; --waits person = la pausa
   supervisor task resume ID                     aspetta l'utente (waits.on = person), --since = l'inizio vero (contratto 1.77)
                                                 --waits external = aspetta fuori (un ticket, un cliente) fino a --recheck,
-                                                poi `suggest fill` lo ripropone (1.88)
+                                                poi `suggest fill` lo ripropone (1.88); --waits standby = messo da parte
+                                                dalla persona: fuori da «Per te» e dalle decisioni, torna con resume (1.163)
+  supervisor task standby [ID [--reason R] [--by B] [--off]] [--json]
+                                                senza ID i compiti in stand by; con ID lo mette in stand by, --off lo toglie
   supervisor task closed [AAAA-MM-GG] [--json]  i compiti chiusi quel giorno (oggi) con la prova (release, commit, file o
                                                 controllo) e i sei giorni prima con un conteggio; exit 3 senza registro
   supervisor task amend ID [--check CMD] [--timeout S] [--outcome TESTO] [--kind K] [--proof P] [--importance alta|media|bassa]
@@ -144,6 +147,7 @@ solo il controllo rieseguito e verde. Senza registro nessun altro comando di sup
 Esito atteso (task.outcome, facoltativo): le parole dell'ok e un kind; il controllo deve toccarlo (OUTCOME_MARKERS),
 altrimenti add e done lo rifiutano: un compito non si chiude su un passo intermedio.
 """
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -1481,6 +1485,10 @@ def superseded_ready(con, cache=None):
 
 UNPROVEN_TAG_S = 24 * 3600
 UNPROVEN_LOG_DAYS = 14
+# 26/11/2026 (supervisor-standby-26-11): i tag che non sono un'uscita da provare (le edizioni per la directory) e la cartella
+# che non cambia cio' che si prova (solo documenti); tasks.unproven_ignore_tags cambia i tag
+UNPROVEN_IGNORE_TAGS = ["directory-*"]
+UNPROVEN_DOCS_DIR = "docs/"
 
 
 def _published_deploys(project):
@@ -1497,12 +1505,32 @@ def _published_deploys(project):
     return sorted(int(x["at"]) for x in d.get("items") or [] if isinstance(x, dict) and x.get("kind") == "deploy" and x.get("project") in (rel, str(project)) and x.get("at"))
 
 
+def _unproven_ignore_tags():
+    g = tasks_cfg().get("unproven_ignore_tags", UNPROVEN_IGNORE_TAGS)
+    return [str(x) for x in g] if isinstance(g, list) else list(UNPROVEN_IGNORE_TAGS)
+
+
+_OUTSIDE_DOCS = {}
+
+
+def _outside_docs(project, h):
+    """Il commit cambia almeno un file fuori da docs/ (un merge: rispetto al primo genitore)."""
+    k = (str(project), h)
+    if k not in _OUTSIDE_DOCS:
+        r = _git(project, "diff-tree", "-r", "--root", "-m", "--first-parent", "--no-commit-id", "--name-only", h)
+        files = [f for f in r.stdout.splitlines() if f.strip()]
+        _OUTSIDE_DOCS[k] = r.returncode != 0 or any(not f.startswith(UNPROVEN_DOCS_DIR) for f in files)
+    return _OUTSIDE_DOCS[k]
+
+
 def unproven(con, now_=None):
     """1.118 (04/11/2026, la mattina con cinque pre-release e «Prova» vuota: la sessione aveva scritto la prova solo nei
     passi): i compiti aperti con un commit (l'id nel messaggio) uscito per la prima volta in una pre-release delle ultime
     24 ore (il primo tag che lo contiene; si dice il piu' nuovo) o, senza un tag, in una web di oggi (un deploy visto dal
     relay, il commit fra il deploy prima e questo, sul ramo di HEAD), ma senza una prova in vigore, senza una pausa aperta (di prova o d'altro: non in corso) e non gia' superati dalla
     regola 1.
+    26/11/2026 (supervisor-standby-26-11): i tag di tasks.unproven_ignore_tags (default directory-*) non contano, e si contano solo
+    i commit che cambiano qualcosa fuori da docs/.
     [{task, session, project, commit, kind: release|web, build, at}], una voce per compito: l'uscita piu' recente."""
     now_ = int(now_ or now())
     rows = con.execute("SELECT * FROM tasks WHERE state IN (%s) AND project IS NOT NULL" % ",".join("?" * len(OPEN_STATES)), OPEN_STATES).fetchall()
@@ -1521,12 +1549,15 @@ def unproven(con, now_=None):
                 continue
             commits = [(h, int(ct), subj) for h, ct, subj in (ln.split("\t", 2) for ln in log.stdout.splitlines() if ln.count("\t") >= 2)]
             tag_at = {t: int(ts) for t, ts in (x.split("\t") for x in _git(project, "for-each-ref", "--format=%(refname:short)\t%(creatordate:unix)", "refs/tags").stdout.splitlines() if "\t" in x)}
+            ignore = _unproven_ignore_tags()
+            tag_at = {t: at for t, at in tag_at.items() if not any(fnmatch.fnmatchcase(t, g) for g in ignore)}
         except (OSError, subprocess.SubprocessError, ValueError):
             continue
         deploys = _published_deploys(project)
         contains = {}
         for r in rs:
-            mine = [(h, ct) for h, ct, subj in commits if re.search(r"(?<![\w-])" + re.escape(r["id"]) + r"(?![\w-])", subj)]
+            mine = [(h, ct) for h, ct, subj in commits if re.search(r"(?<![\w-])" + re.escape(r["id"]) + r"(?![\w-])", subj)
+                    and _outside_docs(project, h)]   # si contano solo i commit che cambiano qualcosa fuori da docs/
             if not mine:
                 continue
             hit = None
@@ -1841,7 +1872,7 @@ def commitments(con, now_=None, git=True, stall_s=None, person=None):
                     "expected": (task.get("outcome") or {}).get("expected"), "outcome_kind": (task.get("outcome") or {}).get("kind"),
                     "check": {"outcome": res["outcome"], "at": int(res["at"])} if res else None,
                     "paused": {"reason": pz["reason"], "at": int(pz["since"] or pz["at"]), "by": pz["by_"], "waits": pz["waits"],
-                               "recheck": pz["recheck"]} if pz else None,   # 1.88: waits person | external | null
+                               "recheck": pz["recheck"]} if pz else None,   # 1.88: waits person | external | null; 1.163 standby
                     "stalled": bool(approved and not pz and not pv and idle >= stall_s)})
     # 04/11/2026 (supervisor-impegni-fermi-sessione-04-11): la stessa regola di stall-check (0.8.115): un compito di una
     # sessione che da meno di stall_s ha fatto un passo o un esito su un compito qualsiasi, o un commit nelle cartelle
@@ -2568,6 +2599,34 @@ def prova_of(pz, project):
     return {"project": project, "release": rel.group(1) if rel else None, "web": web.group(1) if web else None}
 
 
+def standby_set(con, tid, on, by=None, reason=None):
+    """26/11/2026 (supervisor-standby-26-11, contratto 1.163): lo stand by che la persona mette o toglie (the maintainer dal telefono, «film e albo sono
+    in stand by»). Una pausa con waits standby: fuori da «Per te» e dalle decisioni (non e' una pausa per la persona),
+    non ferma, non fra le prove mancanti; prende il posto della pausa aperta. on False chiude solo uno stand by.
+    True fatto, False non era in stand by, None il compito non c'e' o non e' aperto."""
+    row = con.execute("SELECT state FROM tasks WHERE id=?", (tid,)).fetchone()
+    if row is None or row["state"] not in OPEN_STATES:
+        return None
+    pz = con.execute("SELECT waits FROM pauses WHERE task=? AND resumed_at IS NULL ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
+    if not on and not (pz and pz["waits"] == "standby"):
+        return False
+    t = now()
+    con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (t, tid))
+    if on:
+        con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits) VALUES (?,?,?,?,NULL,'standby')", (tid, t, by, (reason or "stand by")[:300]))
+    con.execute("UPDATE tasks SET updated_at=? WHERE id=?", (t, tid))
+    con.commit()
+    return True
+
+
+def standby_list(con):
+    """I compiti aperti in stand by, dal piu' vecchio: [{task, short, session, since, by, reason}]."""
+    q = ("SELECT t.*, p.at AS p_at, p.by_ AS p_by, p.reason AS p_reason FROM tasks t JOIN pauses p ON p.task=t.id AND p.resumed_at IS NULL "
+         "AND p.waits='standby' WHERE t.state IN (%s) ORDER BY p.at, t.id" % ",".join("?" * len(OPEN_STATES)))
+    return [{"task": r["id"], "short": short_of(_contract_task(r)), "session": r["session"], "since": int(r["p_at"]), "by": r["p_by"], "reason": r["p_reason"]}
+            for r in con.execute(q, OPEN_STATES).fetchall()]
+
+
 def decision_tested(con, tid, by, text, works):
     """1.107, dal relay: «Tutto va» (works) registra la conferma della persona (quella che `task confirmed` legge) e chiude la
     pausa; «Non va» chiude la pausa e lascia il motivo nei passi: il compito torna alla sua sessione."""
@@ -3142,7 +3201,7 @@ def main(argv):
         at_pc = "pc" if _flag(args, "--al-pc") else ("here" if _flag(args, "--da-qui") else None)
         is_prova, release, web = _flag(args, "--prova"), _opt(args, "--release"), _opt(args, "--web")
         if not args or not reason:
-            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external] [--recheck 2d|ISO] [--since EPOCH|ISO] [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui] [--prova [--release TAG] [--web VERSION]]")
+            sys.exit("usage: task pause ID --reason R [--by B] [--waits person|external|standby] [--recheck 2d|ISO] [--since EPOCH|ISO] [--cause C] [--undo si|no|in-parte] [--undo-how T] [--al-pc|--da-qui] [--prova [--release TAG] [--web VERSION]]")
         if (release or web) and not is_prova:
             sys.exit("task pause: --release and --web go with --prova")
         if is_prova and waits not in ("person", "user"):
@@ -3154,8 +3213,8 @@ def main(argv):
         cause = " ".join(cause.split()) if cause else None
         if cause and len(cause) > CAUSE_MAX:
             sys.exit(f"task pause: --cause over {CAUSE_MAX} characters")
-        if waits not in (None, "person", "user", "external"):
-            sys.exit("task pause: --waits takes person or external")
+        if waits not in (None, "person", "user", "external", "standby"):
+            sys.exit("task pause: --waits takes person, external or standby")
         if recheck is not None and waits != "external":
             sys.exit("task pause: --recheck goes with --waits external")
         since_at = recheck_at = None
@@ -3176,7 +3235,7 @@ def main(argv):
             sys.exit(f"task {args[0]}: already {row['state']}")
         con.execute("UPDATE pauses SET resumed_at=? WHERE task=? AND resumed_at IS NULL", (now(), args[0]))
         con.execute("INSERT INTO pauses (task, at, by_, reason, resumed_at, waits, since, recheck, cause, undo, undo_how, at_pc, prova) VALUES (?,?,?,?,NULL,?,?,?,?,?,?,?,?)",
-                    (args[0], now(), by, reason[:300], waits if waits == "external" else ("person" if waits else None), since_at, recheck_at, cause, undo, undo_how, at_pc, prova_json))
+                    (args[0], now(), by, reason[:300], waits if waits in ("external", "standby") else ("person" if waits else None), since_at, recheck_at, cause, undo, undo_how, at_pc, prova_json))
         con.commit()
         return 0
     if verb == "closed":
@@ -3195,6 +3254,19 @@ def main(argv):
                 print(f"- {x['task']} · {x['outcome']} · {time.strftime('%H:%M', time.localtime(x['at']))} · {x['proof']['kind']}: {x['proof']['value'][:80]}")
             for d in out["days"]:
                 print(f"  {d['date']}: {d['n']}")
+        return 0
+    if verb == "standby":
+        tid = args[0] if args and not args[0].startswith("-") else None
+        if tid is None:
+            out = standby_list(con)
+            print(json.dumps(out, ensure_ascii=False) if as_json else "\n".join(f"{x['task']} · {time.strftime('%d/%m %H:%M', time.localtime(x['since']))} · {x['reason']}" for x in out))
+            return 0
+        off, reason, by = _flag(args, "--off"), _opt(args, "--reason"), _opt(args, "--by")
+        set_ = standby_set(con, tid, not off, by, reason or M("tasks.standby_reason", person=M("tasks.person"), device="CLI"))
+        if set_ is None:
+            sys.exit(f"task standby {tid}: not an open task")
+        if not set_:
+            sys.exit(f"task standby {tid}: not in stand by")
         return 0
     if verb == "resume":
         get_task(con, args[0])

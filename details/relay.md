@@ -1604,3 +1604,12 @@ Contract 1.162 (26/11/2026, asked by supervisor-app for the steps of a test in t
 - Fixture: `tests/fixtures/tappe/steps-in-verifica.json` (test ok, CI ok, pre-release run, prova todo; a session with `null`). Test: `tests/relay-tappe-verify.py` (TP1-TP5).
 
 Same release, task supervisor-relay-file-corsia-26-11, no new key: two devices reading the same file (phone and web on one card) no longer replace each other's read: `superseded` only for an older read of the same device (the client is `uid`, else `by`/`device`). Test: `tests/relay-file-corsia-verify.py` (FC1-FC3).
+
+Contract 1.163 (26/11/2026, task supervisor-standby-26-11, asked by the maintainer from the phone: some tasks are set aside and should leave «Per te»; and an ok given from the app to a pause with no card was never recorded). Additive, `v` stays 1.
+
+- **op `standby`** (`arg` = the task id, `on` = true or false, required; `reason` optional, at most 300 characters; with `device`, as `decisione`): `on: true` sets the task aside (`supervisor task standby ID`, the same as `task pause ID --waits standby`), `on: false` brings it back (`task standby ID --off`; `task resume` too). Answer `{ok, text}`. Refused for `on` missing or not a boolean, a task not open, `on: false` on a task not in stand by, a command with no device. Last in `ops`, after `silence`; not a passive read.
+- **In the state:** `commitments[].paused.waits` is `standby` and `paused.at` the time it was set; `waits` is never `{on: person}`. The task is not in the decisions (op `decisioni`), not in «Tocca a te», not stalled, not among the releases with no test.
+- **`attese.items[].actions`:** every item of a task (kind ok, choice, pausa, prova) ends with «Stand by», style secondary, `cmd` `{op: standby, arg: <task>, on: true}`.
+- **«Ok» on a pause for the person** (kind `pausa` without a test): the first action, primary, `cmd` `{op: decisione, arg: <key>, action: ok}`, recorded as `supervisor task ok` (the pause closed with «Tutto va», the confirmation, the session and the master told); «Rispondi» stays, secondary. `approve` on a task with no card but a pause for the person does the same instead of `relay.cmd_approve_not_waiting`.
+- **The guard's releases with no test** (`task unproven`): tags matching `tasks.unproven_ignore_tags` (default `["directory-*"]`) are not a release to test, and only commits that change something outside `docs/` count.
+- Test: `tests/decisioni-verify.py` (SB0-SB11, UP5-UP6); fixture `tests/fixtures/relay/attese-rd-sample.json`.

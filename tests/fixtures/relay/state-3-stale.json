@@ -188,7 +188,8 @@
     "result_note",
     "max_sessions_set",
     "subagents",
-    "silence"
+    "silence",
+    "standby"
   ],
   "slash": [
     "compact",
@@ -314,7 +315,7 @@
       "id": "s-1c0a7e5f21",
       "kind": "choice",
       "key": "choice:pricing-copy",
-      "text": "Pricing copy: the short one or the full one?",
+      "text": "Pricing copy: short or full?",
       "at": 1789199500,
       "expires_at": 1789242700,
       "rank": 2,

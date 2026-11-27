@@ -92,7 +92,7 @@
       "low_priority": "active",
       "suggestion": null,
       "goal": {
-        "text": "Checkout tests green, release tagged",
+        "text": "Checkout green, tagged",
         "since": 1789210700,
         "met": false
       },
@@ -403,7 +403,8 @@
     "result_note",
     "max_sessions_set",
     "subagents",
-    "silence"
+    "silence",
+    "standby"
   ],
   "slash": [
     "compact",

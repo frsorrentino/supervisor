@@ -279,7 +279,8 @@
     "result_note",
     "max_sessions_set",
     "subagents",
-    "silence"
+    "silence",
+    "standby"
   ],
   "slash": [
     "compact",
@@ -556,7 +557,7 @@
       "id": "s-8b3f6a1d47",
       "kind": "deadline",
       "key": "deadline:ledger-invoice-2026-09",
-      "text": "ledger-api invoice due Friday",
+      "text": "invoice due Friday",
       "at": 1789207180,
       "expires_at": 1789250380,
       "rank": 2,

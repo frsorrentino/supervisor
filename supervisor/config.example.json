@@ -449,6 +449,9 @@
       "personali/rino",
       "clienti",
       "enti"
+    ],
+    "unproven_ignore_tags": [
+      "directory-*"
     ]
   },
   "plugins": {

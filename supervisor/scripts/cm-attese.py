@@ -288,6 +288,15 @@ def _act(label_key, cmd, style="secondary", text_field=None, **extra):
 
 
 def _actions(a, prova=False):
+    """I tasti dell'attesa; 26/11/2026 (supervisor-standby-26-11, contratto 1.163): su una voce di un compito (ok, scelta, pausa, prova) anche
+    «Stand by», l'op standby con on true: l'app resta generica."""
+    out = _actions_of(a, prova)
+    if a.get("task") and a["kind"] in ("ok", "choice", "pausa", "prova"):
+        out.append(_act("standby", {"op": "standby", "arg": a["task"], "on": True}))
+    return out
+
+
+def _actions_of(a, prova=False):
     """1.131 (07/11, supervisor-attese-campi-07-11, chiesto da supervisor-app): i tasti espliciti dell'attesa, nell'ordine
     in cui la scheda li mostra; le opzioni prima, la consigliata col segno. [] per il login (lo rifa' la master)."""
     k, an, opts = a["kind"], a.get("answer") or {}, a.get("options") or []
@@ -348,7 +357,10 @@ def _actions_rest(a, k, an, opts, rec, prova):
             return [_act("works", {"op": "decisione", "arg": key, "action": "provato"}, "primary"),
                     _act("fails", {"op": "decisione", "arg": key, "action": "non_va"}, text_field="reason"),
                     _act("not_now", {"op": "decisione", "arg": key, "action": "not_now"})]
-        return ([_act("reply", {"op": "prompt", "session": a.get("session")}, "primary", text_field="arg")] if a.get("session") else []) + \
+        # 1.163: «Ok», la risposta della persona come `task ok` (prima solo «Rispondi», un messaggio alla sessione: l'ok non
+        # si registrava)
+        return [_act("ok", {"op": "decisione", "arg": key, "action": "ok"}, "primary")] + \
+               ([_act("reply", {"op": "prompt", "session": a.get("session")}, text_field="arg")] if a.get("session") else []) + \
                [_act("not_now", {"op": "decisione", "arg": key, "action": "not_now"}),
                 _act("drop", {"op": "decisione", "arg": key, "action": "drop"}, text_field="reason")]
     if k == "question":

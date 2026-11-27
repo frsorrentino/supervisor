@@ -217,10 +217,11 @@ answer_cmd = next(x["cmd"] for x in q["actions"] if x["label"] == "Due")
 T.check("AT7 title is one line (the task's short name for a card, the question for chat), card.deploy names production, actions are the card's buttons",
         ok["title"] == "t at-ok" and q["title"] == "Quale?" and px["title"] == "Riga a sinistra" and ok["card"]["deploy"] is False and ch["card"]["deploy"] is True
         and acts(ok) == [("Approva", "primary", "approve", None), ("Chiudi senza ok", "secondary", "approval_close", "text"),
-                         ("Non ora", "secondary", "decisione", None), ("Lascia perdere", "secondary", "decisione", "reason")]   # 1.151
+                         ("Non ora", "secondary", "decisione", None), ("Lascia perdere", "secondary", "decisione", "reason"),   # 1.151
+                         ("Stand by", "secondary", "standby", None)]   # 1.163
         and acts(ch)[0] == ("Scuro", "primary", "approve", None) and ch["actions"][0].get("recommended") is True and ch["actions"][0]["cmd"]["choice"] == "Scuro (consigliata)"
         and acts(ch)[1] == ("Chiaro", "option", "approve", None) and acts(ch)[2][2] == "approval_redo" and acts(ch)[3][2] == "approval_close"
-        and acts(pv) == [("Va", "primary", "prova", None), ("Non va", "secondary", "prova", "text")] and pv["actions"][0]["cmd"]["result"] == "ok"
+        and acts(pv) == [("Va", "primary", "prova", None), ("Non va", "secondary", "prova", "text"), ("Stand by", "secondary", "standby", None)] and pv["actions"][0]["cmd"]["result"] == "ok"
         and answer_cmd == {"session": "gamma", "op": "answer", "arg": "2", "question": "q-17"}
         and [x["label"] for x in px["actions"]] == ["Riga a sinistra", "Bordo leggero", "Rispondi", "Fatto"] and px["actions"][0]["cmd"] == {"session": "delta", "op": "prompt", "arg": "Riga a sinistra"}
         and px["actions"][3]["cmd"] == {"session": None, "op": "attention_done", "arg": "delta", "kind": "turn_blocking"}
@@ -328,7 +329,7 @@ T.check("AT10 one wait-ok opens the choice card: description, each option with i
         and [f["name"] for f in c10["files"]] == ["home-a.png", "c.png", "home-b.pdf"] and c10["card_id"] == c10["id"] and c10["state"] == "open" and c10["answered"] is None,
         json.dumps(c10, ensure_ascii=False)[:900] + r10.stderr)
 T.check("AT10 the card's buttons: the options, then «Nessuna, rifare» (op approval_redo, the reason in text), then «Chiudi senza ok»",
-        [x["label"] for x in c10["actions"]] == ["A frecce", "B pannello", "Nessuna, rifare", "Chiudi senza ok", "Non ora", "Lascia perdere"]   # 1.151
+        [x["label"] for x in c10["actions"]] == ["A frecce", "B pannello", "Nessuna, rifare", "Chiudi senza ok", "Non ora", "Lascia perdere", "Stand by"]   # 1.151, 1.163
         and c10["actions"][2]["cmd"] == {"session": None, "op": "approval_redo", "arg": "sc-1"} and c10["actions"][2]["text_field"] == "text", json.dumps(c10["actions"], ensure_ascii=False))
 talklog.write_text("")
 rd0 = RL.execute({"op": "approval_redo", "arg": "sc-1", "text": "  ", "device": "phone", "by": "phone-pixel8"})

@@ -119,7 +119,9 @@ approved plan) and the ones waiting for an ok, with age, last step, idle time,
 next step (`task step ID "text" --next "…"`), whose turn it is, pause with a
 reason (`task pause ID --reason R [--waits person] [--since T]`, `task resume
 ID`: visible, never an alarm; `--waits person` puts it in the app's «Per te»
-with `waits.on = person`, `--since` the real start)
+with `waits.on = person`, `--since` the real start; `--waits standby`, or
+`task standby ID`, sets it aside: out of «Per te» and the decisions, listed by
+`task standby`, back with `task standby ID --off` or `task resume`)
 and `stalled` after `tasks.stall_hours` (2) without a step. The same list goes
 to the master at every prompt and start (the full block when it changes, one
 line otherwise; `tasks.commitments_prompt`), into the morning report, into
