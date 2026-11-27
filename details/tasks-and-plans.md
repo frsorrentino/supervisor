@@ -103,9 +103,19 @@ noticed an «Approve» for 46 minutes). A task born from an ok carries
 `outcome` in its contract: `expected` in the words of the ok, measurable, and
 a `kind` (`release`, `install`, `push`, `deploy`, `merge`, `custom`); the
 check must touch it (for each kind the registry knows the markers `check.cmd`
-must contain, e.g. `gh release`, `git tag`, `dumpsys`, `origin/`; `custom`
-needs `proof`), and `task add`, `task done` and the hourly auto-close refuse a
-check on an intermediate step. `supervisor task amend ID --check CMD |
+must contain, e.g. `gh release`, `git tag`, `task released`, `dumpsys`,
+`origin/`; `custom` needs `proof`), and `task add`, `task done` and the hourly
+auto-close refuse a check on an intermediate step. To find the release that
+carries a task, a check calls `supervisor task released ID [--repo OWNER/REPO]
+[--json]` (27/11/2026): it looks for the id, as a whole word, in the notes of
+every published release (`gh api --paginate`, 100 a page, no limit), prints the
+tag of the oldest one that names it and exits 0, 1 when none does, 2 when gh is
+missing or does not answer; it neither reads nor creates the registry, and
+without `--repo` it takes the folder's `origin` on GitHub. Never `gh release
+list --limit N` with a `gh release view` per tag: after N releases the right
+one is out of sight and the check stays red for good (a task out with 0.8.182
+was still red at 0.8.222 with a limit of 15); for the commit, `git log
+origin/main -F --grep=ID`, without `-n`. `supervisor task amend ID --check CMD |
 --outcome TEXT --kind K` corrects an open task; `task confirm ID --by B
 (--text T | --inbox MSG)` records the person's confirmation with the rules of
 `approve`, and `task confirmed ID` (exit 0 when it exists) is a valid check

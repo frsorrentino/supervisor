@@ -1461,6 +1461,7 @@ def collect_sources(now=None):
         "commitments": commitments_list(),   # 1.76
         "elicitations": elicitations_list(rows, now),   # 1.83
         "suggestions": suggestions_list(now), "usage_today": usage_today(rows, now), "closed": closed_saved(now),   # 1.84
+        "suggestions_7d": suggestions_7d_of(now),   # 1.164
         "closing": closing_of(rows),   # 1.120
         "system": system_status(rows, runtime),   # 1.90
         "plugins": plugins_summary(),   # 1.95

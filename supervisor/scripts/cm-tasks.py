@@ -12,6 +12,10 @@
                                                 {"task": ID, "attempt": N, "outcome": "green|red", "reason": "…",
                                                  "proof": {"kind": "check|commit|link", "value": "…"}, "at": EPOCH}
   supervisor task check ID [--json]           riesegue il controllo senza cambiare niente: exit 0 verde, 1 rosso
+  supervisor task released ID [--repo OWNER/REPO] [--json]   27/11: la release che porta il compito, per i controlli:
+                                                l'id nelle note di tutte le release (gh api a pagine, nessun limite),
+                                                il tag della piu' vecchia; exit 0 trovata, 1 no, 2 gh che non risponde.
+                                                Al posto di `gh release list --limit N`, cieco dopo N uscite
   supervisor task done ID [--constraint T]   riesegue il controllo: verde = fatto; rosso = un tentativo in
                                                 piu', e al terzo «fallito». Exit 0 verde, 1 rosso
   supervisor task wait-ok ID --what W --where D --consiglio T [--consigliata si|no] [--options "A|B" --consigliata N] [--untested T] [--undo si|no|in-parte] [--undo-how T] [--also ID2,ID3] [--files a.png,b.pdf]
@@ -172,7 +176,8 @@ PROOF_TAIL = 12
 # 22/10/2026 (P1, dalla giornata persa sull'APK del Gantt): per ogni kind di esito, i segni che il controllo deve
 # contenere per toccare l'ultimo passo e non uno intermedio; custom non ne ha e vuole `proof`
 OUTCOME_MARKERS = {
-    "release": ("gh release", "git tag", "tags/", "releases/", "version", "ls-remote", "api.github.com"),
+    # 27/11/2026 (supervisor-check-release-15-27-11): `supervisor task released ID` cerca in tutte le release
+    "release": ("gh release", "git tag", "tags/", "releases/", "version", "ls-remote", "api.github.com", "task released"),
     "push": ("origin/", "ls-remote", "@{u}", "merge-base", "rev-list"),
     "merge": ("merge-base", "is-ancestor", "origin/"),
     "install": ("dumpsys", "lastupdatetime", "pm list", "pm path", "versioncode", "task confirmed"),
@@ -3016,6 +3021,8 @@ def main(argv):
         return 0
     verb, args = argv[0], list(argv[1:])
     as_json = _flag(args, "--json")
+    if verb == "released":   # 27/11/2026 (supervisor-check-release-15-27-11): niente registro, solo le release del repository
+        return _load("cm-released").main(args, as_json)
     if verb == "closed" and not db_path().exists():   # 1.77: l'app chiede «senza registro: ok false», senza crearne uno
         print("no task registry", file=sys.stderr)
         return 3

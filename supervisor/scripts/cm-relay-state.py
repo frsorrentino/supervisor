@@ -42,6 +42,7 @@ COMMITMENTS_FIT = 10
 SUGGESTIONS_MAX = 12   # 1.84: i suggerimenti in /state (l'app ne mostra 3); 1.88 (27/10): la coda, 12, fit_state a 6
 SUGGESTIONS_FIT = 6
 SUGGESTION_FIELDS = ("id", "kind", "key", "text", "at", "expires_at", "rank", "source", "options")   # 1.88: mai il prompt
+SUGGESTIONS_7D_KEYS = ("accepted", "discussed", "later", "never", "expired")   # 1.164: le chiavi di kpi_suggestions_7d
 USAGE_MAX = 12   # 1.84: le righe di usage_today; fit_state le scende a USAGE_FIT
 USAGE_FIT = 5
 SYSTEM_ADVICE_MAX = 5   # 1.90: i consigli di system; fit_state li scende a SYSTEM_ADVICE_FIT e toglie i consumatori
@@ -433,6 +434,14 @@ def suggestion_of(x):
     if x.get("url"):   # 1.138: la pagina della cosa monitorata (la soglia scattata)
         y["url"] = str(x["url"])
     return y
+
+
+def _count(v):
+    """1.164: un conteggio dello stato, un intero da 0 in su; 0 per cio' che non e' un numero."""
+    try:
+        return max(0, int(float(v or 0)))
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
 
 def next_steps(text):
@@ -1044,6 +1053,11 @@ def build_state(src, now, fit=True):
     if "suggestions" in src:
         state["suggestions"] = [suggestion_of(x) for x in sorted(src.get("suggestions") or [],
                                 key=lambda x: (x.get("rank") if isinstance(x.get("rank"), int) else 5, -int(x.get("at") or 0), str(x.get("id"))))][:SUGGESTIONS_MAX]
+    # 1.164 (27/11/2026, supervisor-suggest-accettati-27-11): gli esiti dei 7 giorni, i numeri di kpi_suggestions_7d dell'op
+    # kpi, in ogni push: la percentuale della home cambia appena si accetta. Assente con un relay vecchio o se la storia
+    # dei suggerimenti non si legge; mai tolta da fit_state (sono cinque numeri)
+    if isinstance(src.get("suggestions_7d"), dict):
+        state["suggestions_7d"] = {k: _count(src["suggestions_7d"].get(k)) for k in SUGGESTIONS_7D_KEYS}
     if "usage_today" in src:
         state["usage_today"] = [dict(x, session=canon_session(x.get("session"), src.get("rows")))
                                 for x in sorted(src.get("usage_today") or [], key=lambda x: -int(x.get("tokens") or 0))][:USAGE_MAX]

@@ -13,6 +13,18 @@ def suggestions_list(now):
         return []
 
 
+def suggestions_7d_of(now):
+    """1.164 (27/11/2026, supervisor-suggest-accettati-27-11): gli esiti dei suggerimenti degli ultimi 7 giorni per
+    /state.suggestions_7d, gli stessi numeri di kpi_suggestions_7d dell'op kpi (cm-kpi). Il manutentore alle 21:18: «la
+    percentuale non si aggiorna in tempo reale»; i numeri stavano solo nell'op kpi, che l'app rilegge al piu' ogni 5 minuti. In ogni
+    push, la percentuale della home cambia alla push che segue un Accetta o una scelta, su ogni dispositivo. None se la
+    storia non si legge: allora la chiave resta fuori."""
+    try:
+        return _kpi().kpi_suggestions_7d(int(now), (_load("cm-suggest").load() or {}).get("history"))
+    except Exception:   # noqa: BLE001 — un extra: mai bloccare la push
+        return None
+
+
 def suggestion_act(cmd, arg):
     """1.84 (24/10, scheda «Suggerimenti della master»): `arg` = l'id, `action` accept | later | never. accept manda il
     prompt della voce alla master come un prompt dall'app, con l'etichetta «dai suggerimenti», e toglie la voce; later
