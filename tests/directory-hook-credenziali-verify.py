@@ -23,6 +23,13 @@ HC6 cm-lane-guard.py, cm-fast.sh e py.sh: nessuna sequenza di escape stampabile 
 HC7 il rifiuto della guardia, per un comando con virgolette e barre rovesce: il JSON scritto non ha sequenze di escape
 HC8 py.sh: nessuna espansione annidata, nessun interprete lanciato da una variabile spezzata in parole; la cache di
     prima con «py -3» si legge ancora
+
+Terza misura (directory-0.8.219, 27/11/2026): COMMAND_PATH_COMPUTED, un programma in riga (python3 -c) e i percorsi
+calcolati di cm-fast.sh; e HOOK_GRANTS_PERMISSION resta su PermissionRequest, che non stampa niente.
+HC9  il comando di PermissionRequest manda lo stdout su stderr (>&2): lanciato com'e' in hooks.json, niente su stdout,
+     e il file waiting/<sid> si scrive come prima
+HC10 py.sh prova ogni interprete con scripts/pyver.py (niente -c), anche senza CLAUDE_PLUGIN_ROOT; cm-fast.sh lancia
+     ogni script col percorso letterale ${CLAUDE_PLUGIN_ROOT}/scripts/<file>, senza $(…) ne' $here
 """
 import importlib.util
 import io
@@ -165,5 +172,35 @@ r = subprocess.run(["bash", str(T.SCRIPTS / "py.sh"), "x.py", "a"], capture_outp
 T.check("HC8 py.sh: no nested expansion, no interpreter run from a word-split variable; the old cache «py -3» still works",
         ":-${" not in code and not re.search(r"(^|[;&|]|exec)\s+\$[A-Za-z_]", code, re.M) and r.stdout.strip() == "py:-3 x.py a",
         f"{r.returncode} {r.stdout!r} {r.stderr!r}")
+# ------------------------------------------------------------------ terza misura (27/11/2026)
+hooks = json.loads((T.PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+pr = [h["command"] for e in hooks["PermissionRequest"] for h in e["hooks"]]
+cfg9 = tmp / "config-hc9.json"
+cfg9.write_text(json.dumps({"language": "it", "state_dir": str(tmp / "state9"), "workspace": {"root": str(home / "ws")},
+                            "hooks": {"ask_notify": {"enabled": False}}}))
+env9 = {k: v for k, v in os.environ.items() if k not in ("CC_SUPERVISOR_PY", "TEAM_SUPERVISOR_PY", "CLAUDE_MASTER_PY")}
+env9.update({"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(T.PLUGIN), "CC_SUPERVISOR_CONFIG": str(cfg9), "XDG_CACHE_HOME": str(tmp / "cache9")})
+pay = {"session_id": "hc9", "cwd": str(home), "hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": {"command": "ls"}}
+r9 = subprocess.run(["bash", "-c", pr[0]], input=json.dumps(pay), capture_output=True, text=True, env=env9, timeout=60) if len(pr) == 1 else None
+wf = tmp / "state9" / "waiting" / "hc9"
+T.check("HC9 PermissionRequest: the command sends its stdout to stderr (>&2); run as hooks.json has it, nothing on stdout, waiting/<sid> written as before",
+        len(pr) == 1 and pr[0].endswith(" PermissionRequest >&2") and "2>&1" not in pr[0] and r9.returncode == 0 and r9.stdout == ""
+        and wf.is_file() and json.loads(wf.read_text())["tool"] == "Bash", f"{pr} {r9 and (r9.returncode, r9.stdout[:200], r9.stderr[-300:])}")
+
+ps_code = "\n".join(ln.split("#", 1)[0] for ln in (T.SCRIPTS / "py.sh").read_text(encoding="utf-8").splitlines())
+fs_code = "\n".join(ln.split("#", 1)[0] for ln in (T.SCRIPTS / "cm-fast.sh").read_text(encoding="utf-8").splitlines())
+probe = tmp / "probe.py"
+probe.write_text("print('ok-hc10')\n")
+env10 = {k: v for k, v in env9.items() if k != "CLAUDE_PLUGIN_ROOT"}
+env10["XDG_CACHE_HOME"] = str(tmp / "cache10")
+r10 = subprocess.run(["bash", str(T.SCRIPTS / "py.sh"), str(probe)], capture_output=True, text=True, env=env10, timeout=60)
+pv = subprocess.run([sys.executable, str(T.SCRIPTS / "pyver.py")], capture_output=True, text=True, timeout=30)
+T.check("HC10 py.sh probes with scripts/pyver.py (no -c program), also without CLAUDE_PLUGIN_ROOT; cm-fast.sh runs each script by its literal ${CLAUDE_PLUGIN_ROOT}/scripts/ path",
+        " -c " not in ps_code and ps_code.count('"${CLAUDE_PLUGIN_ROOT}/scripts/pyver.py"') == 3 and "$(" not in ps_code
+        and pv.returncode == 0 and r10.returncode == 0 and r10.stdout.strip() == "ok-hc10"
+        and (tmp / "cache10" / "cc-supervisor" / "python").read_text().strip() in ("python3", "python", "py")
+        and "$here" not in fs_code and "dirname" not in fs_code
+        and all(f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/{x}"' in fs_code for x in ("py.sh", "cm-lane-guard.py", "cm-hook.py")),
+        f"{r10.returncode} {r10.stdout!r} {r10.stderr[-300:]!r} {pv.returncode}")
 T.rm(str(tmp))
 T.finish()
