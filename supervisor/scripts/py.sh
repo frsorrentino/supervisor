@@ -55,5 +55,5 @@ case "$pick" in
   python) exec python "$@" ;;
   py) exec py -3 "$@" ;;
 esac
-echo "supervisor: no Python 3.8+ found (python3, python, py -3); it needs Python 3 and tmux (Linux, macOS, WSL)" >&2
+echo "supervisor: no Python 3.8+ found, tried python3 python and py -3, it needs Python 3 and tmux on Linux macOS or WSL" >&2
 exit 0
