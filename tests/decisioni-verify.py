@@ -1067,11 +1067,11 @@ _c.commit(); _c.close()
 cm("pause", "sb-film", "--reason", "Serve una scelta sul film", "--waits", "person")
 _in_dec = lambda tid: group_of(tid) is not None  # noqa: E731
 _imp = lambda tid: next((x for x in json.loads(cm("impegni", "--json")[1]) if x["task"] == tid), None)  # noqa: E731
-T.check("SB0 before: a pause for the person is in the decisions and waits on the person (Per te)",
+T.check("SB0 before: a pause for the person is in the decisions and waits on the person (For you)",
         _in_dec("sb-film") and _imp("sb-film")["waits"]["on"] == "person", str(_imp("sb-film")))
 _r = cm("standby", "sb-film", "--by", "tester")
 _i = _imp("sb-film")
-T.check("SB1 task standby ID: out of the decisions and of Per te (waits not on the person), paused.waits standby with its time",
+T.check("SB1 task standby ID: out of the decisions and of For you (waits not on the person), paused.waits standby with its time",
         _r[0] == 0 and not _in_dec("sb-film") and _i["waits"]["on"] != "person" and _i["paused"]["waits"] == "standby"
         and isinstance(_i["paused"]["at"], int) and not _i["stalled"], str(_i))
 _l = json.loads(cm("standby", "--json")[1])

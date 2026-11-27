@@ -118,9 +118,9 @@ from the title (whole words within 28, no cut mark, no dangling article).
 approved plan) and the ones waiting for an ok, with age, last step, idle time,
 next step (`task step ID "text" --next "…"`), whose turn it is, pause with a
 reason (`task pause ID --reason R [--waits person] [--since T]`, `task resume
-ID`: visible, never an alarm; `--waits person` puts it in the app's «Per te»
+ID`: visible, never an alarm; `--waits person` puts it in the app's «For you»
 with `waits.on = person`, `--since` the real start; `--waits standby`, or
-`task standby ID`, sets it aside: out of «Per te» and the decisions, listed by
+`task standby ID`, sets it aside: out of «For you» and the decisions, listed by
 `task standby`, back with `task standby ID --off` or `task resume`)
 and `stalled` after `tasks.stall_hours` (2) without a step. The same list goes
 to the master at every prompt and start (the full block when it changes, one

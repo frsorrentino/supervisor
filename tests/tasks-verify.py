@@ -437,7 +437,7 @@ T.check("T17 --since as an epoch; a pause without --waits leaves waits as it was
 t17b = int(time.time())
 r17b = cm("pause", "ok9", "--reason", "ticket 4411 del fornitore", "--waits", "external", "--recheck", "2d", env=IT)
 p17b = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]
-T.check("T17b pause --waits external --recheck 2d: paused carries waits external and recheck two days on; the turn stays the session's (not «Per te»)",
+T.check("T17b pause --waits external --recheck 2d: paused carries waits external and recheck two days on; the turn stays the session's (not «For you»)",
         r17b[0] == 0 and p17b["paused"]["waits"] == "external" and t17b + 172800 <= p17b["paused"]["recheck"] <= t17b + 172805 and p17b["waits"]["on"] == "master", json.dumps(p17b.get("paused")) + r17b[2])
 cm("pause", "ok9", "--reason", "ticket", "--waits", "external", "--recheck", "2026-11-02T09:00", env=IT)
 p17c = {x["task"]: x for x in json.loads(cm("impegni", "--json", env=IT)[1])}["ok9"]["paused"]

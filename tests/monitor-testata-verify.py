@@ -9,7 +9,7 @@ da un cron che scrive i punti senza `monitor refresh`.
 MT1  la scheda: value e delta sono della serie che passa di piu' la soglia, value_series ne dice il nome; hits la mette
      per prima e il testo di ogni soglia scattata dice la serie
 MT2  `show`: «da guardare: <serie> 134%»; `line` e `list` lo stesso valore
-MT3  «Dalla master»: la voce dice la serie peggiore e il suo valore; con una frase di chi raccoglie che non la nomina,
+MT3  «Bacheca»: la voce dice la serie peggiore e il suo valore; con una frase di chi raccoglie che non la nomina,
      la serie e il valore vanno in coda alla frase
 MT4  senza soglie scattate la testata e' la serie piu' vicina alla soglia; senza soglie col numero la prima serie (come
      prima); con una sola serie value_series e' null
@@ -95,7 +95,7 @@ line, lst = mo("line", "consumo").stdout, mo("list").stdout
 T.check("MT2 line names the series with its value; list shows 134% on the monitor's row",
         "Consumo del servizio: Scaricati nel mese 134%" in line and any("consumo" in x and "134%" in x and x.startswith("!") for x in lst.splitlines()), line + lst)
 s3 = sug("monitor:consumo")
-T.check("MT3 «Dalla master»: the entry says the worst series and its value, in the text and in the prompt",
+T.check("MT3 «Board»: the entry says the worst series and its value, in the text and in the prompt",
         "Scaricati nel mese" in s3.get("text", "") and "134%" in s3.get("text", "") and "0,1%" not in s3.get("text", "")
         and "ultimo valore Scaricati nel mese 134%" in s3.get("prompt", ""), str(s3))
 mo("verdict", "consumo", "Consumo oltre il limite del piano gratuito")

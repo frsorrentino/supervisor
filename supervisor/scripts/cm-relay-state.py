@@ -282,7 +282,7 @@ def wid_approval(task, at):
 def wid_attention(x):
     """Una voce di attention che e' una domanda (question, needs_you, turn_blocking), o None per le altre. 16/11/2026
     (supervisor-blocco-permanente-16-11): anche una sessione ferma su un limite (quota_limit) e' un'attesa, coi suoi
-    tasti, nei due posti dell'analisi di supervisor-app (la sessione e Dalla master)."""
+    tasti, nei due posti dell'analisi di supervisor-app (la sessione e «Bacheca»)."""
     k = x.get("kind")
     if k == "quota_limit":
         return wid("limite", x.get("ref"), int(x.get("since") or 0))

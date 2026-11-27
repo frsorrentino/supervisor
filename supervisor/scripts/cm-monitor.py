@@ -31,14 +31,14 @@ Le forme, un catalogo chiuso (dalla skill dataviz, references/choosing-a-form.md
 
 Le soglie (alert): --below/--above N sull'ultimo valore, --new-min/--new-max quando l'ultimo valore e' sotto (o sopra)
 tutti i precedenti della serie, in senso stretto: un valore fermo non scatta; --series S le lega a una serie, senza
-vale per ognuna. Quando scattano, una sola voce in «Dalla master» (state.suggestions, kind monitor, key monitor:<id>) col link al monitoraggio; esce quando il valore
+vale per ognuna. Quando scattano, una sola voce in «Bacheca» (state.suggestions, kind monitor, key monitor:<id>) col link al monitoraggio; esce quando il valore
 rientra. `line` stampa una riga breve col link, per i cron che oggi mandano report lunghi su Telegram.
 Il link: <relay.web_app_url>/#/monitor/<id>.
 
 Il link della cosa monitorata (1.138, 12/11/2026, supervisor-monitor-link-12-11: il maintainer vedeva «Yoga 9i a 1.799 €
 da Unieuro» senza poter aprire la pagina): un punto puo' portare --url (l'offerta migliore cambia negozio da una lettura
 all'altra), una serie un link fisso (--link S=URL in add/set). La scheda da' per ogni serie `url`, l'ultimo del punto o
-quello fisso; ogni soglia scattata (hits) quello del punto che l'ha fatta scattare; la voce in «Dalla master» lo stesso.
+quello fisso; ogni soglia scattata (hits) quello del punto che l'ha fatta scattare; la voce in «Bacheca» lo stesso.
 Solo http e https.
 
 L'aggiornamento a richiesta (1.133): def.json puo' dichiarare `refresh` {cmd, timeout_s (180), min_interval_s (60)}, e
@@ -52,7 +52,7 @@ giro scrive una riga `monitor-refresh` nel registro (ledger.jsonl). Il comando s
 
 La testata con piu' serie e l'ultimo giro (1.147, 15/11/2026, supervisor-monitor-testata-15-11): valore e variazione
 della scheda sono della serie peggiore rispetto alla soglia (`value_series` ne dice il nome), le soglie scattate
-vengono dalla peggiore, e la voce in «Dalla master» la nomina. «Ultimo giro» segue l'ultima scrittura dei punti, anche
+vengono dalla peggiore, e la voce in «Bacheca» la nomina. «Ultimo giro» segue l'ultima scrittura dei punti, anche
 quella di un cron che non passa da `monitor refresh` (refresh.external).
 """
 import datetime as dt
@@ -556,9 +556,9 @@ def start_refresh(mid, wait=False):
     return "started", st
 
 
-# ------------------------------------------------------------------ «Dalla master»
+# ------------------------------------------------------------------ «Bacheca»
 def sync(mid, c=None):
-    """La voce in «Dalla master» di un monitoraggio: una sola, aperta finche' una soglia e' superata, tolta quando il
+    """La voce in «Bacheca» di un monitoraggio: una sola, aperta finche' una soglia e' superata, tolta quando il
     valore rientra o il monitoraggio non c'e' piu'. Rispetta «Mai» e una voce gia' accettata (non torna finche' regge)."""
     SG = _load("cm-suggest")
     now = int(time.time())

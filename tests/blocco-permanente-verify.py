@@ -9,7 +9,7 @@ locali lo StopFailure apriva il quota_limit, ma il relay riconosceva solo «reac
 delle 5 ore, senza il tasto «Opus 5.5»; e la voce si chiudeva al primo prompt, anche se quel prompt riprendeva il
 limite. Concordato con la master: limite e quota → il quota_limit coi tasti, login → un needs-you; il titolo dice in
 parole semplici chi e' ferma, perche' e fino a quando; la voce sta nei due posti dell'analisi di supervisor-app (la
-sessione e Dalla master), cioe' fra le attese.
+sessione e «Bacheca»), cioe' fra le attese.
 
 BP1  cm-relay-state.api_error: la voce vera del 16/11 (isApiErrorMessage, error rate_limit, apiError
      usage_limit_reached, quotaLimits.resetsAt) e' kind limit col reset; il login e' login; un 529 e un 429 di

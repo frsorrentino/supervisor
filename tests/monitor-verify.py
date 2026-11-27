@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """I Monitoraggi: valori raccolti da script senza modello, in un formato unico, mandati all'app con la forma del
-grafico; una soglia superata apre una voce in «Dalla master» (09/11/2026, supervisor-monitoraggi-09-11, contratto 1.132).
+grafico; una soglia superata apre una voce in «Bacheca» (09/11/2026, supervisor-monitoraggi-09-11, contratto 1.132).
 Configurazione, monitoraggi e suggerimenti in una cartella temporanea; nessun relay vero, nessun talk.
 
 MO1 add, point, list, show: una cartella per monitoraggio con def.json e points.jsonl; la scheda ha valore e variazione
     gia' formattati (1.749 €, −10% dall'8/11; «−1 in 7 giorni»), le serie, la fonte, l'esempio, il link #/monitor/<id>
 MO2 il catalogo chiuso: una forma fuori catalogo e' rifiutata con l'elenco; meter senza --max rifiutato; status
     accetta si'/no e conta i giorni; bars somma i valori di ogni giorno; table da' le righe; al massimo 60 punti per serie
-MO3 soglie: --below 1800 --series yoga apre UNA voce in «Dalla master» (kind monitor, key monitor:<id>, link), stato
+MO3 soglie: --below 1800 --series yoga apre UNA voce in «Bacheca» (kind monitor, key monitor:<id>, link), stato
     watch; due valori sotto soglia = sempre una voce; il valore rientra = voce tolta (resolved), stato ok; --new-min
     scatta sul minimo di tutta la storia; `suggest fill` non tocca la voce
 MO4 verdict: la frase di chi raccoglie va nella scheda e nella voce; `line` stampa una riga breve col link
@@ -162,7 +162,7 @@ c3 = show("prezzi")
 items3 = [x for x in sug().get("items") or [] if x.get("key") == "monitor:prezzi"]
 mo("point", "prezzi", "--series", "yoga", "1760", "--ts", ts(28))
 items3b = [x for x in sug().get("items") or [] if x.get("key") == "monitor:prezzi"]
-T.check("MO3 --below 1800 --series yoga: status watch, ONE item in «Dalla master» (kind monitor, source script, link), still one after another value under it",
+T.check("MO3 --below 1800 --series yoga: status watch, ONE item in «Board» (kind monitor, source script, link), still one after another value under it",
         r_al.returncode == 0 and c3.get("status") == "watch" and c3["hits"] == [{"kind": "below", "value": 1800.0, "series": "yoga", "text": "sotto 1.800 € · yoga", "url": None}]
         and len(items3) == 1 and items3[0]["kind"] == "monitor" and items3[0]["source"] == "script" and items3[0]["link"] == WEB + "/#/monitor/prezzi"
         and "sotto 1.800 €" in items3[0]["text"] and "supervisor monitor show prezzi" in items3[0]["prompt"]
@@ -507,7 +507,7 @@ it16 = next((x for x in (sug().get("items") or []) if x.get("key") == "monitor:p
 T.check("MO16 a point carries --url, a series a fixed --link: each series gives the url of its last point that has one, else the fixed one; a new minimum's hit carries the url of the point that set it off, and so does the card",
         s16.get("yoga", {}).get("url") == "https://unieuro.example/yoga-9i" and s16.get("zen", {}).get("url") == "https://shop.example/zen"
         and [h.get("url") for h in c16.get("hits") or []] == ["https://unieuro.example/yoga-9i"] and c16.get("url") == "https://unieuro.example/yoga-9i", json.dumps(c16)[:900])
-T.check("MO16 the item in «Dalla master» carries the page (url) beside the app link; only http and https, the rest refused with nothing written",
+T.check("MO16 the item in «Board» carries the page (url) beside the app link; only http and https, the rest refused with nothing written",
         it16.get("url") == "https://unieuro.example/yoga-9i" and it16.get("link") == WEB + "/#/monitor/pc"
         and bad_u.returncode != 0 and bad_l.returncode != 0 and "javascript" not in (tmp / "monitors" / "pc" / "points.jsonl").read_text(), json.dumps(it16) + bad_u.stderr + bad_l.stderr)
 mo("set", "pc", "--link", "zen=")

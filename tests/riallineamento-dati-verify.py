@@ -2,7 +2,7 @@
 """Le attese, la fonte unica di ogni voce per te (16/11/2026, supervisor-riall-1-dati-16-11, contratto 1.151).
 
 Il manutentore ha scelto la direzione A dell'analisi di supervisor-app (docs/valutazioni/2026-11-16-chiarezza-sessione.md,
-capitoli 5-8): due posti con gli stessi dati, la lista «Per te» nella sessione e il contenitore in Dalla master, una
+capitoli 5-8): due posti con gli stessi dati, la lista «Per te» nella sessione e il contenitore in «Bacheca», una
 fonte sola. Oggi le voci arrivano da sei fonti e si contano in tre modi: «Verifica 5» con l'elenco vuoto, «Uscite
 uniformi: sì» toccabile un'ora dopo l'ok. Passo 1 lato relay: `attese` ha ogni voce per te, anche delle sessioni aperte,
 con id stabile e la sessione col nome dello stato; state.tocca e sessions[].tocca si contano da li'; una voce chiusa da
