@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -205,8 +206,10 @@ T.check("S6 a file named by the conversation but gone from the disk: «non c'è 
 empty_box()
 SG = load("cm-suggest", "_s7")
 d = SG.load()
-SG.upsert(d, 1795680000, "followup", "k-s7", "Riprendi il rilascio", "riprendi il rilascio", 86400)
-SG.save(d, 1795680000)
+# 27/11/2026: l'ora di adesso, non una fissa: con 1795680000 il suggerimento (24 ore) era scaduto dal 27/11 alle 09:00
+now7 = int(time.time())
+SG.upsert(d, now7, "followup", "k-s7", "Riprendi il rilascio", "riprendi il rilascio", 86400)
+SG.save(d, now7)
 sid = next(x["id"] for x in SG.load()["items"] if x.get("key") == "k-s7")
 r7 = RL.run_cmd({"id": "c-s7", "op": "suggestion", "arg": sid, "action": "accept", "by": "phone"})
 back = [x for x in SG.load()["items"] if x.get("id") == sid]

@@ -114,8 +114,11 @@ T.check("FS3 refresh --force fetches a fetch_failed of today at once (without --
 HITS.clear()
 fav("refresh", "--force", "ok.it", "nessuno.it")
 gaps = [b[0] - a[0] for a, b in zip(HITS, HITS[1:])]
+# 27/11/2026: il client distanzia l'inizio delle richieste di 0,3 s, ma qui si misura l'arrivo al server finto, che cambia
+# con la latenza di ogni connessione (curl dopo urllib): misurati 0,23 e 0,25 sulla release 0.8.221, 1 volta su 5 da solo.
+# Senza pausa gli intervalli sarebbero di pochi millisecondi: 0,2 lo distingue ancora
 T.check("FS4 few and slow requests: at least the pause between one request and the next",
-        len(HITS) >= 3 and min(gaps) >= 0.25, str([round(g, 2) for g in gaps]))
+        len(HITS) >= 3 and min(gaps) >= 0.2, str([round(g, 2) for g in gaps]))
 T.check("FS4 a 404 is an answer: never asked again with curl (one request per URL of nessuno.it)",
         len([h for h in HITS if h[1] == "nessuno.it"]) == len({h[2] for h in HITS if h[1] == "nessuno.it"}), str([(h[1], h[2], h[4]) for h in HITS]))
 

@@ -17,15 +17,16 @@
 # mai una sessione: nel dubbio si passa a python.
 set -u
 mode="${1:-}"
-here="$(dirname "${BASH_SOURCE[0]}")"
 in="$(cat)"
 # 26/11/2026 (supervisor-directory-hook-credenziali-26-11): l'input passa con un here-string; un a capo in piu' in fondo al JSON non cambia
 # niente per json.load
-run_py() { exec bash "$here/py.sh" "$@" <<<"$in"; }
+# 27/11/2026 (same task, third measure): every path spelled as ${CLAUDE_PLUGIN_ROOT}/scripts/…, as the directory's check
+# asks; this script runs only from the hooks, where the variable is always set
+run_py() { exec bash "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "$@" <<<"$in"; }
 case "$mode" in
   pre)
     case "$in" in
-      *push*|*release*|*publish*|*tmux*) run_py "$here/cm-lane-guard.py" ;;
+      *push*|*release*|*publish*|*tmux*) run_py "${CLAUDE_PLUGIN_ROOT}/scripts/cm-lane-guard.py" ;;
     esac
     exit 0 ;;
   post)
@@ -47,6 +48,6 @@ case "$mode" in
     if [ -n "$state" ] && [ -d "$state" ] && [ -n "$sid" ] && [ ! -e "$state/waiting/$sid" ]; then
       exit 0   # nessuna domanda aperta: niente da chiudere
     fi
-    run_py "$here/cm-hook.py" PostToolUse ;;
+    run_py "${CLAUDE_PLUGIN_ROOT}/scripts/cm-hook.py" PostToolUse ;;
   *) echo "usage: cm-fast.sh pre|post" >&2; exit 2 ;;
 esac

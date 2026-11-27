@@ -47,7 +47,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/cm-hook.py\" PermissionRequest",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/cm-hook.py",
+              "PermissionRequest"
+            ],
             "timeout": 5
           }
         ]

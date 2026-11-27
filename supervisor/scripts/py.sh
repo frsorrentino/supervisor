@@ -22,14 +22,23 @@ if [ -n "$over" ]; then
     *) exec "$over" "$@" ;;
   esac
 fi
-works() {
+# 27/11/2026 (same task, third measure): the version probe is a file of the plugin, scripts/pyver.py, run by its
+# literal path; the check does not read an inline `python3 -c` program. Run outside a hook (no CLAUDE_PLUGIN_ROOT, or
+# one that has no pyver.py) the root is the folder above this script, set only inside the subshell, with no $(…).
+works() (
+  if [ ! -r "${CLAUDE_PLUGIN_ROOT:-}/scripts/pyver.py" ]; then
+    case "$0" in
+      */*) CLAUDE_PLUGIN_ROOT="${0%/*}/.." ;;
+      *) CLAUDE_PLUGIN_ROOT=.. ;;
+    esac
+  fi
   case "$1" in
-    python3) python3 -c 'import sys; assert sys.hexversion >= 0x03080000' > /dev/null 2> /dev/null ;;
-    python) python -c 'import sys; assert sys.hexversion >= 0x03080000' > /dev/null 2> /dev/null ;;
-    py) py -3 -c 'import sys; assert sys.hexversion >= 0x03080000' > /dev/null 2> /dev/null ;;
-    *) return 1 ;;
+    python3) python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pyver.py" > /dev/null 2> /dev/null ;;
+    python) python "${CLAUDE_PLUGIN_ROOT}/scripts/pyver.py" > /dev/null 2> /dev/null ;;
+    py) py -3 "${CLAUDE_PLUGIN_ROOT}/scripts/pyver.py" > /dev/null 2> /dev/null ;;
+    *) exit 1 ;;
   esac
-}
+)
 pick=""
 if [ -r "$cache" ]; then
   read -r pick < "$cache" || pick=""
@@ -55,5 +64,5 @@ case "$pick" in
   python) exec python "$@" ;;
   py) exec py -3 "$@" ;;
 esac
-echo "supervisor: no Python 3.8+ found (python3, python, py -3); it needs Python 3 and tmux (Linux, macOS, WSL)" >&2
+echo "supervisor: no Python 3.8+ found, tried python3 python and py -3, it needs Python 3 and tmux on Linux macOS or WSL" >&2
 exit 0
