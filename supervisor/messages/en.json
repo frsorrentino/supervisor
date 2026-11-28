@@ -1407,6 +1407,8 @@
   "tasks.prove_closed": "{task}: every test ok, check green: task closed",
   "tasks.prove_red": "{task}: every test is ok but the check is red, the task stays open: {why}",
   "tasks.prove_red_next": "The tests are ok, the check is red: the session's turn",
+  "tasks.reopened": "{task}: reopened by {by}: {why}. The task is open again ({state}); the earlier closure no longer counts.",
+  "tasks.reopened_step": "reopened (was {was}) by {by}: {why}",
   "tasks.decisions_none": "Nothing to decide ({snoozed} on «Not now»)",
   "tasks.decisions_header": "Decisions: {n} groups, they unblock {tasks} tasks, {here} from here, {snoozed} on «Not now»",
   "tasks.decisions_line": "- [{where}] weight {weight}: {title} ({tasks})",

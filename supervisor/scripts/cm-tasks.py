@@ -77,8 +77,12 @@
                                                 (la carta di ok, altrimenti le prove da fare): il tasto dell'app (op silence)
   supervisor task silenzio-check [--json]      chiude le scadute (la guardia, con tidy); rosso = resta aperto, detto una volta
   supervisor task silenzi [--hours 24] [--json]  le chiusure per silenzio assenso (e i rossi) delle ultime ore
-  supervisor task auto-close [--hours 6] [--json]   chiude i compiti avviati, non in pausa, aperti da piu' di 6 ore col controllo verde
+  supervisor task auto-close [--hours 6] [--json]   chiude i compiti avviati, non in pausa, aperti da piu' di 6 ore col controllo verde;
+                                                se l'esito chiede la prova della persona, solo con una prova ok o la sua conferma
   supervisor task cancel ID
+  supervisor task reopen ID --reason R [--by B] [--json]   un compito chiuso per errore (done, failed, cancelled,
+                                                superseded) torna aperto: running se e' stato lavorato, altrimenti assigned;
+                                                la chiusura esce dalla pagella, un passo col motivo, la sessione lo sa
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
   supervisor task constraint add (--project P | --topic T) TESTO
   supervisor task constraint list [--project P] [--topic T]
@@ -1763,6 +1767,11 @@ def auto_close(con, hours=AUTO_CLOSE_H):
             continue
         if prove_pending(con, r["id"]):   # 1.99: una prova da fare tiene aperto il compito: la persona deve ancora vederla
             continue
+        # 28/11/2026 (supervisor-autoclose-prova-28-11): alle 03:41 tre compiti col controllo verde, nessuna prova e un esito
+        # che chiedeva la prova della persona sono stati chiusi qui (uno in pausa --waits external): aspettano una prova
+        # ok in vigore o la conferma della persona, anche in quella pausa
+        if needs_person_test(task) and not person_test_ok(con, r["id"]):
+            continue
         if open_card(con, r["id"]):   # 24/11/2026 (supervisor-autoclose-carta-24-11): e cosi' una carta di ok o di scelta senza risposta
             continue
         # 02/11 (chiusi alle 03:38 tre compiti approvati a lavoro non fatto): un controllo verde non dice che il lavoro c'e'.
@@ -2188,6 +2197,9 @@ def settle(con, tid):
 # guardia. In un file suo: cm-tasks.py e' vicino al tetto di 256 KiB dei file del plugin
 _PART_RESETTLE = HERE / "cm-tasks-resettle.py"
 exec(compile(_PART_RESETTLE.read_text(encoding="utf-8"), str(_PART_RESETTLE), "exec"))
+# 28/11/2026 (supervisor-autoclose-prova-28-11): la prova della persona prima di una chiusura da sola, e `task reopen`
+_PART_CLOSING = HERE / "cm-tasks-closing.py"
+exec(compile(_PART_CLOSING.read_text(encoding="utf-8"), str(_PART_CLOSING), "exec"))
 
 
 PROVE_RANGE_RE = re.compile(r"#?(\d{1,12})(?:-#?(\d{1,12}))?")
@@ -3604,6 +3616,17 @@ def main(argv):
         set_state(con, args[0], "cancelled")
         con.commit()
         return 0
+    if verb == "reopen":   # 28/11/2026 (supervisor-autoclose-prova-28-11): un compito chiuso per errore torna aperto
+        why, by = _opt(args, "--reason"), _opt(args, "--by") or M("tasks.person")
+        ids = [a for a in args if not a.startswith("-")]   # _opt toglie le opzioni e i loro valori
+        if len(ids) != 1 or not why:
+            sys.exit('usage: task reopen ID --reason "perche\'" [--by B] [--json]')
+        rc, text, state = reopen(con, ids[0], by, " ".join(why.split()))
+        if as_json:
+            print(json.dumps({"task": ids[0], "reopened": rc == 0, "state": state}, ensure_ascii=False))
+        else:
+            print(text, file=sys.stderr if rc else sys.stdout)
+        return rc
     if verb == "board":
         b = board(con)
         since = _opt(args, "--since", "6h")

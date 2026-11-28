@@ -72,7 +72,18 @@ check is green (`supervisor task auto-close`); a red check there leaves the task
 as it is and counts no attempt. It skips a paused task, unless the pause is `--waits external`
 (the check says the event arrived), and one with no trace of
 work: no `task start`, step, test or result. An ok is not work. `task done` by
-hand is unchanged.
+hand is unchanged. When the outcome asks for the person's test («Prova di
+<name>», «prova della persona», or «prova» among the items of `outcome.proof`),
+auto-close also waits for a test marked ok and still in force, or the person's
+confirmation, even in a `--waits external` pause: a green check says the work is
+there, not that the person tried it (28/11/2026, three tasks closed at 03:41 with
+no test, supervisor-autoclose-prova-28-11). `task resettle` only reruns tasks
+whose tests in force are all ok, so it already has one. `task reopen ID --reason R
+[--by B]` reopens a task closed by mistake (done, failed, cancelled, superseded):
+running if it was worked on, otherwise assigned; its closure leaves the report
+card (`closures`), a step records who, from which state and why, the outcomes
+stay in its history and its session is told. Fix what closed it first (an
+outcome, a pause, a check), or auto-close closes it again at the next hour.
 
 A standing ok (since 23/10/2026 20:00, the maintainer from the phone:
 «Quando ci sono aggiornamenti di supervisor, effettuali direttamente»):

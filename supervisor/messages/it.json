@@ -1407,6 +1407,8 @@
   "tasks.prove_closed": "{task}: tutte le prove ok, controllo verde: compito chiuso",
   "tasks.prove_red": "{task}: tutte le prove sono ok ma il controllo è rosso, il compito resta aperto: {why}",
   "tasks.prove_red_next": "Le prove sono ok, il controllo è rosso: tocca alla sessione",
+  "tasks.reopened": "{task}: riaperto da {by}: {why}. Il compito è di nuovo aperto ({state}); la chiusura di prima non conta più.",
+  "tasks.reopened_step": "riaperto (era {was}) da {by}: {why}",
   "tasks.decisions_none": "Niente da decidere ({snoozed} in «Non ora»)",
   "tasks.decisions_header": "Decisioni: {n} gruppi, sbloccano {tasks} compiti, {here} da qui, {snoozed} in «Non ora»",
   "tasks.decisions_line": "- [{where}] peso {weight}: {title} ({tasks})",

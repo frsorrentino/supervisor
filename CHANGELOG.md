@@ -2,6 +2,10 @@
 
 ## 0.3.x
 
+- **0.8.226 — 2026-11-28: auto-close waits for the person's test when the outcome asks for it, and `task reopen` reopens a task closed by mistake (supervisor-autoclose-prova-28-11).**
+  - At 03:41 auto-close closed three tasks whose check was green and that had no test, while their outcome asked for the person's test («… Telefono e web. Prova di <name>.»); one was in a `--waits external` pause, which auto-close treats as closable. A green check says the work is there, not that the person tried it. Now, when the outcome asks for the person's test («Prova di <Name>», «prova della persona», «the person's test», or «prova» among the items of `outcome.proof`), auto-close waits for a test marked ok and still in force, or the person's confirmation, also in that pause. `task resettle` only reruns tasks whose tests in force are all ok, so it already has one.
+  - `supervisor task reopen ID --reason R [--by B] [--json]`: a task closed by mistake (done, failed, cancelled, superseded) is open again, running if it was worked on and otherwise assigned; its closure leaves the report card, a step says who, from which state and why, the outcomes stay in its history, and its session is told. Exit 3 when the task is already open.
+  - Test: `tests/autoclose-prova-verify.py` AP1-AP6.
 - **0.8.225 — 2026-11-28: a test of the relay's errors file no longer fails every evening between 23:38 and midnight (supervisor-ar5-orario-28-11).**
   - AR5 of `tests/agenda-raffica-verify.py` wrote its lines from the real clock up to 1301 s ahead: between 23:38 and midnight the ones after midnight went, rightly, into the next day's errors file, the check failed and the release's preflight stopped (27/11 at 23:43). Its in-process part now starts from a given hour, noon of the day, so it is green at any real time. Nothing changes in the plugin.
   - `tests/lib/orologio.py HH:MM TEST.py` runs a test with its own process's clock at that hour of the day, without libfaketime. `tests/data-mezzanotte-verify.py` DM11 runs agenda-raffica-verify with the clock at 23:50: red before the fix, green after.
