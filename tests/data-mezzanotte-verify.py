@@ -24,6 +24,8 @@ DM9 relay-k-verify prende DAY0 e ieri da NOW, non da una seconda lettura dell'or
 DM10 avvisi-telegram e recap-telegram fissano il giorno (DATA-AT, DATA-RT) e dopo chiudono un compito con task done, con lo
     stesso ENV: il tratto a 23:59:59 e la chiusura vera di cm-tasks a 00:00:00, 00:00:01 e alla fine del mese; il recap
     di quel giorno (cm-avvisi.closed_on, cm-tasks closed) conta il compito; senza CM_TODAY no (24/11, supervisor-test-chiusi-24-11)
+DM11 agenda-raffica-verify per intero, con l'orologio del suo processo alle 23:50 (tests/lib/orologio.py), e' verde: la
+    parte in processo di AR5 parte da un'ora data e non da time.time() (28/11, supervisor-ar5-orario-28-11)
 """
 import json
 import re
@@ -403,5 +405,16 @@ for case in CLOSE_FILES:
     old_noon = close10(case, old_block, NOON, NOON + 5, "oldnoon") if block else []
     T.check(f"DM10 {case}: without CM_TODAY the closure after midnight is tomorrow's (red), at noon green: the proof sees the defect",
             bool(block) and any(not ok6(r) for r in old.values()) and ok6(old_noon), f"{[(h, ok6(r)) for h, r in old.items()]} noon {old_noon}")
+
+# DM11 (28/11/2026, supervisor-ar5-orario-28-11): agenda-raffica-verify per intero con l'orologio del suo processo alle
+# 23:50 (tests/lib/orologio.py). AR5 scriveva righe fino a now+1301 s da time.time(): fra le 23:38 e mezzanotte quelle
+# dopo la mezzanotte finivano nel file del giorno dopo, e il preflight della release si fermava (27/11 alle 23:43)
+import subprocess as _sp  # noqa: E402
+_env11 = {k: v for k, v in os.environ.items() if not k.startswith(("CM_", "CC_SUPERVISOR"))}
+_env11["HOME"] = str(tmp)
+r11 = _sp.run([sys.executable, str(TESTS / "lib" / "orologio.py"), "23:50", str(TESTS / "agenda-raffica-verify.py")],
+              capture_output=True, text=True, env=_env11, timeout=600)
+T.check("DM11 agenda-raffica-verify with its process's clock at 23:50 (tests/lib/orologio.py) is green: AR5 takes a given hour, so the release's preflight no longer stops between 23:38 and midnight",
+        r11.returncode == 0 and "AR5 FAILED and" in r11.stdout and "  FAIL " not in r11.stdout, (r11.stdout + r11.stderr)[-700:])
 T.rm(str(tmp))
 T.finish()

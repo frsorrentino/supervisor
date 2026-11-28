@@ -11,7 +11,8 @@ AR4 il log non cresce con la raffica: le righe uguali di fila sono scritte una v
 AR6 la stessa lettura chiesta di nuovo mentre la prima e' ancora in corso la aspetta: un'esecuzione, a tutti la risposta
 AR7 dopo un comando dell'utente la stessa lettura si esegue di nuovo, anche entro il secondo
 AR5 gli errori (FAILED, → ERR) stanno anche in un file a parte, uno per giorno, con i ripetuti contati; i file piu'
-    vecchi di ERR_LOG_DAYS giorni escono, quelli dentro restano; relay.log puo' ruotare senza portarli via
+    vecchi di ERR_LOG_DAYS giorni escono, quelli dentro restano; relay.log puo' ruotare senza portarli via. La parte in
+    processo parte da un'ora data (le 12:00 di oggi), cosi' e' verde a ogni ora vera, anche fra le 23:38 e mezzanotte
 """
 import importlib.util as _ilu
 import json
@@ -160,7 +161,11 @@ lp = rdir / "relay.log"
 lp.write_text("")
 for e in rdir.glob("relay-errors-*.log"):
     e.unlink()
-now = time.time()
+# 28/11/2026 (supervisor-ar5-orario-28-11): un'ora data, le 12:00 di oggi, non time.time(). Ogni riga qui porta la sua ora
+# (log(now=...)) e AR5 scrive fino a now+1301 s: con now fra le 23:38 e mezzanotte le righe dopo la mezzanotte finivano
+# nel file degli errori del giorno dopo, AR5 era rosso e fermava il preflight della release (27/11 alle 23:43). Prova:
+# `python3 tests/lib/orologio.py 23:50 tests/agenda-raffica-verify.py` (rosso con la forma di prima, verde con questa)
+now = time.mktime(time.localtime()[:3] + (12, 0, 0, 0, 0, -1))
 for i in range(50):
     RL.log("serve: la stessa riga", now=now + i * 0.1)
 RL.log("serve: un'altra riga", now=now + 6)
