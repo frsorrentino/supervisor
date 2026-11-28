@@ -41,8 +41,8 @@
                                                 punti (Approva, scelte, Prova, Tutto va / Non va, Tocca a te, orologio): approva
                                                 la carta (con --choice se la chiede), segna ok le prove in vigore scritte prima
                                                 del messaggio (o quelle di --prove), chiude la pausa per la persona; con tutto
-                                                ok il controllo gira (task settle). --ko: la prova o la pausa non va. Lo stesso
-                                                controllo della casella di approve; la sessione del compito e la master lo
+                                                ok il controllo gira (task settle). --ko: la prova (anche gia' ok) o la pausa
+                                                non va. Lo stesso controllo della casella di approve; la sessione e la master lo
                                                 sanno. Esce senza scrivere se il messaggio puo' valere per voci diverse
   supervisor task approve ID --by B --inbox MSG [--text NOTA] [--what W] [--where D] [--choice C]
                                                 da una sessione Claude l'ok a nome di una persona passa cosi': la
@@ -2123,6 +2123,15 @@ def prove_mark(con, ids, result, by, where, text=None, origin="relay"):
         rows.append(r)
     t = now()
     for r in rows:
+        if result == "ko" and r["result"] == "ok":
+            # 28/11/2026 (supervisor-ko-su-prova-ok-28-11): un «non va» dopo l'ok. L'ok resta nella storia (un passo dice chi e
+            # quando) e, come per una riapertura, le conferme scritte prima non contano piu' (una riga di reopens): settle,
+            # resettle e auto-close aspettano una prova nuova ok o una conferma nuova della persona
+            was_at = time.strftime("%d/%m %H:%M", time.localtime(r["result_at"] or t))
+            con.execute("INSERT INTO steps (task, at, by_, kind, text, next) VALUES (?,?,?,'step',?,NULL)",
+                        (r["task"], t, by, M("tasks.prova_ok_ko", n=r["n"], was_by=r["result_by"] or "?", was_at=was_at, why=" ".join(str(text or "").split()))[:500]))
+            con.execute("INSERT INTO reopens (task, at, by_, was, why, approval_n) VALUES (?,?,?,'prova-ok',?,(SELECT COALESCE(MAX(n), 0) FROM approvals))",
+                        (r["task"], t, by, text))
         con.execute("UPDATE prove SET result=?, result_at=?, result_by=?, result_text=? WHERE n=?", (result, t, by, text, r["n"]))
     complete = []
     if result == "ok":
@@ -2275,12 +2284,16 @@ def answer_plan(con, tids, ok_at=None, choice=None, prove_ids=None, ko=None):
         card = row["state"] == "awaiting_ok"
         pending = prove_pending(con, tid)
         if tid in by_task:
-            prove = [r for r in by_task[tid] if r["result"] != "ok"]
+            # 28/11/2026 (supervisor-ko-su-prova-ok-28-11): un «non va» vale anche su una prova gia' ok (alle 15:48 `task ok
+            # --ko` sulla 1461 rispondeva «no test and no pause waits»); un ok su una prova gia' ok resta da saltare
+            prove = [r for r in by_task[tid] if ko is not None or r["result"] != "ok"]
             newer = []
         else:
             prove = [r for r in pending if ok_at is None or r["at"] <= ok_at]
             newer = [r for r in pending if ok_at is not None and r["at"] > ok_at]
         pz = _person_pause(con, tid)
+        if ko is not None and not prove and not pz and tid not in by_task:   # 28/11: niente da fare, le prove ok in vigore
+            prove = [r for r in _live_prove(con, tid) if r["result"] == "ok"]
         if ko is not None and card:
             sys.exit(f"task ok {tid}: --ko is the answer to a test or a pause, not to a card: a «no» to the card is the session's to act on (it tells the person and changes or cancels the task)")
         opts = request_options(con, tid) if card else []

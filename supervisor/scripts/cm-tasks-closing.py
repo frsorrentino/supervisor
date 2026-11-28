@@ -35,7 +35,8 @@ def needs_person_test(task):
 
 
 def reopen_last(con, tid):
-    """L'ultima riapertura del compito, {at, approval_n}, o None: le conferme scritte prima (n <= approval_n) non valgono."""
+    """L'ultima riapertura del compito, o l'ultimo «non va» su una sua prova gia' ok (was «prova-ok», 28/11,
+    supervisor-ko-su-prova-ok-28-11), {at, approval_n}, o None: le conferme scritte prima (n <= approval_n) non valgono."""
     return con.execute("SELECT at, approval_n FROM reopens WHERE task=? ORDER BY n DESC LIMIT 1", (tid,)).fetchone()
 
 

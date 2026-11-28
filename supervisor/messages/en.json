@@ -1417,6 +1417,7 @@
   "tasks.reopened_prove_step": "; tests {nums} superseded",
   "tasks.reopened_wait": "To close again by itself it waits for a new test ok or a new confirmation from the person{gone}.",
   "tasks.reopened_gone": ": the earlier tests {nums} are superseded (they stay in the history)",
+  "tasks.prova_ok_ko": "test #{n}: it was ok ({was_by}, {was_at}), now it does not work: {why}",
   "tasks.decisions_none": "Nothing to decide ({snoozed} on «Not now»)",
   "tasks.decisions_header": "Decisions: {n} groups, they unblock {tasks} tasks, {here} from here, {snoozed} on «Not now»",
   "tasks.decisions_line": "- [{where}] weight {weight}: {title} ({tasks})",

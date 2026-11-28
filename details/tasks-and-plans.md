@@ -89,7 +89,12 @@ counting: settle, `task resettle`, auto-close and `task confirmed` wait for a ne
 test marked ok or a new confirmation, also when the outcome does not ask for the
 person's test (28/11/2026, a task reopened at 15:48 was closed again at 15:50 by
 resettle on its old test; supervisor-reopen-prove-28-11). `task done` by hand is
-unchanged.
+unchanged. A «non va» on a test already marked ok and still in force (`task ok
+ID --ko R`, with `--prove N` when the task has more than one, or «Non va» from a
+device) marks it ko with the reason; a step keeps who had said ok and when, and,
+as for a reopen, the confirmations written before stop counting, so the task
+waits for a new test marked ok or a new confirmation (28/11/2026,
+supervisor-ko-su-prova-ok-28-11).
 
 A standing ok (since 23/10/2026 20:00, the maintainer from the phone:
 «Quando ci sono aggiornamenti di supervisor, effettuali direttamente»):
