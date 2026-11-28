@@ -136,6 +136,9 @@ Fase A del programma del 01/11 (contratto 1.99):
                                                 ok e il controllo rosso
   supervisor task settle ID                     tutte le prove ok: riesegue il controllo, verde chiude; rosso resta aperto, lo
                                                 dice a sessione e master e non conta tentativi. Altrimenti exit 3, non cambia niente
+  supervisor task resettle [--log] [--json]     i compiti con tutte le prove ok e il controllo rosso lo rieseguono, al piu'
+                                                ogni 10 minuti ciascuno: verde chiude come settle, rosso non conta tentativi e
+                                                non avvisa (la guardia lo lancia ogni 10 minuti; --log scrive in guard.log)
   supervisor task decisioni [--json]            cio' che aspetta la persona per causa: pause, ok, needs-you; le fattibili da qui
                                                 prima, poi le piu' pesanti (peso = quanti compiti sblocca)
   supervisor task cause ID [ID...] --cause C [--note FRASE] [--by B]
@@ -2181,6 +2184,12 @@ def settle(con, tid):
     return 1, f"{tid}: red — every test ok, check exit {rc}: {why}; the task stays open"
 
 
+# 27/11/2026 (supervisor-rossi-ricontrollo-27-11): `task resettle`, i rossi con tutte le prove ok ricontrollati dalla
+# guardia. In un file suo: cm-tasks.py e' vicino al tetto di 256 KiB dei file del plugin
+_PART_RESETTLE = HERE / "cm-tasks-resettle.py"
+exec(compile(_PART_RESETTLE.read_text(encoding="utf-8"), str(_PART_RESETTLE), "exec"))
+
+
 PROVE_RANGE_RE = re.compile(r"#?(\d{1,12})(?:-#?(\d{1,12}))?")
 PROVE_RANGE_MAX = 200
 
@@ -3177,6 +3186,23 @@ def main(argv):
         rc, text = settle(con, args[0])
         print(text, file=sys.stderr if rc == 3 else sys.stdout)
         return rc
+    if verb == "resettle":   # 27/11/2026 (supervisor-rossi-ricontrollo-27-11)
+        import fcntl
+        run_lock = open(str(db_path()) + ".resettle.lock", "a")
+        try:   # un giro alla volta: quello di prima puo' essere ancora dentro un controllo lungo
+            fcntl.flock(run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print("task resettle: another round is running", file=sys.stderr)
+            return 0
+        out = resettle(con)
+        text = render_resettle(out)
+        if as_json:
+            print(json.dumps(out, ensure_ascii=False))
+        elif text:
+            print(text)
+        if text and "--log" in args:
+            _resettle_log(text)
+        return 0
     if verb == "decisioni":
         d = decisions(con)
         print(json.dumps(d, ensure_ascii=False) if as_json else render_decisions(d))

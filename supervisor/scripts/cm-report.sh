@@ -19,6 +19,9 @@
 # darebbe `launch` (o la lancia, account dedotto dal percorso) e le consegna il
 # testo con il percorso dell'immagine via `talk --no-wait` (socket se c'e', tmux
 # altrimenti). Non aspetta la risposta.
+# Una sessione su un altro host (--session HOST:nome, o una lanciata con launch --host) riceve l'immagine anche la':
+# cm-report-host.py la scrive nella sua cartella sull'host come gli allegati del relay, e nel prompt va il percorso
+# dell'host (27/11/2026). Se l'host non la prende, exit 7 e niente prompt con un percorso che la' non si apre.
 set -u
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/cm-lib.sh"
 
@@ -89,12 +92,22 @@ if ! esiste "$NOME"; then
   "$CM_SCRIPTS/cm-launch.sh" "$CARTELLA" --no-window >&2 || { cm_msg report.launch_failed >&2; exit 5; }
 fi
 
+# --- l'immagine sull'host di una sessione remota ------------------------------------
+# 27/11/2026 (supervisor-report-win-27-11): verso win:supervisor-app l'immagine restava solo nel progetto di qui, e la
+# sessione riceveva un percorso di questo computer, che su win non si apre (la master l'ha copiata a mano). Ora la scrive
+# sull'host la stessa via degli allegati del relay (contratto 1.50), e nel prompt va il percorso dell'host; l'archivio
+# di qui resta come prima
+PERCORSO_PROMPT="$PERCORSO_IMG"
+if [ -n "$PERCORSO_IMG" ] && python3 "$CM_SCRIPTS/cm-rsession.py" resolve "$NOME" >/dev/null 2>&1; then
+  PERCORSO_PROMPT="$(python3 "$CM_SCRIPTS/cm-report-host.py" "$NOME" "$PERCORSO_IMG" "$TESTO")" || exit 7
+fi
+
 # --- consegna, senza aspettare la risposta ---------------------------------------
 PROMPT="$(cm_msg report.prompt "date=$(date +%d/%m/%Y)" "text=$TESTO")"
 if [ -n "$PERCORSO_IMG" ]; then
-  RIGA_IMG="$(cm_msg report.prompt_image "path=$PERCORSO_IMG")"
+  RIGA_IMG="$(cm_msg report.prompt_image "path=$PERCORSO_PROMPT")"
   # la riga col percorso non sparisce mai in silenzio: se il messaggio non esce, il percorso nudo e un avviso
-  [ -n "$RIGA_IMG" ] || { RIGA_IMG="$PERCORSO_IMG"; echo "report: prompt_image line failed, path sent bare" >&2; }
+  [ -n "$RIGA_IMG" ] || { RIGA_IMG="$PERCORSO_PROMPT"; echo "report: prompt_image line failed, path sent bare" >&2; }
   PROMPT="$PROMPT
 $RIGA_IMG"
 fi
@@ -110,4 +123,5 @@ if [ "$VIA" = "via tmux" ]; then
 fi
 cm_msg report.delivered "name=$NOME" "project=$NOME_CARTELLA" "via=${VIA#via }"
 [ -n "$PERCORSO_IMG" ] && echo "  $(cm_msg report.image_line "path=$PERCORSO_IMG")"
+[ "$PERCORSO_PROMPT" != "$PERCORSO_IMG" ] && echo "  $(cm_msg report.host_image_line "path=$PERCORSO_PROMPT")"
 cm_msg report.followup "name=$NOME"

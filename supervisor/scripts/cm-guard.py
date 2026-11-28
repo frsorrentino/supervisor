@@ -396,6 +396,14 @@ def run():
                 log("silenzio assenso: " + "; ".join(r.stdout.strip().splitlines()))
         except (OSError, subprocess.TimeoutExpired):
             pass
+        # 27/11/2026 (supervisor-rossi-ricontrollo-27-11): i compiti con tutte le prove ok e il controllo rosso lo
+        # rieseguono (`task resettle`, al piu' ogni 10 minuti ciascuno), staccato: un controllo dura fino al suo timeout
+        # e la guardia non lo aspetta; le righe del giro arrivano in guard.log (--log)
+        try:
+            subprocess.Popen([CM_BIN, "task", "resettle", "--log"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
         unproven_alerts(t)
     # 16/10/2026: una volta l'ora i compiti aperti da piu' di 6 ore col controllo verde si chiudono (`task auto-close`)
     stamp = state_path().with_name("auto-close.stamp")

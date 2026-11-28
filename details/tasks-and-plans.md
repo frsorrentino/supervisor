@@ -154,7 +154,15 @@ by version: a new build retires the task's earlier ones. Only a touch on a paire
 device gives the outcome (op `prova`): no command does, from a session or a shell.
 When every test of a task is ok, the person's confirmation is recorded and
 `task settle` reruns the check: green closes the task, red leaves it open, says so
-and spends no attempt. The hourly auto-close leaves a task with a test to do.
+and spends no attempt. A task left red that way checks itself again: every 10
+minutes the guard starts `task resettle --log` (detached, one round at a time),
+which reruns the check of each open task with every test ok and a red check, at
+most once every 10 minutes per task, longest waiting first, with settle's lock.
+Green closes it as settle does, and the session and the master are told; red
+spends no attempt and tells no one, and adds a `prova-red` step only when the
+reason changed, so the app shows the current one (27/11/2026,
+supervisor-rossi-ricontrollo-27-11). The hourly auto-close leaves a task with a
+test to do.
 `task decisioni` gathers the pauses for the person, the oks and the needs-you,
 grouped by `task pause --cause C` or else by the pause's words; the weight is how
 many tasks a group unblocks. Each item says «from here» or «at the PC»: `--al-pc`

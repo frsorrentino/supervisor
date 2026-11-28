@@ -13,7 +13,8 @@ FAKE_WIN_READ_FAIL_FIRST=N scadono solo le prime N letture (contate in FAKE_WIN_
 16/11: FAKE_WIN_LIMIT=nome la sessione e' ferma su un limite d'uso, come win:supervisor-app il 16/11 dalle 17:44: ogni
 messaggio riceve in risposta l'errore dell'API («You've hit your Fable limit …», isApiErrorMessage, error rate_limit),
 che la lettura mette in errors e non in texts; post e lettura dicono block, come cm-session.js. FAKE_WIN_STALE_BLOCK=nome:
-il blocco c'e' (l'ultima voce era l'errore: il modello e' appena stato cambiato) ma la sessione risponde."""
+il blocco c'e' (l'ultima voce era l'errore: il modello e' appena stato cambiato) ma la sessione risponde.
+27/11: FAKE_WIN_PUT_FAIL=1 file_put non riesce (HostError unreachable), come una copia verso l'host che scade."""
 import importlib.util
 import json
 import os
@@ -302,6 +303,8 @@ def _file_get(self, path, dest):
 
 def _file_put(self, src, path):
     note("file_put", path=path)
+    if os.environ.get("FAKE_WIN_PUT_FAIL") == "1":   # 27/11: la copia non riesce, come con l'host irraggiungibile
+        raise _ad.HostError("unreachable", "scp: connection timed out")
     local(path).parent.mkdir(parents=True, exist_ok=True)
     local(path).write_bytes(Path(src).read_bytes())
 
