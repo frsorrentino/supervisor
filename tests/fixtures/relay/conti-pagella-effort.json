@@ -1,0 +1,93 @@
+{
+  "pagella": {
+    "since": 1795000001,
+    "min": 10,
+    "rows": [
+      {
+        "model": "claude-sonnet-5-5",
+        "kind": "fix",
+        "n": 20,
+        "enough": true,
+        "defects": 12,
+        "rate": 0.6,
+        "efforts": {
+          "medium": 17
+        },
+        "by_effort": [
+          {
+            "effort": "medium",
+            "n": 17,
+            "enough": true,
+            "defects": 12,
+            "rate": 0.706
+          },
+          {
+            "effort": null,
+            "n": 3,
+            "enough": false,
+            "defects": null,
+            "rate": null
+          }
+        ]
+      },
+      {
+        "model": "claude-opus-5-5",
+        "kind": "fix",
+        "n": 14,
+        "enough": true,
+        "defects": 2,
+        "rate": 0.143,
+        "efforts": {
+          "high": 12,
+          "medium": 2
+        },
+        "by_effort": [
+          {
+            "effort": "medium",
+            "n": 2,
+            "enough": false,
+            "defects": null,
+            "rate": null
+          },
+          {
+            "effort": "high",
+            "n": 12,
+            "enough": true,
+            "defects": 2,
+            "rate": 0.167
+          }
+        ]
+      },
+      {
+        "model": "claude-opus-5-5",
+        "kind": "feature",
+        "n": 5,
+        "enough": false,
+        "defects": null,
+        "rate": null,
+        "efforts": {
+          "low": 5
+        },
+        "by_effort": [
+          {
+            "effort": "low",
+            "n": 5,
+            "enough": false,
+            "defects": null,
+            "rate": null
+          }
+        ]
+      }
+    ],
+    "advice": [
+      {
+        "kind": "fix",
+        "better": "claude-opus-5-5",
+        "worse": "claude-sonnet-5-5",
+        "rate_better": 0.143,
+        "rate_worse": 0.6
+      }
+    ],
+    "unknown_model": 1
+  }
+}

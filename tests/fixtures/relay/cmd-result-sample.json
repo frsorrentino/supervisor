@@ -1114,6 +1114,30 @@
       "device": "phone"
     },
     {
+      "id": "6f1c2d3e-1660-4000-8000-000000001660",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "riprendi",
+      "product": "atlas-shop",
+      "key": "demo",
+      "device": "phone"
+    },
+    {
+      "id": "6f1c2d3e-1661-4000-8000-000000001661",
+      "session": null,
+      "arg": null,
+      "issued": 1789214705,
+      "by": "phone-pixel7",
+      "op": "seguiti_azione",
+      "action": "riprendi",
+      "product": "atlas-shop",
+      "key": "demo",
+      "device": "phone"
+    },
+    {
       "id": "6f1c2d3e-0913-4000-8000-0000000000913",
       "session": null,
       "arg": "2026-09",
@@ -2305,7 +2329,7 @@
     {
       "id": "6f1c2d3e-0900-4000-8000-000000000900",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w672849311e\", \"silence_ok\": true}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w0309d64e51\", \"silence_ok\": true}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"no release on GitHub yet\", \"at\": 1789214000}], \"archived\": [{\"task\": \"orbit-filter\", \"short\": \"Filter\", \"kind\": \"pause\", \"rule\": 4, \"text\": \"in archivio: nessun passo da 7 giorni e il compito non è in corso\", \"at\": 1789200000}]}",
+      "text": "{\"at\": 1789214700, \"n\": 2, \"builds\": 1, \"groups\": [{\"build\": \"atlas-rc-2-4\", \"n\": 2, \"at\": 1789214100, \"tasks\": [\"atlas-checkout-layout\", \"atlas-cart-badge\"], \"prove\": [{\"id\": 41, \"task\": \"atlas-checkout-layout\", \"short\": \"Checkout layout\", \"build\": \"atlas-rc-2-4\", \"dove\": \"checkout\", \"fai\": \"Open the checkout with two items\", \"atteso\": \"The total stays on one line\", \"title\": \"Checkout layout of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w672849311e\", \"silence_ok\": true}, {\"id\": 42, \"task\": \"atlas-cart-badge\", \"short\": \"Cart badge\", \"build\": \"atlas-rc-2-4\", \"dove\": \"home\", \"fai\": \"Add an item to the cart\", \"atteso\": \"The badge shows 1\", \"title\": \"Cart badge of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"at\": 1789214100, \"wid\": \"w0309d64e51\", \"silence_ok\": true}]}], \"ko\": [{\"id\": 38, \"task\": \"atlas-search\", \"short\": \"Search filters\", \"build\": \"atlas-rc-2-3\", \"dove\": \"search\", \"fai\": \"Filter by size\", \"atteso\": \"The list narrows\", \"text\": \"The filter closes at once\", \"at\": 1789213000}], \"red\": [{\"task\": \"atlas-release-2-4\", \"short\": \"Release 2.4 of atlas-shop\", \"reason\": \"Tests ok, the release with this work is missing: the task closes by itself when it is out.\", \"at\": 1789214000}], \"archived\": [{\"task\": \"orbit-filter\", \"short\": \"Filter\", \"kind\": \"pause\", \"rule\": 4, \"text\": \"in archivio: nessun passo da 7 giorni e il compito non è in corso\", \"at\": 1789200000}]}",
       "at": 1789214706
     },
     {
@@ -2381,9 +2405,23 @@
       "at": 1789214706
     },
     {
+      "id": "6f1c2d3e-1660-4000-8000-000000001660",
+      "ok": true,
+      "text": "atlas-shop resumes task allinea-atlas-shop-demo-02-11",
+      "task": "allinea-atlas-shop-demo-02-11",
+      "session": "atlas-shop",
+      "at": 1789214706
+    },
+    {
+      "id": "6f1c2d3e-1661-4000-8000-000000001661",
+      "ok": false,
+      "text": "atlas-shop did not reopen: task allinea-atlas-shop-demo-02-11 waits in its inbox",
+      "at": 1789214706
+    },
+    {
       "id": "6f1c2d3e-0913-4000-8000-0000000000913",
       "ok": true,
-      "text": "{\"at\": 1789214700, \"mese\": \"2026-09\", \"mesi\": [\"2026-09\", \"2026-08\"], \"clienti\": [{\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"n\": 7, \"draft_at\": null}], \"dettaglio\": {\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"mese\": \"2026-09\", \"measured\": {\"tasks\": 7, \"commits\": 41, \"releases\": 2}, \"tasks\": [{\"task\": \"acme-checkout-fix\", \"title\": \"Checkout fix\", \"at\": 1789120000, \"outcome_kind\": \"release\"}], \"commits\": [{\"hash\": \"a81c55e\", \"at\": 1789119000, \"subject\": \"fix checkout on mobile\"}], \"commits_more\": false, \"releases\": [{\"tag\": \"v2.3.1\", \"at\": 1789120500}], \"git\": true}, \"pagella\": {\"since\": 1789000000, \"min\": 10, \"rows\": [{\"model\": \"claude-opus-5-5\", \"kind\": \"fix\", \"n\": 14, \"enough\": true, \"defects\": 2, \"rate\": 0.143, \"efforts\": {\"high\": 14}}, {\"model\": \"claude-sonnet-5-5\", \"kind\": \"fix\", \"n\": 6, \"enough\": false, \"defects\": null, \"rate\": null, \"efforts\": {}}], \"advice\": [], \"unknown_model\": 3}}",
+      "text": "{\"at\": 1789214700, \"mese\": \"2026-09\", \"mesi\": [\"2026-09\", \"2026-08\"], \"clienti\": [{\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"n\": 7, \"draft_at\": null}], \"dettaglio\": {\"project\": \"work/acme-site\", \"name\": \"acme-site\", \"mese\": \"2026-09\", \"measured\": {\"tasks\": 7, \"commits\": 41, \"releases\": 2}, \"tasks\": [{\"task\": \"acme-checkout-fix\", \"title\": \"Checkout fix\", \"at\": 1789120000, \"outcome_kind\": \"release\"}], \"commits\": [{\"hash\": \"a81c55e\", \"at\": 1789119000, \"subject\": \"fix checkout on mobile\"}], \"commits_more\": false, \"releases\": [{\"tag\": \"v2.3.1\", \"at\": 1789120500}], \"git\": true}, \"pagella\": {\"since\": 1789000000, \"min\": 10, \"rows\": [{\"model\": \"claude-opus-5-5\", \"kind\": \"fix\", \"n\": 14, \"enough\": true, \"defects\": 2, \"rate\": 0.143, \"efforts\": {\"high\": 14}, \"by_effort\": [{\"effort\": \"high\", \"n\": 14, \"enough\": true, \"defects\": 2, \"rate\": 0.143}]}, {\"model\": \"claude-sonnet-5-5\", \"kind\": \"fix\", \"n\": 6, \"enough\": false, \"defects\": null, \"rate\": null, \"efforts\": {}, \"by_effort\": [{\"effort\": null, \"n\": 6, \"enough\": false, \"defects\": null, \"rate\": null}]}], \"advice\": [], \"unknown_model\": 3}}",
       "at": 1789214706
     },
     {
@@ -2600,7 +2638,7 @@
     {
       "id": "6f1c2d3e-1333-4000-8000-000000001333",
       "ok": true,
-      "text": "{\"id\": 36, \"task\": \"atlas-order-mail\", \"short\": \"Order mail\", \"title\": \"Order mail of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"checkout\", \"fai\": \"Place a test order\", \"atteso\": \"The confirmation mail arrives\", \"state\": \"red\", \"text\": \"check red: exit 1 — 2 tests failed\", \"at\": 1789129000, \"files\": null}",
+      "text": "{\"id\": 36, \"task\": \"atlas-order-mail\", \"short\": \"Order mail\", \"title\": \"Order mail of atlas-shop\", \"session\": \"atlas-shop\", \"project\": \"personal/atlas-shop\", \"build\": \"atlas-rc-2-3\", \"dove\": \"checkout\", \"fai\": \"Place a test order\", \"atteso\": \"The confirmation mail arrives\", \"state\": \"red\", \"text\": \"Tests ok, the green check is missing: the task closes by itself as soon as the check passes.\", \"at\": 1789129000, \"files\": null}",
       "at": 1789806004
     },
     {

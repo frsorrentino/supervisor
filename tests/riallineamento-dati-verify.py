@@ -217,9 +217,9 @@ FIXREG = [
     {"id": W("nonva", 1290), "type": "carta", "kind": "nonva", "session": "delta", "task": "app-z", "_short": "login col codice", "files": None, "text": "Non entra col codice",
      "options": None, "at": 1794849200, "answer": {"op": "prova", "arg": "1290", "result": "ok"},
      "tests": [{"id": 1290, "build": "1.3.9", "dove": "login", "fai": "entra col codice", "atteso": "la home", "files": None, "state": "ko", "text": "Non entra col codice", "at": 1794849200}],
-     "build": "1.3.9"},
-    {"id": W("rosso", "app-w", 1794849300), "type": "carta", "kind": "rosso", "session": "delta", "task": "app-w", "_short": "build web", "text": "npm test: 2 failing",
-     "options": None, "at": 1794849300, "answer": None, "red": {"reason": "npm test: 2 failing", "running": False}}]
+     "build": "1.3.9"}]
+# 1.165 (28/11/2026, supervisor-verifiche-rosse-frasi-28-11): il registro non da' piu' voci «rosso» (prove tutte ok e
+# controllo rosso, la verifica della master); il rosso della fixture e' quello della guardia (task_red di app-w), col suo «Fatto»
 fx_state = {"sessions": [{"name": "win:alfa", "state": "idle"}, {"name": "delta", "state": "idle"}],
             "attention": [{"kind": "turn_failed", "session": "delta", "ref": "delta", "title": "delta: turno fallito (529 Overloaded)", "since": 1794850000},
                           {"kind": "task_red", "session": "delta", "ref": "app-w", "title": "app-w: il controllo è rosso", "since": 1794850100}],

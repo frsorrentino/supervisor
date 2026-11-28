@@ -10,7 +10,8 @@ Un'attesa e' {id, type, kind, session, task, text, options, at, link, answer}:
          «Prossimi» con una voce «!», needs-you, una domanda AskUserQuestion)
   kind   ok | choice | pausa | prova | login | prossimi | needs_you | question; 1.150 limite; 1.151 (16/11/2026,
          supervisor-riall-1-dati-16-11: le attese sono la fonte unica di ogni voce per te) nonva (una prova segnalata «Non
-         va», chiusa con «Ora va»), rosso (un compito col controllo rosso), turno (un turno fallito, «Continua»), raccolta
+         va», chiusa con «Ora va»), rosso (il compito rosso della guardia, task_red; dal 1.165 non i compiti con le
+         prove tutte ok e il controllo rosso, che si chiudono da soli), turno (un turno fallito, «Continua»), raccolta
          (la Prima raccolta, senza sessione). Ogni voce del registro porta il suo gruppo di decisione (decision: chiave,
          «Non ora» e «Lascia»); una prova il dettaglio di ciascuna (tests, build). La sessione e' il nome dello stato.
   answer {op, arg, ...}: l'op del relay che risponde, la stessa dei tasti della carta (approve, prova, decisione,
@@ -152,10 +153,9 @@ def registry_items(now_):
             out.append({"id": wid("nonva", x["id"]), "type": "carta", "kind": "nonva", "session": x.get("session"), "task": x["task"], "_short": x.get("short"),
                         "files": [f for f in x.get("files") or []] or None, "text": x.get("text"), "options": None, "at": x.get("at"),
                         "answer": {"op": "prova", "arg": str(x["id"]), "result": "ok"}, "tests": [_test(x, "ko")], "build": x.get("build")})
-        for x in p.get("red") or []:   # 1.151: ogni prova ok e il compito aperto: il controllo e' rosso (reason) o sta girando (null)
-            out.append({"id": wid("rosso", x["task"], int(x.get("at") or 0)), "type": "carta", "kind": "rosso", "session": x.get("session"), "task": x["task"],
-                        "_short": x.get("short"), "text": x.get("reason") or M("attese.red_running"), "options": None, "at": x.get("at") or now_, "answer": None,
-                        "red": {"reason": x.get("reason"), "running": x.get("reason") is None}})
+        # 1.165 (28/11/2026, supervisor-verifiche-rosse-frasi-28-11): i compiti con le prove tutte ok e il controllo rosso
+        # (p["red"]) non sono piu' voci per la persona: li ricontrolla resettle e si chiudono da soli. Prima erano «rosso»,
+        # col testo del controllo («AssertionError: …») in Ti aspetta. Resta il rosso della guardia (task_red, da _from_state)
     finally:
         con.close()
     return out

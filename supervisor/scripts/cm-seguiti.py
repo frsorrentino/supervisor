@@ -170,6 +170,11 @@ def rimasto_rows(save=True):
     return rows
 
 
+def rimasto_item(product, key):
+    """La voce rimasta indietro com'e' scritta (progetto, sessione, compito), senza ricontrollarla; None se non c'e'."""
+    return (rj(rimasto_path(), {}).get(product) or {}).get(key)
+
+
 def rimasto_ok(product, key):
     d = rj(rimasto_path(), {})
     it = (d.get(product) or {}).get(key)

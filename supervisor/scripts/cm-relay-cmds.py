@@ -2196,8 +2196,44 @@ def feedback_app(cmd):
         share_drop(cmd, sid)
 
 
+def _allinea(sg, product, key):
+    """«Allinea»: un compito nel registro per la sessione della voce, che lo sa subito. (ok, id del compito o motivo, sessione)."""
+    ok, got = sg.rimasto_allinea(product, key)
+    if not ok:
+        return False, got, None
+    session = (sg.rimasto_item(product, key) or {}).get("session") or str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    relay_talk(session, M("seguiti.allinea_talk", task=got, key=key), "--no-wait")
+    return True, got, session
+
+
+def _riprendi(sg, product, key):
+    """1.166 (28/11/2026, supervisor-seguiti-riprendi-28-11; la persona alle 16:38: «la sezione riprendi mi mostra cos'è
+    rimasto indietro ma non mostra un tasto per accettare la ripresa»): col compito della voce ancora aperto, il compito
+    torna alla sessione della voce, rilanciata prima se e' chiusa (`talk --reopen`: --resume della sua conversazione);
+    senza compito aperto, come «Allinea». (ok, testo, {task, session})."""
+    it = sg.rimasto_item(product, key)
+    if not it:
+        return False, M("seguiti.no_item", item=f"{product}/{key}")
+    tid = it.get("task")
+    row = _tasks_read(lambda tk, con: (lambda r: (r["state"] in tk.OPEN_STATES, r["session"]) if r else None)(
+        con.execute("SELECT state, session FROM tasks WHERE id=?", (tid,)).fetchone())) if tid else None
+    if not row or not row[0]:
+        ok, got, session = _allinea(sg, product, key)
+        return (True, M("seguiti.riprendi_new", name=session, task=got, key=key), {"task": got, "session": session}) if ok else (False, got)
+    name = it.get("session") or row[1] or str((CFG.get("workspace") or {}).get("root_session_name") or "master")
+    tm = tmux_of(name)
+    live = is_live(tm)
+    rc, out = relay_talk(tm, M("seguiti.riprendi_talk", task=tid, product=product, key=key, where=it.get("where") or key), "--no-wait", "--reopen")
+    if rc != 0:
+        return False, fail_line(out, "talk failed")
+    if saved_in_inbox(out):
+        return False, M("seguiti.riprendi_inbox", name=name, task=tid)
+    return True, M("seguiti.riprendi_sent" if live else "seguiti.riprendi_reopened", name=name, task=tid), {"task": tid, "session": name}
+
+
 def seguiti_azione(cmd):
-    """1.102: «Allinea» e «Va bene così» su una voce rimasta indietro, «Togli» su un promemoria. Solo da un tocco."""
+    """1.102: «Allinea» e «Va bene così» su una voce rimasta indietro, «Togli» su un promemoria. 1.166: «Riprendi». Solo
+    da un tocco."""
     why = _touch_refused(cmd, "seguiti_azione")
     if why:
         return False, why
@@ -2206,12 +2242,10 @@ def seguiti_azione(cmd):
     if action == "ok":
         return sg.rimasto_ok(product, key)
     if action == "allinea":
-        ok, got = sg.rimasto_allinea(product, key)
-        if not ok:
-            return False, got
-        session = next((r.get("session") for r in sg.rimasto_rows(save=False) if (r["product"], r["key"]) == (product, key)), None)
-        relay_talk(session or str((CFG.get("workspace") or {}).get("root_session_name") or "master"), M("seguiti.allinea_talk", task=got, key=key), "--no-wait")
-        return True, got
+        ok, got, _ = _allinea(sg, product, key)
+        return ok, got
+    if action == "riprendi":
+        return _riprendi(sg, product, key)
     if action == "remind_remove":
         return (True, M("seguiti.remind_removed")) if sg.remind_remove(key) else (False, M("seguiti.no_item", item=key))
     return False, M("seguiti.action_bad")
@@ -2354,6 +2388,8 @@ def prove_op(arg=None):
     root = cm.expand(CFG["workspace"]["root"])
     for x in (x for g in (p or {}).get("groups", []) for x in g["prove"]):
         x["project"] = S.project_of(x.get("project") or "", root)   # come state.sessions[].project
+    for x in (p or {}).get("red", []):   # 1.165: reason e' la frase (cosa manca, si chiude da solo), mai l'uscita del controllo
+        x["reason"] = x.pop("text", None)
     return True, json.dumps(p or {"at": int(time.time()), "n": 0, "builds": 0, "groups": [], "ko": [], "red": [], "archived": []}, ensure_ascii=False)
 
 

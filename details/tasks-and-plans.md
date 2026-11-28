@@ -177,9 +177,14 @@ which reruns the check of each open task with every test ok and a red check, at
 most once every 10 minutes per task, longest waiting first, with settle's lock.
 Green closes it as settle does, and the session and the master are told; red
 spends no attempt and tells no one, and adds a `prova-red` step only when the
-reason changed, so the app shows the current one (27/11/2026,
-supervisor-rossi-ricontrollo-27-11). The hourly auto-close leaves a task with a
-test to do.
+reason changed (27/11/2026, supervisor-rossi-ricontrollo-27-11). Such a task is
+the master's to follow, not the person's: it is not in `attese` (Ti aspetta) nor
+in the counts of «Tocca a te», and where it shows (op `prove`, a test by its
+number) a sentence says what is missing (the build, the release, the publication,
+the push, or the green check) and that the task closes by itself, never the
+check's output; `task prove` at the PC keeps the output (28/11/2026, contract
+1.165, supervisor-verifiche-rosse-frasi-28-11). The hourly auto-close leaves a
+task with a test to do.
 `task decisioni` gathers the pauses for the person, the oks and the needs-you,
 grouped by `task pause --cause C` or else by the pause's words; the weight is how
 many tasks a group unblocks. Each item says «from here» or «at the PC»: `--al-pc`

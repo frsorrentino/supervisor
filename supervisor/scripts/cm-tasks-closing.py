@@ -86,3 +86,30 @@ def reopen(con, tid, by, why):
         _talk(sess, M("tasks.reopened", task=tid, by=by, why=why, state=state) + " "
               + M("tasks.reopened_wait", gone=M("tasks.reopened_gone", nums=nums) if gone else ""))
     return 0, f"{tid}: reopened (was {was}) → {state}" + (f"; tests {nums} superseded" if gone else ""), state, gone
+
+
+# 28/11/2026 (supervisor-verifiche-rosse-frasi-28-11). Alle 16:47 la persona: «perché vedo questi errori?». In Ti aspetta
+# c'era una carta VERIFICA con l'uscita del controllo («AssertionError: build-android.yml non contiene f9f23b6e»): un
+# compito con le prove tutte ok e il controllo rosso, che resettle ricontrolla ogni 10 minuti e chiude da solo. Non e'
+# della persona: esce da attese; dove resta (op prove, la prova per numero) una frase dice cosa manca e che si chiude da
+# solo. Cosa manca si legge prima dall'uscita, poi dal comando del controllo: la prima parola che c'e'.
+RED_WHAT = (
+    (re.compile(r"\b(?:build|workflow|gh run|actions|apk|aab|ya?ml)\b", re.I), "build"),
+    (re.compile(r"\b(?:release[sd]?|tag|pre-?release)\b", re.I), "release"),
+    (re.compile(r"\b(?:deploy\w*|firebase|hosting|pubblicat\w*|online)\b", re.I), "deploy"),
+    (re.compile(r"\b(?:git (?:fetch|log|ls-remote)|origin/|push\w*)", re.I), "push"),
+)
+
+
+def red_what(task, reason):
+    """build | release | deploy | push | check: cosa manca a un compito con le prove tutte ok e il controllo rosso."""
+    for hay in (str(reason or ""), str((task.get("check") or {}).get("cmd") or "")):
+        for r, k in RED_WHAT:
+            if r.search(hay):
+                return k
+    return "check"
+
+
+def red_text(task, reason):
+    """La frase per la persona: cosa manca e che il compito si chiude da solo; None mentre il controllo gira."""
+    return M("tasks.red_text_" + red_what(task, reason)) if reason else None

@@ -989,8 +989,8 @@ _ok4a, _o4a = one(str(_n4))
 settle("pn4")
 _ok4, _o4 = one(str(_n4))
 _red4 = next((x for x in prove()["red"] if x["task"] == "pn4"), {})
-T.check("PN4 confirmed, then the task's check is red: state red, text = the reason of the list's red entry, its at",
-        _ok4 and _o4["state"] == "red" and _o4["text"] and _o4["text"] == _red4.get("reason") and _o4["at"] == _red4.get("at")
+T.check("PN4 confirmed, then the task's check is red: state red, text = the sentence of the list's red entry (1.165: never the check's output), its at",
+        _ok4 and _o4["state"] == "red" and _o4["text"] and _o4["text"] == _red4.get("text") and _o4["text"] != _red4.get("reason") and _o4["at"] == _red4.get("at")
         and _o4a["state"] in ("ok", "red"), f"{_o4a} {_o4} {_red4}")
 
 add("pn5")

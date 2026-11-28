@@ -1,7 +1,7 @@
 {
   "attese": {
     "at": 1794850200,
-    "rev": "0473160574",
+    "rev": "21b2fb15c5",
     "items": [
       {
         "id": "wd44db7b16f",
@@ -325,50 +325,6 @@
         ]
       },
       {
-        "id": "waa6b32e538",
-        "type": "carta",
-        "kind": "rosso",
-        "session": "delta",
-        "task": "app-w",
-        "text": "npm test: 2 failing",
-        "options": null,
-        "at": 1794849300,
-        "answer": null,
-        "red": {
-          "reason": "npm test: 2 failing",
-          "running": false
-        },
-        "link": "https://app.example.test/#/attesa/waa6b32e538",
-        "label": "verify",
-        "label_text": "Verifica",
-        "decision": null,
-        "plan_start": null,
-        "asks": null,
-        "where": null,
-        "tests": null,
-        "build": null,
-        "card": null,
-        "files": null,
-        "description": null,
-        "advice": null,
-        "card_id": "waa6b32e538",
-        "state": "open",
-        "answered": null,
-        "title": "build web",
-        "actions": [
-          {
-            "label": "Fatto",
-            "style": "secondary",
-            "cmd": {
-              "session": null,
-              "op": "attention_done",
-              "arg": "app-w",
-              "kind": "task_red"
-            }
-          }
-        ]
-      },
-      {
         "id": "w3fb836e1c5",
         "type": "chat",
         "kind": "turno",
@@ -420,12 +376,56 @@
             }
           }
         ]
+      },
+      {
+        "id": "w954a32e14c",
+        "type": "chat",
+        "kind": "rosso",
+        "session": "delta",
+        "task": "app-w",
+        "text": "app-w: il controllo è rosso",
+        "options": null,
+        "at": 1794850100,
+        "answer": {
+          "op": "attention_done",
+          "arg": "app-w",
+          "kind": "task_red"
+        },
+        "link": "https://app.example.test/#/attesa/w954a32e14c",
+        "label": "verify",
+        "label_text": "Verifica",
+        "decision": null,
+        "plan_start": null,
+        "asks": null,
+        "where": null,
+        "tests": null,
+        "build": null,
+        "card": null,
+        "files": null,
+        "description": null,
+        "advice": null,
+        "card_id": "w954a32e14c",
+        "state": "open",
+        "answered": null,
+        "title": "app-w: il controllo è rosso",
+        "actions": [
+          {
+            "label": "Fatto",
+            "style": "secondary",
+            "cmd": {
+              "session": null,
+              "op": "attention_done",
+              "arg": "app-w",
+              "kind": "task_red"
+            }
+          }
+        ]
       }
     ]
   },
   "state": {
     "attese": {
-      "rev": "0473160574",
+      "rev": "21b2fb15c5",
       "n": 6,
       "closed": []
     },

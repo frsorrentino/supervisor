@@ -2,7 +2,8 @@
 """supervisor task — il registro dei compiti (fase 1, 03/10/2026).
 
   supervisor task defect-of ID ID_CORRETTO   defect_of: ID corregge un difetto di ID_CORRETTO (come task add --defect-of)
-  supervisor task pagella                    per modello e tipo di lavoro, quanti «fatto» hanno poi avuto un difetto; JSON
+  supervisor task pagella                    per modello e tipo di lavoro, quanti «fatto» hanno poi avuto un difetto, anche per
+                                                effort; bug, bugfix e fix contano come fix (correzioni); JSON
   supervisor task add FILE|- [--topic T]     un contratto {schema_version, task}: validato, con i vincoli
                                                 pertinenti allegati (stesso progetto, stesso argomento)
   supervisor task list [--state S] [--plan P] [--json]
@@ -547,23 +548,42 @@ def closing_runtime(session):
 
 
 PAGELLA_MIN = 10   # sotto i 10 casi niente numeri
+# 28/11/2026 (supervisor-pagella-effort-28-11, la persona: «Unisci bug, bugfix e correzioni»): lo stesso lavoro con tre
+# etichette, al conto «fix» (l'app la chiama «correzioni»); nel registro i tipi restano come sono stati scritti
+PAGELLA_KIND = {"bug": "fix", "bugfix": "fix"}
+EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
+
+
+def _pagella_cell(n, defects):
+    ok = n >= PAGELLA_MIN
+    return {"n": n, "enough": ok, "defects": defects if ok else None, "rate": round(defects / n, 3) if ok else None}
+
+
+def _effort_rank(e):
+    return (e is None, EFFORT_ORDER.index(e) if e in EFFORT_ORDER else len(EFFORT_ORDER), e or "")
 
 
 def pagella(con):
     """1.103: per modello e tipo di lavoro, quanti «fatto» hanno poi avuto un difetto (un legame defect_of vero). Sotto i 10
-    casi `defects` e `rate` sono null. `advice`: solo con una differenza vera sullo stesso tipo, due proporzioni a z >= 1.96."""
+    casi `defects` e `rate` sono null. `advice`: solo con una differenza vera sullo stesso tipo, due proporzioni a z >= 1.96.
+    1.167: bug e bugfix contano come fix; `by_effort`, per riga, [{effort, n, enough, defects, rate}] nell'ordine di
+    EFFORT_ORDER, poi gli altri nomi, poi null (effort non noto), con la stessa soglia dei 10 casi."""
     cells = {}
     for r in con.execute("SELECT c.task, c.model, c.kind, c.effort FROM closures c JOIN tasks t ON t.id=c.task WHERE t.state='done' AND c.model IS NOT NULL"):
-        x = cells.setdefault((r["model"], r["kind"] or "?"), {"n": 0, "defects": 0, "efforts": {}})
+        kind = r["kind"] or "?"
+        x = cells.setdefault((r["model"], PAGELLA_KIND.get(kind, kind)), {"n": 0, "defects": 0, "efforts": {}, "by": {}})
+        bad = 1 if con.execute("SELECT 1 FROM defects WHERE defect_of=?", (r["task"],)).fetchone() else 0
         x["n"] += 1
-        x["defects"] += 1 if con.execute("SELECT 1 FROM defects WHERE defect_of=?", (r["task"],)).fetchone() else 0
+        x["defects"] += bad
         if r["effort"]:
             x["efforts"][r["effort"]] = x["efforts"].get(r["effort"], 0) + 1
+        e = x["by"].setdefault(r["effort"] or None, [0, 0])
+        e[0] += 1
+        e[1] += bad
     rows = []
     for (model, kind), x in sorted(cells.items(), key=lambda kv: (-kv[1]["n"], kv[0])):
-        ok = x["n"] >= PAGELLA_MIN
-        rows.append({"model": model, "kind": kind, "n": x["n"], "enough": ok, "defects": x["defects"] if ok else None,
-                     "rate": round(x["defects"] / x["n"], 3) if ok else None, "efforts": x["efforts"]})
+        rows.append(dict({"model": model, "kind": kind}, **_pagella_cell(x["n"], x["defects"]), efforts=x["efforts"],
+                         by_effort=[dict({"effort": e}, **_pagella_cell(*x["by"][e])) for e in sorted(x["by"], key=_effort_rank)]))
     advice = []
     enough = [r for r in rows if r["enough"]]
     for a in enough:
@@ -2379,7 +2399,7 @@ def answer(con, tids, by, text, ok_at=None, choice=None, prove_ids=None, ko=None
 
 def prove_list(con, now_=None):
     """{at, n, builds, groups, ko, red}: le prove da fare per build, dalla build piu' recente; quelle che non vanno; i compiti con
-    tutte le prove ok ancora aperti (reason null = il controllo sta girando)."""
+    tutte le prove ok ancora aperti (reason null = il controllo sta girando; text la frase per la persona, 1.165)."""
     out, ko, red = {}, [], []
     q = "SELECT * FROM tasks WHERE state IN (%s) AND id IN (SELECT task FROM prove WHERE superseded_at IS NULL) ORDER BY created_at, id" % ",".join("?" * len(OPEN_STATES))
     for row in con.execute(q, OPEN_STATES).fetchall():
@@ -2405,7 +2425,9 @@ def prove_list(con, now_=None):
                 g["prove"].append(dict(base, title=row["title"], session=sess, project=row["project"], at=r["at"]))
         if live and all(r["result"] == "ok" for r in live):
             st = con.execute("SELECT text, at FROM steps WHERE task=? AND kind='prova-red' AND at>=? ORDER BY n DESC LIMIT 1", (row["id"], max(r["result_at"] for r in live))).fetchone()
-            red.append({"task": row["id"], "short": short, "reason": st["text"] if st else None, "at": st["at"] if st else None, "session": sess})
+            # 28/11 (supervisor-verifiche-rosse-frasi-28-11): reason l'uscita (per la master e per resettle), text la frase
+            red.append({"task": row["id"], "short": short, "reason": st["text"] if st else None, "text": red_text(task, st["text"] if st else None),
+                        "at": st["at"] if st else None, "session": sess})
     groups = sorted(out.values(), key=lambda g: (-g["at"], g["build"]))
     try:   # 1.130: una scheda «Ti aspetta» per compito, come in `supervisor attese`
         S_ = _load("cm-relay-state")
@@ -2437,7 +2459,7 @@ def prova_one(con, n):
             st = con.execute("SELECT text, at FROM steps WHERE task=? AND kind='prova-red' AND at>=? ORDER BY n DESC LIMIT 1",
                              (r["task"], max(x["result_at"] for x in live))).fetchone()
             if st:
-                state, text, at = "red", st["text"], st["at"]
+                state, text, at = "red", red_text(task, st["text"]), st["at"]   # 28/11: la frase, mai l'uscita del controllo
     return {"id": r["n"], "task": r["task"], "short": short_of(task) if row else None, "title": row["title"] if row else None,
             "session": (row["session"] or (task.get("where") or {}).get("session")) if row else None,
             "project": row["project"] if row else None, "build": r["build"], "dove": r["dove"], "fai": r["fai"],
