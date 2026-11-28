@@ -134,7 +134,7 @@ T.check("AP6 `task reopen ID --reason R --by B`: back to running (it was worked 
         and any(s == "riaperto (era done) da master: chiuso per errore: mancava la prova" for s in steps)
         and any(ln.startswith("talk s-app ap_lavoro: riaperto da master: chiuso per errore: mancava la prova.") for ln in new_talks)
         and r2[0] == 3 and "already open" in r2[2] and r3[0] != 0 and "usage: task reopen" in r3[2]
-        and r4[0] == 0 and json.loads(r4[1]) == {"task": "ap_carico", "reopened": True, "state": "running"} and state("ap_carico") == "running",
+        and r4[0] == 0 and json.loads(r4[1]) == {"task": "ap_carico", "reopened": True, "state": "running", "prove_superseded": []} and state("ap_carico") == "running",
         f"r1={r1} closures0={closures0} steps={steps[-2:]} talks={new_talks} r2={r2[0]} {r2[2][-80:]} r3={r3[0]} {r3[2][-80:]} r4={r4}")
 
 con.close()

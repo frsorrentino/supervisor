@@ -82,8 +82,14 @@ whose tests in force are all ok, so it already has one. `task reopen ID --reason
 [--by B]` reopens a task closed by mistake (done, failed, cancelled, superseded):
 running if it was worked on, otherwise assigned; its closure leaves the report
 card (`closures`), a step records who, from which state and why, the outcomes
-stay in its history and its session is told. Fix what closed it first (an
-outcome, a pause, a check), or auto-close closes it again at the next hour.
+stay in its history and its session is told. Its tests marked ok and still in
+force become superseded (they stay in the history: the op `prove` with a number,
+the app's link `#/prova/<n>`, still gives them as ok), and the person's confirmations written before stop
+counting: settle, `task resettle`, auto-close and `task confirmed` wait for a new
+test marked ok or a new confirmation, also when the outcome does not ask for the
+person's test (28/11/2026, a task reopened at 15:48 was closed again at 15:50 by
+resettle on its old test; supervisor-reopen-prove-28-11). `task done` by hand is
+unchanged.
 
 A standing ok (since 23/10/2026 20:00, the maintainer from the phone:
 «Quando ci sono aggiornamenti di supervisor, effettuali direttamente»):

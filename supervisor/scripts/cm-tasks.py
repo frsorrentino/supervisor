@@ -82,7 +82,9 @@
   supervisor task cancel ID
   supervisor task reopen ID --reason R [--by B] [--json]   un compito chiuso per errore (done, failed, cancelled,
                                                 superseded) torna aperto: running se e' stato lavorato, altrimenti assigned;
-                                                la chiusura esce dalla pagella, un passo col motivo, la sessione lo sa
+                                                la chiusura esce dalla pagella, un passo col motivo, la sessione lo sa;
+                                                le prove ok di prima superate: si richiude da solo con una prova nuova
+                                                ok o una conferma nuova della persona
   supervisor task board [--json] [--timeline [--since 6h]]   stati ed esiti dal codice; con --timeline la cronologia
   supervisor task constraint add (--project P | --topic T) TESTO
   supervisor task constraint list [--project P] [--topic T]
@@ -328,6 +330,7 @@ CREATE TABLE IF NOT EXISTS silences (n INTEGER PRIMARY KEY, task TEXT, project T
     outcome TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS decision_snooze (key TEXT PRIMARY KEY, at INTEGER, by_ TEXT, until INTEGER, refs TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS cause_notes (key TEXT PRIMARY KEY, note TEXT, at INTEGER, by_ TEXT);
+CREATE TABLE IF NOT EXISTS reopens (n INTEGER PRIMARY KEY, task TEXT, at INTEGER, by_ TEXT, was TEXT, why TEXT, approval_n INTEGER);
 """
 
 
@@ -1769,8 +1772,9 @@ def auto_close(con, hours=AUTO_CLOSE_H):
             continue
         # 28/11/2026 (supervisor-autoclose-prova-28-11): alle 03:41 tre compiti col controllo verde, nessuna prova e un esito
         # che chiedeva la prova della persona sono stati chiusi qui (uno in pausa --waits external): aspettano una prova
-        # ok in vigore o la conferma della persona, anche in quella pausa
-        if needs_person_test(task) and not person_test_ok(con, r["id"]):
+        # ok in vigore o la conferma della persona, anche in quella pausa. E un compito riaperto (supervisor-reopen-prove-28-11)
+        # aspetta una prova nuova o una conferma nuova anche se l'esito non chiede la prova: chi l'ha riaperto ha detto di no
+        if (needs_person_test(task) or reopen_last(con, r["id"])) and not person_test_ok(con, r["id"]):
             continue
         if open_card(con, r["id"]):   # 24/11/2026 (supervisor-autoclose-carta-24-11): e cosi' una carta di ok o di scelta senza risposta
             continue
@@ -2173,7 +2177,7 @@ def settle(con, tid):
     if row["state"] not in OPEN_STATES:
         return 3, f"task settle {tid}: already {row['state']}"
     # 1.107: una pausa di prova chiusa con «Tutto va» (decisione provato) non ha righe di prova: vale la conferma della persona
-    confirmed = con.execute("SELECT 1 FROM approvals WHERE task=? AND what='confirmed' AND by_ IS NOT NULL LIMIT 1", (tid,)).fetchone()
+    confirmed = person_confirmed(con, tid)   # 28/11 (supervisor-reopen-prove-28-11): scritta dopo l'ultima riapertura
     if (live and any(r["result"] != "ok" for r in live)) or (not live and not confirmed):
         return 3, f"task settle {tid}: not every test is ok"
     task = _contract_task(row)
@@ -3356,7 +3360,7 @@ def main(argv):
         return 0
     if verb == "confirmed":
         get_task(con, args[0])
-        hit = con.execute("SELECT 1 FROM approvals WHERE task=? AND what='confirmed' AND by_ IS NOT NULL LIMIT 1", (args[0],)).fetchone()
+        hit = person_confirmed(con, args[0])   # 28/11: dopo l'ultima riapertura
         hit = hit and not prove_pending(con, args[0])   # 1.99: una prova da fare: la conferma di prima non copre questa build
         print(M("tasks.confirmed_yes" if hit else "tasks.confirmed_no", task=args[0]))
         return 0 if hit else 1
@@ -3621,9 +3625,9 @@ def main(argv):
         ids = [a for a in args if not a.startswith("-")]   # _opt toglie le opzioni e i loro valori
         if len(ids) != 1 or not why:
             sys.exit('usage: task reopen ID --reason "perche\'" [--by B] [--json]')
-        rc, text, state = reopen(con, ids[0], by, " ".join(why.split()))
+        rc, text, state, gone = reopen(con, ids[0], by, " ".join(why.split()))
         if as_json:
-            print(json.dumps({"task": ids[0], "reopened": rc == 0, "state": state}, ensure_ascii=False))
+            print(json.dumps({"task": ids[0], "reopened": rc == 0, "state": state, "prove_superseded": gone}, ensure_ascii=False))
         else:
             print(text, file=sys.stderr if rc else sys.stdout)
         return rc
